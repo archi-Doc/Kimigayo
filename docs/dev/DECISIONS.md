@@ -14015,140 +14015,108 @@ structure is recorded here by the unit that first implements it.
     half leaves `SharedPath`. `Checker.Views` resolves each PairAcquire Use per view and checks its Place under that view's cases where
     `MirCases.Reborrows` holds (the rejected per-view pass, now required; the stored list is the Adapts' one). Writes, destructions,
     Refs and Adapts are unchanged.
-- **R5-M140 The owner confirms C10b's two departures** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
-  C10b's design; verbatim 「承認します」, answering the two departures put to the owner; the consequences are the planning session's) The
-  departures R5-M137 records are confirmed:
+- **R5-M140 The owner confirms C10b's two departures** (owner, 2026-10-27, verbatim 「承認します」) The departures R5-M137 records are confirmed:
   - (i) the test phase writer and its numbering live in `TestRuntime`, beside C10a's ValueKind and WriteEntry, so R5-M138's widened
     Backend list gains them;
   - (ii) two phase labels differ from the old generator's, both in the implementation-defined protocol (IMPL 20.6.3): an assignment's
     old-value destruction, an A2 Drop like every other, runs in cleanup (the old generator: body; SPEC 13.7.1 calls it cleanup), and a
     static initializer runs in initialization, phase 3, which the old generator never writes (PD22, PLAN10 §5.6.7). PD22's "avoids
-    per-pipeline kimi test failure output" is not met for these two labels. Both leave the list.
-- **R5-M143 Checked 128-bit arithmetic and layered comparison operands in MIR code generation (wide)** (2026-10-27, C lane; PLAN G157
-  (14); package C 3.2 and 3.3, PD2, PD9, PD11; SPEC 13.3.1, 13.3.3, 13.4, 3.4.3, 5.1, 22.5.1-22.5.2, IMPL 21.3.3; the planning session's
-  go and rulings Q1-Q6 on `wide-design.md` and its rulings on implementation review 1 (B1, B2); under R5-M18, R5-M75, R5-M76, R5-M87,
-  R5-M92 and R5-M126; supersedes R5-M76's open issue "checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations`
-  are `ModuleCodegen`'s module-level request" and R5-M126's "keep G157 (14)'s located record (ruling Q8 (a))")
-  - 128-bit rule (rulings Q1, Q2): the operator table's integer entries are width-generic overflow stems, so a checked i128 or u128 add,
-    subtract, multiply or negate (increment, decrement, compound and element updates, and an arithmetic shim, which applies the same row)
-    is written by `Apply` as at any width. Its intrinsics' declarations, `LlvmModuleText.WideOverflowDeclarations` (the old generator's
-    text, PD2), are one more frame part, `ModuleCodegen.Needs.WideOverflow`, which `Apply` requests where it writes a 128-bit overflow check
-    (the one site of the inline operators and C8f's shims) and the frame writes after the fixed declarations, the old generator's place,
-    so a module's frame text equals the old generator's. No runtime routine (llc expands the multiply inline), no IntrinsicRows,
-    BuiltinArithmetic or vocabulary row; `Needs` is no closed vocabulary, but its `byte` is now full: the next frame part widens it.
-  - Comparison rule (review B2, the cause of B1 and B2): SPEC 13.4 says an operand of safe value-reference layers (`ref`, `uniq`,
-    qualifying pair layers) denotes its terminal Place, and the terminal Types' comparison applies; MIR keeps those layers on an operand
-    whose terminal it inspects in place, a string's or a raw pointer's (`MirValidator.Types`: a comparison's operands agree below their
-    layers), and reads a scalar terminal itself (`copy (*_1)`). Code generation followed them for a string only (`Column` by `Terminal`,
-    `Bytes`), so `raw/i32 != ref/raw/i32` compared the reference's own address, a wrong result under sel since C8a (R5-M92), and the mirror
-    order was a located `Unsupported_Kd`. Now every operator operand is read at its terminal Place: `Column` takes the left operand's
-    terminal, and `Compute` reads each operand through its layers by `Referent`, the one walk (the referent of the outer ref or uniq layer
-    through the pointer each further one stores) that a string's `Bytes` takes too, so the string path is an instance of the rule. Only a
-    comparison's operand has layers (MIR's contract), so arithmetic and conversions read as before. The old generator refuses both raw
-    orders with GenerationFailed_Kd ("Inconsistent scalar operator or operand Types"), a support limit for STATUS.
-  - The remaining record (ruling Q3, review B1): with the rule, `Apply`'s `entry.Operator is null` is reached only by an operator Binding
-    admits on no operand of that terminal Type (a raw pointer's `<`, `*`, unary `-` or `&`; a floating-point `%`, `&`, `<<` or `not`; a
-    Type without a column), which check refuses (OperatorNotDefined_Kd, NonIntegerOperand_Kd, TypeMismatch_Kd), so it is a broken
-    contract: `InternalInvariant_Kd` at the operator (G157 (38)'s pattern). No accepted program in the census classes reaches it.
-  - Tests (rulings Q4, Q5): `CheckedArithmeticAbortsAtItsOperator` gains six 128-bit rows (sadd, uadd, usub, smul, umul and negation's
-    ssub) and asserts the 128-bit declarations exactly where a 128-bit check is written. `AComparisonReadsEachOperandAtItsTerminal` counts
-    the loads to each compared raw pointer (a ref layer left, right, both, a uniq one borrowed); `LayeredComparisonsRun` writes the
-    `RawComparisonLayers` fixture under MIR code generation in every run: both raw orders and `ref/i32` against `i32`, `==` and `!=`. All of
-    these fail before. The shim form is the two flipped `BuiltinArithmeticContractTest` rows. The coverage theory's `ref/raw/i32 == raw/i32`
-    row is written; K11's Application counterpart and `ARefusalLeavesTheOtherBodiesGapsRecorded` move to G157 (10)'s reserve call, still
-    unwritten under sel (`Reserve`). The pending ledger loses 26 test rows (C-frame 22, C-aggregate 4), the census's count.
-  - Size (numstat against 838e11b43, both commits): code +89 / -42 (`FunctionCodegen.Arithmetic` +39 / -22, `FunctionCodegen.Strings` +31 / -11,
-    `ModuleCodegen.Frame` +19 / -9, comments included); tests +55 / -13; ledger -26 rows.
-  - Deleted: the 128-bit clause of `Apply`'s record and its located record, inline and in a shim; `Column`'s string-only walk and `Bytes`'
-    own copy of it; the coverage theory's "leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations".
+    per-pipeline kimi test failure output" is not met for these two labels.
+- **R5-M143 Checked 128-bit arithmetic and layered comparison operands in MIR code generation (wide)** (2026-10-27, PLAN G157 (14); under
+  R5-M18, R5-M75, R5-M76, R5-M87, R5-M92 and R5-M126; supersedes R5-M76's open issue "checked 128-bit add, subtract, multiply and negate,
+  whose `WideOverflowDeclarations` are `ModuleCodegen`'s module-level request" and R5-M126's "keep G157 (14)'s located record (ruling Q8
+  (a))")
+  - 128-bit rule: the operator table's integer entries are width-generic overflow stems, so a checked i128 or u128 add, subtract, multiply
+    or negate (increment, decrement, compound and element updates, and an arithmetic shim, which applies the same row) is written by
+    `Apply` as at any width. Its intrinsics' declarations, `LlvmModuleText.WideOverflowDeclarations` (the old generator's text, PD2), are
+    one more frame part, `ModuleCodegen.Needs.WideOverflow`, which `Apply` requests where it writes a 128-bit overflow check (the one site
+    of the inline operators and C8f's shims) and the frame writes after the fixed declarations, the old generator's place, so a module's
+    frame text equals the old generator's. No runtime routine (llc expands the multiply inline), no IntrinsicRows, BuiltinArithmetic or
+    vocabulary row; `Needs` is no closed vocabulary, but its `byte` is now full: the next frame part widens it.
+  - Comparison rule: SPEC 13.4 says an operand of safe value-reference layers (`ref`, `uniq`, qualifying pair layers) denotes its terminal
+    Place, and the terminal Types' comparison applies; MIR keeps those layers on an operand whose terminal it inspects in place, a
+    string's or a raw pointer's (`MirValidator.Types`: a comparison's operands agree below their layers), and reads a scalar terminal
+    itself (`copy (*_1)`). Code generation followed them for a string only (`Column` by `Terminal`, `Bytes`), so `raw/i32 != ref/raw/i32`
+    compared the reference's own address, and the mirror order was a located `Unsupported_Kd`. Now every operator operand is read at its
+    terminal Place: `Column` takes the left operand's terminal, and `Compute` reads each operand through its layers by `Referent`, the one
+    walk (the referent of the outer ref or uniq layer through the pointer each further one stores) that a string's `Bytes` takes too, so
+    the string path is an instance of the rule. Only a comparison's operand has layers (MIR's contract), so arithmetic and conversions
+    read as before.
+  - The remaining record: with the rule, `Apply`'s `entry.Operator is null` is reached only by an operator Binding admits on no operand of
+    that terminal Type (a raw pointer's `<`, `*`, unary `-` or `&`; a floating-point `%`, `&`, `<<` or `not`; a Type without a column),
+    which check refuses (OperatorNotDefined_Kd, NonIntegerOperand_Kd, TypeMismatch_Kd), so it is a broken contract: `InternalInvariant_Kd`
+    at the operator (G157 (38)'s pattern).
+  - Tests: `CheckedArithmeticAbortsAtItsOperator` gains six 128-bit rows (sadd, uadd, usub, smul, umul and negation's ssub) and asserts
+    the 128-bit declarations exactly where a 128-bit check is written. `AComparisonReadsEachOperandAtItsTerminal` counts the loads to each
+    compared raw pointer (a ref layer left, right, both, a uniq one borrowed); `LayeredComparisonsRun` writes the `RawComparisonLayers`
+    fixture under MIR code generation in every run: both raw orders and `ref/i32` against `i32`, `==` and `!=`. The shim form is the two
+    flipped `BuiltinArithmeticContractTest` rows. The coverage theory's `ref/raw/i32 == raw/i32` row is written; K11's Application
+    counterpart and `ARefusalLeavesTheOtherBodiesGapsRecorded` move to G157 (10)'s reserve call, still unwritten under sel (`Reserve`).
   - Speed: one flag request per 128-bit check and one pointer load per followed layer, no pass over MIR or output; warm 0 B
-    (`WideIntegerEmissionTest.WarmWidePlansAndFormattingAllocateNothing` passes under sel). O2 (information; no corpus kernel or milestone
-    reaches a 128-bit check or a layered comparison, so R5-M8 and R5-M135 are not triggered): both generators' optimized IR of checked i128
-    add, i128 and u128 multiply and i128 negation is identical but for names, 13, 59 and 33 instructions for sadd, smul and umul in both;
-    HashChecked (u128 multiply in its loop) prints the same at O2 under both, its check folded in both.
-  - Rejected: inside the component, (B) the frame writing the 128-bit declarations always (no width test, a few lines shorter): its
-    prototype changed the text of all 1,505 sel fixtures of the census classes, which voids `compare-fixtures.ps1`'s byte comparison, and
-    departs from R5-M76's request; the declarations written from `FunctionCodegen` (R5-M76); a scan of MIR or output for 128-bit checks;
+    (`WideIntegerEmissionTest.WarmWidePlansAndFormattingAllocateNothing` passes under sel).
+  - Rejected: inside the component, (B) the frame writing the 128-bit declarations always: its prototype changed the text of all 1,505 sel
+    fixtures of the census classes; the declarations written from `FunctionCodegen` (R5-M76); a scan of MIR or output for 128-bit checks;
     the request in `Write`'s Overflow arm by the Type's text; a raw-pointer clause beside the string one in `Column` (a second copy of the
-    walk, the right operand still unread); keeping the null-entry arm `Unsupported_Kd` (it hid the wrong code's sibling). Shared structure:
-    the 128-bit declarations merged into the fixed `OverflowDeclarations` for both generators (every legacy `.ll` changes, against
-    `LlvmModuleText`'s byte-identity invariant, and frozen Emission's scan is edited, D5); a runtime routine for the multiply; a
-    capability row refusing checked 128-bit arithmetic (IMPL 21.3.3 supports it); MIR reading a raw-pointer terminal itself (held MIR,
-    and strings keep the in-place form anyway).
-  - Unverified: a test build with a 128-bit check (its runtime's text is unchanged, H); O2 timing (no kernel, identical code).
+    walk, the right operand still unread); keeping the null-entry arm `Unsupported_Kd` (it hid the wrong code's sibling). Shared
+    structure: the 128-bit declarations merged into the fixed `OverflowDeclarations` for both generators (every legacy `.ll` changes); a
+    runtime routine for the multiply; a capability row refusing checked 128-bit arithmetic (IMPL 21.3.3 supports it); MIR reading a
+    raw-pointer terminal itself (held MIR).
   - Outside scope (H, Binding): check refuses `p + n` and `p - n` for `p: ref/raw/i32` with TypeMismatch_Kd, though SPEC 13.3.4 follows
     safe layers to the terminal before the raw-pointer route; perhaps a conservative Language error for a valid form.
-- **R5-M141 The property-witness Storage shim in MIR code generation (C3c)** (2026-10-27, C lane; plan C3c, package C 3.12, F package
-  4.5, K package 4.3, 4.7 and 4.9, PD3, PD21; SPEC 11.3.1, 11.9.2, 13.7.1, 16.2, 22.5.1; the planning session's go and rulings Q1-Q7 on
-  C3c's design, `c3c-design.md` and `c3c-go.md`; under R5-M18 (G:C-drop), R5-M44, R5-M67, R5-M126, R5-M127 and R5-M130)
-  - Form (rulings Q1 (a), Q4 (a), Q5): a PropertyWitness item (R5-M67's key: the Field, the erased Self, the `PropertyWitnessKind`) is one
-    function, `__kimi_witness<item>`, under its key's signature and the internal convention, caller-location as every shim (R5-M126's
-    one ABI rule), `ModuleCodegen.Shim`'s PropertyWitness row, written by `FunctionCodegen.Shims`' `Storage`, with no MIR body (PD3). A
-    Requirement call reaches it through `FunctionCodegen.Witness`, the one target rule a requirement Item's Value call and its adapter
-    entry share with it (C8f's, C9b's); no form names a property requirement as an Item (`T.count` is UnresolvedBinding_Kd), and the
-    library declares no property requirement, so K rows 2, 5, 6, 12 and 13 do not reach one.
+- **R5-M141 The property-witness Storage shim in MIR code generation (C3c)** (2026-10-27, plan C3c; under R5-M18 (G:C-drop), R5-M44,
+  R5-M67, R5-M126, R5-M127 and R5-M130)
+  - Form: a PropertyWitness item (R5-M67's key: the Field, the erased Self, the `PropertyWitnessKind`) is one function,
+    `__kimi_witness<item>`, under its key's signature and the internal convention, caller-location as every shim (R5-M126's one ABI rule),
+    `ModuleCodegen.Shim`'s PropertyWitness row, written by `FunctionCodegen.Shims`' `Storage`, with no MIR body (PD3). A Requirement call
+    reaches it through `FunctionCodegen.Witness`, the one target rule a requirement Item's Value call and its adapter entry share with it
+    (C8f's, C9b's); no form names a property requirement as an Item (`T.count` is UnresolvedBinding_Kd), and the library declares no
+    property requirement, so K rows 2, 5, 6, 12 and 13 do not reach one.
   - One rule over the three rows: the Field's address is the receiver (input 0) plus its offset in the layer that stores it, that layer's
     `Layout.Of` record (the complete base is a prefix, X1); a Set first destroys the value there through the item's target, the Field
     Type's glue (when `MirTypes.MayNeedDrop`, the collector's admission rule), at the location the function received, then puts its
     input (an OwnedSlot input from its address; a zero-sized one has no parameter); the row gives only its result's form: the value
     (Copy; a result slot by `Put`, a bool narrowed), the address (Borrow) or none (Set).
-  - The key's signature (ruling Q2 (a)) is stated once, `InstanceCollector.StorageSignature`: slot 0 `ref/Self` (Copy, Borrow) or
-    `uniq/Self` (Set), a Set's slot 1 `F`, the result `F`, `ref/F` or Unit, each erased, `F` the Field's Type in Self (Binding admits a
-    standard witness only so, `Binding.PropertyMatching.cs:102-117`; SPEC 11.3.1 puts the receiver first). K6's agreement (`Agrees`, at
-    each requesting call, `InternalInvariant_Kd` otherwise) compares the requirement's instance signature with it, and code generation
-    reads its item form beside `TypeOf`. Departure, approved by the owner (the owner's R5-M142): K package 4.3's "CheckedSet API for
-    codegen" gains this query.
-  - The layer (ruling Q3 (a)): `AdtDef.FieldOwner(type, field)`, the Field owner `(Layer, Depth, Index)?`, is the one walk over a
-    struct's layers by Field; `FindField`'s storage position and the MIR builder's Field Place (its Base steps) derive from it
-    (restructured first, `6b2883987`, folded in `dce01bbfc`; BU's review ACCEPT). The builder's inverse walk of the position
-    (`MirBuilder.Places.cs`' `Stored`; `MirBuilder.Constructors.cs` only computed a position for it) answered the same question, so it
-    is replaced and deleted on the planning session's instruction (AGENTS: a new concept replaces every existing use in the same unit),
-    which supersedes the go's "no W1 file"; R4 reviewed that hunk (ACCEPT) and the MIR goldens stayed byte-identical.
-    `HasDestructorOnPath` answers another question (the layers down to a member's declaring scope, computed Properties included, for
-    the old analysis) and stays.
+  - The key's signature is stated once, `InstanceCollector.StorageSignature`: slot 0 `ref/Self` (Copy, Borrow) or `uniq/Self` (Set), a
+    Set's slot 1 `F`, the result `F`, `ref/F` or Unit, each erased, `F` the Field's Type in Self (Binding admits a standard witness only
+    so, `Binding.PropertyMatching.cs:102-117`; SPEC 11.3.1 puts the receiver first). K6's agreement (`Agrees`, at each requesting call,
+    `InternalInvariant_Kd` otherwise) compares the requirement's instance signature with it, and code generation reads its item form
+    beside `TypeOf`. Departure, approved by the owner (the owner's R5-M142): K package 4.3's "CheckedSet API for codegen" gains this
+    query.
+  - The layer: `AdtDef.FieldOwner(type, field)`, the Field owner `(Layer, Depth, Index)?`, is the one walk over a struct's layers by
+    Field; `FindField`'s storage position and the MIR builder's Field Place (its Base steps) derive from it. The builder's inverse walk of
+    the position (`MirBuilder.Places.cs`' `Stored`; `MirBuilder.Constructors.cs` only computed a position for it) answered the same
+    question, so it is replaced and deleted. `HasDestructorOnPath` answers another question (the layers down to a member's declaring
+    scope, computed Properties included, for the old analysis) and stays.
   - Records (K 4.7, 4.9; BU-38): the collector records nothing new: Storage is never Refused (OCC-X refuses accessor-call witnesses
     only), a Self's storage Limit is TyCtxt's earlier row, the Field's layout is the Self's admission verdict (R5-M44), and no capability
     row applies (no operation; C8f's R-2 has nothing to read). Code generation records only broken contracts (`InternalInvariant_Kd` at
     the item's site): a Field the representative Self does not store, a layout not Ok, a droppable Field without its target.
-  - Deviation (R5-M6 (d), an intended change; SPEC 22.5.1, 13.7.1): a Set's glue receives the invoking assignment's location, as a
-    direct `s.item = v` does, where the old bridge passes the contract's `set` declaration. It is not observable: a destructor's own
-    Abort reports its own location under both generators at O0 and O2 (probe `r5\c3c\cli\dev`: `Main.kimi:6:13` four times), and a
-    glue reports the location it receives only when the runtime's release itself fails (`__kimi_free`'s HeapFree), which no program
-    can cause; it also reaches a Dictionary glue's caller-location `DictionaryStorage.clearEntries` and
-    `Storage.destroyDictionaryEntries`, whose loops cannot Abort, and no user destructor (not caller-location). IR deviations only
-    (PD9): the names; two location parameters Copy and Borrow do not read; one copy where the old copies through a temporary; a Set
-    reads its input's slot after the glue; a zero-sized Field's address is computed though unread (O2 removes it).
-  - Correction (not a design change): package C 3.12's "Fixture families `Counted*` and `Own*`" names no property witness; C3c's
-    families are `PropertyWitness*` (27 fixtures, 21 written first under sel) and milestone 36, which declares the one property
-    requirement of the milestones, corpus kernels, workloads and library.
-  - Facts: the sel ledger loses `PropertyWitnessEmissionTest`'s 23 rows (146 → 123 test rows; all C-frame, all C3c's alone in the
-    census, taken again on each merged dev); its pending-ledger filing row is C-drop's; milestone 36 runs under sel.
-    `FunctionCodegenTest`'s PropertyWitness rows (`EachPropertyWitnessIsOneCallerLocationFunction`,
-    `AnInheritedWitnessReadsItsLayersOffset`, the M9 and I1 rows) fail before the behavior commit as located records.
-    `AnUncoveredFormIsOneLocatedUnsupportedRecord` keeps its purpose: its property-witness row moves to a form still unwritten, a
-    requirement Item's Value call whose witness has no body (G157 (10)'s `reserve`, one record at `reserve(w, 4)`).
-  - Size (bp1, its fold and the behavior): code +271/-106 (Codegen +173/-38, the collector +48/-21, AdtDef +36/-20, the MIR builder
-    +14/-27); tests +137/-22; the ledger -23 test rows and one filing row.
-  - Deleted: the two located `Unsupported_Kd` records (the requesting call's and the item's) and the C3c labels; `Agrees`' inline
-    Types; `FindField`'s own loop; `MirBuilder.Stored`'s position walk. Superseded labels: R5-M65's PropertyWitness arm, R5-M89's
-    "property witnesses (C3c)", and R5-M93's, R5-M102's and R5-M126's "a property witness C3c's located `Unsupported_Kd`".
-  - Speed: one function per key; its signature kept while it matches; no new pass over MIR; a warm Write allocates nothing
-    (`WarmGenerationAllocatesNothing`'s witness row, the ledger's two `…AreReused` Allocation rows under sel).
-  - Rejected: one function per row (three copies of the address and the return); code generation walking `AdtDef.Base` for the layer
-    (a second walk); `ModuleCodegen` stating the key's Types (a second statement beside K6's assertion); location parameters on a Set
-    only (a per-kind ABI mode); a Set's glue at the item's first-admission site (wrong for every other caller) or at the Field's
-    declaration (a syntax read); a MIR body for the bridge (PD3); the requirement in the key, so `Declared` gives the signature (K's
-    key; one item per requirement, not per key, X14); flat-position offsets in `Layout` (a second offset table); `TyCtxt` stating the
-    key's signature (a hold file, not the key's owner); a Backend table beside `BuiltinArithmetic` (a new component).
-- **R5-M142 The owner confirms C3c's departure (i)** (owner, 2026-10-27, to the R5 planning session directly, on its rulings after
-  C3c's design; verbatim 「C3c の逸脱 (i)（K 4.3 のコード生成向け API 一覧に StorageSignature を加えること）を承認します。」; the
-  consequences are the planning session's) The departure R5-M141 records is confirmed: the collector states a PropertyWitness key's
-  signature once (`StorageSignature`). K6's agreement assertion and code generation both read it, and K 4.3's "CheckedSet API for
-  codegen" list gains it. Package C §3.12's fixture families are corrected to `PropertyWitness*` and milestone 36 (a correction, not a
-  departure). It leaves the list.
-- **R5-M144 The owner's answers of 2026-10-28: a Field projection through a borrow needs the layout; a Dictionary literal entry
-  fails at its key; Milestone 42 is a P42 row at R5's exit** (owner, 2026-10-28, to the R5 planning session directly, on its questions
-  about PLAN G157 (41), G157 (32) and plan 5.3 gate 9)
+  - Deviation (R5-M6 (d), an intended change; SPEC 22.5.1, 13.7.1): a Set's glue receives the invoking assignment's location, as a direct
+    `s.item = v` does, where the old bridge passes the contract's `set` declaration. It is not observable: a destructor's own Abort
+    reports its own location under both generators at O0 and O2, and a glue reports the location it receives only when the runtime's
+    release itself fails (`__kimi_free`'s HeapFree), which no program can cause; it also reaches a Dictionary glue's caller-location
+    `DictionaryStorage.clearEntries` and `Storage.destroyDictionaryEntries`, whose loops cannot Abort, and no user destructor (not
+    caller-location). IR deviations only (PD9): the names; two location parameters Copy and Borrow do not read; one copy where the old
+    copies through a temporary; a Set reads its input's slot after the glue; a zero-sized Field's address is computed though unread (O2
+    removes it).
+  - Correction (not a design change): package C 3.12's "Fixture families `Counted*` and `Own*`" names no property witness; C3c's families
+    are `PropertyWitness*` and milestone 36, which declares the one property requirement of the milestones, corpus kernels, workloads and
+    library.
+  - Superseded labels: R5-M65's PropertyWitness arm, R5-M89's "property witnesses (C3c)", and R5-M93's, R5-M102's and R5-M126's "a
+    property witness C3c's located `Unsupported_Kd`".
+  - Speed: one function per key; its signature kept while it matches; no new pass over MIR; a warm Write allocates nothing.
+  - Rejected: one function per row (three copies of the address and the return); code generation walking `AdtDef.Base` for the layer (a
+    second walk); `ModuleCodegen` stating the key's Types (a second statement beside K6's assertion); location parameters on a Set only (a
+    per-kind ABI mode); a Set's glue at the item's first-admission site (wrong for every other caller) or at the Field's declaration (a
+    syntax read); a MIR body for the bridge (PD3); the requirement in the key, so `Declared` gives the signature (K's key); flat-position
+    offsets in `Layout` (a second offset table); `TyCtxt` stating the key's signature (a hold file, not the key's owner); a Backend table
+    beside `BuiltinArithmetic` (a new component).
+- **R5-M142 The owner confirms C3c's departure (i)** (owner, 2026-10-27, verbatim 「C3c の逸脱 (i)（K 4.3 のコード生成向け API 一覧に StorageSignature
+  を加えること）を承認します。」) The departure R5-M141 records is confirmed: the collector states a PropertyWitness key's signature once
+  (`StorageSignature`). K6's agreement assertion and code generation both read it, and K 4.3's "CheckedSet API for codegen" list gains it.
+  Package C §3.12's fixture families are corrected to `PropertyWitness*` and milestone 36 (a correction, not a departure).
+- **R5-M144 The owner's answers of 2026-10-28: a Field projection through a borrow needs the layout; a Dictionary literal entry fails at
+  its key; Milestone 42 is a P42 row at R5's exit** (owner, 2026-10-28; PLAN G157 (41), G157 (32) and plan 5.3 gate 9)
   - **G157 (41)** (verbatim 「(a) 射影をレイアウトの使用とする で決定します」): a Field projection through a borrow or raw pointer of a
     Type whose C layout is unavailable (`f(s: ref/S) => s.n`) is a use that needs the layout (SPEC 8.15.3): the Field's offset is the
     layout. SPEC 8.15.3 states it; the layout-use check (the instance collector's `CheckedSet`) reports it as a Language error at the
@@ -14171,38 +14139,32 @@ structure is recorded here by the unit that first implements it.
     cannot hold for 42 within R5. `MilestoneSourcesTest.AuthoredProgramsMatchTheirRecordedStageAndDiagnostic` is a P42 decided row (not
     G2's); P42 restores the recorded first diagnostic. ("Not G2's" superseded by R5-M156 under OI-1 (a′): G2 re-baselines Milestone 42,
     and P42 restores it.) Rejected: (b) a `Codegen.Expect` deviation now (a second record P42 must remove).
-- **R5-M145 The sel pending ledger before X1: one byte copy for both generators, an entry's insertion at its key, generator-neutral
-  audits and IR assertions, and the decided P42 set (x1rows)** (2026-10-28, C lane; plan X1, PLAN G157 (25), (28), (29), (32), (33), (35)
-  and G188; SPEC 16.2.1, 22.2, 22.5.1, IMPL 21.1.3, 21.3.1; the planning session's rulings Q1-Q5 on x1rows' design (`x1rows-design.md`,
-  `x1rows-go.md`) and the owner's answers R5-M144; under R5-M6, R5-M8, R5-M12, R5-M13 (b), R5-M85, R5-M92, R5-M118 and R5-M135)
-  - Census (sel and the old generator at `3da3ecd6d`, the ledger's 10 test classes and 14 writing classes with 16 fixture families): sel's
-    failing set equalled the ledger, 123 test and 47 fixture rows, and no row was a defect of MIR code generation. The 33 string lifetime
-    audits' destruction traces are the old generator's with only never-materialized constants' events removed, in order and with equal
-    output; the 8 transfer rows hold their bounds at O0 and O2 once sel's copy is counted; the 4 capacity probes pass with sel's own
-    symbols. Two accidental passes shared the causes and are fixed here: `DictionaryCapacityInsertionLimit` called another sel function
-    under the old generator's symbol, and every minimum-0 transfer bound passed uncounted under sel.
-  - Byte copy (ruling Q1 (a); supersedes R5-M92's Copy row): Storage.transferBytes is one runtime routine, `__kimi_transfer_bytes`, which
-    both generators call and a module defines only where a body calls it (`LlvmModuleText.TransferBytes`, promoted from
-    LegacyRuntimeHelpers in a behavior-preserving commit, its define line spliced from `RuntimeAbi.TransferBytes`, whose parameters now
-    carry their logical indices). The reason R5-M92's inline `llvm.memcpy` no longer holds: two representations of one storage transfer
-    made the native cost audits generator-dependent, and their minimum-0 bounds vacuous under sel. PD23's memcpy, not memmove, stays (the
-    routine is one memcpy). `IntrinsicWriter.TryAllocate` is renamed `Requested` (the routine the module defines on request: TryAllocate
-    and TransferBytes; R5-M92's writer column, the planning session's); `IntrinsicWriter.Copy` and `FunctionCodegen.CopyBytes` are deleted
-    (G157 (29)'s CopyBytes half); `ModuleCodegen.Needs.TryAllocate` becomes `StorageBytes`, the pair the old generator writes together,
-    with the memory declarations. O2 (R5-M8, R5-M135; C9c's method, 21 interleaved samples, `d1c17ec63`): the Dictionary kernel B/A 1.002
-    (0.695-1.427) against A=A 1.000 (0.614-1.449); aligned 0.999 (0.800-1.080) against A=A 1.001 (0.763-1.401); the routine is inlined at
-    O2 under both generators.
+- **R5-M145 The sel pending ledger before X1: one byte copy for both generators, an entry's insertion at its key, generator-neutral audits
+  and IR assertions, and the decided P42 set (x1rows)** (2026-10-28, plan X1, PLAN G157 (25), (28), (29), (32), (33), (35) and G188; the
+  owner's answers R5-M144; under R5-M6, R5-M8, R5-M12, R5-M13 (b), R5-M85, R5-M92, R5-M118 and R5-M135)
+  - Census: sel's failing set equalled the ledger and no row was a defect of MIR code generation. The 33 string lifetime audits'
+    destruction traces are the old generator's with only never-materialized constants' events removed, in order and with equal output; the
+    8 transfer rows hold their bounds at O0 and O2 once sel's copy is counted; the 4 capacity probes pass with sel's own symbols. Two
+    accidental passes shared the causes and are fixed here: `DictionaryCapacityInsertionLimit` called another sel function under the old
+    generator's symbol, and every minimum-0 transfer bound passed uncounted under sel.
+  - Byte copy (supersedes R5-M92's Copy row): Storage.transferBytes is one runtime routine, `__kimi_transfer_bytes`, which both generators
+    call and a module defines only where a body calls it (`LlvmModuleText.TransferBytes`, its define line spliced from
+    `RuntimeAbi.TransferBytes`, whose parameters now carry their logical indices). The reason R5-M92's inline `llvm.memcpy` no longer
+    holds: two representations of one storage transfer made the native cost audits generator-dependent, and their minimum-0 bounds vacuous
+    under sel. PD23's memcpy, not memmove, stays (the routine is one memcpy). `IntrinsicWriter.TryAllocate` is renamed `Requested` (the
+    routine the module defines on request: TryAllocate and TransferBytes; R5-M92's writer column); `IntrinsicWriter.Copy` and
+    `FunctionCodegen.CopyBytes` are deleted (G157 (29)'s CopyBytes half); `ModuleCodegen.Needs.TryAllocate` becomes `StorageBytes`, the
+    pair the old generator writes together, with the memory declarations.
   - Transfer audit (D1): `NativeAllocationAudit` takes both routine names from `RuntimeAbi`, and a program whose reached bodies call
-    transferBytes (its MIR and checked set under MIR code generation, whatever the process's generators) must call the counted byte
-    copy, so a transfer written in another form fails at test time, a minimum-0 bound included and also where the routine stays defined
-    beside inline copies, since the storage byte primitives are defined as a pair (`AnInlineByteCopyFails`, the re-inlining mutation);
-    with the copy inline, as before this entry, the bounded fixtures exited 93 (the census).
-  - Entry insertion (ruling Q4 (a), R5-M144; SPEC 22.5.1 states it in its existing item): a failure of a Dictionary literal entry's
-    insertion, its allocation and a duplicate key included, reports the start of that entry's key expression, R5-M126's recorded
-    reading. `MirBuilder.Expansions` places the entry's layout borrow, dictionaryStorage and placeEntry at `entry.Key` (they were at the
-    value: sel reported 2:19 for 2:16). The MIR pipeline's compile-time records about those steps move to the key with them (A5's
-    next-use note, the collector's layout record for the value: `InstanceCollectorTest`'s `ALegacyRowLaysOutADictionarysValue`); the
-    default pipeline's snapshot is unaffected; the tests/mir goldens' node ids follow (R4 reviewed the goldens and that record).
+    transferBytes (its MIR and checked set under MIR code generation, whatever the process's generators) must call the counted byte copy,
+    so a transfer written in another form fails at test time, a minimum-0 bound included and also where the routine stays defined beside
+    inline copies, since the storage byte primitives are defined as a pair (`AnInlineByteCopyFails`, the re-inlining mutation).
+  - Entry insertion (R5-M144; SPEC 22.5.1 states it in its existing item): a failure of a Dictionary literal entry's insertion, its
+    allocation and a duplicate key included, reports the start of that entry's key expression, R5-M126's recorded reading.
+    `MirBuilder.Expansions` places the entry's layout borrow, dictionaryStorage and placeEntry at `entry.Key`. The MIR pipeline's
+    compile-time records about those steps move to the key with them (A5's next-use note, the collector's layout record for the value:
+    `InstanceCollectorTest`'s `ALegacyRowLaysOutADictionarysValue`); the default pipeline's snapshot is unaffected; the tests/mir goldens'
+    node ids follow.
   - IR assertions (R5-M12) and probes: `DictionaryCapacityTest`'s probes run MIR code generation's compiled reserve and append, named
     by their body items (`FunctionCodegenTest.BodyOf`, shared) with `KimiLibraryCatalog.RequiresCallerLocation`; `DictionaryLibraryTest`
     keeps reserve and grow as generated storage bodies and leaves the caller location to its native capacity fixtures;
@@ -14219,35 +14181,34 @@ structure is recorded here by the unit that first implements it.
     results instead, so its order and its wrong-order control keep values both generators make. (Reduced to the target by R5-M158,
     with G157 (45)'s cleanup audits in that call-result form.)
   - Decided rows (X1; R5-M13 (b), R5-M144): the P42 set, 110 test rows that fail only on sel's located `Unsupported_Kd` for P42's static
-    storage at check (R5-M41) beside their expected records: PathCapabilityDiagnosticTest 108, EffectBoundReportTest's mutable-static
-    row and MilestoneSourcesTest (Milestone 42). They are OQ7 (e) "form not ported" rows (R5-M6) and leave with P42. The ledger goes
-    from 123 and 47 rows to 110 and 0. ("Leave with P42" superseded by R5-M156 under OI-1 (a′): the rows leave the ledger at G2, which
-    empties it; P42 reverts only the pin test, EffectBound's and VirtualEffectObligationTest's records and Milestone 42's baseline.)
+    storage at check (R5-M41) beside their expected records: PathCapabilityDiagnosticTest 108, EffectBoundReportTest's mutable-static row
+    and MilestoneSourcesTest (Milestone 42). They are OQ7 (e) "form not ported" rows (R5-M6) and leave with P42. ("Leave with P42"
+    superseded by R5-M156 under OI-1 (a′): the rows leave the ledger at G2, which empties it; P42 reverts only the pin test, EffectBound's
+    and VirtualEffectObligationTest's records and Milestone 42's baseline.)
   - Rejected: a test-only per-generator arm reading MIR in the audit (a consumer re-deriving code generation's mapping); counting every
     untyped copy (shrink and element moves are untyped copies too); materializing constants for the audits (R5-M118); deleting the
     literal temporaries' counts as I-class (it loses the old generator's exact claims); probing the old generator's compile through a
     per-generator symbol helper until G4; the literal's start for an entry's failure (R5-M144).
 - **R5-M146 The codegen coverage rows closed: the D2 rows in the capability table, broken contracts recorded where detected (X2)**
-  (2026-10-28, C lane; plan X2, PD11, PD27, OQ7 and §5.3 item 3; PLAN G157 (10), (25), (38), the location halves of (36), (43) and (44),
-  G198; the planning session's rulings Q1-Q6 on x2's design; under R5-M6, R5-M18, R5-M41 and R5-M82)
-  - Census (`17cd554ab`, a local probe logging each code generation record's reporting site): under sel, the milestones, the library
-    rooted, the mutation, syntax and pair corpora, the spec cases, every SPEC `kimi` block and the MIR goldens (987 programs, as an
-    Application and as a Library) and the whole suite (24,842 tests) reached code generation's `Unsupported_Kd` only at G157 (10)'s
-    body-less witness and the simulated arena skip; CLI probes found two more valid forms, a `#LibraryImport` function as a
-    requirement's witness and a Value call of an import's Item. No milestone, library or corpus program uses a coverage row's form (no
-    defect); the other 33 sites and the 7 intrinsic rows without a MIR producer are reached only by broken contracts.
-  - Capability table: a new row `BodylessWitness`, a requirement call or requirement Item whose witness has no MIR body (FixedBuffer's
-    or HeapBuffer's `reserve` through `BufferWriter`, SPEC 22.9.4; a `#LibraryImport` witness, SPEC 22.6), decided by
+  (2026-10-28, plan X2; PLAN G157 (10), (25), (38), the location halves of (36), (43) and (44), G198; under R5-M6, R5-M18, R5-M41 and
+  R5-M82)
+  - Census: under sel, the milestones, the library rooted, the mutation, syntax and pair corpora, the spec cases, every SPEC `kimi` block
+    and the MIR goldens and the whole suite reached code generation's `Unsupported_Kd` only at G157 (10)'s body-less witness and the
+    simulated arena skip; CLI probes found two more valid forms, a `#LibraryImport` function as a requirement's witness and a Value call
+    of an import's Item. No milestone, library or corpus program uses a coverage row's form (no defect); the other 33 sites and the 7
+    intrinsic rows without a MIR producer are reached only by broken contracts.
+  - Capability table: a new row `BodylessWitness`, a requirement call or requirement Item whose witness has no MIR body (FixedBuffer's or
+    HeapBuffer's `reserve` through `BufferWriter`, SPEC 22.9.4; a `#LibraryImport` witness, SPEC 22.6), decided by
     `InstanceCollector.Called`, the requirement call's and requirement Item's edge (its implementation's body by `Selected`, shared with
     `Implementation`), at each site that requests the target (K 4.9, as OCC-X's: the call; an Item where it is formed, called or erased),
-    at check under sel (R5-M41) and on every pipeline from G2: code generation runs a witness only as a body or shim item. The other edges a
-    requirement runs on (a compiler function's published row, `Text.writer`'s reserve witness) keep their -1: their writers read the
+    at check under sel (R5-M41) and on every pipeline from G2: code generation runs a witness only as a body or shim item. The other edges
+    a requirement runs on (a compiler function's published row, `Text.writer`'s reserve witness) keep their -1: their writers read the
     function itself. Such a witness is decided by `TyCtxt.Bodyless`, the one classification of a function without a MIR body: a compiler
-    or foreign function is the gap whatever else Binding rejected (SPEC 23.1.2; review B1 found a first version that dropped an import
-    witness's record beside an unrelated Binding error), a definition Binding rejected is that error's dependent (no record), and any
-    other is a broken contract in a complete compilation (`Derived`). The row also ends the narrow subset K11 accepted (an Application's
-    uncalled function with the form was built). Removal: `reserve` when R8 gives the buffers Kimigayo bodies; an import witness when the
-    collector publishes the import as the call's target. `EnclosingInstance`'s stage moves from R5 to R7 (G149).
+    or foreign function is the gap whatever else Binding rejected (SPEC 23.1.2), a definition Binding rejected is that error's dependent
+    (no record), and any other is a broken contract in a complete compilation (`Derived`). The row also ends the narrow subset K11
+    accepted (an Application's uncalled function with the form was built). Removal: `reserve` when R8 gives the buffers Kimigayo bodies;
+    an import witness when the collector publishes the import as the call's target. `EnclosingInstance`'s stage moves from R5 to R7
+    (G149).
   - Import Item: `FunctionCodegen.Runs` runs a function Item without a target whose function is an import by the import's C signature,
     the rule of its direct call (`ModuleCodegen.Import`; SPEC 7.7.4, 22.6).
   - Broken contracts, one rule: an input validated MIR never has is `InternalInvariant_Kd`, recorded once by the owner that detects it,
@@ -14264,57 +14225,50 @@ structure is recorded here by the unit that first implements it.
     `BodylessWitness`; `EnclosingInstance` until R7; the confirmations of `StaticStorage` (P42; X33 (a), R5-M144) and `StorageNesting`
     (PD30, R7). The owner approved the PD27 list on 2026-10-28 (verbatim 「一覧を承認する」).
   - Rejected: relabeling the 35 sites in place (29 copies of one rule); deciding `BodylessWitness` in `Requirement` for every edge
-    (`Text.writer`'s witness and the interpolation rows read a body-less reserve themselves; the first implementation's tests showed it);
-    deciding it from `Bodyless`'s result (a refused edge has already recorded); writing the body-less witnesses now (a new K edge form);
-    deleting the seven `IntrinsicId` members (R8 and PD21 plan them); a capability row for the import Item (more code than its call).
-- **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29, to the R5 planning
-  session directly; extends R5-M135) X1 (plan §4 row X1, §5.3) ran at dev `17cd554ab` (evidence
-  `artifacts/verify/reduction-R5/17cd554ab/`: `x1-summary.md`, `quiet/`, `iter/`, `scripts/`): sel fails exactly the 110 decided P42 rows
-  (R5-M144, R5-M145); the native outcomes of all 6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes
-  both generators, and sel's `.ll` is identical to another run of the same tree; the five CLI harnesses pass under both generators; no
-  collector or MIR record over the library and the accepted milestones (the census rows are Milestone 41's, a `tests/mir` golden's and one
-  spec case's incomplete programs); the sel snapshot differs from the legacy one only in Milestone 42's five P42 records; 1,161 of the
-  1,162 `Purpose=Allocation` tests (M9's 186 among them) pass under sel, `TrimsUnderHighPressure` running under neither generator. O2
-  against `49cb2b5d` (CPU cycles, 21 interleaved rounds, CPU 2, `DOTNET_TieredCompilation=0`): five kernels within A=A, Array and
-  VirtualDispatch within A=A aligned (code placement, R5-M135), Iterators 1.129 plain and 1.016 aligned against an aligned A=A of
-  0.993-1.008. The owner first chose to fix its cause (verbatim 「(a) 原因を直す」); the investigation found none in code generation: the
-  kernel's executed machine code is byte-identical but for addresses; B's code sits 0xc0 (3 × 64) bytes lower because O2 deletes the
-  `__kimi_destroy_string` routine ahead of `main`, which C9c and C9d left uncalled, and 64-byte alignment cannot cancel that shift. In a
-  quiet run (21 rounds) B's code and constants at A's addresses ran at 509.6 against A's 509.6 Mcycles and A's at B's addresses at 517.3
-  against B's 518.0; moving constants alone changed nothing; over sixteen 64-byte shifts (11 rounds) A ranged 509.7-583.3 and B
-  508.4-582.4. The owner then decided, verbatim 「(1) 対照を拡張」: when a gap remains in R5-M135's aligned control, an **address-matched
-  control** follows. Its general form sweeps both sides' code over the same 64-byte shifts and compares the medians at matched code
-  addresses; a swap (each side's code placed at the other's addresses) is its two-point form. Each variant is timed as R5-M135 says (A, B
-  and A′ in one folder, 15 or more interleaved rounds, pinned), and every matched pair (each swap, or each matched shift) must lie within
-  the A=A range of the same run (for Iterators' 21-round run, A′/A 0.990-1.011). Within A=A it is code placement, recorded in the unit's
-  DECISIONS entry, and lands without an owner question; only a gap that remains at matched addresses is a slowdown under R5-M8 and goes to
-  the owner. Iterators at matched addresses: 1.000 (B at A's addresses) and 1.001 (A at B's against B), so gate 5's O2 part holds. O0
-  times (recorded, not judged): B/A 0.85 (ArrayLiteral) to 1.59 (Dictionary). Rejected: forcing B's placement to A's in code generation (a
-  clause for one kernel's layout, AGENTS). Open for X3: the PLAN10-P3 record's collection share is below the noise of its stage-3
-  subtraction on small inputs; X3 measures collection directly.
-- **R5-M148 X3: R5's exit gate item by item; the owner's review of R5's exceptions and Transitional declarations** (owner, 2026-10-29,
-  to the R5 planning session directly, on X3's table; planning session; plan X3, §5.3; under R5-M1, R5-M8, R5-M18, R5-M146 and
-  R5-M147)
-  - The owner (verbatim 「推奨どおり承認」) approved X3's table of R5's exceptions and Transitional declarations as recommended (25 rows;
-    102 declarations at X2's head: "R6" 50, "R6-gen" 14, "R7" 11, "R8" 27; `artifacts/benchmarks/r5-exit/exceptions-and-transitional.md`):
-    gate step 2's arena-skip `Unsupported_Kd` (R5-M96) stays after R5 until H3; `BodylessWitness`'s import witness leaves at R8 with
-    `reserve`'s (R5-M146 left it unscheduled; STATUS, the Capability row and ARCH say so); the legacy comparison composition keeps its R7
-    fallback, A-12 being R4's open ask (R5-M68); R5-M7's shared-file hold protocol carries over to R6-gen beside R4 (ARCH). The other
-    rows stand as listed.
-  - Correction (planning session, reported to the owner): no `[Transitional]` is added. `Layout.Row`'s internal visibility, a temporary
-    until G8 in R5-M37 and ARCH, is lasting: MIR code generation reads `Row` (`FunctionCodegen.Arrays`, `.Closures`, `.Erasures`, `.Flags`,
-    `.Places`, `.Statics`, `.Strings`), and only the old scalar gate's read (`WindowsLowering.GetValue`) goes, with the old Emission at
-    R6-gen. ARCH drops the entry; R5-M37's clause is superseded here. Binding's eager C-layout instance check (K10b's double report, G2b)
-    is removed by G158 (3) (BU-48), not marked. Layout's contract and `Row`'s summary say so (the end-to-end review's B3).
+    (`Text.writer`'s witness and the interpolation rows read a body-less reserve themselves); deciding it from `Bodyless`'s result (a
+    refused edge has already recorded); writing the body-less witnesses now (a new K edge form); deleting the seven `IntrinsicId` members
+    (R8 and PD21 plan them); a capability row for the import Item (more code than its call).
+- **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29; extends R5-M135) X1
+  (plan §4 row X1, §5.3) ran at dev `17cd554ab`: sel fails exactly the 110 decided P42 rows (R5-M144, R5-M145); the native outcomes of all
+  6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes both generators, and sel's `.ll` is identical to
+  another run of the same tree; the five CLI harnesses pass under both generators; no collector or MIR record over the library and the
+  accepted milestones (the census rows are Milestone 41's, a `tests/mir` golden's and one spec case's incomplete programs); the sel
+  snapshot differs from the legacy one only in Milestone 42's five P42 records; 1,161 of the 1,162 `Purpose=Allocation` tests (M9's 186
+  among them) pass under sel, `TrimsUnderHighPressure` running under neither generator. O2 against `49cb2b5d`: five kernels within A=A,
+  Array and VirtualDispatch within A=A aligned (code placement, R5-M135), Iterators 1.129 plain and 1.016 aligned. The owner first chose
+  to fix its cause (verbatim 「(a) 原因を直す」); the investigation found none in code generation: the kernel's executed machine code is
+  byte-identical but for addresses; B's code sits 0xc0 (3 × 64) bytes lower because O2 deletes the `__kimi_destroy_string` routine ahead
+  of `main`, which C9c and C9d left uncalled, and 64-byte alignment cannot cancel that shift. The owner then decided, verbatim 「(1)
+  対照を拡張」: when a gap remains in R5-M135's aligned control, an **address-matched control** follows. Its general form sweeps both sides'
+  code over the same 64-byte shifts and compares the medians at matched code addresses; a swap (each side's code placed at the other's
+  addresses) is its two-point form. Each variant is timed as R5-M135 says (A, B and A′ in one folder, 15 or more interleaved rounds,
+  pinned), and every matched pair (each swap, or each matched shift) must lie within the A=A range of the same run. Within A=A it is code
+  placement, recorded in the unit's DECISIONS entry, and lands without an owner question; only a gap that remains at matched addresses is
+  a slowdown under R5-M8 and goes to the owner. Iterators at matched addresses: 1.000 (B at A's addresses) and 1.001 (A at B's against B),
+  so gate 5's O2 part holds. Rejected: forcing B's placement to A's in code generation (a clause for one kernel's layout, AGENTS). Open
+  for X3: the PLAN10-P3 record's collection share is below the noise of its stage-3 subtraction on small inputs; X3 measures collection
+  directly.
+- **R5-M148 X3: R5's exit gate item by item; the owner's review of R5's exceptions and Transitional declarations** (owner, 2026-10-29;
+  plan X3, §5.3; under R5-M1, R5-M8, R5-M18, R5-M146 and R5-M147)
+  - The owner (verbatim 「推奨どおり承認」) approved X3's table of R5's exceptions and Transitional declarations as recommended: gate step 2's
+    arena-skip `Unsupported_Kd` (R5-M96) stays after R5 until H3; `BodylessWitness`'s import witness leaves at R8 with `reserve`'s
+    (R5-M146 left it unscheduled; STATUS, the Capability row and ARCH say so); the legacy comparison composition keeps its R7 fallback,
+    A-12 being R4's open ask (R5-M68); R5-M7's shared-file hold protocol carries over to R6-gen beside R4 (ARCH). The other rows stand as
+    listed.
+  - Correction: no `[Transitional]` is added. `Layout.Row`'s internal visibility, a temporary until G8 in R5-M37 and ARCH, is lasting: MIR
+    code generation reads `Row` (`FunctionCodegen.Arrays`, `.Closures`, `.Erasures`, `.Flags`, `.Places`, `.Statics`, `.Strings`), and
+    only the old scalar gate's read (`WindowsLowering.GetValue`) goes, with the old Emission at R6-gen. ARCH drops the entry; R5-M37's
+    clause is superseded here. Binding's eager C-layout instance check (K10b's double report, G2b) is removed by G158 (3) (BU-48), not
+    marked. Layout's contract and `Row`'s summary say so.
   - Amended by R5-M163 (G8): the old scalar gate's read of `Row` is deleted with `WindowsLowering`.
   - Capability rows: `StorageNesting` (R7, PD30) and `BodylessWitness` (R8) carry `[Transitional]` as `EnclosingInstance` (R7) does;
     `StaticStorage` (P42, after R6-check, R5-M13 (b)) and `ExclusiveInheritedWitness` (OCC-X) state their conditions in their comments,
     naming no ledger stage; `WideDivision` and `WideFloatConversion` are IMPL 21.3.3's lasting rows. ARCH's Backend dependency row names
-    `LegacyRuntimeHelpers.FormatKind` among `ScalarTypes`' readers (the review's N8, N9).
-  - ARCH's MIR builder row names the root Type predicate `ScalarTypes` (SPEC 3.1's Scalar) beside its pure `TyCtxt` functions (planning
-    session): the builder's verification already reads it (`MirBuilder.Verifications.cs:100, 109`), and x3b1's `MirValidator`
-    TestRecordValue row reads the same pure predicate (the end-to-end review's B1 and R4's review: one Scalar definition). The row
-    documents an existing read and the producer's validator reading the same predicate. Rejected: (b) moving it into Binding.
+    `LegacyRuntimeHelpers.FormatKind` among `ScalarTypes`' readers.
+  - ARCH's MIR builder row names the root Type predicate `ScalarTypes` (SPEC 3.1's Scalar) beside its pure `TyCtxt` functions: the
+    builder's verification already reads it, and x3b1's `MirValidator` TestRecordValue row reads the same pure predicate (one Scalar
+    definition). The row documents an existing read and the producer's validator reading the same predicate. Rejected: (b) moving it into
+    Binding.
   - Gate (plan §5.3), at X1's dev `17cd554ab` unless stated:
     1. M1: sel fails exactly the 110 decided P42 rows, OQ7 (e) rows that leave with P42 (R5-M144, R5-M145); the pending ledger holds no
        other row (110 tests, 0 fixtures), so none is undecided; sel's `'*.ll'` at O0 and O2, the 40 harnessed milestones and the five CLI
@@ -14324,75 +14278,40 @@ structure is recorded here by the unit that first implements it.
     3. No coverage row remains; the PD27 D2 rows are capability rows, the owner's list of 2026-10-28, in STATUS and PLAN (R5-M146).
     4. The audit fixtures' native outcomes are equal, their counts being the audits' exit codes (R5-M147), beside R5-M145's census of the
        string lifetime, transfer and capacity audits and its decided `constant-temporaries` deviation. M5 is unshown: no instrument counts
-       its three classes (zero-expect audits, negative names, ad-hoc rewrites) at the exit. E1 classified them, E2 (`a7500fc68`,
-       `9e882fbc8`) and E3 (`594856da8`) made the instruments fail closed and deleted 32 rows under OQ16, and E3 left B10-B12 and E1's 26
-       C rows to their family units, whose closing no record states. Open issue for R6-gen: count M5 before G3.
-    5. O2 within variance against `49cb2b5d` under R5-M135's aligned and R5-M147's address-matched controls; O0 times recorded (B/A
-       0.85-1.59); per-function O2 metrics recorded (6,089 fixtures; O2 instructions 859,352 legacy, 832,061 sel) (R5-M147).
+       its three classes (zero-expect audits, negative names, ad-hoc rewrites) at the exit. Open issue for R6-gen: count M5 before G3.
+    5. O2 within variance against `49cb2b5d` under R5-M135's aligned and R5-M147's address-matched controls (R5-M147).
     6. The LLVM verifier passes every fixture under both generators (each native run verifies with opt before llc), and sel's `.ll` equals
        another run of the same tree, 6,089 of 6,089 (R5-M147). Stability across restructuring commits is per unit: item 7's list marks
        R5's behavior-preserving commits with their records.
-    7. Compared directly (`artifacts/verify/reduction-R5/17cd554ab/gate7/`: `x3leg-report.md`, `final.tsv`, scripts, the before Session):
-       the old generator's `.ll` at `49cb2b5df`, the R5 baseline (R5-M2; the area record's R5 start is the plan's base `5c42b5773`), in a
-       Session without natives (5,932 `.ll`), against X1's legacy run at `17cd554ab`. All 5,924 common fixtures differ, because C7a's
-       reason-table row reaches every module, and every difference is attributed: 4,730 by declared changes alone; 568 with further
-       attributed shapes (library line shifts from BU's bu23 and R4's lib-origins 433, R5 G87 `362a84deb`'s stated Core.kimi shifts 69, BU
-       bu23's Dictionary bodies 58, R4's `578d69771` (R4-M52) 6, R5 G134 `e7e08f95b` (R5-M46) 2); 626 test changes (600 rewritten audit or
-       probe harnesses, 26 source or probe changes); 8 fixtures only before and 165 only after. By declared change: C7a (the
-       `KIMI_E_STATIC_CYCLE` reason row) 5,924, C6a (the Runtime Type key constant, R5-M110) 386, G157 (19) (f32 signaling-NaN constants)
-       1, and P5b, P7b, P7c and C10a 0. R5's declared list gains G134 (R5-M46), whose message names both fixtures; R4's `578d69771` is not
-       R5's (R5 tells R4). Unchecked: the before run has no native outcomes, and the 626 test-changed fixtures are classified, not
-       compared. Background, the per-unit census (a message search): of R5's 432 commits, 174 change a file the old generator's output can
-       depend on, 84 state their legacy run, 7 declare a change and 83 state none (`artifacts/benchmarks/r5-exit/legacy-ll-records.tsv`).
+    7. Compared directly: the old generator's `.ll` at `49cb2b5df`, the R5 baseline (R5-M2; the area record's R5 start is the plan's base
+       `5c42b5773`), in a Session without natives (5,932 `.ll`), against X1's legacy run at `17cd554ab`. All 5,924 common fixtures differ,
+       because C7a's reason-table row reaches every module, and every difference is attributed. R5's declared list gains G134 (R5-M46).
+       Unchecked: the before run has no native outcomes, and the 626 test-changed fixtures are classified, not compared.
     8. M9: 1,161 of the 1,162 `Purpose=Allocation` tests pass under sel, M9's 186 among them; `TrimsUnderHighPressure` runs under neither
        generator (R5-M147).
     9. No collector or MIR record over the library and the accepted milestones; Milestone 42's five `StaticStorage` records are P42's
        (R5-M144), and 39, 41 and 43 keep their recorded first diagnostic (X1's sel `MilestoneSourcesTest` differs only at 42).
     10. Measured inside one compilation by `Benchmark --collection-cost` (`CompilerPipeline.md`; no compiler hook): three fresh collectors
-       over one built program, `cold` being the compilation's first collection. Its first version (`a89bc7bdc`) built the MIR with
-       `BuildMir` under the old code generator, which at `1fee3a32d` did not collect, and checked counts only; since BU-48 `BuildMir`
-       collects on every pipeline, so X3's fix round builds the MIR with `BuildMir`'s two components and checks the collections element by
-       element, with a guard that fails a warm `cold`. The figures were taken with the first version in a quiet window at dev `1fee3a32d`
-       (before BU-51 and BU-48), pinned to CPU 2 with `DOTNET_TieredCompilation=0`, 3 runs
-       (`artifacts/benchmarks/r5-exit/collection-1fee3a32d/`, with the measured mode file). Collection, which ran at check under sel there
-       and runs on every pipeline since BU-48: 0.12-0.23 ms on the Scalar and Branching inputs (3 to 130 items), 0.36 ms on Generic 1, and
-       5.97, 11.75 and 25.3 ms on Generic 32, 64 and 128 (650, 1,290 and 2,570 items; 2.2, 4.1 and 7.7 MB allocated); of it, layout's first
-       computations 0.01-0.02 ms and 0.24, 0.48 and 0.77 ms, the Type context's first queries 0.03-0.09 ms and 1.0, 1.7 and 4.3 ms. MIR
-       code generation (collection plus sel's stages 5-6) against the old generator's stages 5-6: B/A 2.08 and 2.01 on the one-function
-       inputs (0.15 against 0.07 ms), 0.39-0.84 on the other Scalar and Branching inputs, 0.18-0.25 on Generic (71.4 against 363.9 ms at
-       128). The same runs' stage-3 difference ranged from -1.29 to +2.13 ms on the small inputs, so the direct figure replaces R5-M147's
-       subtraction.
-    11. ARCH's ledger marks R5 done. The area record `artifacts/benchmarks/r5-exit-areas.md` (`x3-areas.ps1`, which reproduces R3's exit
-       lines), at dev `66c856d81`: 170,941 compiler lines, +33,572 since `5c42b5773`, of which R5's commits +14,468 (Backend +14,194, its
-       75 files 14,240 lines; Binding +2,302, Mir +1,161, Core +388, Emission -2,697, Analysis -897); no Backend or Mir file over 5,000
-       tokens; the hotspots are the dispatchers (`FunctionCodegen.cs` 43 R5 commits, `InstanceCollector.cs` 34, `ModuleCodegen.cs` 32); the
-       duplication candidates are G157's, two line clones and the end-to-end review's. This entry records the owner's review. Group
-       reviews: G:K-core PASS (`59b0cff2d`); G:K-edges, K5 and K10a PASS (`833999b1d`), K7 and K13b per unit; G:K-capability, K9a and K9b
-       PASS (`154e10a81`), K13a per unit with E12; G:compare per unit (R5-M68's departure to G:library-2); G:call PASS (`c69ba0a1f`);
-       G:C-frame per unit (E10, E15, C0a, C0b1, C0b2, K11); G:C-scalar PASS; G:C-aggregate PASS (`7c133bdc7`); G:C-drop PASS (`e324a7e94`),
-       re-passed with C3c, ACCEPT; G:closure PASS; G:object PASS; G:library-1 PASS; G:library-2 ACCEPT after alit's re-pass; G:format
-       ACCEPT; G:test PASS (`19c23b2c1`). The end-to-end codegen review (`artifacts/benchmarks/r5-exit/review-e2e.md`) was REVISE: B1, the
-       structure limits and code rules in R5's code, is unit x3b1 (one behavior-preserving commit); B2, a Type laid out only through a
-       Deref projection is no layout obligation, goes into R5-M144's projection unit before R5's exit, the projection's layout use covering
-       every layout obligation (C layout and the limits; SPEC 8.15.3), closed one level higher by R5-M149's layout needs; B3 is this entry's
-       correction above. Its final verdict:
-       ACCEPT (review 2, parts 1 and 2: B1 by x3b1, B2 by proj and R5-M149, B3 here; its non-blocking items are PLAN G157
-       and G285-G289).
+        over one built program, `cold` being the compilation's first collection.
+    11. ARCH's ledger marks R5 done. This entry records the owner's review. The end-to-end codegen review was REVISE: B1, the structure
+        limits and code rules in R5's code, is unit x3b1 (one behavior-preserving commit); B2, a Type laid out only through a Deref
+        projection is no layout obligation, goes into R5-M144's projection unit before R5's exit, the projection's layout use covering
+        every layout obligation (C layout and the limits; SPEC 8.15.3), closed one level higher by R5-M149's layout needs; B3 is this
+        entry's correction above.
   - Rejected: marking `Layout.Row` (it would claim a removal that never comes); the stage-3 difference of two compilations for the
     collection share (below the noise, R5-M147); a timer inside the compiler (a hook only a measurement reads).
   - Amended by R5-M167 (the owner's row 13): R5-M7's shared-file hold protocol, carried over to R6-gen, continues beside R4 until R4's
     exit.
-- **R5-M149 Layout needs: one published fact of what a form's generated code reads a layout of, read by the collector and code
-  generation; an uncalled constructor without a layout is checked only (unit proj)** (2026-10-29, C lane; PLAN G157 (41), the end-to-end
-  review's B2; design `proj-design.md` revision 3, design review 2 ACCEPT; the owner's approval 2026-10-29, verbatim
-  「両方とも推奨どおりで進めて下さい」, of the closed vocabulary `LayoutNeed` {None, Parts, Element, TypeArguments} and of Q1 (a); an Owner
-  change under R5-M144) SPEC 8.15.3 makes a use every form that needs a Type's layout; R5-M144 adds a Field projection through a borrow or
-  raw pointer (the offset is the layout).
+- **R5-M149 Layout needs: one published fact of what a form's generated code reads a layout of, read by the collector and code generation;
+  an uncalled constructor without a layout is checked only (unit proj)** (2026-10-29, PLAN G157 (41); the owner's approval 2026-10-29,
+  verbatim 「両方とも推奨どおりで進めて下さい」, of the closed vocabulary `LayoutNeed` {None, Parts, Element, TypeArguments} and of Q1 (a); an Owner change
+  under R5-M144) SPEC 8.15.3 makes a use every form that needs a Type's layout; R5-M144 adds a Field projection through a borrow or raw
+  pointer (the offset is the layout).
   - Cause: the collector's K 4.8 listed by-value forms only, while code generation chose for itself which Types it lays out, so an
-    accepted program reached `InternalInvariant_Kd` at generation wherever code generation read a layout past a root's by-value storage:
-    a projection through a borrow, raw pointer, object handle or a sequence's buffer, a raw pointer's displacement (its pointee's
-    stride), `swap` through two references, a Dictionary kernel through a borrowed Dictionary (its K and V) and a comparison shim's Tuple
-    past a reference layer (the review's R1).
+    accepted program reached `InternalInvariant_Kd` at generation wherever code generation read a layout past a root's by-value storage: a
+    projection through a borrow, raw pointer, object handle or a sequence's buffer, a raw pointer's displacement (its pointee's stride),
+    `swap` through two references, a Dictionary kernel through a borrowed Dictionary (its K and V) and a comparison shim's Tuple past a
+    reference layer.
   - The fact: `LayoutNeed` (Backend, `LayoutNeeds.cs`), a column on every table the forms are dispatched by: `LayoutNeeds.Of` of a
     projection kind (Field, Downcast: Parts; Index, ConstIndex: Element), of an operator (Add, Sub on a raw pointer: Element, the one
     statement of which operator displaces, moved out of the operator table's Displacement column) and of a comparison node (a Composite
@@ -14413,19 +14332,14 @@ structure is recorded here by the unit that first implements it.
     code generation `Unsupported_Kd`; a Library with an opaque `#Layout("C") public struct Handle` builds under sel.
   - SPEC 8.15.3 states the projection, Case payload and element through such an indirection or a sequence's storage, and a comparison of
     parts there (§13.4), in one sentence.
-  - Deleted: the operator table's Displacement column, code generation's own derivations of these Types (`Displace`'s pointee,
-    `Update`'s and the update entry's referent, the kernels' substitution reads, the place writer's per-arm choice, the shim's `Laid`),
-    the fixed-array record reads, `ReceiverRecord`, `IntrinsicRow.LaysOutType`.
   - Rejected: projection-only (it left p11, p12, s01 and R1); each reader naming a need's Type; a clause per form in the collector; every
-    step a use (records at by-value Places and a constructor's placements); the receiver as a use (25 shared rows fail: every empty C
-    struct errs through its synthesized constructor); a lasting code generation `Unsupported_Kd`; a MirDescriptors column.
-  - Records: the snapshot against `shared-base/d3fcfd5a8` gains no row; the projection forms' Language records publish on every pipeline.
-  - Size (net lines): src +324 (Instances +195, Backend +113 with `LayoutNeeds.cs` +99, Codegen +15, Core +1; contracts included);
-    tests +198; docs +48. Cost (quiet slot, KIMI_CPU=2, tiering off, 5 interleaved rounds, minima, base 2576b0537): Analyze cold +2.4 %
-    (Hello 4,377 to 4,484 us) and +2.3 % (Milestone26, 4,731 to 4,841 us), re-collect +2.6 % and +2.8 % on the default pipeline; under
-    sel +1.3 % and +0.4 % cold, +1.4 % and +2.0 % re-collect; cold allocation +7,184 B (Hello) and +7,216 B (Milestone26), the need
-    list's and the marks' first growth; warm 0 B (raw rows `r5\proj\ab-final.txt`). The owner accepted this cost (2026-10-29, to the R5
-    planning session directly, verbatim 「受け入れる」).
+    step a use (records at by-value Places and a constructor's placements); the receiver as a use (every empty C struct errs through its
+    synthesized constructor); a lasting code generation `Unsupported_Kd`; a MirDescriptors column.
+  - Records: the projection forms' Language records publish on every pipeline.
+  - Cost (quiet slot, KIMI_CPU=2, tiering off, 5 interleaved rounds, minima, base 2576b0537): Analyze cold +2.4 % (Hello 4,377 to 4,484
+    us) and +2.3 % (Milestone26, 4,731 to 4,841 us), re-collect +2.6 % and +2.8 % on the default pipeline; under sel +1.3 % and +0.4 %
+    cold, +1.4 % and +2.0 % re-collect; cold allocation +7,184 B (Hello) and +7,216 B (Milestone26), the need list's and the marks' first
+    growth; warm 0 B. The owner accepted this cost (2026-10-29, verbatim 「受け入れる」).
   - Amended by R5-M166 (provisional, G308): the comparison shim's past-storage walk (`Leaves`' bit, `LayoutNeeds.TypeOf(ComparisonNode)`,
     `FunctionCodegen.Needed(node)`) is replaced by each comparison item's layout at its admission and a comparison call's per-site walk
     (`InstanceCollector.Uses`) over its node with the instance Type; `LayoutNeeds.Of(ComparisonNode)` stays the row.
@@ -14438,33 +14352,29 @@ structure is recorded here by the unit that first implements it.
     layers (`z@follow@follow.1`, `((_2@b0)@b0).1`) make the need hold in every case: an owner instance adds `InvalidCLayout_Kd` +1 at
     the read, which stays in storage, so it is no use by SPEC 8.15.3 but a failure caused only by the storage's reported one (SPEC
     23.1.2 leaves reporting it implementation-defined) on a program already rejected (Q13: an added record, counted).
-- **R5-M150 A bodyless import's by-value parameter and result are layout uses: the collector checks each root module's import
-  signatures (unit G288)** (2026-10-29, R5; PLAN G288, G158's open import row; the owner's answer relayed by BU, verbatim
-  「みなす (推奨)」, PLAN `63f54877e`; extends BU-48; Major, design accepted by the R5 planning session; BU reviews the Binding part and
-  the reinstated theory) SPEC 8.15.3 checks a layout where the program passes or returns a value by value, over the checked set whether or not reachable;
-  22.6 makes an import nongeneric and promises it behaves as a Kimigayo function with its signature; 23.1.2 reports independent errors.
-  - Rule: every import a root module declares is checked as a nongeneric body is, called or not: each parameter's and its result's Type
-    is a by-value use at its written Type (where the MIR builder locates a body's parameter and result locals, R4-M90 D6, BU-48), with
+- **R5-M150 A bodyless import's by-value parameter and result are layout uses: the collector checks each root module's import signatures
+  (unit G288)** (2026-10-29, PLAN G288, G158's open import row; the owner's answer relayed by BU, verbatim 「みなす (推奨)」; extends BU-48) SPEC
+  8.15.3 checks a layout where the program passes or returns a value by value, over the checked set whether or not reachable; 22.6 makes
+  an import nongeneric and promises it behaves as a Kimigayo function with its signature; 23.1.2 reports independent errors.
+  - Rule: every import a root module declares is checked as a nongeneric body is, called or not: each parameter's and its result's Type is
+    a by-value use at its written Type (where the MIR builder locates a body's parameter and result locals, R4-M90 D6, BU-48), with
     `LaysOut`'s records (`InvalidCLayout_Kd`, `OversizedLayout_Kd` at each use; a limit once per erased Type), beside 22.6's
     `Unsupported_Kd`. An import is a declaration whose signature Binding checks as one (`ImportAbi`); one whose Attribute fails as a whole
     (`InvalidLibraryImport_Kd`: a body, a generic or other non-import shape, invalid name arguments) is none and keeps its one record (the
-    planning session's ruling; the `unit.importname` row). A valid import's Types (integers, floats, raw pointers, borrows) are always laid
-    out, so only programs 22.6 already rejects gain a record; a caller's by-value argument stays its own use at the call.
+    `unit.importname` row). A valid import's Types (integers, floats, raw pointers, borrows) are always laid out, so only programs 22.6
+    already rejects gain a record; a caller's by-value argument stays its own use at the call.
   - Mechanism: Binding publishes `ImportDeclarations` (`Binding.Attributes.cs`; `LibraryImports` stays its valid subset), TyCtxt
     forwards it as `Imports` with `SignatureSite`, a slot's written Type (`TyCtxt.Imports.cs`); the collector's `LayOutImports` reads them
     after the roots: no item, no target, nothing generated; a program with validator findings has none (as every checked-set record, G2).
   - Rejected: a collector root kind (an import item: a vocabulary entry and an item code generation skips, for no body and no target);
-    only called imports (the verdict would depend on reachability, which 8.15.3 excludes, and differ from an uncalled function's
-    parameter; every judge row's import is uncalled). Also a signature-only MIR body (a `MirBodyKind` every MIR consumer skips), Binding
-    reporting the record (a second judge, contrary to BU-48) and widening `LibraryImports` (its three code generation readers would filter).
-  - Judge: BU's kept-apart theory (`claude/bu-g158-tests` 910a5583d) reinstated as `AByValueImportParameterIsAUse` and its sel twin, with
-    a result row per shape; the 44 parameter and result cases failed on dev `c2ab38ee7` (only 22.6's record). The snapshot against
-    `shared-base/02b1d68a1` gains no row. Cost: no item or replay; per `check` a memoized `Layout.Of` per import slot, none without
-    imports, warm runs allocate nothing; below the collector's measured cost (R5-M148), not measured.
-- **R5-M151 A broken contract presupposes a complete Binding: the collector's one record path (unit G285)** (2026-10-29, planning
-  session; PLAN G285, G157 (15), the R5 end-to-end review's N7; amends BU-38's Guard; Major, design accepted by the planning session)
-  SPEC 23.1.2 lets a failure caused only by another reported failure go unreported; `InternalInvariant_Kd` is a broken contract on a
-  program Binding accepted (AGENTS Diagnostics, DIAGNOSTICS rule 9, R5-M146).
+    only called imports (the verdict would depend on reachability, which 8.15.3 excludes). Also a signature-only MIR body (a `MirBodyKind`
+    every MIR consumer skips), Binding reporting the record (a second judge, contrary to BU-48) and widening `LibraryImports` (its three
+    code generation readers would filter).
+  - Cost: no item or replay; per `check` a memoized `Layout.Of` per import slot, none without imports, warm runs allocate nothing; below
+    the collector's measured cost (R5-M148), not measured.
+- **R5-M151 A broken contract presupposes a complete Binding: the collector's one record path (unit G285)** (2026-10-29, PLAN G285, G157
+  (15); amends BU-38's Guard) SPEC 23.1.2 lets a failure caused only by another reported failure go unreported; `InternalInvariant_Kd` is
+  a broken contract on a program Binding accepted (AGENTS Diagnostics, DIAGNOSTICS rule 9, R5-M146).
   - Defect: a virtual slot whose original's constraint Binding rejected (`T is Missing` in its body or a Block's `when`, a misplaced
     constraint) leaves `TyCtxt.Applies` undecided, and the VTable item recorded `InternalInvariant_Kd` at the creation beside Binding's
     error under sel (the default's from G2).
@@ -14484,14 +14394,8 @@ structure is recorded here by the unit that first implements it.
     a Dependent answer per fact from TyCtxt (`Applies`, `Witness`, `Comparison`: one check per fact in Binding's hold files, and BU-38
     rejected a Rejected target kind; `View`, `Admit` and `Below` have no such fact); no collection when incomplete (drops independent
     records, SPEC 23.1.2); a filter at publication (`Compilation.MirRecords`: a consumer suppressing afterwards).
-  - Judge: `RejectedCases`' `virtualClause` and `virtualBlock` rows failed on dev `07a5ca2da`; the forged complete-program tests keep
-    their records; `RecordOf(Rejected)` is `InternalInvariant_Kd` in both compilations, since the record path decides. No other site is
-    reached: nine probes stop at Binding's error at the call, and the 349 Binding-incomplete ledger sources of `shared-base/228d6f0b4`
-    give no `InternalInvariant_Kd` under sel.
-- **R5-M152 The R6-gen switch contract as applied (G0)** (2026-10-29, planning session, on the owner's go 「G0 に進む」, and the owner
-  on its items OI-1 to OI-3, verbatim 「推奨どおり」; plan G0, K-package §6 S1–S8 under R5-M18; R5-M4, R5-M5, R5-M88, R5-M148; design
-  `draft/Sketches/R6-gen/G0-design.md`, its independent review passed in two rounds) S1–S8 hold on dev `07a5ca2da` with these
-  applications:
+- **R5-M152 The R6-gen switch contract as applied (G0)** (2026-10-29, the owner's go 「G0 に進む」, and the owner on its items OI-1 to OI-3,
+  verbatim 「推奨どおり」; plan G0, K-package §6 S1–S8 under R5-M18; R5-M4, R5-M5, R5-M88, R5-M148) S1–S8 hold with these applications:
   - S1: from G2 `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, unpublished) and collects on every
     pipeline; the branch S1 names lives in `Analyze` and `MirRecords`' code generator gate (BU-48 moved it out of `BuildMir`); PD4's
     pairing (R5-M35) ends at G2, and `CompilerIdentity` marks each non-default selection (`[mir]`, `[codegen mir]`, `[mir, codegen mir]`).
@@ -14511,8 +14415,8 @@ structure is recorded here by the unit that first implements it.
     G:R6-gen-switch is G2 and G3; G1 adds `Compilation.Switch.cs`, the Transitional switch as its own concern (landed with this entry).
     S6: no environment rollback for G2 (an environment value hiding the records would be a second mode); `KIMI_CODEGEN=legacy` stays
     G3's rollback until G4. S7 with G9a/G9b (R5-M18) and the remaining pins at G4.
-  - Prerequisites (S8): X3 (R5-M148), R5-M4, R5-M5 with Q4 (R5-M88), A-6 (X1, the ledger at `228d6f0b4`, the MIR builder's 19
-    `Unsupported_Kd` sites by reachability), A-8 (R5-M42).
+  - Prerequisites (S8): X3 (R5-M148), R5-M4, R5-M5 with Q4 (R5-M88), A-6 (X1, the MIR builder's 19 `Unsupported_Kd` sites by
+    reachability), A-8 (R5-M42).
   - Order: G285 (R5-M151) before G2; G286, G287 and G157 (15) before G3; H1a after G2; R6-gen holds `Compilation.Pipeline.cs` and
     `Compilation.Switch.cs` from G1 through G4.
   - Verification lanes (OI-3 (a), the owner's 「推奨どおり」): from G2 the `-Pipeline mir` lane runs only as the ledger's run; from G3 the
@@ -14528,12 +14432,12 @@ structure is recorded here by the unit that first implements it.
     `AggregateLayoutPool`'s remaining hooks join G8, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` G9.
   - Amended by R5-M163 (G8): S7's G8 step is done.
 - **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
-  g157-15)** (2026-10-29, planning session; PLAN G157 (15), K11 review r2's (4) and g157-15's review; amends R5-M77's Library roots;
-  Major) K 4.4 makes every closed body of a root module a root, a Closure's and a body-declared function's included, and R5-M77 made a
-  Library's every root but the checked-only ones an output root, so such a body was marked apart from the body that makes or calls it: a
-  Closure in the override of a refuted slot (R4-M28) or in a layout-less constructor (R5-M149) was Generated while that body was checked
-  only. It was dead code, an internal function nothing references that both generators wrote and O2 deletes; not wrong code (the
-  collector replays every root at check) nor an unresolved reference (the mark is transitive).
+  g157-15)** (2026-10-29, PLAN G157 (15); amends R5-M77's Library roots) K 4.4 makes every closed body of a root module a root, a
+  Closure's and a body-declared function's included, and R5-M77 made a Library's every root but the checked-only ones an output root, so
+  such a body was marked apart from the body that makes or calls it: a Closure in the override of a refuted slot (R4-M28) or in a
+  layout-less constructor (R5-M149) was Generated while that body was checked only. It was dead code, an internal function nothing
+  references that both generators wrote and O2 deletes; not wrong code (the collector replays every root at check) nor an unresolved
+  reference (the mark is transitive).
   - Rule (`InstanceCollector.Generates`): a Library output root is a declaration's own body. No Closure's body is one: each is made at an
     `Aggregate(Closure)` site, which `CheckedSet.Mark` follows. No body of a function declared in a function's or Closure's body is one:
     its declaring scope's `BindingScope.Function` (Binding's scope fact, read without walking through Closures) is set; its calls,
@@ -14548,21 +14452,13 @@ structure is recorded here by the unit that first implements it.
   - Behavior change: an uncalled body-declared function of a generated Library body is no longer written, as in an Application. The old
     generator stays frozen (R5-M6) and writes both, so such a Library's IR differs between the generators (no native fixture compares a
     Library).
-  - Rejected: lexical nesting, `TyCtxt.EnclosingFunction` non-null (this unit's first revision): a Closure outside any function's body
-    stays a root; a `limit` struct `Big` with the Field `public var d: i32 = (func [] (x: i32) -> i32 => x + 1)(2)` has its `init`
-    checked only and the Closure Generated (and a function declared in it, since EnclosingFunction walks through the Closure). A nested
-    root following its outermost enclosing function's verdict (a second lookup by body kind; unreached nested bodies kept as dead
-    code). The check in `Compilation.OutputRoots` (the collector owns the Library root rule).
-  - Verified: the amendment of R5-M77's "a Library every root but the override of a refuted slot": a Closure and a called nested function
-    in that override follow it, Generated exactly where the slot applies (both Generated before where it is refuted); a Closure in a
-    layout-less constructor, and a Closure in a Field's initializer of a `limit` struct with the function declared in it, are not
-    Generated (Generated at the base and under the lexical rule); the Closures of an accessor's get and set, a destructor, a default
-    template and a static's initializer are no output roots and Generated by reach.
-- **R5-M154 A position typed by a Type parameter is tested in its own Type and u128 (G167)** (2026-10-29, planning session; PLAN
-  G167; the owner's OI-2 (a) 「推奨どおり」 under R5-M152; supersedes R5-M84's Type-parameter clause; Major, design (D) accepted by the
-  planning session) SPEC 4.6.1, 4.6.3, 4.7.1: a position of a Type parameter (`values[p]` with `p: I`, `I is PrimitiveInteger`) is
-  valid and the default builds it; the MIR recorded it as a located `Unsupported_Kd` (R5-M84), the one valid form G2 would newly
-  reject at default `check` (R6-gen G0 §1, OI-2).
+  - Rejected: lexical nesting, `TyCtxt.EnclosingFunction` non-null: a Closure outside any function's body stays a root. A nested root
+    following its outermost enclosing function's verdict (a second lookup by body kind). The check in `Compilation.OutputRoots` (the
+    collector owns the Library root rule).
+- **R5-M154 A position typed by a Type parameter is tested in its own Type and u128 (G167)** (2026-10-29, PLAN G167; the owner's OI-2 (a)
+  「推奨どおり」 under R5-M152; supersedes R5-M84's Type-parameter clause) SPEC 4.6.1, 4.6.3, 4.7.1: a position of a Type parameter (`values[p]`
+  with `p: I`, `I is PrimitiveInteger`) is valid and the default builds it; the MIR recorded it as a located `Unsupported_Kd` (R5-M84),
+  the one valid form G2 would newly reject at default `check` (R6-gen G0 §1, OI-2).
   - Rule: `MirBuilder.Position` converts a Type parameter's position as R5-M84 converts any other Type's, with the tests its unknown
     range cannot drop: `Le(const 0_I, p)`, then p widened by a Proven Integer Cast to u128, which holds every nonnegative value of
     every PrimitiveInteger Type, and `Le(w, const isize.max)` in u128; each failing test leaves for -1 (`Unresolved`), else the
@@ -14571,22 +14467,18 @@ structure is recorded here by the unit that first implements it.
     the selection (an element's index, a written `^x`'s `0 <= x`, a range's `0 <= start <= end`; SPEC 4.6.3). Binding is unchanged
     (it applies a generic integer key directly, as a concrete one): no new fact and no vocabulary entry, and the default generator's
     output is unchanged. R5-M84's extension of R5-M63 (an Opaque at a position names the built value's root) loses its one site.
-  - O2 (`opt -O2` instructions per instance: an element at i8, i64, u64, isize, u128; `^x` at i32; a range at u16): sel 14, 12, 12,
-    12, 14, 15, 18 against a concrete key's 12, 11, 12, 11, 14, 15, 18; the default stays 12, 11, 11, 11, 14, 13, 12.
   - Rejected: (A) Binding applying only a concrete integer key directly, so a generic one resolves through
-    `PositionSyntax.resolved`/`resolvedRange` (`IntegerPosition.tryResolve<I>`; PLAN G167's "shorter rule", a review suggestion):
-    `tryResolve`'s own contract (`length >= 0`, `p <= length`) costs 2 compares and 2 selects per element and 1 -> 4 branches per
-    range at O2 on both generators (default 18, 16, 15, 14, 17, 17, 23), and it moves a Binding decision every later phase reads;
-    a located record left in place (OI-2: from G2 the default would reject a form it builds today).
-- **R5-M155 An abstract Type reaching Layout is Rejected (G293; G187's R5 half)** (2026-10-29, planning session; PLAN G293, G187; BU's
-  input on BU-50; Major, design accepted by the planning session) SPEC 23.1.2 lets a failure caused only by another reported failure go
-  unreported; a broken contract on a program Binding accepted stays a located `InternalInvariant_Kd` (AGENTS Diagnostics, R5-M151).
+    `PositionSyntax.resolved`/`resolvedRange` (`IntegerPosition.tryResolve<I>`; PLAN G167's "shorter rule"): `tryResolve`'s own contract
+    (`length >= 0`, `p <= length`) costs 2 compares and 2 selects per element and 1 -> 4 branches per range at O2 on both generators; a
+    located record left in place (OI-2: from G2 the default would reject a form it builds today).
+- **R5-M155 An abstract Type reaching Layout is Rejected (G293; G187's R5 half)** (2026-10-29, PLAN G293, G187) SPEC 23.1.2 lets a failure
+  caused only by another reported failure go unreported; a broken contract on a program Binding accepted stays a located
+  `InternalInvariant_Kd` (AGENTS Diagnostics, R5-M151).
   - Defect: after Binding's `UnsatisfiedConstraint_Kd` or `UnprovenConstraint_Kd` on a qualified projection (`let t: B.(Iter<u8>).Tag`
     with B only `Iter<i32>`, the generic `B<SrcU>.(Iter<i32>).Tag`), `BindAssociatedProjection` publishes the projection, which names no
     Type, as the symbol's Type; the MIR local takes it, a closed item reads it Prepared with no TyCtxt query, and `Layout.Walk` asked
     `Row`, whose default arm threw: `CheckFaulted_Kd` ("Layout has no row for the Type Tag") beside Binding's records on every pipeline,
-    at check and emit. Sixteen probe forms: a local, a parameter, a result, a Tuple part, a fixed-array element, an `Array<…>` element
-    (its glue), a captured value, a primitive or Tuple subject (`UnprovenConstraint_Kd`) and the subjects of the G290 review's q2, q3, q6.
+    at check and emit.
   - Rule: `Layout.Walk` gives an abstract Type (`BoundType.IsAbstract`: a parameter, a projection or a dependent Semantics term), which
     no closed Type holds, the existing Rejected verdict: a leaf where a row would be, 0 high, of no size, naming itself; a Type storing
     one by value takes it on through Fold. The collector is unchanged: `RecordOf(Rejected)` is `InternalInvariant_Kd` through R5-M151's
@@ -14599,20 +14491,15 @@ structure is recorded here by the unit that first implements it.
     Semantics term) lies outside Layout's input contract in every compilation; no form reaches one (a failed type expression publishes
     no Type, which the builder types Unit, R4-M125).
   - Rejected: (b) BU-50's Rejected path reused for locals (its verdict is Binding's storage verdict on a kept part; a local's Type is no
-    part and the collector's closed path reads no verdict, so it needs a second Binding producer of storage verdicts for non-stored Types,
-    in Binding's and TyCtxt's hold files, and a storage query per closed local); (c) an error Type from the MIR builder or Binding (none
-    exists; a builder test by kind is a consumer deciding what Binding publishes; Binding's null drops its `TypeMismatch_Kd`, makes every
-    enclosing Type fail too and touches BU's and R4's held files); Rejected for every kind without a row (a catch-all hiding a MIR or
-    Binding contract break).
-  - Judge: InstanceCollectorTest's `RejectedCases` rows localProjection, parameterProjection (a generic subject), elementProjection and
-    capturedProjection, `AnAbstractLocalIsABrokenContractInACompleteCompilation` (a forged local typed by a slot) and LayoutTest's
-    `AnAbstractTypeIsRejected` threw on dev `acc2f12ad` and pass. Valid programs are unchanged: an abstract Type reaching Walk always
-    threw.
-- **R5-M157 A nested definition without its enclosing instance is the EnclosingInstance gap (fi-closure, interim)** (2026-10-29,
-  planning session; PLAN G300; amends R5-M43; Major) SPEC 6.1.3 and 6.3.3: an instance of a definition generic in its
-  context holds the instance it instantiates in. A Field initializer belongs to the declaring Type: every constructor runs it, and it is
-  judged under the Type's premises, never under a constructor's signature. Binding publishes no enclosing instance for a Closure in a
-  generic container's Field initializer, or for a function declared in it:
+    part and the collector's closed path reads no verdict); (c) an error Type from the MIR builder or Binding (none exists; a builder test
+    by kind is a consumer deciding what Binding publishes; Binding's null drops its `TypeMismatch_Kd`); Rejected for every kind without a
+    row (a catch-all hiding a MIR or Binding contract break).
+  - Valid programs are unchanged: an abstract Type reaching Walk always threw.
+- **R5-M157 A nested definition without its enclosing instance is the EnclosingInstance gap (fi-closure, interim)** (2026-10-29, PLAN
+  G300; amends R5-M43) SPEC 6.1.3 and 6.3.3: an instance of a definition generic in its context holds the instance it instantiates in. A
+  Field initializer belongs to the declaring Type: every constructor runs it, and it is judged under the Type's premises, never under a
+  constructor's signature. Binding publishes no enclosing instance for a Closure in a generic container's Field initializer, or for a
+  function declared in it:
   - `TyCtxt.EnclosingFunction` is null, since no function encloses it.
   - `Binding.ClosePartCore` closes a Closure Type only under its enclosing function's instance. So the Closure Type in each
     constructor's instance has no context, and `SubstOfClosure` falls back to the identity.
@@ -14642,33 +14529,26 @@ structure is recorded here by the unit that first implements it.
     Closure Type, so `Box<i32>` and `Box<i64>` would share one adapter: wrong code.
   - Rejected: a gap on an identity or empty substitution alone. A forged identity of a generic function is a broken contract, not a
     gap.
-  - Verified (`InstanceCollectorTest.DefinitionsOutsideAFunctionBodyNeedTheirEnclosingInstance`, fail-first): `Unsupported_Kd` at the
-    literal and the call for an initializer's Closure (also with two constructors, and naming no slot), at the literal when it is
-    erased, at a Closure declaring a function, and at the call of a function nested in a getter. No record and one item per instance for
-    a Closure in a getter, a constructor and a method. A closed struct's initializer Closure is a root. Every admitted representative
-    closes its body, and `AnOpenRepresentativeIsABrokenContract` is unchanged.
   - Amended by BU-60 (bu77): the removal condition is partly met. Owners whose erased instance has an Origin position remain the
     EnclosingInstance gap, as do group statics, until G300's per-use opening; they reach CarriesInstance's first branch, so the else
     branch's deletion stays R5's.
-  - Amended (2026-10-31, R5's follow-up unit after bu89; the owner's 「すべて推奨どおり」, relayed by BU; N5 and N7 of R5's bu77 reviews 3
-    and 4): the else branch is deleted. After BU-60 a definition `TyCtxt.EnclosingDeclaration` gives none for is a member or top-level
-    declaration, whose own substitution is its instance (Instantiable's contract), or code in a module's root, which does not
-    instantiate; a tripwire on the branch's false outcome had no hit (62905c6f6: 1,340 tests on default and mir, 194 probes natively;
-    bee89889c: those probes and 9 more, a group's function and a group static's nested function among them, at check on both
-    pipelines). `CarriesInstance` is one test: the substitution carries the instance of the declaration EnclosingDeclaration gives, as
-    its binder or its declaring Type. N5: `TyCtxt.SubstOfClosure` took the identity of a generic container's group for its static's
-    Closure, but a group has no instance (BU-60; R5-M82, X33 (a)), so `CarriesInstance` accepted that identity (its binder is the
-    group), the collector admitted the body under the group's open identity and the call's record was lost. The
-    fallback now takes the enclosing declaration's identity only for a function or a Type, else the Closure's own, so the call is the
-    gap again (`InstanceCollectorTest.AGroupStaticsClosureIsTheGap`, fail-first). The gap's family is now a nested function's call
-    (G149, R5-M43), a Closure whose held instance has an Origin position (until G300's per-use opening) and a group static's Closure
-    (until P42). Rejected: a group arm in the collector (a consumer deciding what TyCtxt publishes); EnclosingDeclaration skipping a
-    group (Binding's view: it would close the Closure per instance while X33 (a) keys the static's storage by its symbol). The test
-    is a whitelist (a function or a Type), so another kind of enclosing declaration falls to the gap, never into an identity (BU's
-    n1). A function nested in a group static's Closure loses its record at its call (m-groupstaticfunc's `inner()`): the Closure's
-    body is no longer admitted, and that record existed only through N5's open admission (R5's reviewer).
-- **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, R6-gen; plan §4.9 row G2, §5.4, K-package
-  §6 S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
+  - Amended (2026-10-31, the owner's 「すべて推奨どおり」, relayed by BU): the else branch is deleted. After BU-60 a definition
+    `TyCtxt.EnclosingDeclaration` gives none for is a member or top-level declaration, whose own substitution is its instance
+    (Instantiable's contract), or code in a module's root, which does not instantiate; a tripwire on the branch's false outcome had no
+    hit. `CarriesInstance` is one test: the substitution carries the instance of the declaration EnclosingDeclaration gives, as its binder
+    or its declaring Type. N5: `TyCtxt.SubstOfClosure` took the identity of a generic container's group for its static's Closure, but a
+    group has no instance (BU-60; R5-M82, X33 (a)), so `CarriesInstance` accepted that identity (its binder is the group), the collector
+    admitted the body under the group's open identity and the call's record was lost. The fallback now takes the enclosing declaration's
+    identity only for a function or a Type, else the Closure's own, so the call is the gap again
+    (`InstanceCollectorTest.AGroupStaticsClosureIsTheGap`, fail-first). The gap's family is now a nested function's call (G149, R5-M43), a
+    Closure whose held instance has an Origin position (until G300's per-use opening) and a group static's Closure (until P42). Rejected:
+    a group arm in the collector (a consumer deciding what TyCtxt publishes); EnclosingDeclaration skipping a group (Binding's view: it
+    would close the Closure per instance while X33 (a) keys the static's storage by its symbol). The test is a whitelist (a function or a
+    Type), so another kind of enclosing declaration falls to the gap, never into an identity. A function nested in a group static's
+    Closure loses its record at its call (m-groupstaticfunc's `inner()`): the Closure's body is no longer admitted, and that record
+    existed only through N5's open admission.
+- **R5-M156 The default pipeline publishes the MIR's records at check (R6-gen G2)** (2026-10-29, plan §4.9 row G2, §5.4, K-package §6
+  S1–S4 and S6 as R5-M152 applies them, with the owner's 「推奨どおり」 on OI-1 to OI-3; under R5-M4 (OQ5), R5-M18 and R5-M152)
   - Core: `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, its problems unpublished until H3) and
     collects on every pipeline; `MirRecords` publishes the construction records, validator findings and every record of the checked set
     on every pipeline and under either code generator, analysis Errors in the ControlFlow partition (the code generator gate is gone).
@@ -14678,23 +14558,22 @@ structure is recorded here by the unit that first implements it.
     identity mark and the manifest entry until H12. No environment value hides the records (S6); `KIMI_CODEGEN=legacy` stays G3's
     rollback until G4. `verify.ps1` no longer rejects `-Codegen mir` without `-Pipeline mir`.
   - Tests (OI-1 (a′)): the 108 `PathCapabilityDiagnosticTest` rows assert the records their own text locates, after `Statics.Length`;
-    `ThePreludesStaticsAreUnsupportedAtCheck` asserts the prelude's 26 `StaticStorage` records once, in a complete program (beside the
-    old analysis's own record at the custom setter's static write) and beside a Binding error (SPEC 23.1.2); EffectBound's mutable-static
-    row and `VirtualEffectObligationTest`'s unrelated group storage assert their `StaticStorage` record; Milestone 42's first record is
+    `ThePreludesStaticsAreUnsupportedAtCheck` asserts the prelude's 26 `StaticStorage` records once, in a complete program (beside the old
+    analysis's own record at the custom setter's static write) and beside a Binding error (SPEC 23.1.2); EffectBound's mutable-static row
+    and `VirtualEffectObligationTest`'s unrelated group storage assert their `StaticStorage` record; Milestone 42's first record is
     re-baselined to `var count: i32 = Registry.initialCount()`. The pending ledger is empty (`C-frame.tsv` kept, G4 deletes it with its
     tooling). `checked-set-at-check` is deleted and its 10 `Expect` sites reduced to their targets; a method whose program the collector
     rejects asserts its check-time records exactly (`MinimalEmissionTest.Problems`; `AssertGenerationResourceLimit` takes the record's
     subject), and an old-generator half that a rejecting check makes unreachable is deleted. The census found 9 rows in 5 methods G0's
     "(H) no further movement" missed, all pinned to the old generator, which hid non-Language collector records under sel:
-    `ComponentSummaryTest`'s non-regular `Chain<i32>` (two G128 `StorageNesting` records, the requesting calls' storage verdict Limit, under
-    PD30's (e) row, and its layout depth record), `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` (R5-M73's old half deleted for the
-    65-level rows check rejects, kept until G4 for the 64-level rows it accepts), `TypeDagScalingTest`'s depth-70 Tuple (six layout depth
-    records, one per erased Type, R5-M44) and `originLets` at 28 (2^31 bytes, one size record at `let a27`), and
-    `VirtualEffectObligationTest`'s storage. Scaling inputs keep their sizes. The ratchets of instance-analysis reads and generation failure
-    facts fall from 11 to 7 and 13 to 9. `PipelineSwitchTest` asserts that every pipeline publishes, and that an accepted program's
-    diagnostics and IR round-trip across a pipeline switch. Since every pipeline and code generator checks alike, the CLayout uses' mir and
-    sel columns go, as do PD4's pairing pins (the mir pipeline set only so that MIR code generation was allowed). P42 reverts the pin test,
-    the EffectBound and VirtualEffectObligation records and Milestone 42's baseline.
+    `ComponentSummaryTest`'s non-regular `Chain<i32>` (two G128 `StorageNesting` records, the requesting calls' storage verdict Limit,
+    under PD30's (e) row, and its layout depth record), `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` (R5-M73's old half deleted
+    for the 65-level rows check rejects, kept until G4 for the 64-level rows it accepts), `TypeDagScalingTest`'s depth-70 Tuple (six
+    layout depth records, one per erased Type, R5-M44) and `originLets` at 28 (2^31 bytes, one size record at `let a27`), and
+    `VirtualEffectObligationTest`'s storage. Scaling inputs keep their sizes. `PipelineSwitchTest` asserts that every pipeline publishes,
+    and that an accepted program's diagnostics and IR round-trip across a pipeline switch. Since every pipeline and code generator checks
+    alike, the CLayout uses' mir and sel columns go, as do PD4's pairing pins (the mir pipeline set only so that MIR code generation was
+    allowed). P42 reverts the pin test, the EffectBound and VirtualEffectObligation records and Milestone 42's baseline.
   - G157 (2) stays open: no shipped library body reaches K9b's open-operation location rule (every library division or remainder has
     closed Types, the `PrimitiveInteger` generics only add, subtract, compare or cast between integers, and every source module is a
     root), so a test would take a path production never takes.
@@ -14706,20 +14585,11 @@ structure is recorded here by the unit that first implements it.
     and EffectBound's row, which leave the pending ledger here.
   - Verification lanes (OI-3 (a)): from G2 the `-Pipeline mir` lane runs only as the difference ledger's run; the sel lane runs until
     G3. (Ended by R5-M158.)
-  - Cost (S4, measured 2026-10-29 in a quiet slot; `artifacts/benchmarks/r6-g2-cost/`; G2's head `90697ecfa` against its merge base
-    `acc2f12ad`, both builds run from one folder, CPU 2 pinned at High priority, tiering off, 5 interleaved rounds; bytes exact, times
-    medians of the rounds): `--analyze-cost`, default configuration, Generic 1/32/64/128: a fresh check 34.6, 54.5, 95.6 and 156.7 ms
-    against 26.8, 52.5, 83.7 and 135.9 ms, allocating 10.00, 19.80, 29.95 and 49.49 MB against 9.17, 18.23, 27.71 and 45.59 MB (+0.83,
-    +1.57, +2.23, +3.90 MB: the MIR analyses of the bundled library's and the source's bodies); a warm Analyze 20.8, 37.0, 54.9 and 89.0
-    ms against 17.2, 31.7, 47.5 and 78.8 ms, allocating the same 315 to 1,192 B; the checked compilation retains 7.42, 14.17, 21.14 and
-    34.73 MB against 6.92, 13.31, 19.97 and 32.74 MB (+0.50 to +1.99 MB), its growth over warm Analyzes unchanged; on G2 the mir and sel
-    configurations equal the default within the rounds' spread and a few hundred bytes, as the base's mir did. BU-48's pinned harness:
-    cold Analyze Hello 9.74 ms against 4.42 ms (minima), 3,816,576 against 2,925,312 B, Milestone26 10.22 against 4.79 ms, 4,181,680
-    against 3,230,640 B; warm Hello 7.43 against 4.00 ms, Milestone26 7.83 against 4.31 ms, 0 B on both. The `Purpose=Allocation` tests
-    pass on the default pipeline (1,179 tests). G0's estimate held for time (+5 to +8 ms per small check); the bytes are about twice its
-    +0.4 to 0.5 MB and retained memory somewhat above its +0.3 to 1.3 MB; a warm Analyze takes +3.4 to +10.2 ms. R5-M4 accepted the
-    driver in every default Analyze subject to this measurement, and the owner accepted the measured cost (verbatim 「受け入れる」,
-    2026-10-29), so G0 §10's departure (the driver at generation only until H5) is not taken.
+  - Cost (S4, measured 2026-10-29 in a quiet slot): on G2 the mir and sel configurations equal the default within the rounds' spread and a
+    few hundred bytes, as the base's mir did. G0's estimate held for time (+5 to +8 ms per small check); the bytes are about twice its
+    +0.4 to 0.5 MB and retained memory somewhat above its +0.3 to 1.3 MB; a warm Analyze takes +3.4 to +10.2 ms. R5-M4 accepted the driver
+    in every default Analyze subject to this measurement, and the owner accepted the measured cost (verbatim 「受け入れる」, 2026-10-29), so G0
+    §10's departure (the driver at generation only until H5) is not taken.
   - Rejected: a per-row exception for `StaticStorage` or any other record (a per-row gate); filtering a record away or shrinking a
     scaling input to keep a pinned test's old expectation (a weakening); an environment rollback for the records (a second mode); a
     test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).
@@ -14727,19 +14597,17 @@ structure is recorded here by the unit that first implements it.
     half kept until G4 moved to MIR code generation.
   - Superseded in part by R5-M185 (2026-11-04, H5): `MirRecords` is gone, and `PublishMirRecords` publishes every merged problem
     (`MirReport.Merged`: the records and the analyses' problems) and the validator findings; the MIR decides acceptance.
-- **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, R6-gen; plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and
-  OI-3 as applied, with the planning session's rulings Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
+- **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and OI-3 as
+  applied, with Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
   - Rule: `KIMI_CODEGEN` unset, empty or `mir` selects MIR code generation on either pipeline; `legacy` selects the old generator, G3's
     rollback until G4 (S6). `CompilerIdentity` and the test manifest mark the non-default selection (` [codegen legacy]`, ` [mir, codegen
     legacy]`). Gate step 2 (R5-M96) applies on default builds (S3). Since G2 the pipeline changes no record, so the default runs what sel
-    ran: a full default run of the prototype failed only `PipelineSwitchTest`'s two selector methods, and its sweep at `0d4108f0d` (both
-    generators, every fixture at O0 and O2, 40 milestones, the 5 CLI harnesses, the snapshot) differed only at the decided deviations.
-  - Deviations at their targets (R5-M6; the catalog is empty): `constant-temporaries` (R5-M145, 38 `Expect` uses), `inline-env` (R5-M104,
-    16), `receiver-layers` (R5-M114: the default reads the base subobject; the five `InheritedObjectReceiverLayers*` fixtures lose
-    `LegacyNative` and their `.deviation`) and `static-cycle` (R5-M106: `StaticInitializationTest.DetectsIndirectCycle` asserts
-    `Hello.kimi:3:30: abort KIMI_E_STATIC_CYCLE` at the accessing Place; the reason is SPEC 22.4.3, which gives an access to an
-    Initializing slot that code, reported at the start of the Place expression, 22.5.1 and 22.5.2; the old `KIMI_E_ABORT` at the
-    declaration goes).
+    ran.
+  - Deviations at their targets (R5-M6; the catalog is empty): `constant-temporaries` (R5-M145), `inline-env` (R5-M104), `receiver-layers`
+    (R5-M114: the default reads the base subobject; the five `InheritedObjectReceiverLayers*` fixtures lose `LegacyNative` and their
+    `.deviation`) and `static-cycle` (R5-M106: `StaticInitializationTest.DetectsIndirectCycle` asserts `Hello.kimi:3:30: abort
+    KIMI_E_STATIC_CYCLE` at the accessing Place; the reason is SPEC 22.4.3, which gives an access to an Initializing slot that code,
+    reported at the start of the Place expression, 22.5.1 and 22.5.2; the old `KIMI_E_ABORT` at the declaration goes).
   - G157 (45): an audit of a transfer's cleanup whose abandoned or secured value is a constant audits nothing under MIR code generation (a
     constant has no destruction, R5-M118), so its target alone would lose the check. `AggregatePartialExit`, `AggregatePartialReturn`,
     `AggregateArrayPartialExit`, `StringFunctionEarlyArgument` and, found by the same search, `AggregateDefaultAbandoned` take a call's
@@ -14748,24 +14616,23 @@ structure is recorded here by the unit that first implements it.
     side, so they keep R5-M159's rows without a deviation, `ElementReplacementTransferString` in the call-result form and
     `ElementReplacementTransferConstant` the constant.
   - Q1 (b): the deviation form stays (`Codegen.Expect`, `LegacyNative`, `Sidecar`, `CodegenDeviationTest`, compare-fixtures' deviating
-    count) with an empty catalog, checked on a synthetic sample; G4 deletes it (S7). Q2 (a): `verify.ps1 -Codegen` defaults to `mir`;
-    full theory names, the pending gate and `-UpdatePending` run only on an explicit `-Codegen mir`; the sel lane ends (OI-3).
-    `-Codegen legacy` is the rollback lane: until G4 it fails exactly the 38 native fixtures of the reduced sites (constant-temporaries
-    24: ElementBorrowOwner 8, StringComparison 9, ForeignPointerString 3, FixedArrayCapture 2, GuardCleanup 2; inline-env 8;
-    receiver-layers 5; static-cycle 1) and no managed test (R5-M159's exclusive-input fixtures pin MIR code generation in every run).
+    count) with an empty catalog, checked on a synthetic sample; G4 deletes it (S7). Q2 (a): `verify.ps1 -Codegen` defaults to `mir`; full
+    theory names, the pending gate and `-UpdatePending` run only on an explicit `-Codegen mir`; the sel lane ends (OI-3). `-Codegen
+    legacy` is the rollback lane: until G4 it fails exactly the 38 native fixtures of the reduced sites and no managed test (R5-M159's
+    exclusive-input fixtures pin MIR code generation in every run).
   - Also: `LibraryEmissionTest.EmitsInspectionWithoutAnOsEntry` (R5-M12 class S) reads the generation entry's module (no exported
     definition, no OS entry); `GenericGenerationDiagnosticTest`'s four `FailedInstance`/`FailureInstance` null checks on default
     compilations, which MIR code generation never sets, are deleted (their programs' success is already asserted). The
-    `CompilerCodegen.Legacy` pins (99 in 71 files) and the direct `Emission.TryPrepare` readers stay (G4, G5, G7; R5-M85).
+    `CompilerCodegen.Legacy` pins and the direct `Emission.TryPrepare` readers stay (G4, G5, G7; R5-M85).
   - Rejected: Q1 (a), deleting the form at G3 (S7 deletes it with the selector at G4); Q2 (b), the gate on every default run (the sel
     lane's tooling as a second mode after OI-3); the String row's call-result form through `@move` (a form chosen to avoid a defect).
   - Amended by R5-M160 (G4): the rollback lane, the empty deviation form, `-Codegen` and the remaining `CompilerCodegen.Legacy`
     pins are deleted (the direct `Emission.TryPrepare` readers stay for G5 and G7).
   - Amended by R5-M161 (G5): the direct `Emission.TryPrepare` readers are deleted.
-- **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, planning session with BU's agreement; PLAN
-  G304; amends R4-M62's increment sentence; Major) SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are
-  Never forms, other control flow only under result validation; an element access is none, so its Type is the element's (SPEC
-  4.7.1), as Binding already gave an Array, Slice, Dictionary or referenced element and a call with a diverging argument.
+- **R5-M159 An element whose key diverges has its element Type (g2never)** (2026-10-30, PLAN G304; amends R4-M62's increment sentence)
+  SPEC 3.1.3: only a transfer, `$abort` and a call by its Never result Type are Never forms, other control flow only under result
+  validation; an element access is none, so its Type is the element's (SPEC 4.7.1), as Binding already gave an Array, Slice, Dictionary or
+  referenced element and a call with a diverging argument.
   - Cause: `Binding.Elements` typed an owned fixed-array element whose key is Never as Never, and `ElementAccess.DestinationType`
     with `TryType`'s "abrupt earlier index" clause recovered the element Type for assignment destinations only. The MIR builder took
     the target's Never for the right side's secured temporary (SPEC 13.7.1 step 1): `a[(return 42)] = echo("new")` was
@@ -14790,34 +14657,29 @@ structure is recorded here by the unit that first implements it.
     `TypeMismatch_Kd`; base accepted it at default, `InternalInvariant_Kd` under sel). Under MIR code generation `build` rejects a
     Move of such an element (`take(a[(return 42)]@move)`, `_ = a[(return 42)]@move`) with A1's `StaticMovePathRequired_Kd` (SPEC
     15.1.3, 14.10.3), and `check` gives the same code from the old analysis (below).
-  - The old analysis's Move rules on the assumed path (BU's review): without them the default pipeline accepted a Move of such an
-    element into an untyped local (`let s = a[(return 42)]@move`, `let x = a[(return 42)]` of a string, `var v = …@move`,
-    `let q = (a[(return 42)], 1)`, `let e = b[(return 42)]@move`), which dev rejected only because the local was Never, since
-    `AcquireElement` checked nothing where the access cannot complete normally (R1's limit), as dev accepted `take(…@move)`,
-    `_ = …@move`, `let w: string = …@move`, `other = …@move` and a temporary's part (`take(make2((return 42)).0@move)`). The owner,
-    2026-10-30, verbatim 「推奨の内容で決定します」 (variant (2')): there `AcquireElement` applies the reachable Move rules, SPEC
-    14.10.3 checking the assumed path: the reachable twin's codes at the element (`StaticMovePathRequired_Kd`, no static Move Path
-    existing there; a bare consume's `TransferRequired_Kd` with the element path's `Unsupported_Kd`), no temporary and no other
-    check, until R6-check (D5). Rejected: an `Unsupported_Kd` guard (a Language violation is a Language diagnostic, AGENTS); keeping
-    R1's limit.
+  - The old analysis's Move rules on the assumed path: without them the default pipeline accepted a Move of such an element into an
+    untyped local (`let s = a[(return 42)]@move`, `let x = a[(return 42)]` of a string, `var v = …@move`, `let q = (a[(return 42)], 1)`,
+    `let e = b[(return 42)]@move`), which dev rejected only because the local was Never, since `AcquireElement` checked nothing where the
+    access cannot complete normally (R1's limit), as dev accepted `take(…@move)`, `_ = …@move`, `let w: string = …@move`, `other = …@move`
+    and a temporary's part (`take(make2((return 42)).0@move)`). The owner, 2026-10-30, verbatim 「推奨の内容で決定します」 (variant (2')): there
+    `AcquireElement` applies the reachable Move rules, SPEC 14.10.3 checking the assumed path: the reachable twin's codes at the element
+    (`StaticMovePathRequired_Kd`, no static Move Path existing there; a bare consume's `TransferRequired_Kd` with the element path's
+    `Unsupported_Kd`), no temporary and no other check, until R6-check (D5). Rejected: an `Unsupported_Kd` guard (a Language violation is
+    a Language diagnostic, AGENTS); keeping R1's limit.
   - Not newly accepted: `swap`'s later input and a later read of a local such an element initializes are the old analysis's first
     unreachable local use, its located `Unsupported_Kd` (STATUS Unreachable code) until R6-check, a better category than the former
     Language error. AD4's assumed-path Loan conflict is PLAN G305's.
   - Rejected: a builder walk typing the destination over HIR shapes (a second copy of `TryType`, Binding's rejections kept); a
     published destination-Type fact (the target's Meaning carries it once Binding follows SPEC); the right side's own Type for the
     temporary (wrong for a ReferenceRead, an Erasure, a borrow); a BU-10-style guard for the newly valid forms (the owner's (b)).
-  - Verified (fail-first): `NeverContinuationTest` (the forms accepted, the published element Types, the Never receiver's
-    `InvalidAssignment_Kd`, the mismatched Type's `TypeMismatch_Kd`, the Moves' twin codes),
-    `MirBuildTest.ARightSideIsSecuredAtTheElementTypeBeforeADivergingKey`,
-    Element* native fixtures (the exclusive inputs under MIR code generation). The
-    `ElementReplacementTransfer*` audits lose their `constant-temporaries` deviation: MIR code generation now secures and destroys the
-    right side as the old generator does, so R5-M118's two `ElementReplacementTransfer*Audit` rows were this cause, not a constant a
-    transfer abandons (G157 (45)'s part for them).
+  - Verified (fail-first): Element* native fixtures (the exclusive inputs under MIR code generation). The `ElementReplacementTransfer*`
+    audits lose their `constant-temporaries` deviation: MIR code generation now secures and destroys the right side as the old generator
+    does, so R5-M118's two `ElementReplacementTransfer*Audit` rows were this cause, not a constant a transfer abandons (G157 (45)'s part
+    for them).
   - Amended by R5-M160 (G4): the rollback lane's refusal of an exclusive borrow below a diverging key ended with the old generator's
     selection; MIR code generation runs those forms.
-- **R5-M160 The R5 scaffolding removed (R6-gen G4)** (2026-10-30, R6-gen; plan §4.9 row G4, PD4, PD10, OQ9; R5-M152 S6 and S7; design
-  `draft/Sketches/R6-gen/G4-design.md` with the planning session's rulings Q-P1 to Q-P6; under R5-M18, R5-M156 and R5-M158; Major,
-  G:R6-gen-del)
+- **R5-M160 The R5 scaffolding removed (R6-gen G4)** (2026-10-30, plan §4.9 row G4, PD4, PD10, OQ9; R5-M152 S6 and S7; design
+  `draft/Sketches/R6-gen/G4-design.md` with rulings Q-P1 to Q-P6; under R5-M18, R5-M156 and R5-M158; G:R6-gen-del)
   - Rule: the code generator selection ends, and with it G3's rollback (S6). Removed: `KIMI_CODEGEN`, `CompilerCodegen`,
     `Compilation.DefaultCodegen`, `Codegen` and `CodegenOf`, the ` [codegen legacy]` marks, the test manifest's `codegen` rows and
     `verify.ps1 -Codegen`.
@@ -14849,12 +14711,7 @@ structure is recorded here by the unit that first implements it.
     - PD14's injection reads leave at G4, not G6.
     - PLAN G314's pipeline loops repeat one check since R5-M156 and go; `PipelineSwitchTest`'s switch loops stay until H12.
     - `--analyze-cost` measures one configuration: its three were one check (schema 3).
-    - Ratchets: ownership bodies 159 → 84, prepared modules 113 → 112, instance reads 3 → 1, failure facts 9 → 1.
   - STATUS's old-generator rows go here, where the boundary changes (Q-P3), not at G11.
-  - Behavior-preserving on the default configuration (Q-P2):
-    - the diagnostic snapshot equals the base's;
-    - every common fixture's `.ll` and sidecar is identical, and only the removed stems go missing;
-    - the receiver-layers, static-cycle and G235 families pass natively, as do the milestones and the five CLI harnesses.
   - Rejected:
     - re-pointing to `Compilation.Emission.WriteIr` (+218 calls on a limit-0 ratchet);
     - a test-only `Codegen` setter until G7 (a mode kept past its stage);
@@ -14868,17 +14725,15 @@ structure is recorded here by the unit that first implements it.
     - R5-M18's temporary sel-only behaviors;
     - R5-M152 S6 (the rollback has ended) and S7 ("re-pointed" applies only to direct `Compilation.Emission` readers);
     - the G4 clauses of R5-M156, R5-M158 and R5-M159, which G4 fulfils.
-  - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and four other sites;
-    ratchets: ownership bodies 84 → 30, prepared modules 112 → 0, instance reads 1 → 0, failure facts 1 → 0.
+  - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and four other sites.
   - Amended by R5-M162 (G7): no reader of `Compilation.Emission` is left, so it is deleted with `LlvmEmitter`; a
     publication failure's record is `Compilation.ReportPublicationFailure` until G9b.
-- **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, R6-gen; plan §4.9 rows G5 and G6, PD14,
-  §5.1 M8; R5-M152 S7; under R5-M12 and R5-M160; the planning session's rulings Q1-Q5 on the unit's census; Major, G:R6-gen-del)
+- **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, plan §4.9 rows G5 and G6, PD14, §5.1 M8;
+  R5-M152 S7; under R5-M12 and R5-M160; G:R6-gen-del)
   - Rule: a test that observes the old generator's own representation goes; a rule it stood for stays where MIR code generation
     observes it, at the lowest public layer (G4-design §3's classification; R5-M12's classes S, I and P).
-  - G5: the tests reading `Compilation.Emission` (105 methods, 112 `TryPrepare` reads; the plan's 113/119 before G4), with the 8
-    `BodyLowering.Validate*Flags` injections and every `EmissionOpcode`, `EmissionOperandKind`, `ArithmeticCheckKind` and
-    `FailureIsResourceLimit` read:
+  - G5: the tests reading `Compilation.Emission`, with the 8 `BodyLowering.Validate*Flags` injections and every `EmissionOpcode`,
+    `EmissionOperandKind`, `ArithmeticCheckKind` and `FailureIsResourceLimit` read:
     - 66 methods deleted. Each deleted rule's MIR-layer holder was checked first: FunctionCodegenTest's rows, GeneratedIrTest's
       requirement, InstanceCollectorTest, MirDropTest, the tests/mir goldens and the native audits of the same programs.
     - 29 reduced to their native fixtures (all 33 native parts kept, so every `.ll` is unchanged) and 7 kept without their old-module
@@ -14893,9 +14748,7 @@ structure is recorded here by the unit that first implements it.
       analysis), and `ReferenceEmissionTest`'s Borrow count of the old body (its IR checks and native audit stay).
     - `VirtualPlanReuseTest`'s two R6-class reads, which compared the old bodies' storage around a code generation that has not
       touched them since G3.
-  - Ratchets: prepared module 112 → 0, generation failure facts 1 → 0, instance reads 1 → 0, ownership bodies 84 → 30 (22 R6 and 8 R4
-    U10; 22 once U10 lands). The plan's 33 counted OwnershipJoinTest's U10 read, deleted at G4. The zeroed rows stay at limit 0 until
-    G7 deletes their members.
+  - The zeroed rows stay at limit 0 until G7 deletes their members.
   - Rejected:
     - keeping the old-analysis halves of the pairing methods (R4-M13a's R5 class; their consumer is gone);
     - copying deleted old-IR text into FunctionCodegenTest where its rows hold the rule;
@@ -14903,9 +14756,9 @@ structure is recorded here by the unit that first implements it.
   - Amends, each with its amendment line: R3-3's `TryPrepare` reads, R4-M13a's R5 and R6 counts, and the G5 clauses of R5-M64,
     R5-M158 and R5-M160.
   - Amended by R5-M162 (G7): the zeroed rows' members are deleted; the rows stay at limit 0 until G10's zero-reference rows.
-- **R5-M162 The old generator's driver, lowering, plans and instance machinery deleted (R6-gen G7)** (2026-10-30, R6-gen; plan §4.9
-  row G7, §5.1 M4 and M8; R5-M152 S7; design `draft/Sketches/R6-gen/G7-design.md` revision 1 with the planning session's rulings
-  Q1-Q8; under R5-M5, R5-M88, R5-M160 and R5-M161; Major, G:R6-gen-del)
+- **R5-M162 The old generator's driver, lowering, plans and instance machinery deleted (R6-gen G7)** (2026-10-30, plan §4.9 row G7, §5.1
+  M4 and M8; R5-M152 S7; design `draft/Sketches/R6-gen/G7-design.md` with rulings Q1-Q8; under R5-M5, R5-M88, R5-M160 and R5-M161;
+  G:R6-gen-del)
   - Rule: a component goes with its last caller (S7). Deleted: `LlvmEmitter*`, `BodyLowering*` (37 files), `GenericStoragePlan*`,
     `ObjectGenerationPlan`, `VirtualGenerationPlan`, `DefaultGenerationPlan`, `CompilerFunctionAdapters` and `NumericArithmetic`
     (47 files, 13,202 lines) with `Compilation.Emission`, and every member whose callers, readers and writers all lay in them,
@@ -14925,10 +14778,10 @@ structure is recorded here by the unit that first implements it.
     views of the analysis, read by it alone (Q5): `UsesImport` with its set, `GetBorrowInputState`, `TrySymbolPlaceAt`,
     `GetElementState`, `IsPathWithin`, `ParameterCount` and `DeclaredResultType`. The Semantics-case substitution in the same file
     (`Substituting`, the pair-layer helpers) is the old analysis's own and stays until R6-check (SPEC 8.15).
-  - Binding (BU's review; the unit's last commit): the `ClosureCall` bridge and its memo (R5-M36; `ResetCallContexts` inlined),
-    `TyCtxt.InstantiatesInLegacy` and `InstanceClass.GenericThroughSpecialization` (R5-M34; the class is a `bool`), the
-    instance-only parameters of `ReportEffectViolation`, `StartupResult.Function`, and the root helpers `ElementAccess.ReceiverMatches`
-    and `ScalarTypes.IsCharacterValue`. Backend: `AbiParameterKind.PreparedSlot`.
+  - Binding: the `ClosureCall` bridge and its memo (R5-M36; `ResetCallContexts` inlined), `TyCtxt.InstantiatesInLegacy` and
+    `InstanceClass.GenericThroughSpecialization` (R5-M34; the class is a `bool`), the instance-only parameters of `ReportEffectViolation`,
+    `StartupResult.Function`, and the root helpers `ElementAccess.ReceiverMatches` and `ScalarTypes.IsCharacterValue`. Backend:
+    `AbiParameterKind.PreparedSlot`.
   - Unit mapping (Q1, Q7): `StaticScalarEntry` (its readers are `EmissionModule.Statics` and `LlvmModuleWriter.Statics`),
     `LegacyRuntimeHelpers`' formatting requests with their lists and loops, and `AggregateLayoutPool`'s remaining hooks
     (`IsSealedObjectTarget`, `CollectionDrop`, the `GenericDestructor` field) join G8; `AdtDef.IsOrInherits` and
@@ -14937,9 +14790,6 @@ structure is recorded here by the unit that first implements it.
   - Records: ARCH's freeze drops BU-24's two exceptions for the old Emission (their code is deleted); its Transitional list gains
     `ReportPublicationFailure` and loses the bridge and the legacy view; CODEMAP's rows lose the deleted stems; STATUS's generic
     generation row loses the old generator's per-instance ownership checking.
-  - Shown behavior-preserving against a base Session of dev `70b530151` in the unit's worktree: the diagnostic snapshot and the
-    semantic snapshot (HIR, MIR) equal; every `'*.ll'` fixture's `.ll`, sidecar and native result identical (`compare-fixtures.ps1`);
-    the 40 harnessed milestones and the five CLI harnesses pass.
   - Ratchets: Emission failure strings 446 → 0 (G9's item, done here); the zeroed rows stay at limit 0 until G10's zero-reference
     rows (Q3). M4: the Emission's `.cs` lines 18,284 → 5,078 (30 files), the Backend's 14,758 → 14,756.
   - Rejected: keeping `LlvmEmitter` for `ReportFailure`; an inline record in `Project`; deleting the Benchmark's emission phases (they
@@ -14960,9 +14810,8 @@ structure is recorded here by the unit that first implements it.
     replace the instance-read row and, as `Compilation.Emission` was an `LlvmEmitter`, the prepared-module and generation-failure rows
     and the entry-point row's Emission half. `LegacyRuntimeHelpers` waits for R8; the Emission failure-string row stays at 0 over the
     surviving files (M8).
-- **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, R6-gen; plan §4.9 row G8, §5.1 M4; R5-M152 S7;
-  design `draft/Sketches/R6-gen/G8-design.md` with the planning session's rulings Q1-Q4; under R5-M5 and R5-M162; Major,
-  G:R6-gen-del)
+- **R5-M163 The old Emission's physical IR layer deleted (R6-gen G8)** (2026-10-31, plan §4.9 row G8, §5.1 M4; R5-M152 S7; design
+  `draft/Sketches/R6-gen/G8-design.md` with rulings Q1-Q4; under R5-M5 and R5-M162; G:R6-gen-del)
   - Rule: a component goes with its last caller (S7). G8a deletes `EmissionModule` (with `EmissionOpcode`, `EmissionOperandKind`,
     `ArithmeticCheckKind`, `SliceShape` and the instruction records), `LlvmModuleWriter*` (16 files), `AggregateLayout` and
     `AggregateLayoutPool`, `FunctionAbiPool`, `WindowsLowering` and `StaticScalarEntry`: 21 files, 3,746 lines, which since G7
@@ -14982,17 +14831,17 @@ structure is recorded here by the unit that first implements it.
     row (no MIR site requests it; a literal checks its duplicates itself, R5-M124) with `HelperNeeds.DictionaryRuntime`,
     `DictionaryHelper.Related` (MIR passes -1), `WriteRawSlice` and `LlvmScalarText.WritePositionConversion` (the old writer's
     alone). The Backend's contracts and ARCH's rows name one generator.
-  - G8c (D5's deletion, Q5's rule of R5-M162): the old Analysis's plans that only the deleted generator read go with the writes that
-    only filled them: `OwnershipBody.SlotResults`, `ResultArrivals`, `ResultWrites`, `Deliveries`, `StringComparisons`, `CallLoans`
-    and `IsConcrete`, their records, and the unread fields `OwnershipMatchPlan.ArmStart`/`ArmCount`, `OwnershipMatchArmPlan`'s
-    decomposition range, `GuardBranch`, `BodyEntry`, `GuardValue` and `GuardCleanupStart`, and `OwnershipDeferredPlan.Continuation`;
-    with them the slot results' result joins, the result declarations' table, `Deliver`'s secured value, `HasCallInspection` and
-    `Condition`'s cleanup start. The operations they annotated (Declare, Write, Deliver, the joins' edges) stay, and so does
-    `SlotResultPlaces`, which chooses a result's Place. The diagnostic and semantic snapshots are unchanged.
-  - G8d (tests): `InstanceCollectorTest.TwoClosuresOfOneInstanceAreItsTwoItems` asserts one item per Closure per enclosing instance,
-    each its own body, in place of `GenericClosureIdentityTest`'s `Assert.NotSame` (G7's review); R5-M58's edited-import reuse,
-    which the deleted pool's test held, is `FunctionCodegenTest.AnEditedImportKeepsItsSignature` on the MIR side (a parameter renamed
-    in place: the module's next Write returns the same `FunctionAbi` object), since no test showed it there.
+  - G8c (D5's deletion, Q5's rule of R5-M162): the old Analysis's plans that only the deleted generator read go with the writes that only
+    filled them: `OwnershipBody.SlotResults`, `ResultArrivals`, `ResultWrites`, `Deliveries`, `StringComparisons`, `CallLoans` and
+    `IsConcrete`, their records, and the unread fields `OwnershipMatchPlan.ArmStart`/`ArmCount`, `OwnershipMatchArmPlan`'s decomposition
+    range, `GuardBranch`, `BodyEntry`, `GuardValue` and `GuardCleanupStart`, and `OwnershipDeferredPlan.Continuation`; with them the slot
+    results' result joins, the result declarations' table, `Deliver`'s secured value, `HasCallInspection` and `Condition`'s cleanup start.
+    The operations they annotated (Declare, Write, Deliver, the joins' edges) stay, and so does `SlotResultPlaces`, which chooses a
+    result's Place.
+  - G8d (tests): `InstanceCollectorTest.TwoClosuresOfOneInstanceAreItsTwoItems` asserts one item per Closure per enclosing instance, each
+    its own body, in place of `GenericClosureIdentityTest`'s `Assert.NotSame`; R5-M58's edited-import reuse, which the deleted pool's test
+    held, is `FunctionCodegenTest.AnEditedImportKeepsItsSignature` on the MIR side (a parameter renamed in place: the module's next Write
+    returns the same `FunctionAbi` object), since no test showed it there.
   - Records: ARCH drops `EmissionOpcode` (49) and the old pool's clauses of its Layout and Abi rows; CODEMAP drops the old layer's
     row and stems; the Backend's contracts drop the deleted types.
   - Rejected: moving the survivors at G8 (resource names, harness paths; G11's CODEMAP decides the folder); keeping the pool's
@@ -15003,9 +14852,8 @@ structure is recorded here by the unit that first implements it.
     publication and profile files until R9 moves the toolchain out of the compiler.
   - Amended by R5-M174 (the owner's 「(b) 分割を認める」): the profile file's target half left `C/Emission` for `Core/WindowsProfile.cs`;
     `C/Emission` keeps the toolchain identity (`ToolchainIdentity.cs`) with the toolchain and publication files until R9.
-- **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, R6-gen; plan §4.9 row G9, R5-M18's G9a/G9b split;
-  design `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q1-Q10; under R5-M162; Major, G:R6-gen-del; BU
-  reviews the Binding commit)
+- **R5-M164 Emission-only Binding members deleted (R6-gen G9a)** (2026-10-31, plan §4.9 row G9, R5-M18's G9a/G9b split; design
+  `draft/Sketches/R6-gen/G9-design.md` with rulings Q1-Q10; under R5-M162; G:R6-gen-del)
   - Rule: a member goes with its last reader (S7). Deleted, each without a reader in `src`, `tests` or `src/Benchmark` since G7:
     `Binding.IsInapplicableVirtualBody`, `ImplementationContext`, `IsVerifiedSpecialization`, both `SameModuloOpenOrigins`
     overloads, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` (the last two from R5-M162's list).
@@ -15016,23 +14864,21 @@ structure is recorded here by the unit that first implements it.
     `ImplementationContext` and tests, whose Items are closed; every product caller passed `false`.
   - Text: Binding's comments and Transitional reasons that named the old generator or the old Emission as a reader, and
     `DictionaryCallee`'s comments (the Related index, the initialization bridge and the old emitter went at G8).
-  - Behavior-preserving: the diagnostic snapshot and the semantic snapshot (HIR, MIR) equal the base's.
   - Amends, each with its amendment line: BU-24 (`SameModuloOpenOrigins`; the `PlaceOriginSource` exception's first reason),
     R5-M28 (`DictionaryStorageCall`'s callee) and R5-M162 (G9's list).
-- **R5-M165 Publication records its failure; `GenerationFailed_Kd` and the out-string adapters removed (R6-gen G9b)** (2026-10-31,
-  R6-gen; plan §4.9 row G9, §5.4 item 5; R5-M18's G9b with the owner's choice of `ArtifactPublicationFailed_Kd`; design
-  `draft/Sketches/R6-gen/G9-design.md` with the planning session's rulings Q4-Q9; under R5-M64 and R5-M162; Major, G:R6-gen-del)
-  - Rule: publication owns its failure (R5-M64 rejected reporting it in `Generate`). `EmissionArtifacts.Publish` records, replacing
-    the Emission partition's records as a generation does, at the project: `ArtifactPublicationFailed_Kd` (Input, "The build artifacts
-    cannot be published"), its cause as a note (the Input precedent of `ProjectPreparationFailed_Kd` and `SourceReadFailed_Kd`; typed
-    facts are a later Diagnostics unit, Q5), for output I/O and publication-time native configuration and supplies, a dependency
-    module's supplies among them (C-package §3.10, Q4; PLAN's open issue owns its `Unsupported_Kd`); `InternalInvariant_Kd` when the
-    compiler's embedded backend record is missing (a contract failure, Q6) and for a contract exception of code generation while it
-    writes into the output: `EmissionArtifacts.GenerateInto` maps the output's I/O exceptions to the publication code and code
-    generation's argument, data and support exceptions to `InternalInvariant_Kd` (C-package §3.10; implementation review 1, B1).
-    Every generation request clears the Emission partition first, a gate refusal included, so the partition is the latest request's.
-    `GenerationFailed_Kd` is replaced in place (net 0 codes); `DiagnosticPartition.Emission` and the `Emission` requirement stay
-    through R6 (R5-M18).
+- **R5-M165 Publication records its failure; `GenerationFailed_Kd` and the out-string adapters removed (R6-gen G9b)** (2026-10-31, plan
+  §4.9 row G9, §5.4 item 5; R5-M18's G9b with the owner's choice of `ArtifactPublicationFailed_Kd`; design
+  `draft/Sketches/R6-gen/G9-design.md` with rulings Q4-Q9; under R5-M64 and R5-M162; G:R6-gen-del)
+  - Rule: publication owns its failure (R5-M64 rejected reporting it in `Generate`). `EmissionArtifacts.Publish` records, replacing the
+    Emission partition's records as a generation does, at the project: `ArtifactPublicationFailed_Kd` (Input, "The build artifacts cannot
+    be published"), its cause as a note (the Input precedent of `ProjectPreparationFailed_Kd` and `SourceReadFailed_Kd`; typed facts are a
+    later Diagnostics unit, Q5), for output I/O and publication-time native configuration and supplies, a dependency module's supplies
+    among them (C-package §3.10, Q4; PLAN's open issue owns its `Unsupported_Kd`); `InternalInvariant_Kd` when the compiler's embedded
+    backend record is missing (a contract failure, Q6) and for a contract exception of code generation while it writes into the output:
+    `EmissionArtifacts.GenerateInto` maps the output's I/O exceptions to the publication code and code generation's argument, data and
+    support exceptions to `InternalInvariant_Kd` (C-package §3.10). Every generation request clears the Emission partition first, a gate
+    refusal included, so the partition is the latest request's. `GenerationFailed_Kd` is replaced in place (net 0 codes);
+    `DiagnosticPartition.Emission` and the `Emission` requirement stay through R6 (R5-M18).
   - Deleted: `Compilation.ReportPublicationFailure`, `Publish`'s failure text and its public 3-argument overload (Q8), the repeated
     `NativeConfiguration.Validate` (preparation's `DependencyConfiguration` owns it, C-package §3.10), and at G9b2 the out-string adapters
     `WriteIr`, `Validate` and their texts. Tests and `src/Benchmark` call `Generate` and read its records; `MinimalEmissionTest.Describe`
@@ -15048,8 +14894,7 @@ structure is recorded here by the unit that first implements it.
     `InternalInvariant_Kd` is gone; an exception publication does not classify is the Emission result's fault (`CheckFaulted_Kd`).
   - Amended by R5-M181 (PLAN G157 (7)): a publication failure no longer replaces the partition's records; it is recorded beside
     generation's, which runs at every publication.
-- **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, R5; PLAN G308,
-  Full; design `draft/Sketches/R6-gen/G308-D-design.md` revision 1 with the planning session's rulings Q1-Q6; supersedes R5-M75's
+- **R5-M166 One comparison item per distinct node of a comparison's DAG (G308, candidate D)** (2026-10-31, PLAN G308; supersedes R5-M75's
   expansion and amends R5-M68, R5-M126 and R5-M149, each with its amendment line; under R5-M70, R5-M127 and R5-M143)
   - Cause: `TyCtxt.Comparison` memoizes one node per (Contract, Type, mode), so a Type sharing parts is a DAG, which R5-M75's builder,
     the collector's shim targets and the shim writer each walked per root-to-leaf path: exponential in the distinct Types (V16).
@@ -15079,9 +14924,8 @@ structure is recorded here by the unit that first implements it.
     keyed by its template Type and the enclosing instance; an item's targets its node's direct parts) approved, verbatim
     「承認します。」 (2026-10-31), as R5-M127 confirmed the previous one.
 - **R5-M167 R6-gen's exit gate item by item; the owner's review of the exit's exceptions and Transitional declarations (G11)** (owner,
-  2026-10-31, verbatim 「R6-gen の出口も、推奨の内容でお願いします」 on G11's table, relayed by the planning session, PLAN `7869725d2`;
-  planning session; plan §4.9 row G11, §5.4, OQ17 (c); design `draft/Sketches/R6-gen/G11-design.md` with the planning session's
-  rulings Q1-Q4; under R5-M148, the model, R5-M152 and R5-M156 to R5-M165)
+  2026-10-31, verbatim 「R6-gen の出口も、推奨の内容でお願いします」 on G11's table; plan §4.9 row G11, §5.4, OQ17 (c); design
+  `draft/Sketches/R6-gen/G11-design.md`; under R5-M148, the model, R5-M152 and R5-M156 to R5-M165)
   - The owner approved the table as recommended (`artifacts/benchmarks/r6-gen-exit/exceptions-and-transitional.md`, 18 rows; 100
     declarations at `25570bb00`: "R6" 51, "R6-check" 9, "R7" 12, "R8" 28, "R6-gen" 0): row 12, D5's Emission half ends at this exit,
     its Analysis half and exceptions continuing to R6-check (ARCH; R4-M35's amendment); row 13, R5-M7's shared-file hold protocol
@@ -15089,58 +14933,37 @@ structure is recorded here by the unit that first implements it.
     are lasting names, no attribute (R5-M18's amendment); row 15, option (B): the five `.ll.in` templates move to `Backend/`, beside
     their readers `LlvmModuleText` and `LegacyRuntimeHelpers.Formatting` (P11-P12's LLVM text), and the toolchain, publication and
     profile files stay in `C/Emission`, P13's build boundary, which R9 moves out of the compiler, so nothing moves twice (R5-M163's
-    amendment); row 18, LLVM_OPTIMIZATION §6.1 and P34_REMAINING are in scope and name the code that exists. The other rows stand.
-  - The template comment (G11c, option (a), the planning session's Q2): `WindowsRuntime.ll.in` line 18 names `RuntimeAbi`, line 1 the
-    Backend's #0 profile; they named the deleted `WindowsLowering` and the emitter in every generated module, where G10's `*.cs` rows
-    cannot see them. A declared `.ll` text change.
-  - Gate (plan §5.4), on `claude/r6-g11` (dev `506ddbebc` with G11a-G11c); the runs are that worktree's `artifacts/verify/`:
-    1. E1 `20261030-212731-789-session-g11-e1-7ef1f02d0` (base `7ef1f02d0`), E2c `20261030-214736-909-session-g11-e2c-85c10bbb9`
-       (the comment) and E2m `20261030-221942-871-session-g11-e2m-6a10c82b2` (the move and the documents): each a default Session
-       with `'*.ll'` at O0 and O2, 25,628 tests (6 not run), 12,240 native executions. E1 to E2c: natives 6,120 equal, sidecars
-       identical, every `.ll` identical but the two template lines (`compare-ll-modulo-template.py`, kept with E2c); E2c to E2m
-       identical, so the move is behavior-preserving. The 40 harnessed milestones and the five CLI harnesses run in the landing window.
+    amendment); row 18, draft/Design/LLVM_OPTIMIZATION.md §6.1 and P34_REMAINING (at 4fb6fcdb1) are in scope and name the code that exists. The other rows stand.
+  - The template comment (G11c, option (a)): `WindowsRuntime.ll.in` line 18 names `RuntimeAbi`, line 1 the Backend's #0 profile; they
+    named the deleted `WindowsLowering` and the emitter in every generated module, where G10's `*.cs` rows cannot see them. A declared
+    `.ll` text change.
+  - Gate (plan §5.4), on `claude/r6-g11` (dev `506ddbebc` with G11a-G11c):
+    1. E1 to E2c: natives 6,120 equal, sidecars identical, every `.ll` identical but the two template lines; E2c to E2m identical, so the
+       move is behavior-preserving. The 40 harnessed milestones and the five CLI harnesses run in the landing window.
     2. Snapshot 0 at each step (E1 against the shared base `506ddbebc`, E2c against E1, E2m against E2c); G2's classification, the
        20 methods and `stage-baselines.json` stand (R5-M156).
-    3. The 8 O2 corpus kernels' input and O2 IR are identical between G3's B `519d88f38` and `df7ae4c45`
-       (`artifacts/benchmarks/r6-gen-exit/kernel-ir.txt`), so G3's run 3 (`r6-g3-run3/`, every kernel within variance) measured the
-       exit's code; G11c changed comment lines only. G308, merged into dev after this head, keeps that: its O2 A/B found the 8
-       kernels' `.ll` and `.O2.ll` byte-identical between `f600ef4c8` and its D `cbdc16afc` (`artifacts/benchmarks/r6-g308-o2/`).
-       M5 = 0: G287's `count.sh` at `df7ae4c45` counts Z 63, B 28, A 20 raw, and the
-       changed sites read: two zero-expect audits through `WriteFixture`, which fails closed; four negative names left with deleted
-       old-module tests; `VirtualOwnershipTest`'s names a symbol `ObjectRuntime` writes. The warm allocation tests pass in each Session: 1,183
-       `Purpose=Allocation` tests (the 6 tests not run are Explicit).
+    3. The 8 O2 corpus kernels' input and O2 IR are identical between G3's B `519d88f38` and `df7ae4c45`, so G3's run 3 (every kernel
+       within variance) measured the exit's code; G11c changed comment lines only. G308, merged into dev after this head, keeps that: its
+       O2 A/B found the 8 kernels' `.ll` and `.O2.ll` byte-identical between `f600ef4c8` and its D `cbdc16afc`. M5 = 0: the changed sites
+       read: two zero-expect audits through `WriteFixture`, which fails closed; four negative names left with deleted old-module tests;
+       `VirtualOwnershipTest`'s names a symbol `ObjectRuntime` writes.
     4. G10's zero-reference rows (R5-M162's G10 line) hold; their `*.cs` scope missed two names, fixed by G11a (`O2Corpus.md`) and
        G11c (the template); M8's Emission rows are 0.
     5. No `[Transitional("R6-gen")]`; `GenerationFailed_Kd` replaced (R5-M165); `AnalyzeInstance` deleted (R5-M162).
-    6. PLAN10-P3, measured 2026-10-31 in a quiet slot (`artifacts/benchmarks/r6-gen-exit/plan10-p3/`: `run-p3.sh`, `summarize-p3.py`,
-       the raw reports; A = `acc2f12ad`, the old generator's default, B = `8d93fec57`, both run from one folder, CPU 2 pinned at High
-       priority, tiering off, 5 interleaved rounds, each report's compiler id checked; times are the median of the rounds' sample
-       medians). The MIR side, BuildMir with the MIR analyses and collection plus MIR code generation (B's stages 3, 5 and 6), against
-       the old Analyze and Emission (A's stages 4 to 6): 11.0-17.0 ms against 0.13-7.8 ms on the Scalar and Branching inputs and Generic 1,
-       because every fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 39.4, 58.7
-       and 118.4 ms against 91.7, 190.1 and 388.3 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). Allocation: 3.8-5.9 MB against
-       0.06-4.7 MB on the small inputs; 11.4, 18.8 and 33.7 MB against 26.1, 50.6 and 100.2 MB. The whole default build (A's total without its
+    6. PLAN10-P3, measured 2026-10-31 in a quiet slot (A = `acc2f12ad`, the old generator's default, B = `8d93fec57`). The MIR side,
+       BuildMir with the MIR analyses and collection plus MIR code generation (B's stages 3, 5 and 6), against the old Analyze and
+       Emission (A's stages 4 to 6): 11.0-17.0 ms against 0.13-7.8 ms on the Scalar and Branching inputs and Generic 1, because every
+       fresh compilation builds and analyzes the library's MIR where the old path analyzed the source's bodies; 39.4, 58.7 and 118.4 ms
+       against 91.7, 190.1 and 388.3 ms on Generic 32, 64 and 128 (B/A 0.43, 0.31, 0.30). The whole default build (A's total without its
        stage 3, which A's default Analyze did not run, against B's total): B/A 1.36-1.78 (+9.0 to +15.0 ms) on the small inputs, 0.65,
-       0.51 and 0.47 on Generic 32, 64 and 128 (74.1, 113.4 and 199.8 ms against 114.8, 220.3 and 427.7 ms). Cold collection is equal within
-       2.5 % (B/A 0.98-1.02; bytes and items equal; Generic 128: 25.5 ms and 7.9 MB on both). Check cost against G2's head `90697ecfa`
-       (its default configuration; R5-M156's measurement): a fresh check within the rounds' ranges at Generic 1, 64 and 128 (34.6, 96.1
-       and 157.4 ms against 34.4, 94.2 and 154.7) and 61.8 against 53.6 ms at 32 (ranges apart; not attributed), allocating +0.00 to
-       +0.08 MB; a warm Analyze equal (20.8 to 88.5 ms, the same bytes) and retained memory within 0.05 MB; BU-48's harness 0 B warm on
-       both, cold +21 KB (Hello) and +17 KB (Milestone26). The owner accepted the fresh small-build cost, verbatim
-       「(a) 受け入れる」 (2026-10-31); its fixed cost's measured breakdown is R5's next unit (PLAN G337).
-       Corrected 2026-10-31 (G337's census): the first summary took each sample's ticks and bytes, which cover the report's 8
-       iterations, as one iteration, so the owner was shown each absolute figure 8 times too large (+72 to +120 ms); the figures
-       above are per iteration (`summarize-p3.py` fixed; the first output kept as `summary-output-uncorrected-x8.txt`); every ratio
-       and the owner's answer stand.
-    7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. The area record
-       `artifacts/benchmarks/r6-gen-exit-areas.md` (`g11-areas.ps1`, R5's script with R6-gen's commit set): 157,402 compiler lines at
-       `df7ae4c45` (170,941 at R5's record `66c856d81`); R6-gen's 54 commits -17,927 net (Emission -16,922, Backend -393, Analysis
-       -272, Binding -179, Core -140, root -21). M4: the Emission's C# 18,284 lines in 77 files to 1,362 in 8, the Backend 14,365 (the
-       2,335 template lines join it at G11c). M8: TryPrepare reads, generation failure facts, instance reads and Emission failure
-       strings 0; `Ownership.Bodies` 30 (R6-check's). Hotspots: `Compilation.Generation.cs` (9 R6-gen commits, now 158 lines) and
-       `Compilation.Switch.cs` (5). Duplication: R5's two line clones, no new one. No NativeAOT run (OQ17 (c)). The final review
-       follows these records.
-  - Corrections (G11a's probes under MIR code generation, `artifacts/benchmarks/r6-gen-exit/probes/`; STATUS, P34_REMAINING, PLAN
+       0.51 and 0.47 on Generic 32, 64 and 128 (74.1, 113.4 and 199.8 ms against 114.8, 220.3 and 427.7 ms). The owner accepted the fresh
+       small-build cost, verbatim 「(a) 受け入れる」 (2026-10-31); its fixed cost's measured breakdown is R5's next unit (PLAN G337). Corrected
+       2026-10-31 (G337's census): the first summary took each sample's ticks and bytes, which cover the report's 8 iterations, as one
+       iteration, so the owner was shown each absolute figure 8 times too large (+72 to +120 ms); the figures above are per iteration;
+       every ratio and the owner's answer stand.
+    7. Records: ARCH (the ledger, D5, the progress paragraph, the hold protocol), CODEMAP, STATUS, row 18's documents. No NativeAOT run
+       (OQ17 (c)).
+  - Corrections (G11a's probes under MIR code generation, `artifacts/benchmarks/r6-gen-exit/probes/`; STATUS, P34_REMAINING (at 4fb6fcdb1), PLAN
     G147 (2)): P34's generation-failure forms, G147 (2)'s two old-generator failures, `(p@uniq, 1)` and Unit or struct
     temporaries on the right of `and`/`or` build and run; a custom setter or compound assignment through `uniq/(rc/T)` reports
     `InternalInvariant_Kd` at check (PLAN's BU row).
@@ -15148,19 +14971,18 @@ structure is recorded here by the unit that first implements it.
     each to the next unit changing its files (R6-gen ended without one): G157 (7), (17), (25)'s cache, (26), (28), (29)'s `Use`,
     (30), (37), (38), (40), (43), (44), (46) and (50), G153, G289 (4) and LN (whose old-generator copy, `ObjectGenerationPlan.WriteKey`,
     went at G7); G158 (1) and (2) to BU after the exit. G157 (34), the old generator's defect, closed by G7 as (22). BU's G147 (2),
-    G158 and G300 restate their old-generator outcomes as history or the current fact. LLVM_OPTIMIZATION §4 (`:638`) still names
+    G158 and G300 restate their old-generator outcomes as history or the current fact. draft/Design/LLVM_OPTIMIZATION.md §4 (`:638`) still names
     `EmissionInstruction`, outside row 18's §6.1: an open item (PLAN G336).
   - Amends, each with its amendment line: R4-M35 (D5's Emission half), R5-M18 (the Emission names), R5-M148 (the hold protocol) and
     R5-M163 (the folder).
   - Amended by R5-M174 (row 15; the owner's 「(b) 分割を認める」, 2026-11-01): the profile file's target half moved to Core
     (`Core/WindowsProfile.cs`), since P2-P12 read it and R9's move cannot take it; the toolchain identity (`Emission/ToolchainIdentity.cs`)
     stays with the toolchain and publication files until R9.
-- **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, R5; PLAN G337, design
-  `draft/Sketches/R5/G337-design.md` §7 (`bde706c59`); R4, which owns `Mir/Analysis`, agreed to O1 under its hold, accepted §7 with five
-  conditions and reviews the A3/A5 side; the owner's G337 acceptance 「(a) 受け入れる」; under R4-M1, R4-M2a and R5-M156)
-  - Cause: since R5-M156 every fresh compilation builds and analyzes all 215 library bodies, whose work is 90-97 % of BuildMir's (PLAN10-P3's
-    `--compiler-pipeline` figures are per 8 compilations: per compilation stage 3 is 12.7 ms of Scalar 1's 30.1 ms); A3 and A5 over them
-    are 39-42 % of it, while nothing reads a library body's A3 or A5 result (A5 reads A4's keys, A4 no A5 fact, code generation A2's tables).
+- **R5-M168 A3 and A5 judge the root modules' bodies at check (G337 O1)** (2026-10-31, PLAN G337; the owner's G337 acceptance 「(a) 受け入れる」;
+  under R4-M1, R4-M2a and R5-M156)
+  - Cause: since R5-M156 every fresh compilation builds and analyzes all 215 library bodies, whose work is 90-97 % of BuildMir's; A3 and
+    A5 over them are 39-42 % of it, while nothing reads a library body's A3 or A5 result (A5 reads A4's keys, A4 no A5 fact, code
+    generation A2's tables).
   - Input rule: `MirAnalysis.Run(program, rootModules)`, the range required: steps 1 (A3) and 4 (A5: the Origin judgment, the Loans and
     their block order and move paths) judge the bodies with `Source.Module < rootModules`, the range Compilation already passes to
     `InstanceCollector.Run`; steps 2 (block order, move paths, A1, A2, A4's local facts) and 3 (A4 over the program) visit every body, since
@@ -15190,9 +15012,8 @@ structure is recorded here by the unit that first implements it.
     A4 and code generation read; an optional or defaulted range.
   - Saving per compilation (indicative, unpinned): 39-42 % of stage 3, about 5 ms of the pinned 12.7 ms on Scalar 1, 0.64-0.77 MB cold, the
     same time per warm rebuild; G337's O1-M retakes it pinned, and O2 (library bodies built on demand) follows that measurement.
-- **R5-M169 An exception publication does not classify ends the Emission result as Faulted (G330)** (2026-10-31, R5; PLAN G330, design
-  `draft/Sketches/R5/G330-design.md` (`c5f3a9b0d`, option C) with the planning session's rulings Q1-Q4 and review 1's N1-N7; under
-  DIAGNOSTICS rule 9, R5-M64 and R5-M165; Major)
+- **R5-M169 An exception publication does not classify ends the Emission result as Faulted (G330)** (2026-10-31, PLAN G330; under
+  DIAGNOSTICS rule 9, R5-M64 and R5-M165)
   - Rule: while code generation writes the publication's output, an `IOException` or `UnauthorizedAccessException` is the output's
     (`ArtifactPublicationFailed_Kd` with its cause, `EmissionArtifacts.GenerateInto`): code generation does no file I/O but through that
     writer (it reads embedded templates). Every other exception publication does not itself classify, a broken contract code generation
@@ -15202,27 +15023,21 @@ structure is recorded here by the unit that first implements it.
     note, at the project file), as `BuildTarget` renders the front end's, under one filter (`Project.Faults`). `Publish` keeps its own
     mapping off such exceptions with the local `generating` (`BuildTarget`'s `completed` precedent), cleared before the writer's
     `Dispose`, so a flush failure stays the output's; a flush failure while a generation exception unwinds replaces it and is the fault.
-    `CheckFaulted_Kd`'s fixed text stays (Q2).
+    `CheckFaulted_Kd`'s fixed text stays.
   - Supersedes R5-M165's mapping of "code generation's argument, data and support exceptions" to `InternalInvariant_Kd`. The premise of
-    G9b's review 1 B1 that no longer holds: that code generation throws argument, data and support exceptions. G330's census: 55 throw
-    sites reached by generation, 50 `InvalidOperationException` (3 `InvalidDataException`, 1 `ArgumentException`, 1
-    `ArgumentOutOfRangeException`), and framework exceptions (index expressions, null-forgiving reads, static table initializers); a
-    probe showed `kimi build` printing `InvalidOperationException` and `KeyNotFoundException` as toolchain failures without a code and
-    dying on `IndexOutOfRangeException`. Rejected: one record for every non-I/O exception as `InternalInvariant_Kd` (rule 9: a thrown
-    failure ends its result as Faulted with exactly one `CheckFaulted_Kd`; `InternalInvariant_Kd` is a Completed result's); one contract
-    exception type for every check (framework exceptions still escape); a catch in `Compilation.Generate` (tests and `src/Benchmark` would
-    lose the exception) or in `CommandExecution` (no result to render).
+    G9b's review 1 B1 that no longer holds: that code generation throws argument, data and support exceptions. Rejected: one record for
+    every non-I/O exception as `InternalInvariant_Kd` (rule 9: a thrown failure ends its result as Faulted with exactly one
+    `CheckFaulted_Kd`; `InternalInvariant_Kd` is a Completed result's); one contract exception type for every check (framework exceptions
+    still escape); a catch in `Compilation.Generate` (tests and `src/Benchmark` would lose the exception) or in `CommandExecution` (no
+    result to render).
   - Holds: R5-M18's "contract failures become `InternalInvariant_Kd`" (C-package §3.10's first bullet) for the checked form: a broken
-    contract code generation checks is recorded at its subject (81 sites in `Backend/Codegen`, 14 in `Backend/Instances`), at a root's
-    site or at the project (`Compilation.Generate`); the missing embedded backend record stays `InternalInvariant_Kd` (R5-M165 Q6).
-    Binding's throws (36 `InvalidOperationException`, 5 `ArgumentOutOfRangeException` and 2 `UnreachableException` across
-    `Binding/*.cs`, 6 of them in the TyCtxt files) end a check the same way (BU-24, BU-36).
+    contract code generation checks is recorded at its subject, at a root's site or at the project (`Compilation.Generate`); the missing
+    embedded backend record stays `InternalInvariant_Kd` (R5-M165 Q6). Binding's throws end a check the same way (BU-24, BU-36).
   - Effect: `kimi build`, `emit` and `run` render the fault and exit 1; `kimi test` reports "Test generation failed" with exit 2 (IMPL
     §20.6.4's build failure) where it reported an internal runner error with 3 (code-read; no end-to-end `TestCommand` test exists). The
     language server never generates; tests and `src/Benchmark` call `Compilation.Generate` and keep the exception.
-  - Deleted: `GenerateInto`'s contract catch. Tests: `EmissionArtifactsTest`'s theory over the writer's exception kinds (fail-first: the
-    `ArgumentException` and `InvalidDataException` rows were recorded). The command-layer test is G330b: its reproducer (another
-    program's `ModuleCodegen`) generated without throwing, and no production seam is added for a test.
+  - Deleted: `GenerateInto`'s contract catch. The command-layer test is G330b: its reproducer (another program's `ModuleCodegen`)
+    generated without throwing, and no production seam is added for a test.
   - Amends, each with its amendment line: R5-M64 (a thrown failure is not `Generate`'s record) and R5-M165 (the mapping clause).
   - G330b (no production seam): `EmissionArtifactsTest.AnExceptionEndsTheCommandsResultAsFaulted` observes the command layer: a null
     source path (`AddKimiFile`) faults the front-end result (`BuildTarget`), a null `NativeLibraries` input publication (`PublishArtifacts`),
@@ -15230,13 +15045,13 @@ structure is recorded here by the unit that first implements it.
     exclusion leaves to the fault; each row fails with its catch or the exclusion removed. The last row rests on a defect, PLAN G346
     (`SourceLocationTable.Text`'s `GetRelativePath` rejects the path before its IMPL 21.4.2 escaping; the whole command's parse rejects it
     the same way, a front-end fault): when G346 is fixed, the row needs another trigger for the exclusion.
-  - Amended by R5-M175 (U9a-1b, U9b): G346 is fixed (naming a source never throws), so G330b's code-generation row left with its
-    trigger, and no other program reaches generation's exceptions without a production seam. U9b (the planning session's ruling (b))
-    deletes the `generating` exclusion and its state: `Publish` classifies its steps before and after code generation in two catches,
-    and generation runs between them, outside both, so the rule above holds by structure (no test observes it: no seam).
-- **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, R5; PLAN G332, design
-  `draft/Sketches/R5/G332-design.md` revision 3, accepted at its third review; the owner approved the departure from K package 4.6/KD9
-  together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known limit)
+  - Amended by R5-M175 (U9a-1b, U9b): G346 is fixed (naming a source never throws), so G330b's code-generation row left with its trigger,
+    and no other program reaches generation's exceptions without a production seam. U9b deletes the `generating` exclusion and its state:
+    `Publish` classifies its steps before and after code generation in two catches, and generation runs between them, outside both, so the
+    rule above holds by structure (no test observes it: no seam).
+- **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, PLAN G332; the owner approved the departure from K
+  package 4.6/KD9 together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known
+  limit)
   - Cause: KD9's depth 128 counted every admission (a call of a distinct definition, a comparison's part, a glue's part), so valid
     programs without growth reached `GenerationResourceLimit_Kd` (SPEC 6.1: only growth of distinct instantiations reaches a generation
     limit; IMPL 21.3.2), while it was the only bound on a DropGlue chain through a non-regular Type behind an owning handle (without it,
@@ -15250,11 +15065,7 @@ structure is recorded here by the unit that first implements it.
     site; so is any type-driven key whose Type is higher than 128. Generation and peak saturate (bytes).
   - Deleted: `DepthLimit`, its three checks, `MonoItem.Depth` and Grows' walk of the whole chain (a walk now reads at most 1,024
     identity items).
-  - Cost (`src/Benchmark --analyze-cost`, dev `443ab6d36` with bu91 against the same with U1, two interleaved runs, identical item
-    counts): a fresh check of Generic 1 allocates +0.9 to +1.4 KB (+0.01 %) and retains +808 B; of Generic 128, +65 to +67 KB (+0.14 %)
-    and +33 KB retained, about 13 B per item: `MonoItem.Growth` (two bytes and an int link, aligned) for the ushort `Depth`, and the
-    wider per-identity count key; warm Analyze allocation is unchanged (315 B to 1,200 B). The `Above` link buys a walk bounded by
-    the window instead of the chain; no allocation regression row moves.
+  - The `Above` link buys a walk bounded by the window instead of the chain; no allocation regression row moves.
   - Known limits: written growth on a non-recursive chain (17 distinct functions each adding `Option`) is GRL at generation 17; a Type
     past Binding's storage walk (a 120-struct ring) is G128's `Unsupported_Kd` at the call; a body cycle that grows but repeats only
     past the window meets Binding's storage bound (`Unsupported_Kd`) or SetLimit; a branching non-regular Type is bounded by b^16 items
@@ -15263,44 +15074,41 @@ structure is recorded here by the unit that first implements it.
   - Rejected: type-driven items inheriting the depth, a depth only on substitution-changing calls (both keep the overflow and an
     order-dependent depth); type-driven parts reading a storage verdict (leans on G128's interim bound); static recurrence over the
     definition graph; a per-definition height cap for bodies (Binding's storage bound turns polymorphic recursion into `Unsupported_Kd`
-    first); a repeat count along the window (a long cycle resets it, review 2).
+    first); a repeat count along the window (a long cycle resets it).
   - Tests: `InstanceCollectorTest.NestingWithoutGrowthHasNoLimit` (an 80-deep chain comparing a 50-deep Tuple nest; the chain ending in
     50 nested constructors; 20 structs through one shared helper) and `StorageRingsHaveNoGrowth` (50 structs; the owner's approval names
     this expectation change) fail on dev with `GenerationResourceLimit_Kd`; `AChainWithoutGrowthHasNoLimitAndTheSetLimitStopsAtItsCall`
     replaces the depth row (130 distinct functions, no record); the growth rows (`grow<Box<T>>`, the growing destructor, the tables'
     growing key, `ComponentSummaryTest`'s non-regular value, now stopped by the generation) are unchanged.
-  - Amended by G332 U2 (window): W stays 1,024 identity items, chosen from deterministic data (a throwaway probe of a fresh collector
-    over a built program, W = 128 against 1,024, interleaved twice): Generic 128 is identical (2,570 items, Work 11,793, 3,608 walk
-    steps, 1.92 MB); an 800-function chain admits the same 801 items and Work 3,199, its walk 94,272 against 320,400 steps (O(W·n),
-    review 1's N5); a growing drop glue cycle through 130 structs stops at generation 17 with 1,024 (4,164 items, 262,276 steps,
-    3.4 MB) and only at the height cap with 128 (33,023 items, 2,105,280 steps, 22.3 MB), and a body cycle longer than 128 stays
-    Resource. Timing, indicative only (unpinned, a merge window open): chain 5.6 against 3.3-4.4 ms, the cycle 15-31 against 139-160
-    ms, Generic 128 within noise; it did not decide W. Rows: `StorageRingsHaveNoGrowth` 64 (the largest ring under the storage cap)
-    and 65 (its storage-nesting gap); `GrowthStopsAtItsSite` (a mutual cycle, a non-regular value behind a handle, the 130-struct
-    cycle, a nest of 130 `W<T>` holding `Option<obj/T>`, which only the height cap refuses, a branching non-regular Type stopped at its
-    1,024 glue items, and the Known limit's
-    written growth, each at its site); `AChainWithoutGrowthScalesLinearly` (200, 400, 800 functions: items and Work in proportion).
-  - Amended (U1's defect, batch 76's Session): a refused key was not remembered, so each request of it recorded at its own site
-    (`GenericObjectFactoryTest.FactoriesKeepDestructorExpansionBounded`: a destructor creating `Expanding<Marker<T>>` requests that
-    Type's glue key from the creation, the object descriptor and the local's handle glue, three records for one cause; the depth had
-    refused one requester at the boundary). The refusal is part of the key's one admission decision, the shape of Layout's `limited`:
-    a key refused for growth, the per-identity count or the height cap enters `refused` (cleared per run) when its one record is made,
-    at the first request in admission order, and a later request finds it after `Find` and is refused without a record. Row:
+  - Amended by G332 U2 (window): W stays 1,024 identity items, chosen from deterministic data (a throwaway probe of a fresh collector over
+    a built program, W = 128 against 1,024, interleaved twice): Generic 128 is identical (2,570 items, Work 11,793, 3,608 walk steps, 1.92
+    MB); an 800-function chain admits the same 801 items and Work 3,199, its walk 94,272 against 320,400 steps (O(W·n)); a growing drop
+    glue cycle through 130 structs stops at generation 17 with 1,024 (4,164 items, 262,276 steps, 3.4 MB) and only at the height cap with
+    128 (33,023 items, 2,105,280 steps, 22.3 MB), and a body cycle longer than 128 stays Resource. Rows: `StorageRingsHaveNoGrowth` 64
+    (the largest ring under the storage cap) and 65 (its storage-nesting gap); `GrowthStopsAtItsSite` (a mutual cycle, a non-regular value
+    behind a handle, the 130-struct cycle, a nest of 130 `W<T>` holding `Option<obj/T>`, which only the height cap refuses, a branching
+    non-regular Type stopped at its 1,024 glue items, and the Known limit's written growth, each at its site);
+    `AChainWithoutGrowthScalesLinearly` (200, 400, 800 functions: items and Work in proportion).
+  - Amended (U1's defect): a refused key was not remembered, so each request of it recorded at its own site
+    (`GenericObjectFactoryTest.FactoriesKeepDestructorExpansionBounded`: a destructor creating `Expanding<Marker<T>>` requests that Type's
+    glue key from the creation, the object descriptor and the local's handle glue, three records for one cause; the depth had refused one
+    requester at the boundary). The refusal is part of the key's one admission decision, the shape of Layout's `limited`: a key refused
+    for growth, the per-identity count or the height cap enters `refused` (cleared per run) when its one record is made, at the first
+    request in admission order, and a later request finds it after `Find` and is refused without a record. Row:
     `GrowthStopsAtItsSite("requested")`. A key refused first stays refused for every later requester, the same rule as admission (the
     first admitter's chain decides); a growth refusal is order-dependent as admission is, which moves only where the record sits (G153's
     class). Rejected: suppressing duplicate records afterwards (a second decision of the same key).
-  - Amended (U2's review, B1 and B2): the height row's nest holds `Option<obj/T>`, so Layout's inline depth cannot refuse it first
-    (without the cap it has no record); the breadth row asserts its 1,024 `Nest` glue items. Admission walks only for an identity with an
-    admitted item (none can be above otherwise) and counts each step in `Work`, so `AChainWithoutGrowthScalesLinearly` observes the walk
-    (the 800-function chain walks nothing); O(W·n) stays the recorded worst case, reached by an identity whose earlier items lie off
-    the chain (e.g. two parallel chains of the same definitions), which no row covers yet.
+  - Amended (U2): the height row's nest holds `Option<obj/T>`, so Layout's inline depth cannot refuse it first (without the cap it has no
+    record); the breadth row asserts its 1,024 `Nest` glue items. Admission walks only for an identity with an admitted item (none can be
+    above otherwise) and counts each step in `Work`, so `AChainWithoutGrowthScalesLinearly` observes the walk (the 800-function chain
+    walks nothing); O(W·n) stays the recorded worst case, reached by an identity whose earlier items lie off the chain (e.g. two parallel
+    chains of the same definitions), which no row covers yet.
   - Amended by R5-M171 (G153 U1b): the height cap is a property of the Type, so its record follows R5-M171's Type rule (one per erased
     Type and declaration, at the least request) and the key enters no `refused`; growth and identity-count refusals keep one record per key.
-- **R5-M171 A Type over a layout limit is one record per declaration, at its least use (G153 U1a)** (2026-10-31, R5; PLAN G153 (1),
-  design `draft/Sketches/R5/G153-design.md` revision 1, accepted at its re-review; amends R5-M44's record clause) SPEC 23.1.2 leaves
-  grouping to the implementation; IMPL 21.3.2 reports a limit at the affected declaration, call or token; DIAGNOSTICS rule 6 orders
-  positions by structure, and by analogy with SPEC 8.3.3's limits paragraph (proof and premise limits, never dependent on the order of
-  checks) the placement follows that order, not the collection's.
+- **R5-M171 A Type over a layout limit is one record per declaration, at its least use (G153 U1a)** (2026-10-31, PLAN G153 (1); amends
+  R5-M44's record clause) SPEC 23.1.2 leaves grouping to the implementation; IMPL 21.3.2 reports a limit at the affected declaration, call
+  or token; DIAGNOSTICS rule 6 orders positions by structure, and by analogy with SPEC 8.3.3's limits paragraph (proof and premise limits,
+  never dependent on the order of checks) the placement follows that order, not the collection's.
   - Cause: one record per erased Type sat at its first use in the collector's FIFO order, so an edit elsewhere moved it to another
     function (routing one call through a generic helper), fixing one function revealed the next, and inside one generic body the order
     of its instances chose the line.
@@ -15311,9 +15119,9 @@ structure is recorded here by the unit that first implements it.
     synthesized nodes follow every parsed node). At the end of `Run` each entry is one record through `Report`, in subject order, so
     Layout records follow the run's other records. `Declaration` is memoized per item for the run (an int array cleared by `Run`, grown
     with the items, allocated at a run's first failing use), each walk filling every item it passes; its steps count in `Work`.
-  - Records: one more per extra declaration using a failing Type (none in the diagnostic snapshot, the MIR ledger, the library or the
-    milestones); an anonymous function is its own declaration, so one Type can be recorded twice on one line. Growth and identity-count
-    refusals keep R5-M170's one record per key: their cause is the chain that decided them, and a later request is their dependent.
+  - Records: one more per extra declaration using a failing Type; an anonymous function is its own declaration, so one Type can be
+    recorded twice on one line. Growth and identity-count refusals keep R5-M170's one record per key: their cause is the chain that
+    decided them, and a later request is their dependent.
   - Known limits: a shared admitted item keeps its records at its first admitter's `Site` (K 4.9), since a later request finds it and
     replays nothing: library bodies and type-driven expansions of root-module Types (`struct S { var a: Array<[2^31 of u8]> }` used as
     `Option<S>` in `d` and `e` is one record at `d`, at `e` only once `d` is gone); PLAN G153 (3) would place those per requesting
@@ -15323,27 +15131,25 @@ structure is recorded here by the unit that first implements it.
     order as "first use"; growth refusals per declaration (a non-growing call would get a growth record decided by another declaration);
     a per-item declaration field (memory on every item for a value read on failure only); the outermost named declaration (another walk;
     it groups uses fixed in different bodies).
-  - Tests: `InstanceCollectorTest.ALayoutLimitIsARecordPerDeclarationAtItsLeastUse` (two functions, two generic bodies in either
-    admission order, one generic body in either order of its instances, a function and its anonymous function, a constructor and its
-    creation, an index and an iteration), seven of its nine rows failing on dev; `ACollectionsGlueLaysOutItsElements`' limit row moves
-    from `let b`, the first glue request in drop order, to `let a`, the least (this rule's change, not a weakening).
+  - Tests: `InstanceCollectorTest.ALayoutLimitIsARecordPerDeclarationAtItsLeastUse` (two functions, two generic bodies in either admission
+    order, one generic body in either order of its instances, a function and its anonymous function, a constructor and its creation, an
+    index and an iteration); `ACollectionsGlueLaysOutItsElements`' limit row moves from `let b`, the first glue request in drop order, to
+    `let a`, the least (this rule's change, not a weakening).
   - U1b: a type-driven key whose Type passes the height cap (128) is a limit of its erased Type (`Erase(type)`, not the key's Type, which
     a comparison presets to a template node) through `Limit`, read again at each request, with no `refused` entry (R5-M170 amended).
     Rows (`AHeightCapIsATypeLimitAndASharedItemKeepsItsFirstRecord`): two functions, two records (one before); two locals of one
     function, one; the Known limit's `Option<S>` pair pinned (one record at `d`; at `e` alone once `d` is gone).
-- **R5-M172 The check path builds no code generation text; a cold scaling series is measured in one process state (G350)** (2026-11-01, R5;
-  PLAN G350, design `draft/Sketches/R5/G350-design.md` revision 2; the owner's 「G350 の本実装 お願いします」 and 「(A) 共通の計測ヘルパー」, with R4's two
-  conditions) AGENTS asks for equivalent workloads under fixed conditions and forbids a warm-up added to pass; code generation writes the
-  runtime frame (`ModuleCodegen.Frame`).
+- **R5-M172 The check path builds no code generation text; a cold scaling series is measured in one process state (G350)** (2026-11-01,
+  PLAN G350; the owner's 「G350 の本実装 お願いします」 and 「(A) 共通の計測ヘルパー」, with R4's two conditions) AGENTS asks for equivalent workloads under
+  fixed conditions and forbids a warm-up added to pass; code generation writes the runtime frame (`ModuleCodegen.Frame`).
   - Cause: the process's first `BuildMir` allocated about 8.2 MB more than any later one. The instance collector's `IntrinsicRows.Of`
     touched `LegacyRuntimeHelpers`, whose class constructor built code generation's LLVM runtime texts (`StringComparisons`,
     `FormattingRuntime`, `ArrayRuntime`; about 30 whole-text copies), so `kimi check` and the LSP paid it, and a cold scaling test whose
     smallest size was the process's first build failed when run alone.
   - Rule 1 (G350a; `LegacyRuntimeHelpers.cs`'s contract): the expanded runtime texts live in the private holder
     `LegacyRuntimeHelpers.Texts`, which the CLR's class initialization builds only when a code generation writer first reads it; the rows
-    and ABIs the collector reads stay in the class. The first `BuildMir` of a process: 11,278,440 -> 3,094,688 B (a second build 3,073,232);
-    the 132 compared fixtures' `.ll` identical. `MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild` owns the one-time cost: in a
-    fresh process the first build allocates at most 64 KB more than a second (21,456 B measured; 8,205,208 before).
+    and ABIs the collector reads stay in the class. `MirBuildTest.AFreshProcessPaysLittleOnceForItsFirstBuild` owns the one-time cost: in
+    a fresh process the first build allocates at most 64 KB more than a second.
   - Rule 2 (G350b; `AllocationMeasurement.MeasureSeries`): a cold scaling series runs one unmeasured fresh copy of its smallest size, then
     measures each size's fresh state in one `MeasureOnce` window, so a process's one-time initialization falls in no measured run and every
     size is measured in the same process state; no retry, excuse or bound. Every cold scaling series goes through it (R5's `DefaultCopies`,
@@ -15352,35 +15158,29 @@ structure is recorded here by the unit that first implements it.
     measured by its own test with a stated bound (R4's conditions: one contract naming the run, its reason and the owning test, no per-test
     warm-up loop; the owning test fails when the first build's extra allocation grows past its stated 64 KB bound). Any other added warm-up
     stays forbidden.
-  - Rejected: a warm-up inside each test (a second copy of one condition); the cause fix alone, the first ruling (21.5 KB of legitimate
-    one-time statics stayed in `RequireEnds`' smallest size against its ~17 KB tolerance); larger sizes (option (B) put to the owner; R4:
-    they dilute the cost, relax the assertion in effect and keep the order dependence); leaving tests that fail alone (an order dependence
-    hidden); a `Lazy<T>`, flag or mode for the texts; one holder per text.
-  - Open: the expansion itself at code generation (8.18 MB in 12-45 ms once per process; PLAN G358).
+  - Rejected: a warm-up inside each test (a second copy of one condition); the cause fix alone (21.5 KB of legitimate one-time statics
+    stayed in `RequireEnds`' smallest size against its ~17 KB tolerance); larger sizes (option (B) put to the owner; they dilute the
+    cost); leaving tests that fail alone (an order dependence hidden); a `Lazy<T>`, flag or mode for the texts; one holder per text.
+  - Open: the expansion itself at code generation (PLAN G358).
   - Amended by G358 (2026-11-01; closes Open): `LlvmModuleText.ExpandRuntime` expands a template in one ordered scan into one builder,
-    `AbortReasons.Expand` appending its markers' text, and the formatting runtime's parts are joined once. A fresh process, A/B over 20
-    interleaved runs: `LegacyRuntimeHelpers.Texts`' initialization 8,182,528 -> 1,463,488 B, 3.25 -> 1.24 ms (median);
-    `LlvmModuleText`'s 615,832 -> 222,024 B, 1.13 -> 1.72 ms (the new methods' JIT); the texts byte-identical.
-    `Kernel32ImportsTest.AFreshProcessBuildsTheRuntimeTextsOnce` bounds the texts' initializations at 11 B per text char (about 10
-    measured; the per-marker copies cost 51). Remaining: `Texts.ArrayRuntime`'s own `REASON_*` and `ZERO_SIZED_BUFFER` Replaces, a
-    second marker form (the planning session's new PLAN item).
-  - Amended by G366 (2026-11-02; closes G358's Remaining): `ExpandRuntime` is the only expansion of a runtime template, and its scan
-    has three marker kinds, each name's text from one owner: a definition marker line `{{<routine>}}` (the template's `FunctionAbi`
-    list, spliced exactly once), an abort marker (`abort_reasons`, `abort_reason_count`, `reason_<name>`; `AbortReasons.Expand`) and,
-    new, an ABI constant marker (`RuntimeAbi.Expand`: one name-to-constant table, `zero_sized_buffer` -> `ZeroSizedBuffer`,
-    `no_os_error` -> `NoOsError`; a further constant adds a row). The owners' names are disjoint closed sets, so asking both is
-    dispatch, not a fallback: a name neither owns fails the template. `Texts.ArrayRuntime` is
-    `ExpandRuntime(ArrayRuntimeTemplate, ArrayRuntimeDefinitions)`: its hand concatenation and four `Replace`s are gone, and its three
-    definitions are checked exactly once. Every hand-spelled copy of a table constant takes its marker: `__kimi_raw_allocate`'s 4096
-    in `WindowsRuntime.ll.in`, and Abort's os_error -2 in the Windows, Utf8 buffer, Utf8 format and Array templates (19 sites,
-    `__kimi_write_bytes`' failure result among them, and that result's comment); a C# writer writes the constant (`WriteNumber(RuntimeAbi.NoOsError)`: the Array
-    and formatting helpers, the rc and arc clones). The expanded texts and those writers' text are byte-identical (SHA-256);
-    `LlvmModuleText.Number`, which only the `Replace`s used, is gone.
-    Rejected: a marker table in `LlvmModuleText` (a third owner of the names); the constant among the abort reasons (another owner's
-    table); a `const_<name>` form read by reflection over `RuntimeAbi` (a second lookup); keeping `Replace` (a second expansion rule).
-    Open, different contracts (PLAN): the string release kinds spelled by hand, `i8 0` and `i8 1` in `__kimi_destroy_string`
-    (`WindowsRuntime.ll.in`), `zext i1 %heap to i8` in `__kimi_format_take_string` and `store i8 0` in `__kimi_format_stack_finish`
-    (`Utf8FormatRuntime.ll.in`); `__kimi_free`'s 65536 reserved-address bound.
+    `AbortReasons.Expand` appending its markers' text, and the formatting runtime's parts are joined once.
+    `Kernel32ImportsTest.AFreshProcessBuildsTheRuntimeTextsOnce` bounds the texts' initializations at 11 B per text char. Remaining:
+    `Texts.ArrayRuntime`'s own `REASON_*` and `ZERO_SIZED_BUFFER` Replaces, a second marker form.
+  - Amended by G366 (2026-11-02; closes G358's Remaining): `ExpandRuntime` is the only expansion of a runtime template, and its scan has
+    three marker kinds, each name's text from one owner: a definition marker line `{{<routine>}}` (the template's `FunctionAbi` list,
+    spliced exactly once), an abort marker (`abort_reasons`, `abort_reason_count`, `reason_<name>`; `AbortReasons.Expand`) and, new, an
+    ABI constant marker (`RuntimeAbi.Expand`: one name-to-constant table, `zero_sized_buffer` -> `ZeroSizedBuffer`, `no_os_error` ->
+    `NoOsError`; a further constant adds a row). The owners' names are disjoint closed sets, so asking both is dispatch, not a fallback: a
+    name neither owns fails the template. `Texts.ArrayRuntime` is `ExpandRuntime(ArrayRuntimeTemplate, ArrayRuntimeDefinitions)`: its hand
+    concatenation and four `Replace`s are gone, and its three definitions are checked exactly once. Every hand-spelled copy of a table
+    constant takes its marker: `__kimi_raw_allocate`'s 4096 in `WindowsRuntime.ll.in`, and Abort's os_error -2 in the Windows, Utf8
+    buffer, Utf8 format and Array templates (19 sites, `__kimi_write_bytes`' failure result among them, and that result's comment); a C#
+    writer writes the constant (`WriteNumber(RuntimeAbi.NoOsError)`: the Array and formatting helpers, the rc and arc clones).
+    `LlvmModuleText.Number`, which only the `Replace`s used, is gone. Rejected: a marker table in `LlvmModuleText` (a third owner of the
+    names); the constant among the abort reasons (another owner's table); a `const_<name>` form read by reflection over `RuntimeAbi` (a
+    second lookup); keeping `Replace` (a second expansion rule). Open, different contracts (PLAN): the string release kinds spelled by
+    hand, `i8 0` and `i8 1` in `__kimi_destroy_string` (`WindowsRuntime.ll.in`), `zext i1 %heap to i8` in `__kimi_format_take_string` and
+    `store i8 0` in `__kimi_format_stack_finish` (`Utf8FormatRuntime.ll.in`); `__kimi_free`'s 65536 reserved-address bound.
   - Amended by G371 (2026-11-02; closes G366's Open): each fact's owner publishes it and `RuntimeAbi.Expand`'s one table lists it, a
     marker being its constant's name. `RuntimeAbi`, the string representation's owner, adds `HeapReleaseKind` (1) beside
     `StaticReleaseKind` (0); `WindowsProfile`, the target profile, `UnmappedBound` (65536: Windows maps no address below 64 KiB, its
@@ -15390,18 +15190,17 @@ structure is recorded here by the unit that first implements it.
     `ExpandRuntime(text, [])`). `zext i1 %heap to i8` stays in `__kimi_format_take_string` and, found by the search,
     `__kimi_buffer_into_string`: the kinds' numbering (Static false's 0, Heap true's 1) is a checked fact,
     `Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold`, with `ZeroSizedBuffer` below `UnmappedBound` (formerly a doc comment).
-    Every expanded text byte-identical (SHA-256). Kept, other meanings: the UTF-8 and code point bounds 65536 and the writer's failed
-    flag `store i8 1` in the formatting runtime. Cost: `TestRuntime.Text`'s one build per process (a test build's first frame) allocates
-    115,280 B instead of 62,544 B (the expansion's builder and copy, which `Replace` without a `\r\n` skipped); retained unchanged.
-    `Kernel32ImportsTest.TheRuntimeTextsOfAFreshProcess` bounds it with the other texts (1,806,408 B for 185,918 chars, 11 B/char
-    allowed). Not avoided: the text holds a marker, so returning a marker-free input unexpanded would not apply.
-    Rejected: a `select` of the two kind markers (changes the text); a compile-time assertion (C# has none; a constant-overflow trick
-    would be the only one in the code); the bound in `RuntimeAbi` (a Windows fact, not the runtime's representation); a marker table in
-    `WindowsProfile` (a second expansion owner).
-- **R5-M173 Unnamed signatures kept by their inputs; one check of a request naming an item (G157 (17), (25))** (2026-11-01, R5; PLAN
-  G157 (17), (25)'s cache clause, (44)'s test; R5's U1, its review; amends R5-M102 and R5-M114) A call through a pointer (a common
-  Function value's entry, `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse;
-  it was one list searched by `Abi.Matches` on every call and never pruned.
+    Kept, other meanings: the UTF-8 and code point bounds 65536 and the writer's failed flag `store i8 1` in the formatting runtime. Cost:
+    `TestRuntime.Text`'s one build per process (a test build's first frame) allocates 115,280 B instead of 62,544 B (the expansion's
+    builder and copy, which `Replace` without a `\r\n` skipped); retained unchanged. `Kernel32ImportsTest.TheRuntimeTextsOfAFreshProcess`
+    bounds it with the other texts (11 B/char allowed). Not avoided: the text holds a marker, so returning a marker-free input unexpanded
+    would not apply. Rejected: a `select` of the two kind markers (changes the text); a compile-time assertion (C# has none; a
+    constant-overflow trick would be the only one in the code); the bound in `RuntimeAbi` (a Windows fact, not the runtime's
+    representation); a marker table in `WindowsProfile` (a second expansion owner).
+- **R5-M173 Unnamed signatures kept by their inputs; one check of a request naming an item (G157 (17), (25))** (2026-11-01, PLAN G157
+  (17), (25)'s cache clause, (44)'s test; R5's U1; amends R5-M102 and R5-M114) A call through a pointer (a common Function value's entry,
+  `Erased`; a virtual slot's, `Slot`) has no item, so its unnamed signature cannot take R5-M65's per-item reuse; it was one list searched
+  by `Abi.Matches` on every call and never pruned.
   - Memo (`ModuleCodegen.Unnamed`): a Dictionary keyed by `Abi.Of`'s inputs (`UnnamedKey`: flags, the closed result Type, the closed
     parameter Types in slot order; a BoundType is interned, so identity is equality), one ref lookup per hit (a miss also adds the key).
     The key is finer than the
@@ -15425,12 +15224,8 @@ structure is recorded here by the unit that first implements it.
   - Tests: `FunctionCodegenTest.ADestructionWithoutItsGlueTargetIsABrokenContract` (a Keep Drop, `Replace` and `DestroyOld` without
     their glue target) and `ARequestNamingAnItemOutsideGeneratedIsABrokenContract` (`Ensure` and `Row` failing before; `Wrapper`'s target
     is also recorded by its definition's `Signature`).
-  - Measured (A/B interleaved from sibling folders of equal path length): 216 Callable signatures x 4 erased calls, cold 3,003,888 ->
-    3,057,296 B, retained
-    2,560,840 -> 2,595,096 B, warm min 4.6-5.7 -> 2.1-2.3 ms; the O2 corpus' ErasedCalls, cold 114,024 -> 114,280 B, retained 93,224 ->
-    93,480 B, warm 0.18-0.36 ms in both (bimodal per process). The 69 compared fixtures' `.ll` are unchanged.
-- **R5-M174 `WindowsProfile`, the target profile (Core), and `ToolchainIdentity`, the native build's (PLAN WP)** (2026-11-01, R5;
-  design `draft/Sketches/R5/WP-design.md` revision 1; the owner's 「(b) 分割を認める」, 2026-11-01) Major, behavior-preserving.
+- **R5-M174 `WindowsProfile`, the target profile (Core), and `ToolchainIdentity`, the native build's (PLAN WP)** (2026-11-01, the owner's
+  「(b) 分割を認める」, 2026-11-01) Major, behavior-preserving.
   - Cause: the old Emission's `WindowsProfile` held two kinds of facts behind one type initializer: the windows-x64 target profile
     (IMPL 21.4) that check, code generation and target selection read, and the native-toolchain identity from the compiler's embedded
     backend record (R5-M165), which only the native build reads. Binding read `C/Emission`, and its first read of `ProvidedSymbols` or
@@ -15449,14 +15244,14 @@ structure is recorded here by the unit that first implements it.
     `x86_64-pc-windows-msvc`. The profile pins its LLVM release's layout and `IrTarget` follows LLVM's rule for every triple; the only
     reader of `IrTarget.DataLayout`'s content is `Compilation`'s emptiness check, and what the phases share is `PointerWidth`.
     `CoreModelTest.TheProfileLayoutIsItsTriplesLayout` ties the two; the unread layout is a PLAN open issue.
-  - The kernel32 reserved supply (commit 2; BU reviewed Binding's hunk): its name and symbol set (IMPL 20.4), read at native
-    resolution, are the profile's `Kernel32Library` and `Kernel32Symbols` (the runtime declarations' symbols, then the VirtualAlloc
-    family and the counter APIs: the old name, set and order); `Kernel32Imports` keeps the import library's generation identity and
-    validation and no list. `Binding/` then reads no C/Emission type, so check reads neither the toolchain identity nor `Kernel32Imports`.
-  - Rejected: moving the file to Core unchanged (Core would own P13's record, R9 would move it again, and a 210-character line); the
-    toolchain half as a `NativeToolchain` partial (four readers; its static constructor would make `NativeToolchain` precise-init, so
-    its exception filters would run the record parse); one `partial class WindowsProfile` across Core and Emission (one type initializer,
-    a type straddling P13); recording the owner without code (Binding and the Backend would still read P13's folder).
+  - The kernel32 reserved supply: its name and symbol set (IMPL 20.4), read at native resolution, are the profile's `Kernel32Library` and
+    `Kernel32Symbols` (the runtime declarations' symbols, then the VirtualAlloc family and the counter APIs: the old name, set and order);
+    `Kernel32Imports` keeps the import library's generation identity and validation and no list. `Binding/` then reads no C/Emission type,
+    so check reads neither the toolchain identity nor `Kernel32Imports`.
+  - Rejected: moving the file to Core unchanged (Core would own P13's record, R9 would move it again); the toolchain half as a
+    `NativeToolchain` partial (four readers; its static constructor would make `NativeToolchain` precise-init, so its exception filters
+    would run the record parse); one `partial class WindowsProfile` across Core and Emission (one type initializer, a type straddling
+    P13); recording the owner without code (Binding and the Backend would still read P13's folder).
   - Amends, each with its amendment line: R5-M14 (the owner it left open), R5-M163 and R5-M167 row 15 (the profile file in
     `C/Emission`); and the reduction plan's table (`WindowsProfile` to `src/Kimi/Build` at R9). For the target half only: their reason,
     nothing moves twice, holds for the toolchain identity, which R9 still moves with the toolchain, and not for the target profile, which
@@ -15468,11 +15263,10 @@ structure is recorded here by the unit that first implements it.
     SHAVE, RenderScript32/64) has no IR target; that fact is now `IrTarget.Create`'s pointer width 0 (it was 32 or 64 for them),
     `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s one check. Each width is an explicit row per architecture; an
     unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
-- **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, R5;
-  design `draft/Sketches/R5/LN-design.md` revision 2, accepted by design review 3; the owner's 「両レーンで GO！」) IMPL 20.1 names a source by
-  its project-relative path with `/` separators. Five copies disagreed on the base (the root's or the source's own project), the
-  separators, a project without a directory and a path outside the base; the cause one level higher: a name read ambient state (the
-  process's current directory) and had no change points.
+- **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
+  owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
+  root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level
+  higher: a name read ambient state (the process's current directory) and had no change points.
   - Rule 1 (U9a-1a): the base is a value Kotonoha owns and stores, `Kotonoha.Base` (replacing `SourceDirectory`, computed at each read):
     its project's directory, normalized once per value (`GetFullPath`, no trailing separator but a root's); for a module without a `Url`
     (the root) whose project has no directory, the current directory its compilation captured when created
@@ -15485,10 +15279,6 @@ structure is recorded here by the unit that first implements it.
   - Behavior (U9a-1a): a root module without a directory names and links from the captured directory: documentation names `A.kimi`
     (absolute before), hover names it (null before) and its relative links resolve (`HoverLinkTest`); a deserialized module takes its new
     compilation's directory or its deserialized `Url`'s (`KotonohaSerializationTest`).
-  - Measured (U9a-1a): one directory string per compilation (216 B for a 95-character directory, retained with the compilation);
-    `GetFullPath` of a normalized path returns it (0 B); capture and normalization 0.84 µs per compilation, a module's normalization 0.38
-    µs (an empty `CreateForTest` is 6,344 B and 8.8 µs); warm reads allocate nothing (`NoInitTest`, `AbortEmissionTest`, the hover lookup
-    tests unchanged).
   - Rule 2 (U9a-1b): the name is Kotonoha's query, `Kotonoha.LogicalName(SourceDocument)`, over the document's path and `Base`: a fully
     qualified path under the base is its remainder, any other path (outside the base, another drive, relative, `compiler://`) its own
     text, each with the host's separators as `/` (a non-Windows `\` stays a character). "Under" is a prefix test without allocation
@@ -15505,67 +15295,59 @@ structure is recorded here by the unit that first implements it.
     relative in-memory path is named as given, not resolved against the process's directory (catalog, collection name); a NUL path inside
     the project checks and its location is relative with `\u{0}` escaped (G346's check half); a path under `C:\p\AppX` is not under the
     base `C:\p\App`, and `C:/p/App/Main.kimi` is.
-  - Measured (U9a-1b): a name costs 40 B (a file directly in the base) to 112 B (a subdirectory: a remainder and its `/` copy) and about 1
-    µs once per document; a module's memo is one dictionary; a warm read is a 47 ns lookup, 0 B. The copies it replaces allocated per read
-    (`GetFullPath` and `GetRelativePath` per location text and per catalog source and sort key).
   - Tests whose trigger was a name's exception moved to another trigger, the contract unchanged: `HoverCollectionTest`'s optional
     collection failure (an invalid merge) and standalone documentation's failure (an invalid exclusion). G346's command half: a NUL
     program publishes (`EmissionArtifactsTest.ANulInsideTheProjectIsPublished`), so G330b's code-generation row lost its trigger, as
     R5-M169 foresaw, and leaves; U9b moves generation outside `Publish`'s classifying catches and deletes the exclusion.
-  - U9b (the planning session's ruling (b)): a diagnostic's displayed path (`Kimigayo.DisplayPath`, SPEC 23.4) is its remainder under the
-    project directory by the same prefix rule (`SourceIdentity.Under`), any other path as it is, so rendering a diagnostic at a NUL path
-    no longer throws out of a command (`SourceDocumentAndDiagnosticTest.RendersAPathWithANulRelativeToTheBase`, which threw).
+  - U9b: a diagnostic's displayed path (`Kimigayo.DisplayPath`, SPEC 23.4) is its remainder under the project directory by the same prefix
+    rule (`SourceIdentity.Under`), any other path as it is, so rendering a diagnostic at a NUL path no longer throws out of a command
+    (`SourceDocumentAndDiagnosticTest.RendersAPathWithANulRelativeToTheBase`, which threw).
   - U9a-2: hover's rule: `Kotonoha.HoverSourceName(SourceDocument)` is the query, asked live, and none only for a built-in (`compiler://`)
     or Mod-generated document, so an outside, other-drive or other `://` source is named by its own text, never relative to the consuming
     project (`HoverImprovementsTest`, null before). A node's document is named, and its hover project taken, by the module the document
     came from (`CodeContext.SourceModule`, which a cross-module move keeps): every reader of a node's document name asks
     `CodeContext.SourceName`, the one access path (the location table, the test catalog's cases and sites), and hover asks the same module
     (`AMovedDeclarationKeepsItsDocumentsName`, `AMovedFunctionsLocationKeepsItsDocumentsName`, `AMovedTestKeepsItsDocumentsName`: the
-    moved-into module before); `HoverBuilder`'s per-build name cache is deleted (a repeated hover build of eight documents 265,952 ->
-    264,952 B; names stay memoized in their module). Path containment under the host's comparison is `SourceIdentity.Under`, beside
-    `PathComparison`, read by `LogicalName` and the displayed path. A document whose path has no identity (NUL: no client can name it) has
-    no hover, so a hover build over it no longer throws: `SourceIdentity.TryFromPath` is the one non-throwing form, which `TryFromUri`,
-    the LSP's project setting and its TestSources members also read (their copies gone); `FromPath` still rejects such a path
+    moved-into module before); `HoverBuilder`'s per-build name cache is deleted (names stay memoized in their module). Path containment
+    under the host's comparison is `SourceIdentity.Under`, beside `PathComparison`, read by `LogicalName` and the displayed path. A
+    document whose path has no identity (NUL: no client can name it) has no hover, so a hover build over it no longer throws:
+    `SourceIdentity.TryFromPath` is the one non-throwing form, which `TryFromUri`, the LSP's project setting and its TestSources members
+    also read (their copies gone); `FromPath` still rejects such a path
     (`HoverImprovementsTest.AHoverSnapshotLeavesOutADocumentNoClientCanName`).
   - U9a-3a: the check of a module's names, `Kotonoha.CheckNames` (memoized with the names, emptied when a document is recorded), at one
     site, `Project.CheckFrontEnd` once every source is established, for every source module (the root's and each dependency's): names
     equal under simple case folding (CaseFolding.txt's C and S, never full folding: ß and ss differ), twins included, are
     `ProjectPreparationFailed_Kd` at the root project file, Blocked before the front end (`CheckServiceTest`, accepted before). Each
-    independent failure is its own record (SPEC 23.1.2; review B6): every module is checked, and each name not in NFC and each group of
-    names equal under folding is one record, a group of three naming all three (one failure: the names share one folded spelling, and
-    naming the group shows every name to rename; `DiagnosticOwner.Report` keeps records with different notes apart). The note names the
-    module (a dependency's failure is reported at the root project file, the one check site, rather than through `DependencyResolver`).
-    Names are compared within one module: a root `Main.kimi` beside a dependency's `main.kimi` is accepted. SPEC 18.6 makes TestSources
-    test-only, and only test builds read them (the commands' rule), so a product source and a TestSources entry equal under folding are
-    reported by `kimi test`, not by `check` or `build`. A name not in NFC joins no fold group: two such names equal under folding get
-    their NFC records only, a dependent failure, which SPEC 23.1.2 lets an implementation leave unreported. `OrdinalIgnoreCase` is not the
-    rule: it misses U+1E9E/U+00DF and U+017F/s. The data are pinned like `MarkdownUnicodeData`: Unicode 15.0.0 CaseFolding.txt (SHA-256
-    cdd49e55…a56f7, checked by `GenerateNameUnicode.ps1`, which writes `UnicodeNameData.cs`), 1,454 pairs (11,632 B of data, a 25,135 B
-    source file); `UnicodeNameHelper.SimpleCaseFolding` compares without allocation, a lone surrogate being its own code unit. Folding
-    compares names as given: two names equal after folding only through different normalization (a precomposed and a decomposed letter)
-    are distinct here, and U9a-3b's NFC check, which `CheckNames` runs first, rejects the non-NFC one. Measured: 100 names, the first
-    check 3,128 B and about 0.1 ms over their names; a repeated check 0 B.
+    independent failure is its own record (SPEC 23.1.2): every module is checked, and each name not in NFC and each group of names equal
+    under folding is one record, a group of three naming all three (one failure: the names share one folded spelling, and naming the group
+    shows every name to rename; `DiagnosticOwner.Report` keeps records with different notes apart). The note names the module (a
+    dependency's failure is reported at the root project file, the one check site, rather than through `DependencyResolver`). Names are
+    compared within one module: a root `Main.kimi` beside a dependency's `main.kimi` is accepted. SPEC 18.6 makes TestSources test-only,
+    and only test builds read them (the commands' rule), so a product source and a TestSources entry equal under folding are reported by
+    `kimi test`, not by `check` or `build`. A name not in NFC joins no fold group: two such names equal under folding get their NFC
+    records only, a dependent failure, which SPEC 23.1.2 lets an implementation leave unreported. `OrdinalIgnoreCase` is not the rule: it
+    misses U+1E9E/U+00DF and U+017F/s. The data are pinned like `MarkdownUnicodeData`: Unicode 15.0.0 CaseFolding.txt (SHA-256
+    cdd49e55…a56f7, checked by `GenerateNameUnicode.ps1`, which writes `UnicodeNameData.cs`), 1,454 pairs;
+    `UnicodeNameHelper.SimpleCaseFolding` compares without allocation, a lone surrogate being its own code unit. Folding compares names as
+    given: two names equal after folding only through different normalization (a precomposed and a decomposed letter) are distinct here,
+    and U9a-3b's NFC check, which `CheckNames` runs first, rejects the non-NFC one.
   - U9a-3b: `CheckNames` first rejects a name not in NFC (or ill-formed UTF-16), then folds. NFC has one check,
     `UnicodeIdentifierHelper.IsNormalized` (identifiers' too), whose canonical combining classes now come from the complete table
-    `UnicodeNameData.CombiningClasses` (UnicodeData.txt, SHA-256 806e9aed…f76a73; 388 ranges, 4,656 B) instead of the identifier
-    properties, which held them for identifier scalars only; identifiers' results are unchanged (their classes are equal). A probe against
-    the pinned UnicodeData.txt and DerivedNormalizationProps.txt (SHA-256 d5687a48…e12a29) confirmed the existing tables are complete:
-    2,061 canonical decompositions, and 941 compositions, exactly the two-scalar decompositions outside Full_Composition_Exclusion, none
-    missing or extra; so no other data was added. Tests: a decomposed letter, U+037E (a non-identifier singleton) and marks out of
-    canonical order are rejected (`CheckServiceTest.SourceNamesAreInNfc`, accepted before). Measured: 100 non-ASCII names, the first check
-    3,128 B (NFC allocates nothing) and about 0.2 ms over their names; a repeated check 0 B.
+    `UnicodeNameData.CombiningClasses` (UnicodeData.txt, SHA-256 806e9aed…f76a73) instead of the identifier properties, which held them
+    for identifier scalars only; identifiers' results are unchanged (their classes are equal). Tests: a decomposed letter, U+037E (a
+    non-identifier singleton) and marks out of canonical order are rejected (`CheckServiceTest.SourceNamesAreInNfc`, accepted before).
   - Rejected: (A′) a name stored on `SourceDocument` at parse (stale after the setter; four creators); (A″) the base read at query time
     from the process's current directory (ambient state, no change points; a warm read allocates); (B) a shared helper taking a base
     (every reader still chooses the base); (C) naming at the input layer (in-memory, deserialized, generated and library documents need
     other paths).
   - Amended by R5-M176 (PLAN G364): `Kotonoha`, the owner of the names, also owns the logical declaration order (SPEC 6.2.1) they
     define, through `Kotonoha.AddSources`; `TestCatalog` no longer sorts a module's documents itself.
-- **R5-M176 One owner of the logical declaration order: `Kotonoha.AddSources` (PLAN G364)** (2026-11-02, R5; the owner's
-  「G364から始めて」; amends R5-M175) SPEC 6.2.1 orders declarations from different SourceDocuments by the documents' logical names as
-  UTF-8 byte sequences, then by position; Field initializers run in that order and Fields are destroyed in reverse (SPEC 6.2, 16.3.2),
-  so the order is observable. The compiler's order was its parse order: `Project` parsed product sources as `GetFiles` listed them
-  (UTF-16 ordinal full paths), TestSources after them and `Project.AddSource`'s in-memory documents last, and `TestCatalog` re-sorted a
-  module's documents under UTF-16 ordinal for the artifact identity, a second copy of an order.
+- **R5-M176 One owner of the logical declaration order: `Kotonoha.AddSources` (PLAN G364)** (2026-11-02, the owner's 「G364から始めて」; amends
+  R5-M175) SPEC 6.2.1 orders declarations from different SourceDocuments by the documents' logical names as UTF-8 byte sequences, then by
+  position; Field initializers run in that order and Fields are destroyed in reverse (SPEC 6.2, 16.3.2), so the order is observable. The
+  compiler's order was its parse order: `Project` parsed product sources as `GetFiles` listed them (UTF-16 ordinal full paths),
+  TestSources after them and `Project.AddSource`'s in-memory documents last, and `TestCatalog` re-sorted a module's documents under UTF-16
+  ordinal for the artifact identity, a second copy of an order.
   - Rule: `Kotonoha`, which owns the logical names (R5-M175), owns their order. `Kotonoha.AddSources(IReadOnlyList<SourceDocument>)`
     records and parses one call's documents in a stable sort by `LogicalName` under `UnicodeNameHelper.ScalarOrder` (equal names, which
     `CheckNames` reports, keep their given order), after every earlier call's documents; `AddSource(document)` is its one-document form.
@@ -15596,17 +15378,12 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a sort in `Project` (the order would have a second owner beside the names' owner, and `TestCatalog` kept its own copy);
     sorting the reads (reads and their failures are consumed in command order, SPEC 23.2.2); `StringComparer.Ordinal` (UTF-16 order,
     wrong where a supplementary scalar meets U+E000–U+FFFF).
-  - Tests: `CheckServiceTest.SourceNamesOrderAsUtf8Bytes` and `LoneSurrogatesOrderByTheirCodeUnits` (the comparer) fail under an
-    ordinal comparer, and so does `DocumentationIntegrationTest.OrdersFragmentsAndKeepsGeneratedSourcesWithoutLinkBases`'s U+FF21 and
-    U+1F600 pair (documentation); `ContainerFragmentBindingTest.FieldsFollowTheLogicalDeclarationOrder` (SPEC 6.2.1's example, two
-    documents given in reverse) and `CheckServiceTest.SourcesAreParsedInLogicalDeclarationOrder` (a TestSources entry and an in-memory
-    source between product sources, a U+FF21 name before a U+1F600 one) fail under `AddSources` without its sort (the parse order).
-- **R5-M177 One owner of the configuration rules, the TestSources rule included; each failure its own record (PLAN G367)**
-  (2026-11-02, R5; the owner's list 「現状出来る作業（G367、G359、G357、G363、G366、U11など）を、順に行ってください。」) SPEC 23.1.2
-  reports each independent failed requirement. `DependencyConfiguration.Validate` and `NativeConfiguration.Validate` returned the
-  first failure, so a load, a preparation and `Compilation.Prepare` each reported one; the duplicate-TestSources rule (IMPL 20.1:
-  entries compared as resolved paths) had three copies stopping at the first duplicate (`Project.BuildTargets`, `PrepareTests`,
-  `DependencyResolver.Load`) and a fourth, ordinal one in `Validate`.
+- **R5-M177 One owner of the configuration rules, the TestSources rule included; each failure its own record (PLAN G367)** (2026-11-02,
+  the owner's list 「現状出来る作業（G367、G359、G357、G363、G366、U11など）を、順に行ってください。」) SPEC 23.1.2 reports each independent failed requirement.
+  `DependencyConfiguration.Validate` and `NativeConfiguration.Validate` returned the first failure, so a load, a preparation and
+  `Compilation.Prepare` each reported one; the duplicate-TestSources rule (IMPL 20.1: entries compared as resolved paths) had three copies
+  stopping at the first duplicate (`Project.BuildTargets`, `PrepareTests`, `DependencyResolver.Load`) and a fourth, ordinal one in
+  `Validate`.
   - Rule: `DependencyConfiguration` owns every configuration rule. `Validate(ProjectFile)` (directory-free: the load and
     `Compilation.Prepare`) and `Validate(ProjectFile, directory, out testSources)` (the same plus the TestSources compared as resolved
     paths, and the resolved set: product and test preparation, the resolver) return one note per independent failure, empty and
@@ -15650,20 +15427,8 @@ structure is recorded here by the unit that first implements it.
     Kept: a Tinyhand syntax failure stays one `TinyhandException`; a test target that cannot be selected stays a throw.
   - Rejected: validating the configuration only at preparation (the language server's project item reads the maps after the load); a
     mode flag or an optional directory steering one `Validate`; joining the notes into one record's text.
-  - Tests: `DependencyConfigurationTest.EachIndependentConfigurationFailureIsReported` (four records; one before),
-    `CheckServiceTest.EachDuplicateTestSourceIsReported` and `PreparationReportsEachConfigurationFailure` (product and test; one
-    record, or a load failure, before), `CheckJsonOutputTest.EachConfigurationFailureOfAnUnloadedProjectIsReported` (two
-    `ProjectLoadFailed_Kd`; one before); `ANullMapLeavesOutTheChecksThatReadIt` is the dependent counterpart. G367b:
-    `DependencyResolutionTest.EachIndependentGraphFailureIsReported` (five failures, a failed node's reference left out) and
-    `CheckServiceTest.EachIndependentDependencyFailureIsReported` (two records in product and test checks; one before). Review:
-    `AnInvalidPackagedSupplyLeavesTheOtherMergesChecked` (two records; one before), `EachRequirementOfAPackagedSupplyIsReported`
-    (three; two before), `AFailedProjectReachedTwiceIsReportedOnce` (one failure; two before). G367c:
-    `CompilationSpecificationTest.EachIndependentPreparationFailureIsReported` (three records, four with an unsupported target; one
-    before), `EachRepeatedSettingIsALoadFailure` (five notes, the invalid PackageId included; one `TinyhandException` before), `DependencyConfigurationTest.
-    EachGraphFailureIsReported` (two settings and three supply records; one before), `CheckServiceTest.EachTestSettingFailureIsReported`
-    (three records; one before).
 - **R5-M178 The built-in Conditions `os` and `arch` by IMPL 20.2.1's table: `TargetTriple.OsFamily` and `ArchFamily` (PLAN G370)**
-  (2026-11-02, R5; G363's review) Major.
+  (2026-11-02, G363's review) Major.
   - Cause: `Compilation.Prepare` derived `os` from LLVM's OS classification (`OsType`: two switch arms, any other OS its enum name)
     and `arch` from the `Architecture` enum's name, so `darwin` gave `darwin`, `freebsd13.2` `freebsd`, `armv7` `arm` and `x86_64h`
     `x86_64`, where IMPL 20.2.1 gives `macos`, `unknown`, `unknown` and `unknown`.
@@ -15678,43 +15443,33 @@ structure is recorded here by the unit that first implements it.
   - Rejected: keying the table on `OsType` and `Architecture` (LLVM's prefix and alias matches would give `linuxfoo`, `x86_64h` or
     `arm64e` a family IMPL does not list, and keep a 320-line OS parse for one Condition); a switch per form in Compilation (a
     consumer deciding what the triple's owner publishes).
-- **R5-M179 Constant integer tables as little-endian bytes: `IntegerTable<T>` (PLAN G357)** (2026-11-02, R5; the owner:
-  「(ii) テーブルを byte 列にして、リトルエンディアンで読み出す」) Major.
-  - Cause: under Debug's JIT minopts a constant collection expression of a non-byte element converted to `ReadOnlySpan<T>` compiles
-    to `RuntimeHelpers.CreateSpan`, whose `ldtoken` allocates a 72 B `RuntimeFieldInfoStub` per call; Release (tier-0 included)
-    folds it. The six generated Unicode tables (82,776 B) were such spans, so `Tokenizer.ReadNonAsciiIdentifier` allocated and
-    `LexicalLayoutRecoveryTest.OrdinaryIndentationAndUnicodeReuseTokenStorage` measured 1,728 B in Debug. A constant
-    `ReadOnlySpan<byte>` is static data in every configuration.
+- **R5-M179 Constant integer tables as little-endian bytes: `IntegerTable<T>` (PLAN G357)** (2026-11-02, the owner: 「(ii) テーブルを byte
+  列にして、リトルエンディアンで読み出す」) Major.
+  - Cause: under Debug's JIT minopts a constant collection expression of a non-byte element converted to `ReadOnlySpan<T>` compiles to
+    `RuntimeHelpers.CreateSpan`, whose `ldtoken` allocates a 72 B `RuntimeFieldInfoStub` per call; Release (tier-0 included) folds it. The
+    six generated Unicode tables were such spans, so `Tokenizer.ReadNonAsciiIdentifier` allocated and
+    `LexicalLayoutRecoveryTest.OrdinaryIndentationAndUnicodeReuseTokenStorage` measured 1,728 B in Debug. A constant `ReadOnlySpan<byte>`
+    is static data in every configuration.
   - Rule: a constant table of integers is stored as little-endian bytes, which its owner publishes as `ReadOnlySpan<byte>`, and its
     one reader wraps them once in `Helper/IntegerTable.cs`'s `IntegerTable<T>` of the element type (`int` or `ulong`, specialized
     by the JIT): `Length` (the element count) and `this[index]` (one range check and one load, as an integer span's; the element's
     bytes reversed on a big-endian host), so the readers index it as before.
   - Tables: `UnicodeIdentifierData.Properties` and `Decompositions` (were `uint`; every value is below 2^31) and
     `UnicodeNameData.SimpleCaseFolding`, `CombiningClasses` and `MarkdownUnicodeData.Punctuation` are read as `IntegerTable<int>`;
-    `UnicodeIdentifierData.Compositions` as `IntegerTable<ulong>`. `GenerateNameUnicode.ps1` and `GenerateMarkdownUnicode.ps1` emit
-    the byte form (decimal bytes, 24 a line: the three sources grow from 174,765 to 321,466 B; Kimi.dll by 512 B);
-    `UnicodeIdentifierData`, which has no generator, was converted once with every value shown equal.
+    `UnicodeIdentifierData.Compositions` as `IntegerTable<ulong>`. `GenerateNameUnicode.ps1` and `GenerateMarkdownUnicode.ps1` emit the
+    byte form (decimal bytes, 24 a line); `UnicodeIdentifierData`, which has no generator, was converted once with every value shown
+    equal.
   - Departures from the planning session's design, which it took on figures: the read is a `MemoryMarshal.Cast` element, because
-    `BinaryPrimitives.Read*LittleEndian` at index × width adds a range check per read (identifiers 1.15–1.34×, tokenizing
-    1.08–1.24×, names 1.06–1.22×); and each reader wraps its bytes, because a typed getter (`Int32Table X => new([..])`) is not
-    inlined without PGO (1.08–1.14×).
-  - Measured (Release, interleaved, pinned, against a copy of the base as control C; new/base): the result depends on the run's
-    window. Default settings: identifiers 0.974–1.068 (C 0.986–1.035), tokenizing 0.989–1.029 (C 0.989–1.030); the reviewer's run
-    1.035 and 1.026 (C 1.008, 1.005). With `DOTNET_JitAlignLoops=0`: 0.968 and 0.989 (C 1.006, 1.002); the reviewer's 0.975 and
-    0.984 (C 1.016, 1.005). Names and Markdown are level. Cause: loop alignment, not the table form. In Tier1 `GetProperties` the
-    new loop is three instructions shorter (it compares 32-bit values straight from memory, where the base loaded, sign-extended
-    and compared 64-bit) and unpadded, where the base's, under Dynamic PGO, has 5 B of padding (the new one's profile is
-    Synthesized).
-  - Rejected: (i) `static readonly` arrays (about 83 KB per process) and (iii) Debug `Purpose=Allocation` results as advisory (the
-    owner); accessors on each table's owner (the rule spelled in three files and two generators, and wordier readers); a reader
-    type per width (`Int32Table`, `UInt64Table`: near-copies of one rule; the generic reader's Tier1 readers take the same forms
-    and its timing is level: identifiers 0.963, tokenizing 1.003 of the two types'); `IBinaryInteger<T>.ReadLittleEndian` on
-    little-endian hosts (branches on length and sign); a `typeof(T)` dispatch through `object` (boxes under minopts, the cause
-    itself).
+    `BinaryPrimitives.Read*LittleEndian` at index × width adds a range check per read; and each reader wraps its bytes, because a typed
+    getter (`Int32Table X => new([..])`) is not inlined without PGO.
+  - Rejected: (i) `static readonly` arrays (about 83 KB per process) and (iii) Debug `Purpose=Allocation` results as advisory (the owner);
+    accessors on each table's owner (the rule spelled in three files and two generators, and wordier readers); a reader type per width
+    (`Int32Table`, `UInt64Table`: near-copies of one rule); `IBinaryInteger<T>.ReadLittleEndian` on little-endian hosts (branches on
+    length and sign); a `typeof(T)` dispatch through `object` (boxes under minopts, the cause itself).
   - Open: no mechanical rule stops a new non-byte constant `ReadOnlySpan<T>` table, which would bring the Debug allocation back;
     none is added.
-- **R5-M180 One owner of the URI a sent location names: `LspSession.UriOf` (PLAN G237)** (2026-11-02, R5; the owner's request to
-  start G237) Major.
+- **R5-M180 One owner of the URI a sent location names: `LspSession.UriOf` (PLAN G237)** (2026-11-02, the owner's request to start G237)
+  Major.
   - Cause: the server names a document by `SourceIdentity` (`Path.GetFullPath`: 8.3 names expanded, `..` resolved) and published a
     document's list under the URI the client opened it with, but the worker spelled related locations canonically
     (`WorkspaceCheck.Place`, `ToUri()`) and hover links by their file URI (`HoverPlacement.Map`), so a related location or a link into
@@ -15744,20 +15499,9 @@ structure is recorded here by the unit that first implements it.
     canonical URI back to an identity when sending (a second parse path, an allocation per location); a JSON converter (it cannot see
     the open documents, and repeat suppression would compare unspelled payloads); discarding HoverStates on an open or a close (no
     Hover until the next adoption); keeping `FileUri` beside `ToUri` (two canonical spellings of one file).
-  - Tests: `LspProjectDiagnosticTest.ADocumentOpenedUnderAnotherSpellingGetsItsLocationsUnderThatSpelling` (the related location, and
-    the clear after the close, under that spelling; the canonical URI before) and
-    `LspHoverTest.LinksNameAnOpenDocumentAsTheClientSpelledIt` (a link to a document opened under the spelling while its unit's result
-    is kept, the file URI again after the close; the file URI before), each for a `..` spelling (every host) and the directory's 8.3
-    short name (skipped where the volume has none); `LspProjectDiagnosticTest.ANeverNamedDocumentIsSentUnderItsPathsUri` (`a%41.kimi`,
-    `a%2e%2e.kimi`: the published URI names the file and the hover link is that URI; `aA.kimi` and `a...kimi` before);
-    `LspCodeActionTest.AQuickFixsDiagnosticSpellsItsRelatedLocationsAsPublished` (the quick fix's related locations equal the
-    published ones; without `Spell` there, they lack their URI);
-    `LspProjectDiagnosticTest.ARelatedLocationIsRespelledWhenItsDocumentOpens` (a related location into another document is resent
-    under the spelling it is opened with; none is resent without `Respell`'s generation); `HoverLinkTest.ADevicePathHasNoLink` (no
-    link, where `ToUri` threw out of the Hover).
   - Unverified: non-Windows hosts (the `\` escape and `TryToUri` there).
-- **R5-M181 A publication failure leaves code generation's records (PLAN G157 (7))** (2026-11-02, R5; under R5-M165, R5-M169 and
-  Q13; amends R5-M165 with its amendment line) Minor.
+- **R5-M181 A publication failure leaves code generation's records (PLAN G157 (7))** (2026-11-02, under R5-M165, R5-M169 and Q13; amends
+  R5-M165 with its amendment line) Minor.
   - Cause: `EmissionArtifacts.Publish` checks its inputs (the embedded backend record, paths, native configuration and supplies,
     `LlvmBin`, the output) before code generation and returned at a failure, its record replacing the partition's, so generation never
     ran: its records (a gate step 2 refusal, a code generation `InternalInvariant_Kd` or `Unsupported_Kd`) and its fault were lost.
@@ -15769,12 +15513,11 @@ structure is recorded here by the unit that first implements it.
     Every publication is a generation request (R5-M165's clearing holds: generation clears).
   - Rejected: checking the configuration after generation (a generation fault would hide it, and the backend checks read the embedded
     record); carrying the failure across generation in the method (every path variable needs a placeholder value).
-  - Test: `EmissionArtifactsTest.AConfigurationFailureLeavesGenerationsRecords` (an unused non-.lib input and a Drop without a verdict;
-    fail-first: only the publication record). A generation fault beside such a failure was verified by the review's throwaway
-    reflection probe (`CheckFaulted_Kd` and the publication record; the base only the latter); no lasting test, since no program makes
-    generation throw without a production seam (R5-M175).
-- **R5-M182 R6-check's design H0 (OQ11)** (2026-11-02, the owner, verbatim 「1承認します 2はい 3はい」 answering the approval of H0, O-1 and O-2; R5's
-  planning session, design review ACCEPT after one revision; under R4-M35, R5-M1 and Q13)
+  - Test: `EmissionArtifactsTest.AConfigurationFailureLeavesGenerationsRecords` (an unused non-.lib input and a Drop without a verdict). A
+    generation fault beside such a failure was verified by the review's throwaway reflection probe (`CheckFaulted_Kd` and the publication
+    record; the base only the latter); no lasting test, since no program makes generation throw without a production seam (R5-M175).
+- **R5-M182 R6-check's design H0 (OQ11)** (2026-11-02, the owner, verbatim 「1承認します 2はい 3はい」 answering the approval of H0, O-1 and O-2;
+  under R4-M35, R5-M1 and Q13)
   - Design: `draft/Sketches/R6-check/H0-design.md` with parts H0a, H0b and H0c is the owner-approved design for H1-H5 and the order of
     H6-H15. Division (the owner, 2026-11-02): R5 leads R6-check, R4 owns the MIR side, BU the Binding side.
   - Groups: G:R6-check-flip (H1, H1b, Q8-3, H5 with H6: one branch, one group review, one merge, after H1a, Q8-6, H3 and H4); G:check-tests
@@ -15795,34 +15538,34 @@ structure is recorded here by the unit that first implements it.
     at H5.
   - O-1 (the owner's 「はい」): COMPILER_ARCHITECTURE's D5 freeze lists R4-M159's G273 exception (recorded with this entry). Open: R4's answers
     R4-1..R4-13 and BU-2 (H0 §8); BU answered BU-1, BU-3, BU-4, BU-5.
-  - Amended (revision 2, 2026-11-02; R4's answers R4-1..R4-11 and review ACCEPT, BU's answers BU-1..BU-5; draft/Sketches/R6-check/ on dev
-    bbc545b61): H3-1 lands in R4's chain before 2g-1, its folded records with their own body value `MirProblem.Records`; `MirReport.Records`
-    exposes its member problems, is computed once per version and emits the cross-body disagreement as its own record (R4-M71's amendment at
-    H3-2); the `Incomplete` contract lands first as R4's unit IC; H4 gives the seven Kimi-bodied Array 'None' operations rows (four new
-    KimiDeclarationId members), other families body-composed, no premise mode; H3-2 lands with a null `FailureCauses` as
-    `InternalInvariant_Kd` after 2g-1 sites every Binding cause at its failed node; G157 (1) is H7's prerequisite (R5); H2 void (A-5 met);
-    R4-M108's H11 list joins H11. R4-12 and R4-13 (the owner, 2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」 (R4's dialog; PLAN d2ee0e158)):
-    `RequirementImplementation` is retagged to R7 with its one reader, the R7-tagged private composition (an owner-approved postponed
-    removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at H3b, accepted until G121's construct design.
+  - Amended (revision 2, 2026-11-02; R4's answers R4-1..R4-11, BU's answers BU-1..BU-5): H3-1 lands in R4's chain before 2g-1, its folded
+    records with their own body value `MirProblem.Records`; `MirReport.Records` exposes its member problems, is computed once per version
+    and emits the cross-body disagreement as its own record (R4-M71's amendment at H3-2); the `Incomplete` contract lands first as R4's
+    unit IC; H4 gives the seven Kimi-bodied Array 'None' operations rows (four new KimiDeclarationId members), other families
+    body-composed, no premise mode; H3-2 lands with a null `FailureCauses` as `InternalInvariant_Kd` after 2g-1 sites every Binding cause
+    at its failed node; G157 (1) is H7's prerequisite (R5); H2 void (A-5 met); R4-M108's H11 list joins H11. R4-12 and R4-13 (the owner,
+    2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」): `RequirementImplementation` is retagged to R7 with its one reader, the R7-tagged private
+    composition (an owner-approved postponed removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at
+    H3b, accepted until G121's construct design.
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
-  - Amended (R6-check H3-1, 2026-11-03, bp; R4's design stop and R5's agreement as the H0 package's owner, relayed by the planning
-    session): the folded records take two body values, `MirRecordClass.Construction` and `MirRecordClass.Collection` (both no body,
-    distinct from `NoBody`; an enum, so a class is a checked selector, R5's review N2/N3), superseding H0a §3.1's single `MirProblem.Records`, which could not meet its own bp contract: the ledger's `Sides`,
-    `VerifiedSpecExampleTest` and `MirDump` read construction records only, and today's two `reported` sets keep a construction and a
-    collection record at one (code, site) apart. `MirProgram.Report(site, code, recordClass)` adds a ControlFlow problem of every view; the
-    `reported` sets, `MirProgram.Records`' list and `CheckedSet.Records`/`Report` go; `MirProgram.Records(recordClass)` is the one path to a
-    class's rows (R5's condition), and a reader of the analyses' problems skips records by `MirProblem.IsRecord`, the one definition.
-    `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records; `MirProgram.Problems`'
-    "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads "body Construction or
-    Collection" where H0a §2 says "body `Records`".
+  - Amended (R6-check H3-1, 2026-11-03, bp; R4's design stop and R5's agreement as the H0 package's owner): the folded records take two
+    body values, `MirRecordClass.Construction` and `MirRecordClass.Collection` (both no body, distinct from `NoBody`; an enum, so a class
+    is a checked selector), superseding H0a §3.1's single `MirProblem.Records`, which could not meet its own bp contract: the ledger's
+    `Sides`, `VerifiedSpecExampleTest` and `MirDump` read construction records only, and today's two `reported` sets keep a construction
+    and a collection record at one (code, site) apart. `MirProgram.Report(site, code, recordClass)` adds a ControlFlow problem of every
+    view; the `reported` sets, `MirProgram.Records`' list and `CheckedSet.Records`/`Report` go; `MirProgram.Records(recordClass)` is the
+    one path to a class's rows (R5's condition), and a reader of the analyses' problems skips records by `MirProblem.IsRecord`, the one
+    definition. `MirProgram.Clear` resets the report with the bodies (R4-M3a's stage item done, extended to the collector's records;
+    `MirProgram.Problems`' "only `MirAnalysis` resets them" void); `MirAnalysis.Run` keeps only `Drops`' reset. H3-2's publisher reads
+    "body Construction or Collection" where H0a §2 says "body `Records`".
   - Amended (the R7, R8 and R9 plan, R7-M2, 2026-11-03; the owner's RQ1): the division's windows stay R5's through the flip group's
     (H1, H1b, Q8-3, H5 with H6); from the window after it the middle session (today's R4) runs every window. H3b's rehearsal and
     classification stay R5's.
   - Amended (R6-check H3-2 U1a, 2026-11-03; R4's consent, 2026-11-03, to R5's implementer writing it in `MirReport`): `MirReport.Records`
-    (H0a, revision 2) is named `MirReport.Merged`, since H3-1's class helper on `MirProgram` reads by class (review N7, N-b). The merge
-    across bodies is `Merged`'s (H0a §3.2): one merged problem per (code, subject, Reason, class), with its members and `Ordinal`,
-    computed once per version.
+    (H0a, revision 2) is named `MirReport.Merged`, since H3-1's class helper on `MirProgram` reads by class. The merge across bodies is
+    `Merged`'s (H0a §3.2): one merged problem per (code, subject, Reason, class), with its members and `Ordinal`, computed once per
+    version.
   - Superseding (H3-2; R5 and R4, 2026-11-03, R4 agreeing): 2g-1 left R4's chain at the exit (G396), so H3-2 does not wait for it. Until
     2g-1 a MIR problem resting on a Binding failure carries no Cause fact and publishes as its own direct record, dependent under Q13
     (counted by code, never blocking, never `InternalInvariant_Kd`; an analysis `InternalInvariant_Kd` stays a regression). H0a §4.2's
@@ -15836,8 +15579,8 @@ structure is recorded here by the unit that first implements it.
     2g-D–2g-7, A-4) → … → H3-2'. Removal condition: 2g-1.
   - Amended (the H5 split plan's ruling X1, 2026-11-03): PD29 holds per merge: F stops both old producers; the dead code goes in D1-D3 of
     the same group merge.
-- **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
-  「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
+- **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
+  under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
     collected. A record that reads such a body (its own A3b checks and layout obligations, an instance it alone requests, a summary
     composed from it) is its finding's dependent. Acceptance never moves: a finding is a MIR record, so check refuses the program.
@@ -15851,50 +15594,45 @@ structure is recorded here by the unit that first implements it.
     other read is of an admitted item's body. A refused request records nothing; `Report` is unchanged.
   - Deletions: `InstanceCollector.Run`'s `Findings.Count > 0` return and its header invariant "a program with validator findings has
     an empty set"; `MirBuilder.Defaults.cs`'s `Findings.Count` difference and its `findings` local (`Failed` reads `this.body.HasFinding`).
-  - Consents (R4, 2026-11-03): the W1 hold files `MirBody.cs` and `MirValidator*.cs` for this unit (not `MirValidator.SharedPaths.cs`);
-    `MirBuilder.Defaults.cs` for that one line only, tested by the defaults rows that pin `Failed`.
-  - Staged (U2, R4's `Mir/Analysis/**`, with R4's consent on the design's §4 hunk): `MirAnalysis.Run` skips a body with the fact in its
-    steps 1, 2 and 4 (`MirDrops.Exclude` closes its empty table entry); A4 composes such a body as `Derived` (one private `Views`); the
-    initialization proof that consults one rests on it (`Proved` returns `bool?`; `Met` drops only its first block's record and falls
-    through, `Destroying` makes none). Until U2, `MirAnalysis.Run` keeps its all-or-nothing `Findings.Count > 0` return (removal
-    condition: U2).
+  - Staged (U2, R4's `Mir/Analysis/**`): `MirAnalysis.Run` skips a body with the fact in its steps 1, 2 and 4 (`MirDrops.Exclude` closes
+    its empty table entry); A4 composes such a body as `Derived` (one private `Views`); the initialization proof that consults one rests
+    on it (`Proved` returns `bool?`; `Met` drops only its first block's record and falls through, `Destroying` makes none). Until U2,
+    `MirAnalysis.Run` keeps its all-or-nothing `Findings.Count > 0` return (removal condition: U2).
   - Rejected: a body ordinal on `MirFinding` (each consumer re-derives a set), a column on `MirProgram` (a side table), accessors that
     hide broken bodies (a `null` callee silently takes the bodyless path); a validator wrapper or `Check` extraction (a restructuring
-    commit for two lines; the planning session, after review 3); roots through `Admit` (they would count toward `Grows` and `Work`).
+    commit for two lines); roots through `Admit` (they would count toward `Grows` and `Work`).
   - Tests: `MirValidatorTest.TheVerdictIsWhetherTheValidatorAddedAFinding`, `AnEnsuredStaticHasItsInitializer`;
     `InstanceCollectorTest.AVersionIsCollectedOnceAndABodyWithAFindingIsNoItem` (was `...FindingsEmptyTheSet`: its expectation changes
     by the owner's (a)), `ABodyWithAFindingDropsOnlyWhatRestsOnIt`, `ARequestsOwnGapAtABodyWithAFindingStays`.
-  - Amended (U2, 2026-11-03; R4's consent to the design's §4 hunk, `Met`'s fall-through included): the analyses' rule landed as staged.
-    `MirAnalysis.Run`'s `Findings.Count > 0` return, U1's staged part, is deleted (its removal condition, U2, holds): a body with the fact
-    closes an empty drop-table entry through `MirDrops.Exclude` (the table's one writer) and steps 1, 2 and 4 skip it; A4's one private
-    `Views` composes it as `Derived` at `AddEdge`, `Enter` and `Owe`; `Proved` returns `bool?` and `Unproved` `(Fact, Rests)`, so `Met`'s
-    first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
-    `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
-    (the rows that need a live static Loan, which no source program has until P42).
-  - Amended (GR-1a, 2026-11-04; R5's ruling (a) on the H5 group review's B2, R4's consent to R5 writing the MIR files under its two
-    conditions): a second per-body fact, `MirBody.HasConstructionRecord`, whether a construction record lies in the body. Its one writer
-    is the builder's one record path of the body in hand, `MirBuilder.Record` (every builder record but a module's broken HIR contracts,
-    made before its bodies); `Reset` clears it, and it is read-only after build. A record made without a body in hand (those, the
-    collection records) marks no body. The two facts stay apart because `MirAnalysis.Run` reads them apart: it skips a body with a
-    finding and analyzes a body with a record. Reader: `Compilation.JudgedWithoutProblem` (hover's ownership line, H0b §2.1), true only
-    for a body with neither fact and no merged problem's member. Tests: `VirtualHoverTest`'s
+  - Amended (U2, 2026-11-03): the analyses' rule landed as staged. `MirAnalysis.Run`'s `Findings.Count > 0` return, U1's staged part, is
+    deleted (its removal condition, U2, holds): a body with the fact closes an empty drop-table entry through `MirDrops.Exclude` (the
+    table's one writer) and steps 1, 2 and 4 skip it; A4's one private `Views` composes it as `Derived` at `AddEdge`, `Enter` and `Owe`;
+    `Proved` returns `bool?` and `Unproved` `(Fact, Rests)`, so `Met`'s first block and `Destroying` make no record on a proof that rests
+    on such an initializer, and `Met`'s second block still runs. Tests: `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`,
+    `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted` (the rows that need a live static Loan, which no source program has
+    until P42).
+  - Amended (GR-1a, 2026-11-04): a second per-body fact, `MirBody.HasConstructionRecord`, whether a construction record lies in the body.
+    Its one writer is the builder's one record path of the body in hand, `MirBuilder.Record` (every builder record but a module's broken
+    HIR contracts, made before its bodies); `Reset` clears it, and it is read-only after build. A record made without a body in hand
+    (those, the collection records) marks no body. The two facts stay apart because `MirAnalysis.Run` reads them apart: it skips a body
+    with a finding and analyzes a body with a record. Reader: `Compilation.JudgedWithoutProblem` (hover's ownership line, H0b §2.1), true
+    only for a body with neither fact and no merged problem's member. Tests: `VirtualHoverTest`'s
     `OwnershipChecksArePendingForABodyHoldingAConstructionRecord` and `...WithAValidatorFinding` (injected: no source program makes a
     finding); `MirBuildTest.ATupleOperatorWithoutItsComparisonIsUnsupported`, `DefaultExpansionStopsAtTheLimit`.
-- **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, R5; design `draft/Sketches/R6-check/H3-2-design.md`, design
-  review 2 ACCEPT; under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
+- **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
   - Rule: `Core/Compilation.Publication.cs` is Core's one publisher of MIR records. It maps one `MirReport.Merged` problem to the
     diagnostics adapter: the `Located` key form, ordinal conditions, one fact table (one arm per `MirFactKind`) and derived problems
     as `PrerequisiteUnavailable_Kd` with `DerivedFrom` by one cause resolver. It decides how a problem is published, never whether it
     exists, whether it is dependent or its requirement (R5-M23). `Locate(requirement, code, subject)` is the one location form, code
     generation's records too (R5-M65). No pipeline mode, flag or optional parameter steers it.
-  - Until H5 Core publishes today's rows only, on every pipeline (H0a review B1): `PublishMirRecords`, from `ReportAnalysis`, locates
+  - Until H5 Core publishes today's rows only, on every pipeline: `PublishMirRecords`, from `ReportAnalysis`, locates
     `MirProgram.Records(MirRecordClass.Construction)`, the validator findings as `InternalInvariant_Kd`, then
     `MirProgram.Records(MirRecordClass.Collection)`, in the ControlFlow requirement, through `MirRecords`, the one selection that
     `Analysis`, `Problems` and the generation gate read too. Removal condition of the selection: H5, which publishes every merged problem.
   - U0 (bp): `MirRecords` and `ReportAnalysis`'s MIR loop move out of `Compilation.Pipeline.cs`; `Compilation.Generation`'s private
     `ReportLocation` (the same shape, requirement Emission) is folded into `Locate`. Staged without a production caller before H5:
-    `MirReport.Merged` (U1a, U1b; R4's consent on the `MirReport` hunks), `Publish(MirProgram, int merged)` with `Located`, `KeyOf`, the
-    conditions, the resolver and the fact table's switch (U2), the table's other rows and case evidence (U3).
+    `MirReport.Merged` (U1a, U1b), `Publish(MirProgram, int merged)` with `Located`, `KeyOf`, the conditions, the resolver and the fact
+    table's switch (U2), the table's other rows and case evidence (U3).
   - H0a §4.3 corrected for R5-M183: validator findings no longer stop the analyses. A body with a finding is excluded from the analyses
     and the collector, every other body is judged, and a reader of the excluded body records nothing or composes it as Derived. The MIR
     phase still never ends incomplete without a record: the excluded body's record is the validator's own `InternalInvariant_Kd`, which
@@ -15903,28 +15641,26 @@ structure is recorded here by the unit that first implements it.
     call meets both, the collector's `Unsupported_Kd` and A5's `OwnershipDepthLimit_Kd` both stay, counted, until R7 removes G128's
     bound). Rejected: the design's §4 (B), a located `PrerequisiteUnavailable_Kd` without `DerivedFrom` for a problem resting on a
     Binding failure (it decides dependence beyond the problem's own inputs); a pipeline column (a mir-only publication before H5).
-- **R5-M185 MIR decides acceptance (R6-check H5, G:R6-check-flip with H1, H1b and Q8-3)** (2026-11-03, R5; H0b §2.1, §2.3 and §11, the H5
-  split plan's unit F; the two `Binding.cs` lines BU's, its consent relayed by R5; under R5-M182 and Q13) Major.
+- **R5-M185 MIR decides acceptance (R6-check H5, G:R6-check-flip with H1, H1b and Q8-3)** (2026-11-03, H0b §2.1, §2.3 and §11, the H5
+  split plan's unit F; under R5-M182 and Q13) Major.
   - Rule: `Analysis` is verified when the MIR of the version exists and its rows hold no Error. The rows are every `MirReport.Merged`
-    problem (construction and collection records, the analyses' problems) and the validator findings as `InternalInvariant_Kd`;
-    `Problems` gives them in the publisher's order and `ReportAnalysis` publishes them through `PublishMirRecords` (R5-M184), on every
-    pipeline. `Analyze` invalidates the ControlFlow and Ownership partitions and builds the MIR; it no longer runs the old analysis,
-    which runs only through `Compilation.AnalyzeLegacyOwnership()` for its test and benchmark readers until H10b (review B3).
-    Generation's gate step 1 is `Accepts`; `AnalysisResult` is `(IsVerified, ErrorCount)`.
+    problem (construction and collection records, the analyses' problems) and the validator findings as `InternalInvariant_Kd`; `Problems`
+    gives them in the publisher's order and `ReportAnalysis` publishes them through `PublishMirRecords` (R5-M184), on every pipeline.
+    `Analyze` invalidates the ControlFlow and Ownership partitions and builds the MIR; it no longer runs the old analysis, which runs only
+    through `Compilation.AnalyzeLegacyOwnership()` for its test and benchmark readers until H10b. Generation's gate step 1 is `Accepts`;
+    `AnalysisResult` is `(IsVerified, ErrorCount)`.
   - Stopped: Binding's effect checks (its pass calls `CollectCallableEffectUses()` where it called `ValidateEffectBounds`, and no
     `ValidateVirtualEffectBounds`; the repeated `InvalidateAssociatedEvidence` goes with them, `ValidateConformances` runs it), the old
-    analysis's effect check and both old `ReportDiagnostics` (ruling R2): A4 publishes the effect records at the obligation subject.
-    `MirRecords` and its "until H5" invariants go (R5-M184's removal condition). The dead code goes in D1-D3 and BU's B-del, PD12's
-    refusal in G, hover's old read in H6, the Old sides in S, within the group's one merge (R5-M182's X1 line).
+    analysis's effect check and both old `ReportDiagnostics`: A4 publishes the effect records at the obligation subject. `MirRecords` and
+    its "until H5" invariants go (R5-M184's removal condition). The dead code goes in D1-D3 and BU's B-del, PD12's refusal in G, hover's
+    old read in H6, the Old sides in S, within the group's one merge (R5-M182's X1 line).
   - Supersedes R5-M156's 'the old path decides', R4-M1 for the default pipeline, R5-M184's selection until H5 and R4-M112's kept
     `UnprovenConstraint_Kd` ledger row (successor H1b). Rejected: an analysis verdict reading `LintErrors` (a second copy of Binding's
-    decision); the old analysis as a shadow in every check (review B3); a throwaway rehearsal; a production check of the library's rows.
-  - Amended (2026-11-04; G:R6-check-flip's review B1, unit GR-2b): H5 restores Binding-incomplete programs' independent records through
-    the MIR's direct publication (R5-M184); the old limit's `Unsupported_Kd` beside Binding's `TransferRequired_Kd` is not restored: 1x
-    (H3b round 0, fb5989df8); BU-84's 'H5 restores them (PD29)' reads so.
-
-- **R5-M186 A3's require fallthrough rests on Binding's guessed nodes (R6-check R6-1)** (2026-11-03, R5 with R4 and BU; sketch
-  `draft/Sketches/R6-check/R6-1-sketch.md` with its revision 1; design review 1 REVISE, re-check ACCEPT; H3b round 1 ruling 2; under R5-M182 and Q13) Major.
+    decision); the old analysis as a shadow in every check; a throwaway rehearsal; a production check of the library's rows.
+  - Amended (2026-11-04; unit GR-2b): H5 restores Binding-incomplete programs' independent records through the MIR's direct publication
+    (R5-M184); the old limit's `Unsupported_Kd` beside Binding's `TransferRequired_Kd` is not restored: 1x (H3b round 0, fb5989df8);
+    BU-84's 'H5 restores them (PD29)' reads so.
+- **R5-M186 A3's require fallthrough rests on Binding's guessed nodes (R6-check R6-1)** (2026-11-03, under R5-M182 and Q13) Major.
   - Rule: a require's failure-body fallthrough (A3, `RequireFallthrough_Kd`) is derived from the recovery causes of the nodes Binding's
     guess rule says its completion rests on, as DIAGNOSTICS §4.3 states. A completion that written syntax also reaches stays direct.
     The decisions are split as follows:
@@ -15947,24 +15683,18 @@ structure is recorded here by the unit that first implements it.
   - Representation: `MirMustNotComplete` gains (Start, Count) into `MirBody.GuessedSites`. A default copy copies no row
     (`MirBuilder.Defaults.Copies.cs`).
   - Before H5 no published record changes. A3's problems publish from H5. The MIR dump `tests/mir/every-form.mir` names its validator
-    body's guessed site. The mir ledger (against shared base 5998a0ec0) moves the A3 rows of 19 programs with guessed failure bodies
-    (T4A's six, a chained require of `RequireRecoveryDiagnosticTest`, seven `syntax.json` cases, five Milestone 12 mutations; 29 raw
-    rows) from compared to old-only: the ledger compares no derived MIR problem (R4-M132) while its old side keeps the old path's
-    derived control-flow record. R4's follow-up commit (84773fd80) makes the ledger compare independent records only on both sides
-    and classifies the 4 incomplete A3 signatures (63 rows, none blocking) (d) with that note; SPEC 14's example 573 row (`b1`)
-    leaves (rows 4,288 to 4,297, open (b) 158 to 157, blocking rows 105 unchanged, unclassified 0).
+    body's guessed site.
   - Rejected:
-    - a catch-all `RestingCauses` ending in the unresolved mark for every node (review B1): it hides a broken contract;
+    - a catch-all `RestingCauses` ending in the unresolved mark for every node: it hides a broken contract;
     - the publisher asking `GuessedCompletion` at publish time: it would decide dependence, which R5-M184 forbids;
-    - a HIR column of guesses per require (B2's alternative): a published column for one consumer, held outside the MIR body that
-      reads it, for the same walk (review N8);
+    - a HIR column of guesses per require: a published column for one consumer, held outside the MIR body that reads it, for the same
+      walk;
     - re-pointing the tests to a direct record: it weakens DIAGNOSTICS §4.3 and its pins.
-  - Cost (review N6; BU's and R5's rulings): no pass cache in the guess walk. The builder asks only at a failure body whose HIR
-    Completion is not `Diverges`, the guess rule's own first test (the same structural completion), so nested requires whose outer
-    failure bodies cannot complete cost no walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay
-    quadratic in the walk (BU's 100/392/1552 at N = 8/16/32); the old check paid it only per falling require.
-- **R5-M187 H5's corpus difference member and generation's one gate (R6-check H5 Rec)** (2026-11-05, R5; the H5 split plan's
-  row Rec; T-27's review N1; G's commit 44ddf5a15) Minor.
+  - Cost (review N6): no pass cache in the guess walk. The builder asks only at a failure body whose HIR Completion is not `Diverges`, the
+    guess rule's own first test (the same structural completion), so nested requires whose outer failure bodies cannot complete cost no
+    walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay quadratic in the walk; the old check paid it
+    only per falling require.
+- **R5-M187 H5's corpus difference member and generation's one gate (R6-check H5 Rec)** (2026-11-05, the H5 split plan's row Rec) Minor.
   - pair-cases.json: a row whose MIR verdicts differ from the SPEC's keeps the SPEC's verdicts in `Expected` and `Run` and states
     the MIR's per-case verdicts in a `Mir` member (`Expected` in the row's form and a `Note` naming its (e) row and the PLAN row that
     restores it); `GenericOwnershipCaseTest` judges `Mir ?? Expected`, the contract S gave spec-cases (`VerifiedSpecExampleTest`).
@@ -15975,6 +15705,7 @@ structure is recorded here by the unit that first implements it.
     Emission-partition record between G2 and H5 (only A1's and A2's problems refusing), is gone, since every Error row rejects at
     check (R5-M185); an inexact body that reaches generation is `InternalInvariant_Kd` (R5-M96's amendment). Supersedes R5-M4's
     step 2.
+
 
 ## R7, R8 and R9 (adopted 2026-11-03)
 
