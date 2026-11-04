@@ -273,7 +273,9 @@ public sealed partial class MirOriginsTest
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
     // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
     // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215);
-    // and a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3).
+    // a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3); and a `$tryWrite`
+    // whose writer operand is Never, a transfer or `$abort`: it supplies no value, so its writer names no Origin of Utf8Writer's own
+    // declaration (SPEC 14.10.3, 15.3.4; PLAN G410).
     [Theory]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
     [InlineData("struct P {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc get(p: ref/P) -> ref/i32 during p.a\n    return p.r\n")]
@@ -288,6 +290,8 @@ public sealed partial class MirOriginsTest
     [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit + InitP)]
     [InlineData(HolderP + "    public var n: i32 = if true\n        let x = 1\n        let t: ref/i32 = x@ref\n        yield t@follow\n    else => 0\n")]
     [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n    origin b outlives a\n" + ValueCall)]
+    [InlineData("func run() -> i32\n    _ = $tryWrite(do => return 7, \"\\(42)\")\n    return 0\n")]
+    [InlineData("func run() -> i32\n    _ = $tryWrite($abort(\"w\"), \"x\")\n    return 0\n")]
     public void AValidChainHasNoOriginProblem(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
