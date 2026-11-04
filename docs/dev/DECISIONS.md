@@ -16749,6 +16749,23 @@ structure is recorded here by the unit that first implements it.
     Emission-partition record between G2 and H5 (only A1's and A2's problems refusing), is gone, since every Error row rejects at
     check (R5-M185); an inexact body that reaches generation is `InternalInvariant_Kd` (R5-M96's amendment). Supersedes R5-M4's
     step 2.
+- **R5-M188 The ledger harness ends; the test MIR side reads the publisher's rows (R6-check H10a)** (2026-11-05, R5; design
+  `draft/Sketches/R6-check/H10a-design.md` revision 1 with §9's fixes, two design reviews) Major.
+  - The difference ledger (R4-M17) ends: its observer, compared set, matcher, aggregation, classification table and tests, and
+    `Compilation.Analyzed`. Nothing classifies against it since H5 (D-c2); W-14's `shared-base/1415d6b42/mir-diff/` is the last
+    ledger. The difference categories (a)–(e) stay defined (COMPILER_ARCHITECTURE).
+  - The test MIR side is `MirTargetSide.MirSide`: after `Analyze`, Binding's records without the twins, then
+    `Compilation.Problems`' rows as the publisher has them (every merged problem under its own code, then the validator findings).
+    Supersedes R4-M136's side (the ledger's common and MIR sides, without collection records and derived problems): those were the
+    ledger's comparison rules, and a second copy of the publisher's selection; the semantic snapshot prints it (H0c row 1).
+  - Departures from R5-M182 (H0's row and H0c), each with the reason that no longer holds:
+    - `Binding.IsTwinRecord` stays to H11 (D-c2 named H10a): Binding's twins publish beside A5's since H5 (T50), so dropping the
+      filter now would move every twin-node expectation twice; MirSide's filter is its reader, and H11 removes both.
+    - `LegacyRecords.Of` stays to H10b: its remaining readers assert the old analysis for its own subject; only `Location`,
+      `Document` and `Library` move to `CompilationTestHelper`.
+    - "MIR helpers into `CompilationTestHelper`" and H0c's "else goes": `MirTargetSide` keeps its name, `Check` and `At` and owns
+      `MirSide` (the group's one record pin, 79 call sites), and the MIR's (requirement, code, analysis) pairs of R4-M67 with
+      `BindingComplete` move to their one reader, `MirCensusTest`.
 
 ## R7, R8 and R9 (adopted 2026-11-03)
 

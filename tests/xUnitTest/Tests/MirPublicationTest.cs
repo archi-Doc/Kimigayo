@@ -289,8 +289,8 @@ public sealed class MirPublicationTest
     }
 
     // H0a 5.2 (A; PLAN G128): where one call meets G128's bound, the collector's Unsupported_Kd and A5's OwnershipDepthLimit_Kd both publish,
-    // two located records of one implementation bound at Chain<i32>'s need(c@move) (ComponentSummaryTest's program; built without Analyze,
-    // so the difference ledger, which observes Analyze, does not count it twice).
+    // two located records of one implementation bound at Chain<i32>'s need(c@move) (ComponentSummaryTest's program; built without
+    // Analyze).
     [Fact]
     public void ChainsBoundIsTwoRecordsAtOneCall()
     {
