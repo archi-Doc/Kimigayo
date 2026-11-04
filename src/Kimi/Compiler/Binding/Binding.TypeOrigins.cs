@@ -107,6 +107,15 @@ public sealed partial class Binding
         return site;
     }
 
+    // The node whose Type a transparent wrapper returns: a parenthesized Type's, or a Semantics layer's that adds no Semantics; null for
+    // any other node.
+    private static Koto? TransparentInner(Koto node) => node switch
+    {
+        ParenthesizedTypeKoto p => p.Type,
+        TypeSemanticsKoto s when s.Type is not null && (s.IsTransparentWrapper || (s.SemanticsParameter is null && s.SemanticsKind == SemanticsKind.Owner)) => s.Type,
+        _ => null,
+    };
+
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)
             : this.types.Rebuild(type, (BoundType[])type.Components, origin, arguments);
@@ -177,7 +186,8 @@ public sealed partial class Binding
                 return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
-            if (!ReferenceEquals(origin, type.Origin))
+            var supplied = !ReferenceEquals(origin, type.Origin);
+            if (supplied)
             {
                 type = this.WithOrigins(type, origin, (BoundOrigin[])type.OriginArguments);
             }
@@ -186,7 +196,9 @@ public sealed partial class Binding
             // in every case, but value/object cases impose no outlives relation to an inactive outer slot. A nested signature's input (an
             // anonymous function's or a Function Type's parameter) forms none: its well-formedness is a premise of that signature (R2) and
             // an obligation of each call (RequireInputPremises), never a relation of the body it is written in (SPEC 15.3.4, 15.6.1).
-            if (origin is not null && type.Components.Count != 0 && !InactiveOuterOrigin(type, this, use) &&
+            // A transparent wrapper returns its inner node's Type, whose well-formedness that node formed: it forms the relation only
+            // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record).
+            if (origin is not null && type.Components.Count != 0 && (supplied || TransparentInner(use) is null) && !InactiveOuterOrigin(type, this, use) &&
                 context is not { Position: TypePosition.Parameter, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
@@ -281,21 +293,9 @@ public sealed partial class Binding
         }
 
         // Transparent syntax must expose the same completed type as its normalized owner.
-        for (var node = use; ;)
+        for (var node = use; TransparentInner(node) is { } inner; node = inner)
         {
-            Koto? inner = node switch
-            {
-                ParenthesizedTypeKoto p => p.Type,
-                TypeSemanticsKoto s when s.Type is not null && (s.IsTransparentWrapper || (s.SemanticsParameter is null && s.SemanticsKind == SemanticsKind.Owner)) => s.Type,
-                _ => null,
-            };
-            if (inner is null)
-            {
-                break;
-            }
-
             Complete(inner, type);
-            node = inner;
         }
 
         return type;
