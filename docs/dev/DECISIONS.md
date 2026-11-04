@@ -10,8 +10,9 @@ rules that result from them.
 Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the pre-compaction text of every entry is at commit 4fb6fcdb1.
 
 - An entry gives its id, date and decider, the decision, the options rejected and why, and the stage that removes a
-  temporary structure. It is added in the commit that first implements it. A fully superseded entry becomes a short line
-  naming its replacement and the commit with its full text.
+  temporary structure. It is added in the commit that first implements it. A superseded entry stays and names its replacement.
+  A fully superseded entry becomes a short line naming its replacement and the commit with its full text; review rounds,
+  measurements and evidence paths stay in commits, not entry bodies.
 - This log is the authority. Planning and handoff files under `artifacts/` (ignored by Git) cite entries by id instead of
   restating them; a decision recorded only there is not in force.
 - Open questions belong in PLAN until decided.
@@ -28,7 +29,8 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   one detached placeholder and three replacements. This removes fake `Parent` resets and two-call swaps, without
   compensating in the ledger. Rejected: a new general detachment API in `ChildSlots` (misses attribute ownership),
   and automatic stealing in `KotoHelper` (implicitly changes another tree). The successful production path adds one null
-  check and no allocation.
+  check and no allocation. Original scope: a correctly detached compound subtree from another compilation already fails
+  reanalysis before this guard (G235).
 
 - **AST2 Current ownership of transplanted syntax** (2026-10-24; G235).
   Attachment establishes the current module and diagnostic target for the whole reachable subtree. A node's
@@ -207,7 +209,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: the two-candidate flow for Major changes (two implementations and the test-first step cost more than they save
     for a local change); keeping the planning session's redo of the cause analysis without the owner (it let a third round run
     on a known shared cause); calling the candidates lanes (one name for two concepts).
-  - Units in flight: a Full unit whose choice between designs was made
+  - Units in flight (the planning session's reading, reported to the owner): a Full unit whose choice between designs was made
     before this entry finishes under the flow it started in; a Full unit with designs written but no choice made keeps one
     written design as its design-first candidate (G216 (a); BU's G206 B); the rule on units that do not converge applies at
     once, counting the reviews already made.
@@ -250,7 +252,8 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     executable launch into failed with no execution, letting a known pending row accept an unobserved program.
     Rejected: merely increasing 200 ms, all exceptions becoming failed or incomplete, consumer exception-text inference,
     a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
-    CPU polling and byte buffers add bounded verification work; completion may wait longer under load.
+    CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
+    and CPU/kill/drain operational faults are not claimed reproduced.
 - **Q12 A one-hour working-time limit for design and implementation** (2026-10-30, owner; [WORKFLOW](WORKFLOW.md)
   "Working-time limit", "Repeated reviews" and "Owner decisions").
   - The owner's draft (verbatim):
@@ -326,6 +329,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     manifests and exact committed-input association. Existing attributes remain source-only review records.
   - Rejected: restore the deleted lines against the owner's removal direction; skip only the marker,
     leaving dead Report/approval paths and a nonexistent default test; conditionally bypass missing tools.
+    Removing the retired workflow adds no modes or fallback.
   - The owner explicitly authorized aligning verification and related rules with the deletion. Existing
     architectural limits stay unchanged and are reviewed; no automated analyzer/size coverage is claimed.
 - **CR-R2 Constructors are exempt from the parameter-count limit** (2026-10-22, owner, direct, verbatim:
