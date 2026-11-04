@@ -7,11 +7,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The solution of the call's `candidate`-th candidate from its evaluation: the call's slot arrays, scope, Self, explicit Type
-    // arguments and the candidate's contributions.
+    // arguments and the candidate's root rows.
     private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
         => new()
         {
-            Contributions = evaluation.Contributions.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
+            Rows = evaluation.Rows.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
             Binding = this,
             Call = evaluation.Call,
             Binder = function,
@@ -51,7 +51,7 @@ public sealed partial class Binding
     // The SPEC 10.8 solve state of one candidate or one Case construction (DECISIONS BU-2): its Type, length and Origin slots and its
     // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's
     // inferred Type is checked fixed (ValidateFixedConstruction), the Origin inference its evidence begins, and a candidate's
-    // contributions, what each argument's position contributes to its call (F1, Contributions; DECISIONS R4-M164). The binder (a function or
+    // root rows, what each argument's position contributes to its call (F1, Rows; DECISIONS R4-M164). The binder (a function or
     // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Invariant: a Case
     // construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk, the defaults, the
     // waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.
@@ -71,10 +71,10 @@ public sealed partial class Binding
         internal bool FixedConstruction;
         internal OriginInference? OriginInference;
 
-        // F1 (R4-M164): each argument's contribution to this candidate's call (Contribute), a slice of the call's pooled
-        // CallEvaluation.Contributions (one per argument of each candidate; none for a call without arguments), which lives until the
-        // call's selected candidate is judged (JudgeSelectedCall).
-        internal Span<Contribution> Contributions;
+        // F1 (R4-M164): each argument's root row for this candidate's call (Contribute; Binding.ArgumentKinds.Rows.cs), a slice of the
+        // call's pooled CallEvaluation.Rows (one per argument of each candidate; none for a call without arguments), which lives until
+        // the call's selected candidate is judged (JudgeSelectedCall).
+        internal Span<PositionRow> Rows;
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);

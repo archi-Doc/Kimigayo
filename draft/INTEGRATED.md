@@ -1278,6 +1278,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Unsatisfied; the oracle and the U2 rows follow. No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 2 (2026-11-03, U0's re-review R1 by the middle): rule 6 (§3) covers well-formedness rows; a fit relation keeps DIAGNOSTICS'
   site, the result's fit at the call (BU-51's pin). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 3 (2026-11-05, U2's design by the planning session, `artifacts/verify/g216a-oracle/U2-design.md`): the Result per position
+  is the premise visits' stop at a slot pattern (the pattern beside the instantiated Type; a layer's stored premise ranges over the
+  slot's solution), so the Result column value and `ResultSolved` are superseded (§4, §5, §6's U2 row). No other text changed; the
+  proposal stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 

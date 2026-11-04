@@ -9046,6 +9046,28 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a bool or mode parameter for the premise-only judgment; deleting A1 for value fits (a Function value's subtyping, SPEC
     3.8, keeps it).
 
+- **BU-94 The position row is what an argument position is to its call** (2026-11-05; G216 (a) U1, the Position Rows proposal
+  `draft/Proposals/2026-11-03 G216 (a) Position Rows.md` §4-§6; the planning session's design `artifacts\verify\g216a-oracle\
+  U1-design.md`; behavior-preserving) SPEC 10.5.1, 14.9.2 step 2, 15.6.4 step 3. Amends R4-M164's store.
+  - Representation: `PositionRow(Argument, Parent, Part, Kind, Pattern, Contribution)` (`Binding.ArgumentKinds.Rows.cs`). A root
+    row per argument of each candidate replaces the `Contribution[]` value with its stride, lifetime and writers: `CallEvaluation.Rows`
+    from `rowScratch` (a Case construction's, a fixed construction's re-check's and a property update's rows too, every buffer returned
+    cleared), `SlotSolution.Rows` its candidate's slice, written by `Contribute` and `ContributePayloads`; a property update's are
+    Evidence rows. Child rows (`positionRows`) are composed for a selected call's argument without an adapted Type by one walk over
+    the position composition (`ComposePositionRows`, at `JudgeSelectedCall`): a row before its children's, positions by index, none
+    for a failed part (rule W), removed when the argument's judgment ends. Kind (KindOf) and Parent have no reader yet.
+  - Readers: `JudgeSelectedCall`, `SolveLate`, a construction's late pass and its judgment read `Rows[i].Contribution`;
+    `JudgePositionRows` judges each leaf row (a part without child positions, `ChildPositions(part)`) at its sub-Type, and the
+    argument's own position by its root row when it has none (`[]`, a completed waiting part). Replaces `RequireChildPremises`'
+    recursion, which read `PartContribution` of that own position, and `contributionScratch`.
+  - Later units (the proposal's U2-U6): U2 decides the Result per position's sub-Type and makes the child rows `SolveLate`'s bounds
+    (the walk moves before the solve); U3 gives value calls and a control-flow argument's sources rows; U4 adds the `Decided` column
+    and the record sites; U5 the shared relation judge; U6 retires `PartContribution` once every reader takes a row's Contribution
+    (U2, U3), with the whole-argument Result guard and `ClassifiedByCall`. R7-P2d moves the rows into `CandidateResult` (root rows,
+    then child rows).
+  - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
+    holds references; rented ones keep warm allocation at 0 B).
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

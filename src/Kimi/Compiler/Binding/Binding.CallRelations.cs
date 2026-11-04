@@ -57,9 +57,9 @@ public sealed partial class Binding
     // default's, at the call), then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
     // UnprovenOriginRelation_Kd records at the value that does not fit; a chain between body Origins, which ownership analysis cannot
     // represent yet, is an obligation that it reports as the located limit at that value. An aggregate argument's well-formedness is
-    // judged by its child positions (RequireChildPremises). Erasures, anonymous bodies and join arguments (U2j) are judged where they
+    // judged by its positions' rows (JudgePositionRows). Erasures, anonymous bodies and join arguments (U2j) are judged where they
     // are bound. The expected result is judged at its destination. `operations` holds the arguments' and, last, the receiver's; the
-    // selected candidate's solution holds its Origins and each argument's contribution (F1, R4-M164), and the receiver is Evidence.
+    // selected candidate's solution holds its Origins and each argument's root row (F1, R4-M164), and the receiver is Evidence.
     private void JudgeSelectedCall(
         InvocationKoto call, in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, ReadOnlySpan<BoundDefaultArgument> defaults)
     {
@@ -81,14 +81,14 @@ public sealed partial class Binding
         {
             if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
             {
-                this.RequireInputPremises(at, parameter, adapted, i < argumentCount ? solution.Contributions[i] : Contribution.Evidence);
+                this.RequireInputPremises(at, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
             }
-            else if (i < argumentCount && solution.Contributions[i] != Contribution.Result && operations[i] is { Source: { } whole, ParameterType: { } type })
+            else if (i < argumentCount && solution.Rows[i].Contribution != Contribution.Result && operations[i] is { Source: { } whole, ParameterType: { } type })
             {
                 // SPEC 10.2: a composite borrowed at `ref/T` (its cross-semantics borrow) is walked at its value Type T, the operation's
                 // SourceType (FitComposite).
                 var borrowed = operations[i] is { Adaptation: ArgumentAdaptation.CrossSemanticsBorrow, SourceType: { } value } ? value : null;
-                this.RequireChildPremises(whole, whole, borrowed ?? type);
+                this.JudgePositionRows(whole, solution.Rows[i], borrowed ?? type);
             }
         }
 
@@ -100,48 +100,6 @@ public sealed partial class Binding
         this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
         this.PublishCallRelations();
         this.CollectFitBounds(operations, argumentCount);
-    }
-
-    // C3 (G216 (a) U2.2 U2; SPEC 10.5.1, 15.6.4 step 3; DECISIONS R4-M164): an argument with no adapted Type of its own, an aggregate,
-    // is the parts of its child positions (ChildPositions, AddChildPosition), each judged at its own sub-Type by what it contributes
-    // (PartContribution): a typed part only where its fit replaced an Origin; any other part, and an aggregate whose positions no part
-    // fills (`[]`), at every position. Every record is at the argument `at` (S1; the sites are U3's). A failed part is a wildcard (rule
-    // W, SPEC 23.1.2). The fit (FitComposite) checked the literal's shape against `type`, so every child position's parameter Type is
-    // derivable; one that is not is a broken contract, InternalInvariant_Kd at the argument (U2's review N6, R4-M164 U1d).
-    private void RequireChildPremises(Koto at, Koto part, BoundType type)
-    {
-        var node = KotoHelper.UnwrapParentheses(part);
-        if (this.PartFailed(node))
-        {
-            return;
-        }
-
-        var start = this.OpenPosition(part);
-        var count = this.ChildPositions(start, start + 1);
-        for (var i = 0; i < count; i++)
-        {
-            var child = this.positionParts.Count;
-            if (this.AddChildPosition(start, start + 1, i, type) is not { } element)
-            {
-                this.ClosePosition(start);
-                this.Fail(at, BindingFailure.Internal);
-                return;
-            }
-
-            for (int j = child, end = this.positionParts.Count; j < end; j++)
-            {
-                this.RequireChildPremises(at, this.positionParts[j], element);
-            }
-
-            this.ClosePosition(child);
-        }
-
-        this.ClosePosition(start);
-        var contribution = this.PartContribution(node);
-        if (count == 0 && (contribution == Contribution.Signature || node.BoundType is not null))
-        {
-            this.RequireInputPremises(at, type, contribution == Contribution.Evidence ? node.BoundType : null, contribution);
-        }
     }
 
     // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type

@@ -170,7 +170,7 @@ public sealed partial class Binding
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
-        var contributions = this.contributionScratch.Rent(candidateCount * argumentCount);
+        var rows = this.rowScratch.Rent(candidateCount * argumentCount);
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -236,7 +236,7 @@ public sealed partial class Binding
                 Inputs = inputs,
                 Evaluated = evaluated,
                 Operations = operations,
-                Contributions = contributions,
+                Rows = rows,
                 OperationStride = operationStride,
                 SavedCandidates = savedCandidates,
                 AllTypes = allTypes,
@@ -540,7 +540,7 @@ public sealed partial class Binding
             }
 
             this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.contributionScratch.Return(contributions);
+            this.rowScratch.Return(rows, clearArray: true);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
