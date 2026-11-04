@@ -315,7 +315,7 @@ In a named callable signature, an unbound simple name in a borrow annotation int
 
 | Name owner | Visible in |
 | --- | --- |
-| Callable signature Origin or set, or a set named in a Constraint, Function Type or Callable | Its declaration's signature, clauses and body, in any order |
+| Callable signature Origin or set, or a set named in a Constraint or in a signature's or Constraint's Function Type or Callable | Its declaration's scope (the bullet below), in any order |
 | Type slot | Type declaration and inherited members |
 | Field, Case or associated-specification set | That declaration and its clauses |
 | Base occurrence set | The Constraint region of the fragment that writes the base clause ([§6.1.2](06-declarations-and-containers.md#612-container-fragments)) |
@@ -326,8 +326,8 @@ In a named callable signature, an unbound simple name in a borrow annotation int
 - Lookup searches scopes inside out and stops at the first scope with an Origin-context candidate; a same-scope conflict among value, Origin and set roles is an error, and a wrong-role match never falls back outward. Bare Fields are no candidates without a receiver. Type-parameter names are a separate namespace.
 - A new Origin or set name cannot hide a visible Origin, set, parameter or local; duplicates are errors, but mutually invisible names may repeat (Field-local sets, the sets of two `when` lists). Resolution does not depend on declaration order.
 - A set named in a Constraint belongs to the declaration whose Constraint it is ([§8.2.1](08-generics-constraints-and-contracts.md#821-constraint-clauses)):
-  - a function's, constructor's, accessor's or function requirement's: its signature, clauses and body;
-  - a struct's or enum's: its clauses and the members of every fragment, and nested Types lexically, as a Type slot is seen. In a Field Type the set's slot is valid only where a relation makes it a public Origin, as `origin s.at == h` does; an unrelated one is a hidden Origin, which storage completion rejects ([§15.3.2](#1532-type-schemas-and-storage));
+  - a function's, constructor's or function requirement's, as its signature's sets: its signature, clauses and body;
+  - a struct's or enum's: its clauses and the members of every fragment, and nested Types lexically, as a Type slot is seen. In storage, such as a Field Type, the set's slot is valid only where a relation makes it a public Origin, as `origin s.at == h` does; an unrelated one is a hidden Origin, which storage completion rejects ([§15.3.2](#1532-type-schemas-and-storage));
   - a `when` list's: that conditional conformance and its implementation block ([§8.8.1](08-generics-constraints-and-contracts.md#881-conditions-and-implementation-blocks));
   - a Contract-wide clause's: that clause alone, since a Contract has no Origins.
 

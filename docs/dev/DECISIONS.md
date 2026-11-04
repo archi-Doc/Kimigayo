@@ -10533,6 +10533,23 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: an `Unsupported_Kd` from publication (a reporter beyond ARCH's three, G9 Q4); the check before the import's own ones
     (it would hide their Language errors).
 
+- **BU-95 A function's set binds inside its header's Origin declaration** (2026-11-05; PLAN G417 (3) U1; the owner's
+  「(c) に切り替えます」 and 「123を推奨どおり、4を承認する」; BU's design `bu\batch\G417\binding-design.md` revision 6, design review 5 ACCEPT with
+  condition C-1) SPEC 15.3.4, 23.1.2. The cause it removes: `BindConstraints` runs before `BindHeader`, so a Constraint's set Type
+  bound in State 0 and kept `MissingOriginBinding_Kd`.
+  - Rule (`Binding.Types.BindType`, before `resolvingTypes.Add`): binding a binding-set annotation whose `OriginOwner` is a named
+    function with an unbound header binds that header first, with the consultation frame suspended, because a header is its
+    declaration's (R4-M101 E3).
+    - Inside the header `Resolving` makes the step a no-op, so the header's relations pull the set Types into its window.
+    - It covers an occurrence, a use's `BindOriginSetType` pull, and a set in a nested Function Type or Callable. It replaces
+      `BindCallableRequirement`'s header-first line.
+  - Owners (`OriginOwner`'s table, SPEC 15.3.4 Q-B, Q-C): a conditional conformance owns its `when` list's and implementation
+    block's sets, and a Contract-wide clause owns its own.
+  - Rejected:
+    - a Constraint region as owner (superseded by (c));
+    - triggering on a clause's syntax, which depends on order (h5, cx1);
+    - binding every header before every Constraint.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

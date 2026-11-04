@@ -57,11 +57,6 @@ public sealed partial class Binding
             Complete(generic.TypeArguments[0], BoundType.Unit);
         }
 
-        if (scope.Owner is FunctionKoto { BoundSymbol: { } function } && !function.HeaderBound)
-        {
-            this.BindHeader(function);
-        }
-
         var signature = this.BindType(generic.TypeArguments[^1], scope);
         this.borrowAnnotationVisitor.Found = false;
         this.borrowAnnotationVisitor.Visit(generic.TypeArguments[^1]);

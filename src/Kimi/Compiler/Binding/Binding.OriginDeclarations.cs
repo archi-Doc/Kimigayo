@@ -33,6 +33,10 @@ public sealed partial class Binding
     {
         FunctionKoto or PropertyAccessorKoto or AliasKoto or VariableKoto => true,
         DeclarationContainerKoto or IsKoto { IsAssociatedConstraint: true } => true,
+
+        // SPEC 15.3.4: a set named in a Constraint is its declaration's; a conditional conformance owns its `when` list's and its
+        // implementation block's, and a Contract-wide clause its own (a Contract has no Origins).
+        IsKoto { Parent: ContractKoto } or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto } => true,
         _ => node.Akind is KotoKind.EnumCase or KotoKind.AssociatedType,
     };
 
