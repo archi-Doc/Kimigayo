@@ -1065,6 +1065,106 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(MinimalEmissionTest.Analyze("func inspect<T>(value: ref/T) => ()\n" + PopLateOk + "public func main() => ()\n").Problems);
     }
 
+    // SPEC 15.6.4, 5.7, 5.2 (PLAN G415; DECISIONS BU-91): raw storage holds what is written there, so a borrow `at` forms within the
+    // storage a receiver holds through a raw layer, punned to another Type than its pointee's (`during self` or no Origin), keeps the
+    // receiver's Loan as the unpunned twin's (IntBuf) does: each err at the free while the result lives (punRefUse also at `b@uniq`;
+    // punStoreUse through a stored local, punHolderAssign in the holder's own Tuple). Fails on dev a788e14d5: the pun forms are valid.
+    [Fact]
+    public void ABorrowFormedInPunnedRawStorageKeepsItsInput()
+    {
+        const string Source = """
+            struct IntBuf
+                internal var p: raw/i32
+                public init()
+                    unsafe
+                        self.p = Raw.allocate<i32>(1)
+                        Raw.initialize(self.p, 7)
+                public func at(self: ref/Self) -> ref/i32
+                    unsafe => return (*self.p)@ref
+                public func free(self: uniq/Self)
+                    unsafe => Raw.release(self.p)
+                    self.p = null
+            struct PunBuf
+                internal var buffer: raw/u8 during self
+                public init()
+                    unsafe
+                        self.buffer = Raw.allocate<u8>(4)@(raw/u8 during self)
+                        Raw.initialize(self.buffer@raw/i32, 7)
+                public func at(self: ref/Self) -> ref/i32
+                    unsafe => return (*(self.buffer@raw/i32))@ref
+                public func free(self: uniq/Self)
+                    unsafe => Raw.release(self.buffer)
+                    self.buffer = null
+            struct PunNo
+                internal var buffer: raw/u8
+                public init()
+                    unsafe
+                        self.buffer = Raw.allocate<u8>(4)
+                        Raw.initialize(self.buffer@raw/i32, 7)
+                public func at(self: ref/Self) -> ref/i32
+                    unsafe => return (*(self.buffer@raw/i32))@ref
+                public func free(self: uniq/Self)
+                    unsafe => Raw.release(self.buffer)
+                    self.buffer = null
+            func intUse()
+                var b = IntBuf.init()
+                let r = b.at()
+                b.free()
+                inspect(r)
+            func intOk()
+                var b = IntBuf.init()
+                let r = b.at()
+                inspect(r)
+                b.free()
+            func punUse()
+                var b = PunBuf.init()
+                let r = b.at()
+                b.free()
+                inspect(r)
+            func punOk()
+                var b = PunBuf.init()
+                let r = b.at()
+                inspect(r)
+                b.free()
+            func punRefUse()
+                var b = PunBuf.init()
+                let rb = b@ref
+                let r = rb.at()
+                let ub = b@uniq
+                ub.free()
+                inspect(r)
+            func punStoreUse()
+                var zero = 0
+                var keep: ref/i32 = zero@ref
+                var b = PunBuf.init()
+                keep = b.at()
+                b.free()
+                inspect(keep)
+            func punHolderAssign()
+                var zero = 0
+                var h: (PunBuf, ref/i32) = (PunBuf.init(), zero@ref)
+                h.1 = h.0.at()
+                h.0.free()
+                inspect(h.1)
+            func punNoUse()
+                var b = PunNo.init()
+                let r = b.at()
+                b.free()
+                inspect(r)
+            func punNoOk()
+                var b = PunNo.init()
+                let r = b.at()
+                inspect(r)
+                b.free()
+
+            """;
+        Assert.Equal(
+            ["intUse: b.free() CallActivationConflict_Kd", "punUse: b.free() CallActivationConflict_Kd", "punRefUse: b@uniq",
+                "punRefUse: ub.free() CallActivationConflict_Kd", "punStoreUse: b.free() CallActivationConflict_Kd",
+                "punHolderAssign: h.0.free() CallActivationConflict_Kd", "punNoUse: b.free() CallActivationConflict_Kd"],
+            Problems(Source));
+    }
+
     // Content rows stay one read (SPEC 15.6.4's premises; R4-M138 keys the closure on the row's kind only): an Array iterator's `next`
     // (its premise result row), a Dictionary `remove`'s key borrow and a Utf8Writer `write<T>` (a store untied only by `static`) keep what
     // one read carries, valid where the borrowed values are not used after `y = 5`; the twins use them after it.

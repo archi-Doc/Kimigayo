@@ -32,7 +32,9 @@
 // carrier. Per storage (SPEC 15.6.4 read as (iii) with (β′), DECISIONS R4-M154): a position retains the input's own value (Value) only
 // where its Type can hold, Origins fitted, a value of the input's Type, of a part it holds by value, or a borrow formed through it (a
 // borrowed input's parts are its layer; its referent's parts, and those reached through its exclusive layers before a shared one, are
-// reads or borrows formed through it; a raw input has none), an abstract part taking any value whose Origin reaches it; any other
+// reads or borrows formed through it; a raw input has none), an abstract part taking any value whose Origin reaches it, and raw storage
+// a value holds (`during self` content, an unstated raw layer's pointee) any Type, so a borrow formed within it, punned or not, is formed
+// through its holder (SPEC 5.7, 5.2; DECISIONS BU-91); any other
 // occurrence of the input it reaches is Content. Where the fit relates two Origins of the call's Type arguments,
 // Self or declaring Type that the premises do not prove, it is the call's solved Origins' to decide (Revision 2): the storage lists the
 // pair, under which the input is Value, and A5 judges it with the caller's Origin classes. An erased callable, one whose implementation

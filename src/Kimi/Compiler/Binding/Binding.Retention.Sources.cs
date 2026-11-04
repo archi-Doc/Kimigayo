@@ -197,9 +197,10 @@ public sealed partial class Binding
     }
 
     // Whether a storage holds a value of a Type as itself or a part (HeldParts; `carried`: also a shared handle's payload, which a new value
-    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
-    // and a library Type keeping no part (compiler-implemented storage, Opaque) hold any (a referent an abstract part is may hold any part,
-    // as an implementation of its Contract may).
+    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36),
+    // a library Type keeping no part (compiler-implemented storage, Opaque) and raw storage a value holds (an Admitted part: `during self`
+    // content, an unstated raw layer's pointee; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
+    // as an implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
     private bool Holds(BoundType? storage, BoundType value, bool carried, int depth)
     {
         if (storage is null)
@@ -226,7 +227,8 @@ public sealed partial class Binding
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {
-            holds = this.retentionHeld[i].Addressed && this.Holds(this.retentionHeld[i].Type, value, carried, depth + 1);
+            var part = this.retentionHeld[i];
+            holds = part.Place == PartPlace.Admitted || (part.Addressed && this.Holds(part.Type, value, carried, depth + 1));
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);

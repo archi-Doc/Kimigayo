@@ -185,6 +185,21 @@ public sealed partial class RetentionTest
     public void ReceiversRetainByTheirLayer(string method, string expected)
         => Assert.Equal(expected, Declared(Bind(View), method));
 
+    // SPEC 15.6.4, 5.7, 5.2 (PLAN G415; DECISIONS BU-91): storage a value holds through a raw layer (`during self` content, or the pointee
+    // of a layer stating no Origin) holds any Type, so a borrow formed within it, punned to another Type than the pointee's, is a borrow
+    // formed through the receiver's layer: `at` keeps the receiver by Value, as the `raw/i32` twin does. Fails on dev a788e14d5: the
+    // punned forms keep `{0 Content}` only.
+    [Theory]
+    [InlineData("raw/u8 during self")]
+    [InlineData("raw/u8")]
+    [InlineData("raw/i32")]
+    public void ABorrowFormedInRawStorageRetainsTheReceiver(string layer)
+    {
+        var c = Bind($"struct P\n    internal var buffer: {layer}\n    public func at(self: ref/Self) -> ref/i32\n" +
+            "        unsafe => return (*(self.buffer@raw/i32))@ref\n");
+        Assert.Equal("result {0 Value}", Declared(c, "at"));
+    }
+
     // SPEC 15.6, 15.6.4, 15.3.5: an input written through an exclusive or raw layer, also one an owned aggregate holds (an invariant slot),
     // is an output; another input whose Origin outlives the written positions is stored there, the target's own content too. An exclusive
     // input with no Origin below its layer stores nothing. What lies behind a shared layer reached before a writable slot is only read
