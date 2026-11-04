@@ -178,7 +178,7 @@ internal sealed partial class MirBorrows
     // A set with the indirect marker of each of its W elements; the gate is inlined where the run has none (a measured cost, U3).
     private int Indirect(int set) => this.wCount == 0 || set == 0 ? set : this.Marked(set);
 
-    // Indirect for a nonempty set of a W run: memoized per set, its markers one ascending run (MirLoanSets.Of).
+    // Indirect for a nonempty set of a W run: memoized per set, its markers one ascending run added in one pass (MirLoanSets.Add).
     private int Marked(int set)
     {
         MirDataflow.Grow(ref this.memo, set + 1);
@@ -198,7 +198,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        var result = this.marks.Count == 0 ? set : this.sets.Union(set, this.sets.Of(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(this.marks)));
+        var result = this.sets.Add(set, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(this.marks));
         MirDataflow.Grow(ref this.memo, result + 1);
         MirDataflow.Grow(ref this.memoRun, result + 1);
         (this.memo[set], this.memoRun[set], this.memo[result], this.memoRun[result]) = (result, this.run, result, this.run);
