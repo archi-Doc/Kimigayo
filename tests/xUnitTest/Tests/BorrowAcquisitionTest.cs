@@ -124,18 +124,25 @@ public class BorrowAcquisitionTest
         Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
-    // DECISIONS BU-45: the argument rule (AdaptInput), which adapts every payload and argument, names a failed acquisition before a
-    // structural mismatch, its order unchanged: `x@follow` through `ref`, which has no plan in the uniq case, at a payload and at a
-    // by-value parameter of `s/T`, whose outer Origin differs from `x@follow`'s, is TransferRequired_Kd at the Place in both.
+    // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
+    // through `ref` in the uniq case, an owned `q` at `uniq/i32`) whose Origin also misfits has both records, each twin one of them; a
+    // misfit only in Origins is the relation at the payload, a structural one the construction's mismatch with no acquisition record.
+    // A value call's Origin relation is the old path's, lost beside Binding's rejection until R6-check and H3 (DECISIONS BU-45). Each row:
+    // Binding's errors.
     [Theory]
-    [InlineData("x: ref/(s/T during a) during b", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move")]
-    [InlineData("x: ref/(s/T during a) during b, g: (s/T) -> ()", "g(x@follow)")]
-    public void AFailedAcquisitionIsNamedBeforeAMismatch(string parameters, string use)
+    [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: ref/(s/T during a) during b", "s is ref", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o = Option<s/T during b>.Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
+    [InlineData("x: ref/(s/T during a) during b, g: (s/T) -> ()", "s is ref or uniq", "g(x@follow)", "TransferRequired_Kd x@follow")]
+    [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q)\n    _ = o@move", "ExclusiveBorrowRequired_Kd q; UnsatisfiedOriginRelation_Kd q")]
+    [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q@uniq)\n    _ = o@move", "UnsatisfiedOriginRelation_Kd q@uniq")]
+    [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i64> = .Some(q)\n    _ = o@move", "TypeMismatch_Kd .Some(q)")]
+    public void APayloadsAcquisitionAndFitAreEachRecorded(string parameters, string constraints, string use, string errors)
     {
-        var source = $"func f<s/T>({parameters}) -> ()\n    s is ref or uniq\n    {use}\n";
+        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\n";
         var c = CompilationTestHelper.ParseSuccess(source);
         c.Bind();
-        Assert.Equal("TransferRequired_Kd x@follow", string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
     // SPEC 6.5.2, 3.5, 8.15.2 (R6-check (b2)'s acceptance move): a payload Place is acquired by its bare acquisition, so `s/(uniq/i32)`, whose

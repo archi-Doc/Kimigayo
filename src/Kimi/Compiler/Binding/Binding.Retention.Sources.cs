@@ -17,8 +17,9 @@ namespace Kimi.Compiler;
 // position's Type can hold a source.
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
 // well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
-// Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and a library Type
-// keeping no part hold any; the input fold's walks and the fits stop at the depth bound (StorageBound).
+// Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind, a library Type
+// keeping no part and raw storage a value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound
+// (StorageBound).
 // Must not: judge an Origin relation (the premise closure's), walk a value itself (the walk's), or read the call's arguments.
 public sealed partial class Binding
 {
@@ -197,9 +198,10 @@ public sealed partial class Binding
     }
 
     // Whether a storage holds a value of a Type as itself or a part (HeldParts; `carried`: also a shared handle's payload, which a new value
-    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
-    // and a library Type keeping no part (compiler-implemented storage, Opaque) hold any (a referent an abstract part is may hold any part,
-    // as an implementation of its Contract may).
+    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36),
+    // a library Type keeping no part (compiler-implemented storage, Opaque) and raw storage a value holds (an Admitted part: `during self`
+    // content, an unstated raw layer's pointee; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
+    // as an implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
     private bool Holds(BoundType? storage, BoundType value, bool carried, int depth)
     {
         if (storage is null)
@@ -226,7 +228,8 @@ public sealed partial class Binding
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {
-            holds = this.retentionHeld[i].Addressed && this.Holds(this.retentionHeld[i].Type, value, carried, depth + 1);
+            var part = this.retentionHeld[i];
+            holds = part.Place == PartPlace.Admitted || (part.Addressed && this.Holds(part.Type, value, carried, depth + 1));
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);

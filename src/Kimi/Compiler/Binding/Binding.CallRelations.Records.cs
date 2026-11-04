@@ -18,14 +18,19 @@ namespace Kimi.Compiler;
 // - Invariants: callRelationScratch is empty after PublishCallRelations; one kind-agnostic list per node, which excludes the node's first
 //   record and holds no duplicate; each record keeps its kind, subject and location, and the adapter publishes it by its kind; no record
 //   of one kind is dropped, merged or reordered because of another kind's first record (SPEC 23.1.2); furtherOriginRecords is reset with the
-//   pass's Origin records (ResetOriginRecords).
+//   pass's Origin records (ResetOriginRecords), its lists kept, empty, for the next pass (furtherOriginLists).
 // - Prohibitions: no judgment of a relation or a comparison (CallRelations, OriginFits, OriginClauses and the Type relation judge); no
 //   second list for one kind; no message text.
 public sealed partial class Binding
 {
-    // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
+
+    // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
     private Dictionary<Koto, List<OriginRecord>>? furtherOriginRecords;
+
+    // The lists of furtherOriginRecords, kept across passes so that a warm rebind allocates none: the dictionary's i-th node holds the
+    // i-th list, since it only grows within a pass and is cleared at the pass's start (ResetOriginRecords), which empties every list.
+    private List<List<OriginRecord>>? furtherOriginLists;
 
     // A node's first Origin relation or Origin contract record, then its records beyond the first; false when it has neither.
     private bool ReportOriginRecords(Koto node, DiagnosticCode code, DiagnosticRequirement requirement)
@@ -113,7 +118,13 @@ public sealed partial class Binding
         var records = this.furtherOriginRecords ??= new(ReferenceEqualityComparer.Instance);
         if (!records.TryGetValue(node, out var more))
         {
-            records.Add(node, more = new());
+            var lists = this.furtherOriginLists ??= new();
+            if (records.Count == lists.Count)
+            {
+                lists.Add(new());
+            }
+
+            records.Add(node, more = lists[records.Count]);
         }
 
         if (!more.Contains(record))

@@ -320,6 +320,37 @@ public sealed partial class OriginRowsTest
         Assert.All(clauses, x => Assert.True(Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)), $"{x.Use}"));
     }
 
+    // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a
+    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row.
+    [Theory]
+    [InlineData("ref/(ref/i32 during b) during a", "WellFormed")]
+    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "Fit")]
+    public void ATypeOccurrencesRelationIsAWellFormedRow(string site, string source)
+    {
+        const string Program = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n" +
+            "    let r: ref/(ref/i32 during b) during a = slot\n    return 0\n";
+        var (_, row) = RowAt(Program, "f", site);
+        Assert.Equal(source, row.Source.ToString());
+    }
+
+    // SPEC 15.6.1, 23.1.2 (PLAN G412): an occurrence's well-formedness is one row. A transparent wrapper (parentheses, a named Type's
+    // layer) returns its inner node's Type, whose relation that node formed; the wrapper forms it only where it supplies the outer
+    // Origin itself (a slice's trailing `during`, written or omitted).
+    [Theory]
+    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "ref/(ref/i32 during b) during a")]
+    [InlineData("let r: ((ref/(ref/i32 during b) during a)) = slot", "ref/(ref/i32 during b) during a")]
+    [InlineData("var r: Option<(ref/(ref/i32 during b) during a)> = .None", "ref/(ref/i32 during b) during a")]
+    [InlineData("let r: S.Item(b, a) = slot", "S.Item(b, a)")]
+    [InlineData("var r: Option<(S.Item(b, a))> = .None", "S.Item(b, a)")]
+    [InlineData("var r: Option<(Slice<ref/i32 during b> during a)> = .None", "Slice<ref/i32 during b> during a")]
+    [InlineData("var r: Option<Slice<ref/i32 during b>> = .None", "Slice<ref/i32 during b>")]
+    public void AnOccurrencesWellFormednessIsOneRow(string local, string site)
+    {
+        var c = MirBuildTest.Compile("contract C\n    associate Item(a, b) is ref/(ref/i32 during a) during b\nstruct S\n    Self is C\n" +
+            $"func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n    {local}\n    return 0\n" + Main);
+        Assert.Equal(site, First(Assert.Single(Rows(c, false), static x => x.WellFormed).Use));
+    }
+
     // 2a0-D §4 (D8): the body's oracle, extracted once at its root, agrees with Binding's per-request proof at the use on every fixed-fixed
     // row of the census, per Semantics case; a layer's rows with the layer's oracle.
     [Fact]

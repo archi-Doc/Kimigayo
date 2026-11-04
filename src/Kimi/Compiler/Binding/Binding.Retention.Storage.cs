@@ -520,16 +520,17 @@ public sealed partial class Binding
     // the base in the instance's kept parts, and the content of each `during self` raw Field or payload (Admitted: its pointee and the
     // instance's Type arguments by their actual Types, SelfAdmitted); a nominal Type's Type arguments, with an address only in a
     // compiler-managed collection, whose elements they are (it keeps no part: SPEC 4.5, 4.9); a built-in Core's stored content
-    // (TyCtxt.CoreContent: a string's `u8` bytes). A layer holds by value only what it owns: a raw layer stating no Origin its pointee,
-    // a pair layer in an owning case its target and, `carried`, a shared handle its payload, which a new value built there carries. False
-    // where a struct's or enum's storage is past Binding's limits.
+    // (TyCtxt.CoreContent: a string's `u8` bytes). A layer holds by value only what it owns: a raw layer stating no Origin its pointee
+    // (Admitted, raw storage as `during self` content is), a pair layer in an owning case its target and, `carried`, a shared handle its
+    // payload, which a new value built there carries. False where a struct's or enum's storage is past Binding's limits.
     private bool HeldParts(BoundType type, BoundType? written, BoundType? holder, bool carried, out (int Start, int End) run)
     {
         var parts = this.retentionHeld;
         var start = parts.Count;
         if (this.Owned(type, carried, out var owned))
         {
-            parts.AddRange(owned is null ? [] : [new(owned, null, null, PartPlace.Addressed)]);
+            var place = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? PartPlace.Admitted : PartPlace.Addressed;
+            parts.AddRange(owned is null ? [] : [new(owned, null, null, place)]);
             run = (start, parts.Count);
             return true;
         }
@@ -618,7 +619,9 @@ public sealed partial class Binding
     }
 
     // Where a part of a value lies (HeldParts): no address in the value's storage (a nominal Type's Type argument, but a collection's),
-    // an address, or the content a `during self` layer addresses (Admitted), whose layer's step the output fold reads it through.
+    // an address, or raw storage the value holds (Admitted): the content a `during self` layer addresses, or a raw layer's pointee where
+    // it states no Origin, whose layer's step the output fold reads it through (StorageWalk's raw arm), and which holds a value of any
+    // Type in the fits (Holds; SPEC 5.7, 5.2: raw storage holds what is written there, a punned Place any punnable Type over its bytes).
     private enum PartPlace : byte
     {
         Unaddressed,

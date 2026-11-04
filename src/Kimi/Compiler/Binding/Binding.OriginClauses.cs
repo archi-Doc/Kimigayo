@@ -113,7 +113,7 @@ public sealed partial class Binding
         {
             foreach (var (row, longer, shorter) in this.fixedRows)
             {
-                this.JudgeCallPosition(row.Use, longer, shorter, row.Equality, null, null, wellFormed: row.Clause is null, condition: row.Condition);
+                this.JudgeCallPosition(row.Use, longer, shorter, row.Equality, null, null, wellFormed: row.WellFormed, condition: row.Condition);
             }
 
             this.JudgeChains();

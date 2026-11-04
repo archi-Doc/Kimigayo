@@ -225,3 +225,47 @@ part is not Copy. They are counted by code.
 
 R5's ruling: U-T1, U-T2 and U-W are H5 blockers under the owner's third answer (fixes of an hour or less). Pinning wrong evidence would
 weaken the stopped tests, so they stay failing until the fixes land, and then they are re-pointed.
+
+### T63's last row goes on the (e) list (the owner, 2026-11-04)
+
+R4 found `RequireRecoveryDiagnosticTest.AFailureBodyInARejectedExpressionIsJudgedOnItsOwn` over the hour: Binding's HIR publisher keeps no
+resolved part under an Error (R5-M63's residual line), so a `require` inside a Binding-rejected `do` is never built and A3 has nothing to
+judge. The program stays rejected; the independent `RequireFallthrough_Kd` is lost (Q13 (3)). The owner answered board O-5, verbatim
+「(a) H5 の (e) 一覧に加える」. The row joins H5's (e) list until the kept-body unit (PLAN G414) lands; a T-unit re-points it to the head's
+records, naming this decision and G414.
+
+### GXS first; twoLent and replTOk go on the (e) list (the owner, 2026-11-04, in R4's dialog, relayed verbatim)
+
+- The owner answered R4, verbatim 「GXS first」: GXS's SPEC 15.6.4 sentence (G148 (2)) and its A5 unit go before S2, then S4. H5 waits for
+  S2 and S4: without S2 (G264 U1) the flip's MIR would accept G264's invalid programs that dev rejects partly through the old analysis
+  (Q13 (1); R5's ruling).
+- The owner answered R4, verbatim 「Add both to (e)」: replTOk and twoLent are on H5's (e) list until their own units.
+  - replTOk: valid on dev, rejected by S2 by the letter (a destruction's stores into the destroyed part's own storage); its fix is a
+    SPEC 16.3.1 sentence and its unit.
+  - twoLent: it needs the Origin form of GXS's E-as-one-node extension; GXS's phase A records it, with its own unit.
+
+### GXS stops; the holdings unit; H5 decoupled from GXS (the owner, 2026-11-04)
+
+- GXS's SPEC revision drew three non-ACCEPTs (B1-B5; R1-B1/B2/B3; R2-B1). The owner answered O-6 「先に設計を」, O-7 「C: closed whitelist」
+  (both in R4's dialog), then asked R5 to find the root cause instead of choosing O-8's F1. R5's reading, confirmed by R4's audit
+  (`r4-notes\post-exit\storage-audit.md`, BU-checked): "the storage a value of Type T holds" is answered by several Type walks
+  (Binding's retention fit and folds, A5's HoldsLoans, GXS's Refers), each fix landing in one of them (B1, R1-B1, G415, R2-B1, G334).
+- The owner answered, verbatim 「両方その方針で」:
+  - the root plan is adopted: one closed holdings fact, one SPEC definition, one Binding/TyCtxt publication, read by the separate
+    predicates (PLAN G416; GXS's remaining text, G334 and the audit's D6 are its rows; design first, implementation after H5);
+  - H5 is decoupled from GXS where R4's S2-alone run on current dev shows no library or milestone rejection: S2 (G264 U1's
+    composition) then lands without GXS after its review, count<S>/`15.6.4-abstract-reach`, the census row and the ForKoto rows go on
+    H5's (e) list with STATUS limits, S4 follows, then H5. Otherwise H5 waits for the holdings unit and the owner is told.
+- The audit's D1 (G334 (a)) and D6 are pre-existing soundness holes on both pipelines, not H5 blockers (no old-rejects/MIR-accepts row);
+  Rec records them in STATUS as known limits.
+
+### S2 alone is not clean by the letter; its last row goes on the (e) list (the owner, 2026-11-04, O-9)
+
+- R4's S2-alone run on dev dced914e8 (`r4-notes\post-exit\s2-alone.md`): no library or milestone rejection, nothing newly accepted,
+  every moved test row on the list, but one valid program outside it, `UserArithmeticUpdateTest.GenericUpdateRetainsThePublishedContract`
+  (ledger 778c6e6ebc84, a native fixture: a composed erased destruction around a self-row, GXS S1's family by R4's inspection).
+- The owner answered O-9, verbatim 「(a) 加えて着地」: that program joins H5's (e) list with count<S> (`15.6.4-abstract-reach/0`, the
+  census, TheGuardReadsEachPart's count<S> rows), the 17 ForKoto programs and BlockEscapeLoanTest's show<C> ×2, all restored by G416;
+  S2 lands without GXS after BU's review, in R5's window; S4, then H5.
+- D5 (the same run's probe): a write through a punned exclusive reference in a `during self` raw buffer is accepted on both pipelines,
+  a pre-existing hole like D1 and D6 (G416); Rec records it in STATUS as a known limit.

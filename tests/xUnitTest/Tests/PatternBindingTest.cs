@@ -15,6 +15,8 @@ public class PatternBindingTest
     private const string Selecting = "func g(o: Option<i32>, c: bool, v: i32) -> i32\n";
     private const string BothMissing = "UnresolvedBinding_Kd missing | UnresolvedBinding_Kd missing2";
     private const string Use = "func h(v: i32) -> i32 => v\nfunc g(o: Option<i32>) -> ()\n";
+    private const string OptionMatch = "func (o: Option<i32>) -> i32\n        match o\n            .Some(let n) => return n\n            .None => return 0";
+    private const string CaseMatch = "    public let f = func (o: E) -> i32\n        match o\n            .A(let n) => return n\n            .B => return 0\n";
 
     [Theory]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
@@ -39,6 +41,13 @@ public class PatternBindingTest
     [InlineData("func f(x: Option<uniq/i32 during a>) => match x@move\n    .Some(let r) => ()\n    .None => ()")]
     [InlineData("func f(x: Option<Option<i32>>) -> i32 => match x\n    .Some(let inner) => match inner\n        .Some(let n) => n\n        .None => 0\n    .None => 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let Option) => Option\n    Option<i32>.None => 0")]
+    [InlineData("struct S\n    public let f = " + OptionMatch)]
+    [InlineData("struct S\n    public let f: (Option<i32>) -> i32 = " + OptionMatch)]
+    [InlineData("func g() -> i32\n    let f = " + OptionMatch + "\n    return f(Option.Some(1))")]
+    [InlineData("struct S\n    public let f = func (o: Option<i32>) -> i32\n        match o\n            .Some(_) => return 1\n            .None => return 0")]
+    [InlineData("struct S\n    public let f = func (o: Option<i32>) -> i32\n        match o\n            .None => return 0\n            _ => return 1")]
+    [InlineData("struct S\n" + CaseMatch + "enum E\n    A(i32)\n    B")]
+    [InlineData("enum E\n    A(i32)\n    B\nstruct S\n" + CaseMatch)]
     public void SupportedPatternsBindAndCheckFlow(string source)
     {
         var c = Parse(source);
@@ -458,6 +467,18 @@ public class PatternBindingTest
         Assert.Equal(acquisition, binding.Acquisition);
         Assert.Equal(PatternAccessMode.Owned, binding.AccessMode);
         Assert.Equal(0, binding.ImplicitFollows);
+    }
+
+    // SPEC 6.5.2 (G381): a stored Property's inferred Closure matches Cases, which are prepared before the headers that bind it (the Field
+    // rows above, with their typed and local twins). A group's stored Property is static storage, a located limit for a Closure with or
+    // without its written Type, and that limit is its one record (it was beside a false InvalidPattern_Kd, then a fault).
+    [Theory]
+    [InlineData("")]
+    [InlineData(": (Option<i32>) -> i32")]
+    public void AGroupClosureMatchingCasesKeepsItsStorageLimit(string written)
+    {
+        var record = Assert.Single(RawPointerSyntaxTest.Records("public group G\n    public let f" + written + " = " + OptionMatch));
+        Assert.StartsWith("Unsupported_Kd: let f", record, StringComparison.Ordinal);
     }
 
     private static Compilation Parse(string source, string target = "x86_64-pc-windows-msvc")

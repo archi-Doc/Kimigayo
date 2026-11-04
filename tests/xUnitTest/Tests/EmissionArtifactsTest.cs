@@ -441,25 +441,6 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
     }
 
-    [Fact]
-    public void DependencyModuleSuppliesAreNotLinkedYet()
-    {
-        var c = ModuleBindingTest.Create(
-            "public func main() => ()",
-            "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32",
-            configure: (root, library) => library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
-        Assert.True(c.Bind().IsComplete);
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        c.Project.Directory = this.directory;
-        c.Project.Name = "Hello";
-        c.Project.ProjectFile.OutputPath = "out/Hello.ll";
-        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
-        Assert.Null(path);
-        Assert.Contains("dependency modules", PublicationFailure(c));
-        Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
-    }
-
     // DECISIONS R5-M165: a publication failure is one ArtifactPublicationFailed_Kd record at the project; its cause is the note.
     private static string PublicationFailure(Compilation c)
         => Assert.Single(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.ArtifactPublicationFailed_Kd)).Note!;

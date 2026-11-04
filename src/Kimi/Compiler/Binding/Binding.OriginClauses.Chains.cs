@@ -110,7 +110,7 @@ public sealed partial class Binding
         {
             var obligation = this.unboundRows[row].Obligation;
             this.JudgeCallPosition(
-                obligation.Use, tail, head, equality: false, null, null, wellFormed: obligation.Clause is null, condition: obligation.Condition);
+                obligation.Use, tail, head, equality: false, null, null, wellFormed: obligation.WellFormed, condition: obligation.Condition);
             return;
         }
 
@@ -257,7 +257,7 @@ public sealed partial class Binding
 
         var (obligation, records) = (this.unboundRows[row].Obligation, this.callRelationScratch.Count);
         var (longer, shorter) = (this.chainNodes[source], this.chainNodes[target]);
-        this.JudgeCallPosition(obligation.Use, longer, shorter, equality: false, null, null, wellFormed: obligation.Clause is null, condition: condition);
+        this.JudgeCallPosition(obligation.Use, longer, shorter, equality: false, null, null, wellFormed: obligation.WellFormed, condition: condition);
         if (this.callRelationScratch.Count != records)
         {
             this.chainRecorded[edge] = this.chainSearch;
