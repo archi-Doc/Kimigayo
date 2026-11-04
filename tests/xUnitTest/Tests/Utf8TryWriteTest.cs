@@ -149,10 +149,13 @@ public class Utf8TryWriteTest
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.ExpectedSyntax_Kd));
     }
 
-    [Fact]
-    public void DeadEmbeddedValuesStillRequireFormattingConformance()
+    // A Never writer operand, which acquires no writer, still binds its writes (PLAN G410's invalid twin).
+    [Theory]
+    [InlineData("writer@uniq")]
+    [InlineData("$abort(\"w\")")]
+    public void DeadEmbeddedValuesStillRequireFormattingConformance(string first)
     {
-        var c = MinimalEmissionTest.Analyze("struct Missing\n    public init() => ()\n" + Setup + "_ = $tryWrite(writer@uniq, \"large\\(Missing.init())\")");
+        var c = MinimalEmissionTest.Analyze("struct Missing\n    public init() => ()\n" + Setup + "_ = $tryWrite(" + first + ", \"large\\(Missing.init())\")");
         Assert.False(c.Binding.Result.IsComplete);
     }
 
