@@ -117,12 +117,33 @@ internal static partial class MirTypes
             return true;
         }
 
-        if (destructor || AdtDef.IsInlineStorage(type))
-        {
-            return false;
-        }
+        return !destructor && !AdtDef.IsInlineStorage(type) && Parts(type, ref visitor, depth);
+    }
 
-        var parts = sequence || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
+    /// <summary>Gets the payload an owning handle's destruction walks on (SPEC 16.3.3): its View Target where Binding proves it Sealed,
+    /// whose own destruction runs; otherwise null, an erased destruction, whatever the View Target is: an abstract one too, proven Copy or
+    /// not, since a more-derived Type opts into Copy on its own (DECISIONS R4-M170). The one classification of a handle's payload that A4's
+    /// effect summaries and A5's destructions read.</summary>
+    /// <param name="handle">The owning handle's Type.</param>
+    /// <param name="types">The Type context, whose Sealed proofs Binding publishes.</param>
+    /// <param name="definition">The definition whose premises prove Sealed.</param>
+    /// <returns>The payload the walk goes on into, or null.</returns>
+    internal static BoundType? SealedPayload(BoundType handle, TyCtxt types, BindingSymbol? definition)
+        => types.Sealed(definition, handle.Components[0]) ? handle.Components[0] : null;
+
+    /// <summary>Walks the parts a value of a Type destroys after its own release (SPEC 16.3.2): a Tuple's, fixed array's, Closure's, Array's
+    /// or Dictionary's components, a struct's Fields and base and an enum's Case payloads, each by <see cref="Destruction"/> one level
+    /// deeper. <see cref="Destruction"/> walks them past every part but a struct that declares a drop, whose destructor body destroys them
+    /// (R4-M6b); a visitor that composes the drops a destruction runs walks them there itself.</summary>
+    /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="type">The Type.</param>
+    /// <param name="visitor">The visitor.</param>
+    /// <param name="depth">The Type's depth in the walk.</param>
+    /// <returns>Whether the visitor stopped the walk.</returns>
+    internal static bool Parts<TVisitor>(BoundType type, ref TVisitor visitor, int depth)
+        where TVisitor : struct, IMirDestruction
+    {
+        var parts = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
             ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(type) ?? [];
         for (var i = 0; i < parts.Count; i++)
         {
@@ -179,8 +200,8 @@ internal static partial class MirTypes
                 return this.Decide();
             }
 
-            var payload = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : null;
-            return payload is not null && (!types.Sealed(definition, payload) ? this.Decide() : Destruction(payload, ref this, depth + 1));
+            return type.Kind == BoundTypeKind.Semantics &&
+                (SealedPayload(type, types, definition) is { } payload ? Destruction(payload, ref this, depth + 1) : this.Decide());
         }
 
         public readonly bool Deep(BoundType type)

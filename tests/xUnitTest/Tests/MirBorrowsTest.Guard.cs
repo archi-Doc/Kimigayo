@@ -22,7 +22,9 @@ public sealed partial class MirBorrowsTest
     // to its holder, SPEC's letter (R4-M147's no-loss class); rustc's acceptance is PLAN G148 (2)'s open question (GXS). An abstract
     // Iterable's iterator writes by provenance (SPEC 15.6.4's reach rule, R4-M170): its Loan on items is shared, so a call writes nothing
     // past it and count is valid, an owner-decision reversal: the owner's G264 (S) instruction of 2026-11-04 overrides the owner's Q1 (a)
-    // of 2026-10-25 (an abstract part may be an exclusive reference), under which count's parameter end erred. A live iterator keeps the
+    // of 2026-10-25 (an abstract part may be an exclusive reference), under which count's parameter end erred. A5 still errs on count
+    // (`$for.iterator`, `for _ in items`) until PLAN G416: the lent item's composed erased destruction stores next()'s Loan into the
+    // iterator, a self-row; an (e) row of H5's list (G264 (S) S2 lands without GXS, the owner's O-9). A live iterator keeps the
     // append's activation (cleanRoute); and the conflicts no store causes stay (notHeld, emptyStore, heldDefault's Loan a copy's value keeps, R-a),
     // a conflict inside an inline default copy its template's (heldCopy, dd3; R4-M69). The pair cases' B6-for (pairs) is valid: its Array
     // literal is no call (DECISIONS R5-M129, as litPairOk), so PLAN G147 (8i)'s self-store row of a call taking the pair carrier by value
@@ -174,7 +176,7 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "dd3: t = 2", "seedRoute: w@follow@follow@ref", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
+                "dd3: t = 2", ": $for.iterator", "count: for _ in items", "seedRoute: w@follow@follow@ref", "cleanRoute: xs.append(b) CallActivationConflict_Kd",
                 "notHeld: x = 2", "heldDefault: k = 2", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));

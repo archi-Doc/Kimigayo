@@ -205,18 +205,25 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     // SPEC 16.2.2, 15.6.6 on MIR (DECISIONS R5-M50, DIAGNOSTICS A6 `Use`): the delivery after the Scope Exit is the target's, whichever
     // exit builds it first, so the value keeping the Loan is used at the label block, never at an exit delivering another source; the
     // Anchor is the escaping exit's Borrow (the later one where both escape).
+    // Over an abstract Iterable (GenericRequirement, AbstractHolder) A5 also errs twice at the valid `for` loop until PLAN G416: the lent
+    // item's composed erased destruction stores next()'s Loan into the iterator, a self-row (G264 (S) S2 lands without GXS, the owner's
+    // O-9); those two are H5's (e) rows, pinned here so the test fails when G416 removes them.
     [Theory]
-    [InlineData(OtherFirst)]
-    [InlineData(BothExits)]
-    [InlineData(GenericRequirement)]
-    [InlineData(GenericReborrow)]
-    [InlineData(AbstractHolder)]
-    public void TheMirLoanIsUsedAtTheLabelBlock(string source)
+    [InlineData(OtherFirst, 0)]
+    [InlineData(BothExits, 0)]
+    [InlineData(GenericRequirement, 2)]
+    [InlineData(GenericReborrow, 0)]
+    [InlineData(AbstractHolder, 2)]
+    public void TheMirLoanIsUsedAtTheLabelBlock(string source, int g416Rows)
     {
         var c = MirBuildTest.Compile(source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var index = Assert.Single(Enumerable.Range(0, program.Problems.All.Length), x => program.Problems.All[x].Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        var conflicts = Enumerable.Range(0, program.Problems.All.Length).Where(x => program.Problems.All[x].Code == DiagnosticCode.ComparisonLoanConflict_Kd).ToArray();
+        var lines = conflicts.Select(x => source.AsSpan(0, c.SyntaxOf(program.Problems.All[x].Subject).Span.Start).Count('\n')).ToArray();
+        var loop = Array.FindIndex(source.Split('\n'), static x => x.StartsWith("    for ", StringComparison.Ordinal));
+        Assert.Equal(g416Rows, lines.Count(x => x == loop));
+        var index = conflicts[Assert.Single(Enumerable.Range(0, lines.Length), x => lines[x] != loop)];
         Assert.Equal(
             [("Anchor", source.LastIndexOf("n@ref", StringComparison.Ordinal)), ("Use", source.IndexOf("do\n", StringComparison.Ordinal))],
             program.Problems.Facts(index).ToArray().Select(x => ($"{x.Kind}", c.SyntaxOf(x.Site).Span.Start)));

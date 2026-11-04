@@ -215,9 +215,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
-    /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's.</summary>
+    /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's, and
+    /// 15.6.4's destruction retention (PLAN G264 U1).</summary>
     public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases
-        .Where(static x => x.Family == "F3" || x.Section is "14.8.3" or "15.6.6" or "15.6.7")
+        .Where(static x => x.Family == "F3" || x.Section is "14.8.3" or "15.6.6" or "15.6.7" || x.Name == "15.6.4-drop-retention")
         .SelectMany(static x => x.Variants.Select((_, i) => $"{x.Name}/{i}"))];
 
     // The codes of A5's Loan stratum (A3 5's A6 table, the rows its rules decide).
@@ -1577,7 +1578,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
     // over Array<i32>, whose iterator observes nothing, is valid; and a borrow of an abstract call's temporary ends with its full
     // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s abstract iterator passes the guard (an abstract part may
-    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is.
+    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is; its
+    // erased destruction (16.3.3, BU-47's `0 Content store 0`), composed as a uniq/Self call (R4-M150), may store past `it` into storage
+    // the body does not own what `it` carries, its own Loan after `it.next()`'s self-row (R4-M154), so `it`'s storage end errs too.
     [Fact]
     public void AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition()
     {
@@ -1625,7 +1628,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """);
         Assert.Equal(
-            ["hold: local = second@move", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
+            ["hold: local = second@move", "hold: var it = local.iterate()", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
@@ -2248,8 +2251,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // The SPEC examples of the guard, reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 14.8.3,
-    // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, from A5 run on the MIR here; VerifiedSpecExampleTest checks the
-    // driver's records of the landed families (F1 and F3, unit 1b-5b-1).
+    // 15.6.6, 15.6.7 and 15.6.4's drop retention) get exactly the Loan problems their records give, from A5 run on the MIR here;
+    // VerifiedSpecExampleTest checks the driver's records of the landed families (F1 and F3, unit 1b-5b-1).
     [Theory]
     [MemberData(nameof(SpecVariants))]
     public void TheSpecExamplesGetTheirLoanCodes(string name)

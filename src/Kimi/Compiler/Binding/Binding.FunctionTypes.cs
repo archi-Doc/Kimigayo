@@ -404,7 +404,7 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            var walk = new RelationWalk(this, use, OriginPart.Judged);
+            var walk = new RelationWalk(this, use, OriginPart.Contract);
             if (this.HasUnsubstitutedOrigin(parameter, function))
             {
                 return false;
@@ -446,7 +446,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var resultWalk = new RelationWalk(this, use, OriginPart.Judged);
+        var resultWalk = new RelationWalk(this, use, OriginPart.Contract);
         if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
         {
             this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);

@@ -319,9 +319,10 @@ internal sealed partial class MirEffects
     }
 
     // SPEC 16.3, 8.11.3 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's
-    // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3), walked on below the handle so
-    // that a growing recursive Type (SPEC 15.3.5) meets the walk's bound, else any more-derived destructor may run; a struct's destructor
-    // runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
+    // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3, MirTypes.SealedPayload, the one
+    // test A5 reads too), walked on below the handle so that a growing recursive Type (SPEC 15.3.5) meets the walk's bound, else any
+    // more-derived destructor may run; a struct's destructor runs; a string's, an Array's or a Dictionary's storage is released (its
+    // elements are parts of their own).
     private void Destroy(BoundType type, int depth)
     {
         if (type.IsAbstract)
@@ -335,9 +336,9 @@ internal sealed partial class MirEffects
         else if (type.Kind == BoundTypeKind.Semantics)
         {
             var glue = new Glue(this);
-            var proven = types.Sealed(this.definition, type.Components[0]);
-            this.found |= proven ? (byte)0 : Unknown;
-            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue, depth + 1);
+            var payload = MirTypes.SealedPayload(type, types, this.definition);
+            this.found |= payload is null ? Unknown : (byte)0;
+            MirTypes.Destruction(payload, ref glue, depth + 1);
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
