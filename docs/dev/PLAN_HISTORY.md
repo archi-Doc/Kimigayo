@@ -35,8 +35,9 @@ PLAN §7 rows closed from 2026-11-01 on; only the rows other documents link keep
 <a id="r4-history"></a>
 - **R4, PLAN §3 to 2026-11-02 (moved by the same order):** paused and resumed by the owner seven times from 2026-10-23 (handoffs `artifacts/handoff/2026-10-2*-r4-pause/` to `2026-11-01-r4-pause/`); the units landed meanwhile are DECISIONS R4-M128–R4-M160; its standing rules: concurrency R4-M119, the OldRule ratchet R4-M136, V16 (work beyond input + output size is a defect).
 
-Other closed rows that code, tests or documents cite, with the DECISIONS entries that hold them (closed 2026-11-01 to 2026-11-04):
+Other closed rows that code, tests or documents cite, with the DECISIONS entries or decisions that hold them (closed from 2026-11-01):
 
+- **G60:** the parser recovery remainder (dropped declaration and list-item Name causes, recovered child contexts; STATUS keeps the limit), closed unfixed with PARSING_REVIEW.md by the owner's 「Q-a： 削除して」 (G420, 2026-11-05; the row's text at 4fb6fcdb1).
 - **G86:** a conditional slot's Loan requirement judged per admitted Semantics case (BU-44).
 - **G122:** an unreadable literal is published Error by `Binding.Rejected` alone (R4-M61).
 - **G161:** a raw Place borrow's Loan is its fresh anchor's (R4-M156).
