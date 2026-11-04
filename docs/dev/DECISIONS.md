@@ -10487,6 +10487,30 @@ resumed by R4-M86 (2026-10-20).
     stamp and `EvaluatingBody` for named functions, which moves the nested function's own body verdicts: G230 (A)); an
     Inference-only test (one kind of an open family).
 
+- **BU-91 Raw storage a value holds holds any Type in retention's fits** (2026-11-04; PLAN G415, found by R4: `r4-notes\post-exit\
+  state-pun-verify.md`; BU's design note `bu\g415-pun\design.md`) SPEC 15.6.4 ("a borrow formed through it", "a result the call forms
+  within the argument's storage"), 5.7 (a `during self` pointee is stored content of the holding value; raw storage holds what is
+  written there), 5.2 (a punned Place of a punnable Type over raw bytes). Refines R4-M154's fit; supersedes nothing.
+  - Cause: `Holds` read a raw layer's pointee by its declared Type, so `at(self: ref/Self) -> ref/i32` returning
+    `(*(self.buffer@raw/i32))@ref` over `buffer: raw/u8 during self` (or `raw/u8`) kept only `{0 Content}`: the receiver's Loan ended
+    at the call and A5 accepted `let r = b.at(); b.free(); inspect(r)`, which the `raw/i32` twin and dev's old analysis reject.
+  - Rule: `HeldParts` places an unstated raw layer's owned pointee `Admitted`, as `during self` content is (raw storage the value
+    holds), and `Holds` takes an Admitted part as holding any value: one more row of its "holds any" list (abstract, unbound, Opaque).
+    Origins still decide every fit (the premise closure), so the kind is R4-M154's Value of a borrow formed through the input's
+    layer, as the twin's: Content and Chain never carry the borrow's own Loans (BU-66 A2), and G413's grain is the raw sources'.
+    Both Holds readers take it (Borrows' referent, CanHold's position: 5.7 Calls bounds a `during self` store by Origins only).
+    BU-91 is the fit only: what a `during self` layer admits at positions (`SelfAdmitted`, R4-M154's Q2 (a) "Type arguments by their
+    actual Types") is unchanged.
+  - Moves: the referent side, `at` over a punned buffer, `{0 Content}` -> `{0 Value}`; the position side, `make(x: ref/i64 during a,
+    y: ref/i32 during a) -> HolderA during a` (`HolderA {a}` holding `r: ref/i32 during a` and `raw/u8 during self`), `{0 Content,
+    1 Value}` -> `{0 Value, 1 Value}`, so A5 errs at `big = 3` while `h` lives (G415's review B1; dev's old analysis rejects both).
+  - Unchanged: `KimiLibraryCatalog.WithinRows` (Raw.slice): a raw input has no source and its own layer no Origin a fit reaches,
+    so the row is a published Origin relation (D14, also Binding.CallRelations'), not a case of this rule. No existing row of
+    RetentionTest, FixedOriginRetentionTest, MirBorrowsTest, MirOriginsTest, MirEffectsTest or KimiLibraryShapeTest moves; the
+    ledger: see the landing commit.
+  - Rejected: a fit by punnable Types only (raw storage also holds what `Raw.initialize` places through a cast); a referent-side
+    parameter for Holds (a bool steering one rule); an A5-side widening (A5 derives no retention).
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
