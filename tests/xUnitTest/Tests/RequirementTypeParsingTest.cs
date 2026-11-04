@@ -138,8 +138,9 @@ public class RequirementTypeParsingTest
     }
 
     // SPEC F.5: one decision covers the whole qualifier, so the same Type parses in every requirement and Type position (a
-    // specification, a `when` condition, a local, a parameter, a result and a Field), and a form outside F does not (G250 (3)'s note).
-    // A Contract-qualified projection keeps any grouped base (SPEC 8.5.2: the base may be a Core).
+    // specification, a `when` condition, a local, a parameter, a result, a Field, after a Semantics prefix, in a Type argument and an
+    // alias target), and a form outside F does not (G250 (3)'s note). A Contract-qualified projection keeps any grouped base (SPEC
+    // 8.5.2: the base may be a Core).
     [Theory]
     [InlineData("struct W {w}\n    associate Item is TYPE\n")]
     [InlineData("struct W<T>\n    Self is C when T is TYPE\n")]
@@ -147,6 +148,9 @@ public class RequirementTypeParsingTest
     [InlineData("func f(y: ref/i32, v: TYPE) -> i32 => 0\n")]
     [InlineData("func f(y: ref/i32) -> TYPE => y\n")]
     [InlineData("struct W {y}\n    let v: TYPE\n")]
+    [InlineData("func f(y: ref/i32, v: ref/TYPE) -> i32 => 0\n")]
+    [InlineData("func f(y: ref/i32, v: Option<TYPE>) -> i32 => 0\n")]
+    [InlineData("alias A => TYPE\n")]
     public void QualifiersParseInEveryTypePosition(string format)
     {
         foreach (var type in (string[])["(S{k}).Item", "(S during y).Item", "(S during y).(C).Item", "(S during (y and z)).Item", "(i32, u8).(C).Item"])
@@ -154,18 +158,22 @@ public class RequirementTypeParsingTest
             Assert.Contains(type, ParseTestHelper.Unparse(ParseTestHelper.ParseSuccess(format.Replace("TYPE", type, StringComparison.Ordinal))));
         }
 
-        foreach (var type in (string[])["(S{k}?).Item", "(S{k} during y).Item", "(S?).Item", "(ref/S during y).Item"])
+        foreach (var type in (string[])["(S{k}?).Item", "(S{k} during y).Item", "(S?).Item", "(ref/S during y).Item", "(S).Item"])
         {
             Assert.True(ParseTestHelper.Parse(format.Replace("TYPE", type, StringComparison.Ordinal)).Compilation.Diagnostics.HasErrors, type);
         }
     }
 
-    // SPEC F.5's note: an expression qualifier takes only a binding set.
+    // SPEC F.5's note: an expression qualifier takes only binding sets, also in a qualifier nested in it.
     [Theory]
     [InlineData("(S during y).init(y)", true)]
     [InlineData("(S during y).make()", true)]
+    [InlineData("((S during y).Inner{j}).init(y)", true)]
+    [InlineData("((S during y).Inner{j}).make(y)", true)]
+    [InlineData("((S{k}).Inner during y).init(y)", true)]
     [InlineData("(S{k}).init(y)", false)]
     [InlineData("(S{k}).make()", false)]
+    [InlineData("((S{k}).Inner{j}).init(y)", false)]
     public void ExpressionQualifiersTakeOnlyABindingSet(string expression, bool error)
         => Assert.Equal(error, ParseTestHelper.Parse($"func f(y: ref/i32) -> i32\n    let v = {expression}\n    return 0\n").Compilation.Diagnostics.HasErrors);
 

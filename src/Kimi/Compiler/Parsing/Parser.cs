@@ -1712,7 +1712,11 @@ CloseParameters:
 
     private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false, bool optionalSuffix = true)
     {
+        // SPEC F.5: a grouped head takes a "." suffix only as ContinuesGroupedType allows. A Semantics prefix's Type has read its own
+        // suffixes, so a "." after it belongs to the enclosing construct.
         var start = reader.CurrentTokenRange.Start;
+        var grouped = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
+        var qualifier = grouped && IsBoundContainerQualifier(ref reader, out _);
         var left = ParseTypeInternal(ref reader, disambiguateGenerics);
         if (left is ErrorKoto)
         {
@@ -1724,6 +1728,12 @@ CloseParameters:
             var tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Dot)
             {
+                if (left is TypeSemanticsKoto { Type: not null } || (grouped && !ContinuesGroupedType(ref reader, qualifier)))
+                {
+                    break;
+                }
+
+                grouped = false;
                 var operatorRange = reader.CurrentTokenRange;
                 reader.Advance();
 
@@ -4691,9 +4701,8 @@ Separator:
             }
 
             parameterList = true;
-            if (qualifier || (parseContainerSuffix && reader.CurrentTokenKind == TokenKind.Dot && reader.PeekKind() == TokenKind.OpenParenthesis))
+            if (parseContainerSuffix && ContinuesGroupedType(ref reader, qualifier))
             {
-                // A Contract-qualified projection .(C).Name takes any grouped base (SPEC 8.5.2: the base may be a Core).
                 type = ParseGroupedContainerSuffix(ref reader, type);
                 parameterList = false;
             }
