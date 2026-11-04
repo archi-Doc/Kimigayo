@@ -24,11 +24,23 @@ public class UserArithmeticUpdateTest
     public void ALocalUpdateEndsInspectionBeforeReplacement()
         => ScalarEmissionTest.EmitFixture("UserArithmeticUpdateLocal", Counter + "\nvar total = Counter.init(21)\ntotal += total\nrequire total.value == 42 else => $abort(\"self update\")", string.Empty);
 
+    // SPEC 15.6.4: the program is valid, but since G264 (S) S2 A5 errs at `var value = input@move` and at `return value@move`'s `value` (the
+    // old `value`'s composed erased destruction around a result that keeps a Loan on `value` and is stored into it, a self-row; ledger
+    // 778c6e6ebc84), and generation refuses it; the old analysis accepted and ran it (fixture UserArithmeticUpdateGeneric). H5's (e) list,
+    // row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and re-points this test back to its
+    // run.
     [Fact]
     public void GenericUpdateRetainsThePublishedContract()
     {
         const string Program = "\nfunc doubled<T>(input: T) -> T\n    T is Addable<T>\n    T.(Addable<T>).Output is T\n    var value = input@move\n    value += value\n    return value@move\nlet result = doubled(Counter.init(21))\nrequire result.value == 42 else => $abort(\"generic update\")";
-        ScalarEmissionTest.EmitFixture("UserArithmeticUpdateGeneric", Counter + Program, string.Empty);
+        var c = MinimalEmissionTest.Analyze(Counter + Program);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var value = input@move")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("return value@move", "value")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

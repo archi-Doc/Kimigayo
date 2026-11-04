@@ -341,7 +341,9 @@ public sealed partial class MirBorrowsTest
     // every pipeline. Since the MIR decides acceptance (R6-check H5, DECISIONS R5-M185), each Writer, Item and Cap form publishes A5's
     // record at `y = 5`, as ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW
     // lists: the old analysis accepted these programs, and the MIR closes that unsound acceptance (H3b's 1r). Over an abstract `T` (Gen),
-    // the call is R4-M147's located Unsupported_Kd (ruling D″, the owner's Q1/Q2 (a)), and Bad keeps `y = 5`. The Plain forms are as SPEC
+    // the element's erased destruction may store y's Loan past it, so Bad and Ok err at `y = 5` since G264 (S) S2, as the MIR's list above
+    // says (R4-M147's located Unsupported_Kd at the call left with S2; the Ok twins are the class the owner kept an error, 「Yes,
+    // writable」). The Plain forms are as SPEC
     // says: a borrow of y live across the call is valid (truncatePlainOk, removeAllPlainOk), a Closure capturing it keeps b's Loan
     // (removeAllCapPlainBad errs at `y = 5`, its twin valid; removeAllCapBad errs there, by b's Loan), and a Closure capturing the Array or
     // an element borrow live at the call is the activation conflict at the call (removeAllCapArrBad, removeAllElemBad: callbacks cannot
@@ -359,10 +361,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("removeAllItemOk", "ComparisonLoanConflict_Kd y = 5")]
     [InlineData("removeAllCapBad", "ComparisonLoanConflict_Kd y = 5")]
     [InlineData("removeAllCapOk", "ComparisonLoanConflict_Kd y = 5")]
-    [InlineData("truncateGenBad", "Unsupported_Kd a.truncate(0); ComparisonLoanConflict_Kd y = 5")]
-    [InlineData("truncateGenOk", "Unsupported_Kd a.truncate(0)")]
-    [InlineData("removeAllGenBad", "Unsupported_Kd a.removeAll(matching: func (v) => true); ComparisonLoanConflict_Kd y = 5")]
-    [InlineData("removeAllGenOk", "Unsupported_Kd a.removeAll(matching: func (v) => true)")]
+    [InlineData("truncateGenBad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("truncateGenOk", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("removeAllGenBad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("removeAllGenOk", "ComparisonLoanConflict_Kd y = 5")]
     [InlineData("truncatePlainOk", "")]
     [InlineData("removeAllPlainOk", "")]
     [InlineData("removeAllCapPlainBad", "ComparisonLoanConflict_Kd y = 5")]

@@ -28,6 +28,10 @@ public class BorrowingIterationTest
         ScalarEmissionTest.EmitFixture("AssociatedBorrowingLoop" + (exclusive ? "Uniq" : "Ref") + (lending ? "Lending" : "Value"), source, "borrow loop\n");
     }
 
+    // SPEC 15.6.4 (R4-M170): count is valid, but since G264 (S) S2 A5 errs twice at its `for` (the lent item's composed erased destruction
+    // stores next()'s Loan into the iterator, a self-row; ledger 9ee106b8becd, ab07d7cd74b4), and generation refuses it; the old analysis
+    // accepted and ran it to "generic loop\n" (fixtures AssociatedBorrowingGenericLoopref and uniq). H5's (e) list, row "S2's self-row
+    // family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and re-points this test back to its run.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -36,7 +40,12 @@ public class BorrowingIterationTest
         var entry = exclusive ? "UniqIterable" : "Iterable";
         var mode = exclusive ? "uniq" : "ref";
         var source = Declarations(exclusive) + "func count<T>(values: " + mode + "/T) -> i32\n    T is " + entry + "\n    var result = 0\n    for _ in values\n        result += 1\n    return result\nvar values = Values.init()\nrequire count(values@" + mode + ") == 3 else => $abort(\"count\")\nConsole.writeLine(\"generic loop\")";
-        ScalarEmissionTest.EmitFixture("AssociatedBorrowingGenericLoop" + mode, source, "generic loop\n");
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var loop = new SyntaxLocation("for _ in values\n        result += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -84,18 +93,20 @@ public class BorrowingIterationTest
     // SPEC 15.6.6, 16.3.3, 8.15.1 (PLAN10-X1): a generic body is checked for every instance, so a holder whose Type has an abstract part
     // not proven Copy may observe its Loans when it is destroyed: replacing `local` while the iterator or view it lent lives to its cleanup
     // conflicts, also with the abstract part inside an Option, while the concrete twin, whose Cursor has no drop, and a Copy view are valid.
+    // The first row also errs at `var it = local.iterate()` since G264 (S) S2 (ledger f31d4f145503; class 4: both reject, the MIR adds the
+    // record), S2's (e)-family record that PLAN G416 removes (H5's (e) list, row "S2's self-row family", the owner's O-9).
     [Theory]
-    [InlineData("<T>(first: T, second: T)\n    T is Iterable", "var it = local.iterate()\n    _ = it.next()", "var it")]
+    [InlineData("<T>(first: T, second: T)\n    T is Iterable", "var it = local.iterate()\n    _ = it.next()", "var it", "var it = local.iterate()")]
     [InlineData("<T>(first: T, second: T)\n    T is Iterable", "let it = Option.Some(local.iterate())", "let it")]
     [InlineData("(first: Values, second: Values)", "var it = local.iterate()\n    _ = it.next()", null)]
     [InlineData("<T>(first: T, second: T)\n    T is Lens", "let v = local.look()", "let v")]
     [InlineData("<T>(first: T, second: T)\n    T is CopyLens", "let v = local.look()", null)]
-    public void AnAbstractHolderMayObserveItsLoansWhenDestroyed(string signature, string hold, string? loan)
+    public void AnAbstractHolderMayObserveItsLoansWhenDestroyed(string signature, string hold, string? loan, string g416 = "")
     {
         var source = Declarations(false) + "contract Lens\n    associate View(source)\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
             "contract CopyLens\n    associate View(source) is Copy\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
             "func hold" + signature + "\n    var local = first@move\n    " + hold + "\n    local = second@move\npublic func main() => ()\n";
-        AssertSourceReplacement(source, loan);
+        AssertSourceReplacement(source, loan, g416);
     }
 
     // SPEC 13.7.1, 15.6.6 (PLAN G176): `=` destroys the holder's old value before placing the new one, so where that destruction may
@@ -104,16 +115,18 @@ public class BorrowingIterationTest
     // conditional move, or a Cursor whose destruction observes nothing is valid. The related value is the replacement that destroys
     // the old value (the MIR's record, H5). The abstract twin's second record, a self-Loan at `var other = third@move` (H3b T51,
     // counted), left with S1′ (DECISIONS R4-M170): an abstract part reaches what its holder's Loans and addresses reach, and its writes
-    // go by provenance, to the holders its exclusive Loans and addresses name.
+    // go by provenance, to the holders its exclusive Loans and addresses name. Since G264 (S) S2 the abstract twin also errs at `var it =
+    // local.iterate()` and at `it = other.iterate()` (ledger fbcdc06e387e; class 4), S2's (e)-family records that PLAN G416 removes (H5's
+    // (e) list, row "S2's self-row family", the owner's O-9).
     [Theory]
     [InlineData("(first: Values, second: Values, third: Values)", true, "local = second@move\n    it = other.iterate()", "it = other.iterate()")]
     [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    local = second@move\n    it = other.iterate()", "it = other.iterate()")]
     [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    it = other.iterate()\n    local = second@move", null)]
-    [InlineData("<T>(first: T, second: T, third: T)\n    T is Iterable", false, "local = second@move\n    it = other.iterate()", "it = other.iterate()")]
+    [InlineData("<T>(first: T, second: T, third: T)\n    T is Iterable", false, "local = second@move\n    it = other.iterate()", "it = other.iterate()", "var it = local.iterate()|it = other.iterate()")]
     [InlineData("(first: Values, second: Values, third: Values)", true, "sink(it@move)\n    local = second@move\n    it = other.iterate()", null)]
     [InlineData("(first: Values, second: Values, third: Values)", true, "it = other.iterate()\n    local = second@move", null)]
     [InlineData("(first: Values, second: Values, third: Values)", false, "local = second@move\n    it = other.iterate()", null)]
-    public void ReplacingAHolderMayObserveItsOldValue(string signature, bool drop, string replace, string? loan)
+    public void ReplacingAHolderMayObserveItsOldValue(string signature, bool drop, string replace, string? loan, string g416 = "")
     {
         var declarations = Declarations(false);
         if (drop)
@@ -124,7 +137,7 @@ public class BorrowingIterationTest
 
         var source = declarations + "func sink<T>(value: T) => ()\nfunc hold" + signature + "\n    var local = first@move\n    var other = third@move\n" +
             "    var it = local.iterate()\n    _ = it.next()\n    " + replace + "\n    _ = it.next()\npublic func main() => ()\n";
-        AssertSourceReplacement(source, loan);
+        AssertSourceReplacement(source, loan, g416);
     }
 
     [Theory]
@@ -137,8 +150,9 @@ public class BorrowingIterationTest
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
-    // A source's one Loan conflict at `local = second@move`, whose related `loan` starts with `loan`; no diagnostic for null.
-    private static void AssertSourceReplacement(string source, string? loan)
+    // A source's Loan conflict at `local = second@move`, whose related `loan` starts with `loan`, and S2's (e)-family conflicts at the
+    // statements `g416` lists ('|'-separated, each once in the source), exactly; no diagnostic for null.
+    private static void AssertSourceReplacement(string source, string? loan, string g416)
     {
         var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
         if (loan is null)
@@ -147,10 +161,20 @@ public class BorrowingIterationTest
             return;
         }
 
-        var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(("local = second@move", nameof(DiagnosticCode.ComparisonLoanConflict_Kd)), (Text(diagnostic.Span), diagnostic.Code));
+        string[] statements = ["local = second@move", .. g416.Split('|', StringSplitOptions.RemoveEmptyEntries)];
+        Assert.Equal(
+            statements.Select(x => (nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Unique(x), x.Length)).Order(),
+            diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)).Order());
+        var diagnostic = Assert.Single(diagnostics, x => x.Span!.Value.Start == Unique("local = second@move"));
         Assert.StartsWith(loan, Text(Assert.Single(diagnostic.Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
 
         string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
+
+        int Unique(string text)
+        {
+            var start = source.IndexOf(text, StringComparison.Ordinal);
+            Assert.Equal(start, source.LastIndexOf(text, StringComparison.Ordinal));
+            return start;
+        }
     }
 }
