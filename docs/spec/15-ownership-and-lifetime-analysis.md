@@ -265,10 +265,10 @@ struct Window {w}
     Self is Source
     associate Item is (Cursor during w).Item     // (Cursor{v}).Item with origin v.at == w.
 
-func peek<T>(value: ref/T, bound: ref/i32) -> i32
+func peek<T>(value: ref/T, y: ref/i32) -> i32
     T is Source
-    T.(Source).Item is (Cursor during bound).Item
-    // T.(Source).Item is (Pair during bound).Item   // Error: Pair has two slots.
+    T.(Source).Item is (Cursor during y).Item
+    // T.(Source).Item is (Pair during y).Item   // Error: Pair has two slots.
     return 0
 
 func start(r: ref/i32) -> i32
@@ -331,11 +331,12 @@ In a named callable signature, an unbound simple name in a borrow annotation int
 
 ```kimi
 // Source and Cursor as in §15.3.1.
-func check<T>(value: ref/T, y: ref/i32) -> i32
+func check<T, U>(value: ref/T, other: ref/U, y: ref/i32) -> i32
     origin k.at == y                            // k is the set of the Constraint below.
     T is Source
+    U is Source
     T.(Source).Item is (Cursor{k}).Item
-    // (Cursor{k}).Item is Copy                 // Error: a second set k in this region.
+    // U.(Source).Item is (Cursor{k}).Item      // Error: a second set k in this region.
     // let z: ref/i32 during k.at = y           // Error: k is not visible in the body.
     return 0
 ```
