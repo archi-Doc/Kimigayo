@@ -450,18 +450,27 @@ public partial class CallableOriginForwardingTest
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     // PLAN G404 (DECISIONS BU-93, R4-M162): a nested Function Type identical to the required one keeps its implementation's condition,
-    // so the Closure records UnprovenOriginContract_Kd, a Binding-level relation record beside which other records are lost on both
-    // pipelines (PLAN G56's owner-accepted limit, R4-M162's lost records) until H11 and H3: the annotation's UnprovenOriginRelation_Kd
-    // (pl_n, p3_n, and both of pl_n_written's, the Closure's own annotation included), k's clause record at `s` with the call's
-    // UnprovenConstraint_Kd (pk_noclause, pk_noclause_int) and an unrelated MovedPlace_Kd (pmv_let). A non-identical form already
-    // recorded only the Closure (pl_nonid). At H11/H3 these rows fail, and the restored records join them.
+    // so the Closure records UnprovenOriginContract_Kd, a Binding-level relation record beside which the old ownership analysis stops
+    // on both pipelines (PLAN G56's owner-accepted limit, R4-M162's lost records) until H11 and H3. Lost: the let annotation's
+    // UnprovenOriginRelation_Kd (pl_n at 8:19, p3_n at 8:20), that one and the Closure parameter annotation's (pl_n_written at 8:19 and
+    // 8:66), and the second `v@move`'s MovedPlace_Kd at 10:13 with the annotation's UnprovenOriginRelation_Kd at 11:19 (pmv_let). A
+    // non-identical form already recorded only the Closure (pl_nonid). At H11/H3 these rows fail, and the restored records join them.
     [Theory]
     [InlineData("pl_n", NestedLet + "func [] (g) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
     [InlineData("p3_n", NestedT + NestedHost + "    let f: ((() -> Option<T during s>) -> i32) -> i32 = func [] (h) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (h) => 5")]
     [InlineData("pl_n_written", NestedLet + NestedWritten + "\n    return 0\n", "UnprovenOriginContract_Kd " + NestedWritten)]
-    [InlineData("pk_noclause", NestedClauseK + "    return k(s, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
-    [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten)]
     [InlineData("pmv_let", NestedT + NestedHost + "    var v = [1, 2]\n    let m = v@move\n    let n = v@move\n    let f: (() -> Option<T during s>) -> i32 = func [] (g) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
     public void ANestedIdenticalContractLosesTheIndependentRecordsUntilH11(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // PLAN G418 (DECISIONS BU-93; STATUS Diagnostics, G10/G56): a failed Closure contract hides the call's other argument Origin
+    // records. A nested identical Function Type now fails the Closure's (UnprovenOriginContract_Kd), so the call loses k's clause record,
+    // UnprovenOriginRelation_Kd at `s` (12:14), and its own UnprovenConstraint_Kd at `k` (12:12), as base does beside a non-identical
+    // Closure (pk_noclause_nonid_n); a Function value argument keeps both. When G418 lands these rows fail, and the restored records join
+    // them.
+    [Theory]
+    [InlineData("pk_noclause", NestedClauseK + "    return k(s, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
+    [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten)]
+    public void AFailedClosureContractMasksTheCallsOtherRecordsUntilG418(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 }

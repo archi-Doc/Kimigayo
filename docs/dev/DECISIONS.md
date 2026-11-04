@@ -10529,11 +10529,12 @@ resumed by R4-M86 (2026-10-20).
   - Moves (generated gate, 90 programs): 16 valid programs accepted (conversion at let and return, a Closure argument after
     selection, a Function Type proven Callable at a Type argument); 2 invalid ones record at `w` (UnprovenOriginRelation_Kd) instead
     of the Closure, whose solution `(b and a)` now fits. Beside the Closure's new record for a nested identical Function Type, records
-    are lost on both pipelines, G56's owner-accepted limit as in R4-M162, until H11 and H3: an annotation's UnprovenOriginRelation_Kd
-    (pl_n, p3_n, pl_n_written), k's clause record at `s` (pk_noclause, pk_noclause_int) and an unrelated MovedPlace_Kd (pmv_let), each
-    pinned by a row; base already recorded only the Closure for a non-identical form (pl_nonid). Open: a Closure passed for `F is
-    Callable<(T) -> i32>` at a call stays NoApplicableOverload_Kd (Infer's known-signature evidence, G56's relate-later branch; SPEC
-    10.8).
+    are lost on both pipelines, each pinned by a row: under G56's owner-accepted limit as in R4-M162, until H11 and H3, an annotation's
+    UnprovenOriginRelation_Kd (pl_n, p3_n, both of pl_n_written's, pmv_let's) and an unrelated MovedPlace_Kd (pmv_let); under PLAN
+    G418's masking (a failed Closure contract hides the call's other argument Origin records), until G418, k's clause record
+    UnprovenOriginRelation_Kd at `s` and the call's UnprovenConstraint_Kd (pk_noclause, pk_noclause_int). Base already recorded only
+    the Closure for a non-identical form (pl_nonid, pk_noclause_nonid_n). Open: a Closure passed for `F is Callable<(T) -> i32>` at a
+    call stays NoApplicableOverload_Kd (Infer's known-signature evidence, G56's relate-later branch; SPEC 10.8).
   - Rejected: a bool or mode parameter for the premise-only judgment; deleting A1 for value fits (a Function value's subtyping, SPEC
     3.8, keeps it).
 
