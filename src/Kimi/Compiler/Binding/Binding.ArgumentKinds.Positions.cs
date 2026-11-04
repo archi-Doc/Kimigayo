@@ -23,8 +23,8 @@ namespace Kimi.Compiler;
 //   position Call, Waiting under 10.5.1 (U1.6h site 3; DECISIONS BU-78): it is no evidence and fits every candidate (SPEC 23.1.2), and
 //   its siblings are checked at the selected candidate's Type. Every
 //   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
-// - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's child
-//   positions and the parameter Type at each; PositionKind.
+// - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's (or a
+//   part's) child positions and the parameter Type at each; PositionKind.
 // - Invariants: a walk removes the parts it appended before it returns, so nested walks share the list; a position's parts end where
 //   the list ends when its walk begins.
 // - Prohibitions: no fit, evidence or record here; the walks decide what a position's parts are to their candidate.
@@ -83,7 +83,13 @@ public sealed partial class Binding
             return count;
         }
 
-        var part = KotoHelper.UnwrapParentheses(this.positionParts[start]);
+        return this.ChildPositions(this.positionParts[start]);
+    }
+
+    // The child positions of one part: its Tuple or array literal's elements, or the one position of a join's results.
+    private int ChildPositions(Koto part)
+    {
+        part = KotoHelper.UnwrapParentheses(part);
         return part is TupleLiteralKoto or ArrayLiteralKoto ? IndexedChildren(part) : this.ComposedJoin(part) is null ? 0 : 1;
     }
 

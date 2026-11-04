@@ -6,9 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // F1's pooled storage: one Contribution per argument of each candidate a call evaluates (CallEvaluation.Contributions).
-    private readonly ScratchBuffers<Contribution> contributionScratch = new();
-
     // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
     // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises).
     private enum Contribution : byte
@@ -25,8 +22,8 @@ public sealed partial class Binding
 
     // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
     // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
-    // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2,
-    // RequireChildPremises; `[]` has none). A join argument stays Evidence until U2j (after revision B, on its representation). A
+    // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2, the child
+    // rows, ComposePositionRows; `[]` has none). A join argument stays Evidence until U2j (after revision B, on its representation). A
     // receiver is Evidence; a default is a Signature position.
     private Contribution PartContribution(Koto part)
     {
@@ -44,8 +41,8 @@ public sealed partial class Binding
     // except the parameter and result Types an anonymous function's header writes (SPEC 10.5.4). A Tuple or array literal is evidence by
     // its parts at their positions, and at a bare slot only when every part is; a mixed range by its range typing (SPEC 4.6.2). The early
     // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing. Each
-    // argument's contribution to the call (Contribution) is this walk's fact, written once the expected result has solved its slots
-    // (Contribute).
+    // argument's contribution to the call (Contribution) is this walk's fact, written to its root row (PositionRow) once the expected
+    // result has solved its slots (Contribute).
     private ref partial struct SlotSolution
     {
         // F1 (R4-M164): each argument's contribution by its part's kind (PartContribution), once the expected result has filled the
@@ -66,9 +63,11 @@ public sealed partial class Binding
 
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
-                var contribution = this.ContributionAt(i, this.Function.Parameters[mapping[i]].Type.BoundType, unbound);
-                this.Contributions[i] = contribution == Contribution.Signature && this.Contributions[i] == Contribution.Result
-                    ? Contribution.Result : contribution;
+                var part = this.Call.ArgumentNodes[i];
+                var pattern = this.Function.Parameters[mapping[i]].Type.BoundType;
+                var contribution = this.ContributionAt(i, pattern, unbound);
+                var kept = contribution == Contribution.Signature && this.Rows[i].Contribution == Contribution.Result;
+                this.Rows[i] = new(i, -1, part, this.Binding.KindOf(part), pattern, kept ? Contribution.Result : contribution);
             }
         }
 
@@ -103,7 +102,8 @@ public sealed partial class Binding
 
             for (var i = 0; i < payload.Length; i++)
             {
-                this.Contributions[i] = this.ContributionAt(i, payload[i].BoundType, solved);
+                var part = this.Call.ArgumentNodes[i];
+                this.Rows[i] = new(i, -1, part, this.Binding.KindOf(part), payload[i].BoundType, this.ContributionAt(i, payload[i].BoundType, solved));
             }
         }
 

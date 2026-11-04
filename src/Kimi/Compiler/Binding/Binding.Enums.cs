@@ -191,7 +191,7 @@ public sealed partial class Binding
         var settled = this.RentSlotSet(count);
         var solved = this.RentSlotSet(slots);
         var adapted = this.typeScratch.Rent(count);
-        var contributions = this.contributionScratch.Rent(count);
+        var rows = this.rowScratch.Rent(count);
         Array.Clear(arguments, 0, slots);
         Array.Clear(origins, 0, originCount);
         try
@@ -233,7 +233,7 @@ public sealed partial class Binding
             }
 
             var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);
-            solution.Contributions = contributions.AsSpan(0, count);
+            solution.Rows = rows.AsSpan(0, count);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
             {
                 return null;
@@ -295,7 +295,7 @@ public sealed partial class Binding
             this.callRelationScratch.Clear();
             for (var i = 0; i < count; i++)
             {
-                this.RequireInputPremises(operations[i].Source!, operations[i].ParameterType!, adapted[i], contributions[i]);
+                this.RequireInputPremises(operations[i].Source!, operations[i].ParameterType!, adapted[i], rows[i].Contribution);
             }
 
             this.PublishCallRelations();
@@ -324,7 +324,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.contributionScratch.Return(contributions);
+            this.rowScratch.Return(rows, clearArray: true);
             this.typeScratch.Return(adapted, clearArray: true);
             this.ReturnSlotSet(solved);
             this.argumentOperationScratch.Return(operations, clearArray: true);
@@ -425,7 +425,7 @@ public sealed partial class Binding
         var signature = false;
         for (var i = 0; i < payload.Length; i++)
         {
-            signature |= solution.Contributions[i] == Contribution.Signature && payload[i].BoundType is { StoresOrigin: true };
+            signature |= solution.Rows[i].Contribution == Contribution.Signature && payload[i].BoundType is { StoresOrigin: true };
         }
 
         // Evidence that carries an Origin began the inference (InferAdapted); without it or such a Signature payload nothing bounds them.
@@ -441,7 +441,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < payload.Length; i++)
         {
-            if (solution.Contributions[i] == Contribution.Signature &&
+            if (solution.Rows[i].Contribution == Contribution.Signature &&
                 this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
             {
                 this.CollectInputPremises(instantiated, inference, solution.Call);

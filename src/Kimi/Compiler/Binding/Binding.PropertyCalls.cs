@@ -283,6 +283,7 @@ public sealed partial class Binding
             var inputCount = InputOriginCount(accessor.Binder);
             var origins = this.originScratch.Rent(originCount);
             var inputs = this.originScratch.Rent(inputCount);
+            var rows = this.rowScratch.Rent(count);
             Array.Clear(origins);
             Array.Clear(inputs);
             try
@@ -307,11 +308,15 @@ public sealed partial class Binding
 
                 call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
-                Span<Contribution> evidence = stackalloc Contribution[count];
-                evidence.Fill(Contribution.Evidence); // The update's value and the receiver are typed parts.
+                for (var i = 0; i < count; i++)
+                {
+                    // The update's value and the receiver are typed parts: Evidence rows at their operations' parameter Types.
+                    rows[i] = new(i, -1, operations[i].Source!, PartKind.Typed, operations[i].ParameterType, Contribution.Evidence);
+                }
+
                 var solution = new SlotSolution
                 {
-                    Binding = this, Call = call, Binder = function, Origins = origins, Inputs = inputs, DeclaringType = declaringType, Contributions = evidence,
+                    Binding = this, Call = call, Binder = function, Origins = origins, Inputs = inputs, DeclaringType = declaringType, Rows = rows.AsSpan(0, count),
                 };
                 this.JudgeSelectedCall(call, solution, operations.AsSpan(0, count + 1), []);
                 Complete(call, result);
@@ -319,6 +324,7 @@ public sealed partial class Binding
             }
             finally
             {
+                this.rowScratch.Return(rows, clearArray: true);
                 this.originScratch.Return(inputs, clearArray: true);
                 this.originScratch.Return(origins, clearArray: true);
                 this.argumentOperationScratch.Return(operations, clearArray: true);
