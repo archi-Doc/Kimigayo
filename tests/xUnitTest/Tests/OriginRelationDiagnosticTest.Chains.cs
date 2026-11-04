@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -175,13 +176,15 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal(("ref/(ref/i32 during y.s) during b", "requires self.a outlives self.b, which is not proven"), (Text(source, error.Span), error.Label));
     }
 
-    // A warm rebind judges a failed declaration's chains from reused storage: a pair reached both ways, and two paths under nested
-    // conditions. (A node with more than one record allocates its further records on every pass, as on dev; PLAN G321.)
+    // A warm rebind judges a failed declaration's chains from reused storage: a pair reached both ways, two paths under nested
+    // conditions, and a node with several records (two sources at one last edge; a meet's two failing operands at one Type occurrence).
     [Theory]
     [Trait("Purpose", "Allocation")]
     [InlineData(Cell + "struct D {a, b}\n    public let f: (" + Cycle + ")\n        origin x.s == zz\n        origin y.s == a\n")]
     [InlineData(Cell + "struct D<s/T> {a, b}\n    s is owner or ref\n    T is Copy\n    public let f: (" + Nested + ")\n        origin x.s == zz\n" +
         "        origin y.s == a\n")]
+    [InlineData(Cell + "struct D {a, b, k}\n    public let c: (" + Chain + ", ref/(ref/i32 during k) during x.s, Missing)\n        origin x.s == a\n")]
+    [InlineData("struct Pair {a, b, c}\n    public let x: ref/(ref/i32 during (b and c)) during a\n")]
     public void AWarmRebindJudgesDependentChainsWithoutAllocating(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -189,10 +192,46 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
+    // A rebind after edits of one compilation publishes a cold compile's Origin records, as the further records' kept lists are emptied
+    // at each pass: a node with records removed, one with fewer, a new one with more, then the original program. A donor Type keeps its
+    // own source's spans, so the records are compared without them, in order of their text.
+    [Fact]
+    public void ARebindAfterEditsPublishesTheRecordsOfAColdCompile()
+    {
+        const string Two = "ref/(ref/i32 during (b and c)) during a";
+        const string Three = "ref/(ref/i32 during (b and c and d)) during a";
+        const string Valid = "ref/i32 during a";
+        static string Source(string[] types) => $"struct P {{a, b, c, d}}\n    public let x: {types[0]}\n    public let y: {types[1]}\n" + Main;
+        static VariableKoto[] Fields(Compilation c) => [.. c.Kotonoha.RootKoto.NestedContainers.Single(static x => x.Name == "P").Members.OfType<VariableKoto>()];
+        static string[] Records(Compilation c)
+        {
+            c.Binding.ReportDiagnostics();
+            return [.. TestDiagnostics.Of(c)
+                .Where(static x => x.Code is nameof(DiagnosticCode.UnprovenOriginRelation_Kd) or nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))
+                .Select(static x => $"{x.Code} {x.Message} {x.Label} {x.Note}").Order(StringComparer.Ordinal)];
+        }
+
+        var c = MirBuildTest.Compile(Source([Two, Three]));
+        string[][] edits = [[Valid, Three], [Valid, Two], [Three, Two], [Two, Three]];
+        foreach (var types in edits)
+        {
+            var cold = MinimalEmissionTest.Analyze(Source(types), "Edit.kimi");
+            var expected = Records(cold);
+            for (var i = 0; i < 2; i++)
+            {
+                var donor = ParseTestHelper.Detach(Fields(cold)[i].TypeKoto!, new CodeBlockKoto(cold.Kotonoha.RootKoto.CodeContext));
+                Assert.True(KotoHelper.Replace(Fields(c)[i], Fields(c)[i].TypeKoto!, donor));
+            }
+
+            c.Bind();
+            Assert.Equal(expected, Records(c));
+        }
+    }
+
     // The Origin relation records and located limits of a source, as "code span".
     private static string[] OriginRecords(string source)
         => [.. DiagnosticCorpus.Check(source).Diagnostics
-            .Where(static x => x.Code is nameof(DiagnosticCode.UnprovenOriginRelation_Kd) or nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) or
+                .Where(static x => x.Code is nameof(DiagnosticCode.UnprovenOriginRelation_Kd) or nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) or
                 nameof(DiagnosticCode.Unsupported_Kd))
             .Select(x => $"{x.Code} {Text(source, x.Span)}")];
 }

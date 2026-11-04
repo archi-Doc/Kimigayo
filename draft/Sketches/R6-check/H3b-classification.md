@@ -243,3 +243,29 @@ records, naming this decision and G414.
   - replTOk: valid on dev, rejected by S2 by the letter (a destruction's stores into the destroyed part's own storage); its fix is a
     SPEC 16.3.1 sentence and its unit.
   - twoLent: it needs the Origin form of GXS's E-as-one-node extension; GXS's phase A records it, with its own unit.
+
+### GXS stops; the holdings unit; H5 decoupled from GXS (the owner, 2026-11-04)
+
+- GXS's SPEC revision drew three non-ACCEPTs (B1-B5; R1-B1/B2/B3; R2-B1). The owner answered O-6 「先に設計を」, O-7 「C: closed whitelist」
+  (both in R4's dialog), then asked R5 to find the root cause instead of choosing O-8's F1. R5's reading, confirmed by R4's audit
+  (`r4-notes\post-exit\storage-audit.md`, BU-checked): "the storage a value of Type T holds" is answered by several Type walks
+  (Binding's retention fit and folds, A5's HoldsLoans, GXS's Refers), each fix landing in one of them (B1, R1-B1, G415, R2-B1, G334).
+- The owner answered, verbatim 「両方その方針で」:
+  - the root plan is adopted: one closed holdings fact, one SPEC definition, one Binding/TyCtxt publication, read by the separate
+    predicates (PLAN G416; GXS's remaining text, G334 and the audit's D6 are its rows; design first, implementation after H5);
+  - H5 is decoupled from GXS where R4's S2-alone run on current dev shows no library or milestone rejection: S2 (G264 U1's
+    composition) then lands without GXS after its review, count<S>/`15.6.4-abstract-reach`, the census row and the ForKoto rows go on
+    H5's (e) list with STATUS limits, S4 follows, then H5. Otherwise H5 waits for the holdings unit and the owner is told.
+- The audit's D1 (G334 (a)) and D6 are pre-existing soundness holes on both pipelines, not H5 blockers (no old-rejects/MIR-accepts row);
+  Rec records them in STATUS as known limits.
+
+### S2 alone is not clean by the letter; its last row goes on the (e) list (the owner, 2026-11-04, O-9)
+
+- R4's S2-alone run on dev dced914e8 (`r4-notes\post-exit\s2-alone.md`): no library or milestone rejection, nothing newly accepted,
+  every moved test row on the list, but one valid program outside it, `UserArithmeticUpdateTest.GenericUpdateRetainsThePublishedContract`
+  (ledger 778c6e6ebc84, a native fixture: a composed erased destruction around a self-row, GXS S1's family by R4's inspection).
+- The owner answered O-9, verbatim 「(a) 加えて着地」: that program joins H5's (e) list with count<S> (`15.6.4-abstract-reach/0`, the
+  census, TheGuardReadsEachPart's count<S> rows), the 17 ForKoto programs and BlockEscapeLoanTest's show<C> ×2, all restored by G416;
+  S2 lands without GXS after BU's review, in R5's window; S4, then H5.
+- D5 (the same run's probe): a write through a punned exclusive reference in a `during self` raw buffer is accepted on both pipelines,
+  a pre-existing hole like D1 and D6 (G416); Rec records it in STATUS as a known limit.

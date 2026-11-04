@@ -164,12 +164,10 @@ internal sealed class AdtDef
     internal static BoundEnumCase? Case(BoundType type, int ordinal)
         => type.Symbol is { Declaration: EnumKoto, Adt.Cases: { } cases } && (uint)ordinal < (uint)cases.Length ? cases[ordinal] : null;
 
-    // Publishes a pass's Fields and Cases, reusing the arrays while their lengths are unchanged.
-    internal void SetParts(List<PropertyKoto> fields, List<BoundEnumCase?> cases)
-    {
-        this.Fields = Refill(this.Fields, fields);
-        this.Cases = Refill(this.Cases, cases);
-    }
+    // Publishes a pass's Fields (PrepareStorage) or Cases (PrepareCases, before the headers), reusing an array while its length is unchanged.
+    internal void SetFields(List<PropertyKoto> fields) => this.Fields = Refill(this.Fields, fields);
+
+    internal void SetCases(List<BoundEnumCase?> cases) => this.Cases = Refill(this.Cases, cases);
 
     private static AdtDef? Struct(BoundType? type) => IsStruct(type) ? type!.Symbol!.Adt : null;
 

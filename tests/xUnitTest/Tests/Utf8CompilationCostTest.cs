@@ -65,6 +65,25 @@ public class Utf8CompilationCostTest
         Assert.InRange(allocated, 0, stage is "Binding" or "Ownership" ? 0 : AllocationMeasurement.MeasuredOperations * 256);
     }
 
+    // PLAN G410: a Never writer operand's writer Type, like a borrowed writer's, is formed without allocating on a warm rebind.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("writer")]
+    [InlineData("do => return 7")]
+    public void WarmTryWriteBindingAllocatesNothing(string first)
+    {
+        var c = MinimalEmissionTest.Analyze("func run(writer: uniq/Utf8Writer) -> i32\n    _ = $tryWrite(" + first + ", \"\\(42)\")\n    return 0\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("Warm $tryWrite Binding failed.");
+            }
+        });
+        Assert.Equal(0, allocated);
+    }
+
     [Fact]
     public void ReloadRecomputesFormattingBoundsAndSelectedCalls()
     {

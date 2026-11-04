@@ -24,7 +24,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 22.10.3, 22.10.4: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
     // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, its status tested before a first segment
-    // that is an embedded expression, and a failure goes to its result, the writer's status. An owning interpolation's is the internal adapter
+    // that is an embedded expression, and a failure goes to its result, the writer's status; a writer of Type Never is the Never value, which
+    // the status and each write take as it is (Acquire), so they and the embedded expressions are built in their order where only the checks
+    // continue (SPEC 14.10.3; DECISIONS R4-M62). An owning interpolation's is the internal adapter
     // (its second call) over an exclusive borrow of the private buffer FormatBuffer
     // gives of the capacity its instance estimates from the literal bytes and the values' Types (5.1), on the stack where it is passed directly to
     // writeLine and its instance bounds it within the limit (6.1); each write position is a FormatSegment step, the hint of the later literal
@@ -50,14 +52,6 @@ internal sealed partial class MirBuilder
             var input = HirTables.PlanOf(node).Formatting!.Acquisition!.BoundCall!.ArgumentOperations[0]; // The writer's, a Reborrow (BU-27).
             var secured = this.Secure(this.Operand(operand, expected: input.AdaptedType ?? input.ParameterType), operand).Place;
             this.located.Add((storage, secured));
-            if (this.IsNever(secured))
-            {
-                this.body.Terminate(this.current, MirTerminator.Goto(Done(), this.Info(node))); // The Never value has no writer to acquire.
-                this.current = done;
-                CollectionsMarshal.SetCount(this.located, mark);
-                return;
-            }
-
             if (!Binding.WritesText(CallPlan.Of(node, 0)!))
             {
                 // SPEC 22.10.4: an embedded expression is evaluated only after a test that the adapter is healthy, the previous write's Ok

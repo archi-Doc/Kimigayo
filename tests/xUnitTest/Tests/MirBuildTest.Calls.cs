@@ -423,6 +423,35 @@ public sealed partial class MirBuildTest
         Assert.Equal(["status"], failed);
     }
 
+    // SPEC 22.10.4, 14.10.3 (PLAN G410; DECISIONS R4-M62): a $tryWrite's writer is evaluated first; one of Type Never is the Never value,
+    // which its status and writes take as it is, so its writes and embedded expressions are built in their order where only the checks
+    // continue, and A1 checks them as with a real writer, and its result, a call's, is placed. Each row: the parameters, the statements
+    // around the write (WRITE), its writer and literal, then A1's problems; the MIR layer observes the rule, the body's write calls and A1's
+    // records (fail-before: the builder went to the result at the Never writer, building no write, so A1 reported nothing at b or u and
+    // UninitializedPlace_Kd at r). Dev's located Unsupported_Kd at `<formatting>`, which G410's Binding half removes, is not compared.
+    [Theory]
+    [InlineData("", "let b = Box.init()\n    eat(b@move)\n    _ = WRITE\n    return 0", "do => return 7", "\\(b)", "MovedPlace_Kd b")]
+    [InlineData("", "let b = Box.init()\n    eat(b@move)\n    _ = WRITE\n    return 0", "$abort(\"w\")", "\\(b)", "MovedPlace_Kd b")]
+    [InlineData("c: bool", "if c\n        let u: i32 = fail()\n        _ = WRITE\n    return 0", "do => return 7", "\\(u)", "UninitializedPlace_Kd u")]
+    [InlineData("", "let b = Box.init()\n    _ = WRITE\n    return 0", "do => return 7", "\\(b)", "")]
+    [InlineData("", "let r = WRITE\n    match r\n        .Ok(_) => return 1\n        .Err(_) => return 2", "do => return 7", "\\(42)", "")]
+    [InlineData("w: uniq/Utf8Writer", "let b = Box.init()\n    _ = WRITE\n    return 0", "w", "\\(b)x\\(b)", "")]
+    public void ANeverWritersWritesAreBuiltForTheChecks(string parameters, string statements, string writer, string literal, string problems)
+    {
+        var c = Compile("struct Box\n    Self is Utf8Format\n    public init() => ()\n" +
+            "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(writer, \"v\")\n" +
+            $"func eat(b: Box) => ()\nfunc fail() -> Never => $abort(\"f\")\nfunc f({parameters}) -> i32\n    " +
+            statements.Replace("WRITE", $"$tryWrite({writer}, \"{literal}\")", StringComparison.Ordinal) + "\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.Contains(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "write" });
+        Assert.Equal(
+            problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
+            program.Problems.All.ToArray().Where(static x => x.Code is DiagnosticCode.MovedPlace_Kd or DiagnosticCode.UninitializedPlace_Kd)
+                .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+    }
+
     // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): an owning interpolation is one FormatSegment step per write position, the later literal bytes
     // and values' Types its hint: a literal segment's text is its step's operand and no write, and so is an embedded string literal's (as if
     // written: a constant has no effect); a value's position has the empty text and its write follows. The block a failed write goes to exists

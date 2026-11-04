@@ -150,6 +150,7 @@ public class ContextualCaptureTest
     [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = w.buffer@ref\n", 1, "capture,declaration")]
     [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        let g = func () => Audit.observe(v)\n        f()\n        g()\n        let w = self@ref\n        v = w.buffer@ref\n", 1, "capture,capture,declaration")]
     [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func () => Audit.observe(v) + Audit.observe(v)\n", 2, "borrow,declaration")]
+    [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n", 1, "borrow,declaration")]
     public void TheHelperBorrowCaptureRecordIsPublished(string body, int count, string roles)
     {
         var path = Path.GetFullPath("Hello.kimi");
@@ -178,6 +179,36 @@ public class ContextualCaptureTest
                 Assert.Equal((result.Diagnostics[i].Display!.Range, result.Diagnostics[i].Code), (sent[i].Range, sent[i].Code));
             }
         }
+    }
+
+    // SPEC 7.7.2, 23.1.2: beside a repeated capture name, the entry that captures the helper borrow is published from its own fact, as in a
+    // list without repeats: the helper borrow's Note, the declaration and the value that brought it into the var's region (borrow).
+    [Theory]
+    [InlineData("        let w = self@ref\n        let f = func [w, w] () => Audit.inspect(w)\n", "declaration")]
+    [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func [v, v] () => Audit.observe(v)\n", "borrow,declaration")]
+    public void AHelperBorrowEntryBesideARepeatIsPublishedFromItsFact(string body, string roles)
+    {
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = MinimalEmissionTest.Analyze(Destructor + body, path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var records = c.Diagnostics.Finalize(rejected: true).Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.DuplicateBinding_Kd), nameof(DiagnosticCode.InvalidCaptureBinding_Kd)], records.Select(static x => x.Code).Order(StringComparer.Ordinal));
+        var helper = Assert.Single(records, static x => x.Code == nameof(DiagnosticCode.InvalidCaptureBinding_Kd));
+        Assert.Equal(roles, string.Join(',', helper.Related!.Select(static x => x.Role).Order(StringComparer.Ordinal)));
+        Assert.Contains("helper borrow", helper.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.1 (DECISIONS BU-17): the helper borrow's Origin H shows as self in an Origin relation record: a retaining call result carries
+    // H that no Borrow supplies, so the display reads H itself; a Borrow that supplies H shows by its text, the same.
+    [Theory]
+    [InlineData("        let w = self.me()\n        Pin.pin(w)\n")]
+    [InlineData("        let w = Audit.same(self)\n        Pin.pin(w)\n")]
+    public void AnOriginRelationOverTheHelperBorrowShowsSelf(string body)
+    {
+        var source = "group Pin\n    public func pin(value: ref/Connection during static) => ()\n" + Destructor + body;
+        var error = Assert.Single(PublishedRecords(source), static x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
+        Assert.Equal(("w", "requires the borrow self outlives static, which is false"), (error.Text, error.Label));
     }
 
     // A Closure rejected where it captures the helper borrow is a failure its later uses rest on: called, copied, passed on or captured

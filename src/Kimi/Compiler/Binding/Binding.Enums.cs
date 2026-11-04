@@ -496,8 +496,9 @@ public sealed partial class Binding
 
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
     // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
-    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required
-    // spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the construction rests.
+    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Place without a plan names its required
+    // spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own failure while bound is its record, on which the
+    // construction rests.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -538,25 +539,31 @@ public sealed partial class Binding
             var actual = this.ArgumentType(source, completed); // An erased payload adapts as its erasure (AdaptInput, rule E; BU-83).
             var failure = default(ComparisonFailure);
 
-            // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-            if (!this.AdaptInput(source, type, actual, scope, null, null, out var adaptedType, out var quality, out var kind) ||
-                (!this.FailStaticBorrow(source, kind, type.Semantics) && !this.FitsTypeAt(adaptedType, type, source, out failure) &&
-                !this.CheckLocalTypeUse(adaptedType, type, source)))
+            // The acquisition and the fit are independent (PLAN G262): a failed acquisition is deferred, the fit judged on the Type it
+            // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
+            // Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+            var fits = this.AdaptInput(source, type, actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
+                (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsTypeAt(adaptedType, type, source, out failure) ||
+                this.CheckLocalTypeUse(adaptedType, type, source));
+            var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
+                ? deferred : default(AcquisitionFailure?);
+            if (acquisition is { } failed)
             {
-                if (this.acquisitionFailure is { } acquisition)
-                {
-                    this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object);
-                }
-                else if (failure.IsCondition || FitsStructurally(adaptedType, type))
-                {
-                    this.RecordMismatch(source, source, adaptedType, type, failure);
-                    Complete(use, null);
-                }
-                else
-                {
-                    this.Fail(use, BindingFailure.TypeMismatch);
-                }
+                this.FailAcquisition(use, failed.Kind, source, failed.Object);
+            }
 
+            if (!fits && (failure.IsCondition || this.FitsStructurallyAt(adaptedType, type, source)))
+            {
+                this.RecordMismatch(source, source, adaptedType, type, failure);
+                Complete(use, null);
+            }
+            else if (!fits)
+            {
+                this.Fail(use, BindingFailure.TypeMismatch);
+            }
+
+            if (!fits || acquisition is not null)
+            {
                 return false;
             }
 
