@@ -152,6 +152,9 @@ public partial class CallableOriginForwardingTest
 
     private const string InnerHolder = "    let o: Option<H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>> = .None\n    return 0\n";
 
+    private const string NestedClauseHead = "struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n" +
+        "    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(q: ref/i32, f: (() -> Option<T during q>) -> i32) -> i32\n    return 0\n\n";
+
     private const string HolderConstraint = "UnprovenConstraint_Kd H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>";
 
     private const string LeakMk = "func mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n";
@@ -408,13 +411,15 @@ public partial class CallableOriginForwardingTest
     public void AnIllFormedHeadLosesTheIndependentRecordUntilH11(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
-    // PLAN G404 (SPEC 10.7, 15.3.7; DECISIONS BU-93): a Closure's or a Function Type's whole-contract comparison, at a conversion and in a Callable proof,
-    // is judged at its use with the use's premises, as a Function value's is (nest2_c): a member Origin that a clause relates (one1, `b
-    // outlives a`), a member and the Closure's own well-formedness each related by one of two clauses (two2), an invariant member equal
-    // through two clauses (uniq2), the Closure converted at an argument after selection (arg2) and a Function Type proven Callable at a
-    // Type argument (cal2) are valid. Equality by one clause (eq2) holds without premises. The invalid twins lack a clause the relation
-    // needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n; arg2_n's solution of T is `(b and a)`, which the Closure now fits, so its record
-    // is the argument `w`, whose fit needs `a outlives w`).
+    // PLAN G404 (SPEC 10.7, 15.3.7; DECISIONS BU-93): a Closure's or a Function Type's whole-contract comparison, at a conversion and
+    // in a Callable proof, is judged at its use with the use's premises, as a Function value's is (nest2_c): a member Origin that a
+    // clause relates (one1, `b outlives a`), a member and the Closure's own well-formedness each related by one of two clauses (two2), an
+    // invariant member equal through two clauses (uniq2), the Closure converted at an argument after selection (arg2) and a Function
+    // Type proven Callable at a Type argument (cal2) are valid. Equality by one clause (eq2) holds without premises. The invalid twins
+    // lack a clause the relation needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n; arg2_n's solution of T is `(b and a)`, which the
+    // Closure now fits, so its record is the argument `w`, whose fit needs `a outlives w`). An inferred parameter's Function Type,
+    // identical to the required one, keeps its condition, its result's well-formedness at the use (pnest1, as ResultPremiseTest's n1a at
+    // the root; dev: a fact-less UnprovenConstraint_Kd at the call); a `static` argument proves it (pnest1_c).
     [Theory]
     [InlineData("one1", OuterHead + BOutlivesA + OuterLet, "")]
     [InlineData("one1_n", OuterHead + "    origin a outlives b\n" + OuterLet, "UnprovenOriginContract_Kd " + OuterClosure)]
@@ -428,6 +433,8 @@ public partial class CallableOriginForwardingTest
     [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginRelation_Kd w")]
     [InlineData("cal2", CallableHolder + InnerHead + BothWays + InnerHolder, "")]
     [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, "UnprovenConstraint_Kd .None; " + HolderConstraint + "; " + HolderConstraint)]
+    [InlineData("pnest1", NestedClauseHead + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during q>")]
+    [InlineData("pnest1_c", NestedClauseHead + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] (g) => 5)\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     public void AClosuresContractIsJudgedWithItsUsesPremises(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 }

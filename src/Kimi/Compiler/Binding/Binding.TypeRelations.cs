@@ -39,28 +39,13 @@ public sealed partial class Binding
 
     // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Closure's or a Function value's signature with a required one at `use`, a
     // whole-contract comparison: its member Origins and the implementation's conditions, its own well-formedness among them (the
-    // owner's (a); FunctionFits), are proven from the required signature's premises and those of `use` alone (DECISIONS BU-93). The walk
-    // reaches no Callable comparison for a signature identical to the required one, whose own well-formedness at `use` is judged here.
+    // owner's (a); FunctionFits), are proven from the required signature's premises and those of `use` alone (DECISIONS BU-93).
     internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, out ComparisonFailure failure)
     {
-        var required = this.CompatibleSignature(actual, expected);
         var walk = new RelationWalk(this, use, OriginPart.Contract);
-        var fits = walk.Fits(actual, required, own: own);
+        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
         failure = walk.Failure;
-        if (!fits || !ReferenceEquals(actual, required) || actual is not { Kind: BoundTypeKind.Function, Components.Count: 2 })
-        {
-            return fits;
-        }
-
-        var instance = Comparison(actual, own, required, null);
-        if (this.FailedSignatureWellFormedness(actual, instance, use) is not { } formed)
-        {
-            return true;
-        }
-
-        var part = formed.Part < actual.Components[0].Components.Count ? formed.Part : -1;
-        failure = new ComparisonFailure(ComparisonFailureKind.WellFormedness, formed.Longer, formed.Shorter, false, instance) { Part = part };
-        return false;
+        return fits;
     }
 
     // SPEC 3.8 at a use whose premises and Origins the relation reads.

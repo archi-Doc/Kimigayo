@@ -5859,9 +5859,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     candidate's refuted Note as for a function) and a Function Item's argument or container clause, and one dev
     `InternalInvariant_Kd` (a refuted reference `id<K<string>>` at a fixed Function Type) becomes its `UnsatisfiedConstraint_Kd`;
     `ConstraintBindingTest.ATypeFormationExplainsTheUseThatRestsOnIt` pins them and the signature path.
-  - (2026-11-04) A1 does not apply in a whole-contract comparison (a Callable proof, a conversion; SPEC 15.6, 15.3.7): there the
-    Origin part is judged from premises alone, so a body-local region decides nothing and a failing member keeps its Proof-category
-    record (G404, BU-93).
+  - (2026-11-04) A1 does not apply in a whole-contract comparison (a Callable proof, or a Closure's or Function Item's conversion
+    (erasure, SPEC 7.7.4); SPEC 15.6.1, 15.3.7): there the Origin part is judged from premises alone, so a body-local region decides
+    nothing and a failing member keeps its Proof-category record (G404, BU-93).
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; the R4 planning session's design `r4-notes\g161\design.md` revision 3, design review 3 ACCEPT; Major,
   two commits, (1) before (2)) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
@@ -10523,8 +10523,9 @@ resumed by R4-M86 (2026-10-20).
   - Rule: the walk's query names the comparison: `OriginPart.Contract`, every Origin binding judged from the premises at the use (the
     required signature's own well-formedness among them), and no region decides, so a failing member is its Proof-category condition,
     never A1's Limit. `CallableSignatureFits`, `CallableSubtype` and ContractFits' walks take it; Contract stays Contract inside nested
-    Function Types. A signature identical to the required one reaches no Callable comparison, so `CallableSignatureFits` judges its own
-    well-formedness at the use itself (ResultPremiseTest n1a).
+    Function Types. In a Contract query identity does not discharge a part that carries an Origin, so `FunctionFits` judges the
+    implementation's own well-formedness at every nesting, a signature identical to the required one included (ResultPremiseTest n1a,
+    the nested `pnest1`).
   - Moves (generated gate, 90 programs): 16 valid programs accepted (conversion at let and return, a Closure argument after
     selection, a Function Type proven Callable at a Type argument); 2 invalid ones record at `w` (UnprovenOriginRelation_Kd) instead
     of the Closure, whose solution `(b and a)` now fits. Open: a Closure passed for `F is Callable<(T) -> i32>` at a call stays

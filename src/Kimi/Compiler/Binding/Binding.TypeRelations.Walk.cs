@@ -134,7 +134,7 @@ public sealed partial class Binding
         internal bool Fits(
             BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
         {
-            if (ReferenceEquals(actual, expected))
+            if (this.Discharged(actual, expected))
             {
                 return true;
             }
@@ -248,6 +248,12 @@ public sealed partial class Binding
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }
 
+        // Whether identity decides the relation of two parts: always, except in a whole-contract comparison (Contract), where a part that
+        // carries an Origin may hold a Function Type whose Callable comparison has its own condition, the implementation's own
+        // well-formedness at the use (the owner's (a); DECISIONS BU-93), which no identity discharges.
+        private readonly bool Discharged(BoundType actual, BoundType expected)
+            => ReferenceEquals(actual, expected) && (this.part != OriginPart.Contract || !actual.CarriesOrigin);
+
         // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one. A member's that the
         // relation judge does not refute or leave Unknown from the premises alone (it holds, or is Unrepresentable, only through an
         // inferred or body-local region) is the located limit, except in a whole-contract comparison (Contract), which no region decides.
@@ -303,9 +309,10 @@ public sealed partial class Binding
         // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
         // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
         // per call or fixed, so only its referent is compared; every other input is compared as written, contravariantly. Inside a Function
-        // Type only `Everywhere` treats Origin bindings as equal, and `Contract` stays a whole-contract comparison. Under the owner's (a), the implementation's own well-formedness, its
-        // inputs' and result's, is one of its conditions, proven from the required signatures' own well-formedness (the instance's
-        // premises) and the premises at the use (FailedSignatureWellFormedness); without a Binding no premise is visible.
+        // Type only `Everywhere` treats Origin bindings as equal, and `Contract` stays a whole-contract comparison. Under the owner's (a),
+        // the implementation's own well-formedness, its inputs' and result's, is one of its conditions, proven from the required
+        // signatures' own well-formedness (the instance's premises) and the premises at the use (FailedSignatureWellFormedness); without a
+        // Binding no premise is visible.
         private bool FunctionFits(BoundType actual, BoundType expected, bool invariant, in CallableInstance instance)
         {
             var actualInputs = actual.Components[0];
@@ -334,7 +341,7 @@ public sealed partial class Binding
         {
             var actualInputs = actual.Components[0];
             var expectedInputs = expected.Components[0];
-            for (var i = 0; !ReferenceEquals(actualInputs, expectedInputs) && i < actualInputs.Components.Count; i++)
+            for (var i = 0; !this.Discharged(actualInputs, expectedInputs) && i < actualInputs.Components.Count; i++)
             {
                 var input = actualInputs.Components[i];
                 if (!this.Fits(expectedInputs.Components[i], input, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance))
