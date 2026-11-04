@@ -11,7 +11,11 @@
 // - Inputs: the call, the callee's call signature (TryCallable; a Closure Type's definition, BoundClosure.Of) and its receiver mode.
 //   Outputs: the call's plan (CallPlan.SetValue) and its result Type, or a failure at the call.
 // - Invariants: a bound call's result names no input or reserved atom of its callee's binder (otherwise the call is Unsupported_Kd);
-//   the images are this call's alone.
+//   the images are this call's alone. A value call selects no callee, so an input's failed acquisition (the callee's or an argument's
+//   bare Place without its spelling) leaves its Type known and stops none of the call's other judgments (SPEC 3.8, 10, 23.1.2): the
+//   arguments' acquisitions, the solve, each fit's Origin rows, the input premises and the clauses; the call then rests on that record
+//   and forms no result. A named function, method or constructor call is not one: there a bare Place's Copy proof is its candidate's
+//   applicability (SPEC 10.1 step 5), so no candidate is selected and the relations judged after selection rest on it (DECISIONS BU-96).
 // - Prohibitions: no judgment of the callee's body; no second copy of the substitution (Binding.Storage's SubstituteStoredOrigins).
 
 using Kimi.Compiler.Parsing;
@@ -434,11 +438,7 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        if (!this.AcquireValueCallee(call, scope, receiver, out var receiverOperation))
-        {
-            return null;
-        }
-
+        var calleeAcquired = this.AcquireValueCallee(call, scope, receiver, out var receiverOperation); // Its record made; the call binds on.
         var parameters = signature.Components[0];
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
         if (count != call.ArgumentNodes.Count)
@@ -460,7 +460,7 @@ public sealed partial class Binding
         Array.Clear(origins, 0, originCount);
         try
         {
-            if (!this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count)))
+            if (!this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count), out var acquired))
             {
                 return null;
             }
@@ -520,7 +520,9 @@ public sealed partial class Binding
             }
 
             this.PublishCallRelations();
-            var result = this.ValueCallResult(
+
+            // A call whose callee or argument was not acquired rests on that record and forms no result.
+            var result = !calleeAcquired || !acquired ? null : this.ValueCallResult(
                 call, signature, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount), receiverOperation);
             if (result is null)
             {
@@ -550,10 +552,18 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4, 15.1.5: each argument of a value call, bound against its parameter and adapted to it: its operation and the Type it
-    // acquires, which the call's substitution then instantiates; false when one fails, which fails or leaves unresolved the call.
+    // acquires, which the call's substitution then instantiates; false when one fails or misfits, which fails or leaves unresolved the
+    // call. An acquisition is deferred, as a payload's is (CompletePayloads): where the argument fits structurally, a bare Place without
+    // its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it supplies kept, and `acquired` tells the call.
     private bool AcquireValueCallArguments(
-        InvocationKoto call, BindingScope scope, BoundType parameters, Span<BoundArgumentOperation> operations, Span<BoundType> instantiated)
+        InvocationKoto call,
+        BindingScope scope,
+        BoundType parameters,
+        Span<BoundArgumentOperation> operations,
+        Span<BoundType> instantiated,
+        out bool acquired)
     {
+        acquired = true;
         for (var i = 0; i < instantiated.Length; i++)
         {
             if (call.GetArgumentLabel(i) is not null)
@@ -574,19 +584,17 @@ public sealed partial class Binding
 
             actual = this.ArgumentType(source, actual);
             this.acquisitionFailure = null;
-            if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind))
+            if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind, deferAcquisition: true) ||
+                (this.acquisitionFailure is not null && !this.FitsStructuralPartAt(adapted, parameter, source)))
             {
-                // SPEC 15.1.5: name the missing spelling when a bare Place was the obstacle, as an ordinary call does.
-                if (this.acquisitionFailure is { } acquisition)
-                {
-                    this.FailAcquisition(call, acquisition.Kind, acquisition.Place, acquisition.Object, unresolved: true);
-                }
-                else
-                {
-                    this.Fail(call, BindingFailure.NoApplicableCandidate);
-                }
-
+                this.Fail(call, BindingFailure.NoApplicableCandidate);
                 return false;
+            }
+
+            if (this.acquisitionFailure is { } acquisition)
+            {
+                this.FailAcquisition(call, acquisition.Kind, acquisition.Place, acquisition.Object, unresolved: true);
+                acquired = false;
             }
 
             // ArgumentType includes the already selected expected adaptation. Retain the original syntax
