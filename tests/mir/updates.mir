@@ -368,3 +368,155 @@ fn noncompletingWrite @99
       StorageDead(_3) @103 s2
       StorageDead(_2) @102 s1
       unreachable check bb1 @102 s1
+fn updateIndex @110
+  _0: isize return @111
+  bb0:
+    * _0 = const 0_isize @112
+      return @112
+fn updateRight @113
+  _0: i32 return @114
+  bb0:
+    * _0 = const 2_i32 @115
+      return @115
+fn orderedUpdate @116
+  _0: i32 return @117
+  _1: [1 of i32] var mut a @119 s1
+  _2: () temp @126 s1
+  _3: i32 temp @131 s1
+  _4: ref/[1 of i32] temp @127 s1
+  _5: isize temp @129 s1
+  _6: isize temp @127 s1
+  _7: uniq/i32 temp @126 s1
+  _8: i32 temp @134 s1
+  _9: i32 temp (Result) @116
+  s1: lexical in s0 @118
+  bb0:
+      StorageLive(_1) @119 s1
+    * _1 = FixedArray(const 40_i32): [1 of i32] @124 s1
+      StorageLive(_2) @126 s1
+      StorageLive(_3) @131 s1
+    * _3 = updateRight() -> bb1 @131 s1
+  bb1:
+      StorageLive(_4) @127 s1
+      _4 = &_1: ref/[1 of i32] @127 s1
+      StorageLive(_5) @129 s1
+      _5 = updateIndex() -> bb2 @129 s1
+  bb2:
+      StorageLive(_6) @127 s1
+      _6 = move _5 @129 s1
+      EndBorrow(_4) @127 s1
+      StorageLive(_7) @126 s1
+      _7 = &uniq two-phase _1[_6]: uniq/i32 @126 s1
+      (*_7) = Add(copy (*_7), move _3) @126 s1
+      _2 = const () @126 s1
+      StorageDead(_7) @126 s1
+      StorageDead(_6) @127 s1
+      StorageDead(_5) @129 s1
+      StorageDead(_4) @127 s1
+      StorageDead(_3) @131 s1
+      StorageDead(_2) @126 s1
+      StorageLive(_8) @134 s1
+    * _8 = copy _1[0] @134 s1
+      goto bb7 check bb8 @133 s1
+  bb3:
+      return @116
+  bb4:
+      _0 = move _9 @116
+      goto bb3 @116
+  bb5:
+      StorageDead(_1) @119 s1
+      goto bb4 @116
+  bb6:
+      StorageDead(_8) @134 s1
+      goto bb5 @116
+  bb7:
+      _9 = move _8 @133 s1
+      goto bb6 @133 s1
+  bb8:
+      StorageDead(_8) @134 s1
+      StorageDead(_1) @119 s1
+      unreachable @118
+fn wholeLocal @137
+  _0: () return @137
+  _1: i32 var mut x @139 s1
+  _2: i32 var mut y @143 s1
+  _3: () temp @148 s1
+  _4: uniq/i32 temp @154 s1
+  _5: i32 temp @159 s1
+  _6: uniq/i32 temp @165 s1
+  _7: () temp @170 s1
+  _8: uniq/i32 temp @176 s1
+  _9: uniq/i32 temp @179 s1
+  s1: lexical in s0 @138
+  bb0:
+      StorageLive(_1) @139 s1
+    * _1 = const 1_i32 @142 s1
+      StorageLive(_2) @143 s1
+    * _2 = const 2_i32 @146 s1
+      StorageLive(_3) @148 s1
+      StorageLive(_4) @154 s1
+    * _4 = &uniq two-phase _1: uniq/i32 @154 s1
+      _3 = replace<i32>(move _4, const 2_i32) -> bb1 @148 s1
+  bb1:
+      StorageDead(_4) @154 s1
+      StorageDead(_3) @148 s1
+      StorageLive(_5) @159 s1
+      StorageLive(_6) @165 s1
+    * _6 = &uniq two-phase _1: uniq/i32 @165 s1
+      _5 = exchange<i32>(move _6, const 2_i32) -> bb2 @159 s1
+  bb2:
+      StorageDead(_6) @165 s1
+      StorageDead(_5) @159 s1
+      StorageLive(_7) @170 s1
+      StorageLive(_8) @176 s1
+    * _8 = &uniq two-phase _1: uniq/i32 @176 s1
+      StorageLive(_9) @179 s1
+      _9 = &uniq two-phase _2: uniq/i32 @179 s1
+      _7 = swap<i32>(move _8, move _9) -> bb3 @170 s1
+  bb3:
+      StorageDead(_9) @179 s1
+      StorageDead(_8) @176 s1
+      StorageDead(_7) @170 s1
+      _0 = const () @138 s1
+      StorageDead(_2) @143 s1
+      StorageDead(_1) @139 s1
+      return @138
+fn wholeBorrowed @182
+  _0: () return @182
+  _1: uniq/i32 arg x @183
+  _2: uniq/i32 arg y @185
+  _3: () temp @189 s1
+  _4: uniq/i32 temp @195 s1
+  _5: i32 temp @198 s1
+  _6: uniq/i32 temp @204 s1
+  _7: () temp @207 s1
+  _8: uniq/i32 temp @213 s1
+  _9: uniq/i32 temp @214 s1
+  s1: lexical in s0 @187
+  bb0:
+      StorageLive(_3) @189 s1
+      StorageLive(_4) @195 s1
+    * _4 = &uniq two-phase (*_1): uniq/i32 @195 s1
+      _3 = replace<i32>(move _4, const 2_i32) -> bb1 @189 s1
+  bb1:
+      StorageDead(_4) @195 s1
+      StorageDead(_3) @189 s1
+      StorageLive(_5) @198 s1
+      StorageLive(_6) @204 s1
+    * _6 = &uniq two-phase (*_1): uniq/i32 @204 s1
+      _5 = exchange<i32>(move _6, const 2_i32) -> bb2 @198 s1
+  bb2:
+      StorageDead(_6) @204 s1
+      StorageDead(_5) @198 s1
+      StorageLive(_7) @207 s1
+      StorageLive(_8) @213 s1
+    * _8 = &uniq two-phase (*_1): uniq/i32 @213 s1
+      StorageLive(_9) @214 s1
+      _9 = &uniq two-phase (*_2): uniq/i32 @214 s1
+      _7 = swap<i32>(move _8, move _9) -> bb3 @207 s1
+  bb3:
+      StorageDead(_9) @214 s1
+      StorageDead(_8) @213 s1
+      StorageDead(_7) @207 s1
+      _0 = const () @187 s1
+      return @187

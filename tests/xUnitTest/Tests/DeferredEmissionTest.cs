@@ -53,26 +53,12 @@ public class DeferredEmissionTest
     public void OverflowStopsCleanupAndDelivery(string name, string source, string stdout, int line, int column)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
 
+    // A deferred body that registers its own cleanup generates (its MIR: tests/mir/scopes.kimi `nestedDefer`).
     [Fact]
     public void CleanupSegmentsHaveUniqueMembershipAndDeferredEndpoints()
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\ndefer\n    var y = 2\n    defer => y = 3\n    x = y\nvar z = 4");
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-        var body = c.AnalyzeLegacyOwnership().Bodies[0];
-        var seen = new HashSet<int>();
-        foreach (var plan in body.CleanupPlans)
-        {
-            var first = body.CleanupSteps[plan.Start].Operation;
-            Assert.Equal(first, body.Edges[plan.Edge].To);
-            for (var i = plan.Start; i < plan.Start + plan.Count; i++)
-            {
-                Assert.True(seen.Add(i));
-            }
-        }
-
-        Assert.Equal(body.Operations.Count(x => x.Kind == OwnershipOperationKind.Cleanup), seen.Count);
-        Assert.Equal(2, body.DeferredPlans.Count);
-        Assert.All(body.DeferredPlans, plan => Assert.Equal(plan.Entry, body.Edges[plan.Edge].To));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -137,23 +123,22 @@ public class DeferredEmissionTest
         ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", observationMilliseconds: 1000);
     }
 
+    // The MIR body's blocks, measured per depth, bound the expansion of nested deferred bodies at each self exit and continue.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    [InlineData(4)]
-    public void NestedSelfExitsAndContinuesHaveMeasuredBoundedExpansion(int depth)
+    [InlineData(1, 72)]
+    [InlineData(2, 168)]
+    [InlineData(3, 360)]
+    [InlineData(4, 744)]
+    public void NestedSelfExitsAndContinuesHaveMeasuredBoundedExpansion(int depth, int blocks)
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(depth));
-        var body = c.AnalyzeLegacyOwnership().Bodies[0];
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-        Assert.InRange(body.Operations.Count, 1, OwnershipAnalysis.DeferredOperationLimit);
-        Assert.Equal(depth + 2, body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local));
+        Assert.Equal(blocks, c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0).Blocks.Length);
     }
 
-    // An expansion past the old analysis's deferred-cleanup limit (its 8192 operations, read through its legacy entry until H10b) has no
+    // An expansion past the old analysis's deferred-cleanup limit (its 8192 operations) has no
     // MIR counterpart: since the MIR decides acceptance (R6-check H5; 1a, the owner 2026-11-03, DECISIONS R5-M182's O-2), check accepts
     // it with no record, DeferredExpansionLimit_Kd included, and generates its module, on every analysis.
     [Fact]
@@ -165,7 +150,6 @@ public class DeferredEmissionTest
             c.Analyze();
             Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
             Assert.Empty(c.Problems);
-            Assert.Equal(OwnershipAnalysis.DeferredOperationLimit, c.AnalyzeLegacyOwnership().Bodies[0].Operations.Count);
             using var writer = new StringWriter();
             Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
             Assert.NotEmpty(writer.ToString());
