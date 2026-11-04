@@ -658,7 +658,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            signature |= solution.Contributions[i] == Contribution.Signature && function.Parameters[mapping[i]].Type.BoundType is { StoresOrigin: true };
+            signature |= solution.Rows[i].Contribution == Contribution.Signature && function.Parameters[mapping[i]].Type.BoundType is { StoresOrigin: true };
         }
 
         if (solution.OriginInference is null && (signature || this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0))
@@ -674,7 +674,7 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var slot = Array.IndexOf(mapping, i, 0, call.ArgumentNodes.Count);
-            if ((slot < 0 ? defaults.Contains(i) : solution.Contributions[slot] == Contribution.Signature) &&
+            if ((slot < 0 ? defaults.Contains(i) : solution.Rows[slot].Contribution == Contribution.Signature) &&
                 function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
                 this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
             {
