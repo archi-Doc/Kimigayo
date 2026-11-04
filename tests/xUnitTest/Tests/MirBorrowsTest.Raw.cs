@@ -549,8 +549,8 @@ public sealed partial class MirBorrowsTest
     // it: x's own (viaOk, consumeDrop2Ok, arrConsumeOk; viaRefOk through a borrow) or input 1's (via2Ok; deepQOk two Fields deep, enumBOk
     // in an enum's payload, optOk in an Option, genPLateOk in a box's Field, arrPlainOk in an Array). Each is a correct error at `y = 5`
     // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
-    // names keep their earlier suffix. The default pipeline's analysis reports nothing: its old analysis reads no retention, and the MIR
-    // analyses' problems are unpublished until H3 and decide acceptance only from H5 (DECISIONS R5-M152).
+    // names keep their earlier suffix. The old analysis read no retention and accepted the program; since the MIR decides acceptance
+    // (R6-check H5, DECISIONS R5-M185) the default pipeline rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
     [Fact]
     public void ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn()
     {
@@ -661,7 +661,9 @@ public sealed partial class MirBorrowsTest
                 "optOk: y = 5", "genPLateOk: y = 5", "arrPlainOk: y = 5",
             ],
             Problems(c, Analyze(c), LoanCodes));
-        Assert.Empty(MinimalEmissionTest.Analyze(Source).Problems);
+        var analyzed = MinimalEmissionTest.Analyze(Source);
+        Assert.False(analyzed.Accepts);
+        Assert.Equal(string.Join(" | ", Enumerable.Repeat("ComparisonLoanConflict_Kd y = 5", 10)), MinimalEmissionTest.Problems(analyzed));
     }
 
     // SPEC 5.7 Reading a Field, 5.2.1 (G184, `during self`): a pointer read from a `during self` Field reaches its holder's own storage, so a

@@ -109,12 +109,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var source = "contract P<T>\n    func value(self: ref/Self, x: T) -> T\ncontract Q: P<i32>, P<i64>\n    effect (P<i32>).value confined\n" +
             "contract Safe\n    func run(self: ref/Self) -> " + argument + "\n        effect confined\n" +
             "struct Wrapper<T>\n    T is Q\n    Self is Safe\n    let inner: T\n    public func run(self: ref/Self) -> " + argument + "\n        let x: " + argument + " = 7\n        return self.inner.value(x)\nlet present = 1";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
+        EffectBoundImplementationTest.AssertBound(MinimalEmissionTest.Analyze(source), valid, "Self is Safe"); // A4's record (R6-check H3b T40)
     }
 
     // SPEC 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a later call of either requirement of one Contract reaches

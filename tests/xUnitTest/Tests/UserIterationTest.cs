@@ -69,6 +69,11 @@ public partial class UserIterationTest
     public void ConcreteEntryExecutes()
         => ScalarEmissionTest.EmitFixture("UserIterationCounter", Counter + Three + "var total: i32 = 0\nfor item in Three.init()\n    total += item\nrequire total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n");
 
+    // SPEC 15.6.4 (R4-M170): the program is valid, but since G264 (S) S2 A5 errs twice at count's `for` (the lent item's composed erased
+    // destruction stores next()'s Loan into the iterator, a self-row; EntryConstraintDispatchesInAGenericBody's count, ledger
+    // 33e9ca2366ff), so generation and the native audit (UserIterationCost, 0, 0, 0) wait; a warm rebind and reanalysis still reuse their
+    // plans and allocate nothing. H5's (e) list, row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the
+    // acceptance and re-points this test back to its zero-allocation generation and audit.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmUserIterationCompilationReusesItsPlans()
@@ -77,27 +82,31 @@ public partial class UserIterationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.False(c.Analyze().IsVerified);
+        var loop = new SyntaxLocation("for _ in batch@move => count += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        var ownershipBytes = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified);
-        var generationBytes = AllocationMeasurement.Measure(() => success &= c.Generate(TextWriter.Null));
+        var ownershipBytes = AllocationMeasurement.Measure(() => success &= !c.Analyze().IsVerified);
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, ownershipBytes);
-        Assert.Equal(0, generationBytes);
-        NativeAllocationAudit.WriteFixture("UserIterationCost", Source, 0, 0, 0);
     }
 
+    // SPEC 15.6.4 (R4-M170): both programs are valid, but since G264 (S) S2 A5 errs twice at count's `for` (the lent item's composed
+    // erased destruction stores next()'s Loan into the iterator, a self-row; ledger 33e9ca2366ff, d2662f97b5ca), and generation refuses
+    // them; the old analysis accepted and ran them (fixtures UserIterationConstraint "ok\n", UserIterationConstraintItems "item\nok\n").
+    // H5's (e) list, row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and re-points both
+    // tests back to their runs.
     [Fact]
     public void EntryConstraintDispatchesInAGenericBody()
-        => ScalarEmissionTest.EmitFixture("UserIterationConstraint", Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")\nConsole.writeLine(\"ok\")", "ok\n");
+        => AssertRefusedPendingG416(Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")\nConsole.writeLine(\"ok\")");
 
     [Fact]
     public void EntryConstraintPreservesOwnedAndBorrowedItems()
-        => ScalarEmissionTest.EmitFixture("UserIterationConstraintItems", Drain + "struct Tracked\n    drop => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "item\nok\n");
+        => AssertRefusedPendingG416(Drain + "struct Tracked\n    drop => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")");
 
     [Fact]
     public void GenericLoopTransfersItsProjectedItemIntoTheResult()
@@ -307,5 +316,16 @@ public partial class UserIterationTest
         Assert.Equal(code, issue.Code);
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.Same(atSubject ? loop.Iterable : loop, issue.Node);
+    }
+
+    // An (e) row of S2's self-row family: the program binds, A5's two records at count's `for` are its MIR side, and generation refuses it.
+    private static void AssertRefusedPendingG416(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var loop = new SyntaxLocation("for _ in batch@move => count += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

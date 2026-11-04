@@ -27,4 +27,29 @@ public class NominalLengthRecoveryTest
             Assert.False(c.Generate(TextWriter.Null));
         }
     }
+
+    // SPEC 4.4.1, 4.4.2 (DECISIONS BU-85): only functions have length slots, so outside a Function scope nothing proves a compound
+    // length; its formation fails at the length, and no length obligation is left unproven for Final. A bare slot is a valid length.
+    [Theory]
+    [InlineData("struct S<length N>\n    public var cells: [(N - 1) of i32]\npublic func main() => ()", "(N - 1)")]
+    [InlineData("struct S<length N>\n    public var cells: [(N + 1) of i32]\npublic func main() => ()", "(N + 1)")]
+    [InlineData("struct S<length N>\n    public var cells: [N of i32]\npublic func main() => ()", null)]
+    public void CompoundLengthOutsideFunctionFailsAtFormation(string source, string? length)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Bind().IsComplete);
+        var failed = c.Binding.Issues.Select(static issue => issue.Node).Concat(c.Binding.DerivedIssues)
+            .Where(static node => node.FailureOf() == BindingFailure.InvalidTypeFormation)
+            .Select(static node => node.ToString()).ToArray();
+        if (length is null)
+        {
+            Assert.DoesNotContain("N", failed);
+        }
+        else
+        {
+            Assert.Contains(length, failed);
+        }
+
+        Assert.DoesNotContain(c.Binding.Obligations, obligation => obligation.Length is not null && !c.Binding.IsVerifiedLengthObligation(obligation));
+    }
 }

@@ -88,7 +88,7 @@ public class WholeValueTest
             var call = borrowed ? expression : expression.Replace("(x", "(x@uniq", StringComparison.Ordinal).Replace(", y)", ", y@uniq)", StringComparison.Ordinal);
             var c = MinimalEmissionTest.Analyze(source + "    _ = Kimi.Intrinsics." + call + "\n");
             Assert.True(c.Analysis.IsVerified, Describe(c));
-            var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+            var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
             var operation = Assert.Single(body.Operations, x => x.IsWholeUpdate);
             Assert.Equal(expected, operation.Kind);
             var update = body.OperationStorage.FindIndex(x => x.IsWholeUpdate);

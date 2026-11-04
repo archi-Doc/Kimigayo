@@ -17,9 +17,24 @@ public class MemberThroughLayersTest
         "var b = P.init(1, \"b\")\nvar exclusive: [1 of uniq/P] = [b@uniq]\nfor v in exclusive@uniq\n    v.v += 10\n    v.v = v.v + 1\nfor v in exclusive\n    require v.v == 12 else => $abort(\"write\")\n" +
         "let t: (i32, i32) = (1, 2)\nlet tuples = [t@ref]\nfor r in tuples\n    require r.0 + r.1 == 3 else => $abort(\"tuple\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 15.6.4 (H3b T30): the exclusive iteration over `exclusive`'s uniq elements keeps the direct Loans naming its own targets past
+    // layer 1, so the MIR rejects this valid program by the SPEC's letter (at the ends of `b` and `exclusive` and at the later shared
+    // iteration), and generation refuses it; the old analysis accepted it and ran it to "a\nok\n". H5's (e) list (the owner, 2026-11-03,
+    // 「推奨どおり」, board O-1): PLAN G148 (2), GXS adopted with its extension (exclusive-element collections), restores the acceptance
+    // and re-points this test back to its run.
     [Fact]
     public void FieldsAndTupleElementsAreSelectedThroughLayers()
-        => ScalarEmissionTest.EmitFixture("MemberThroughLayers", Source, "a\nok\n");
+    {
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var b = P.init(1, \"b\")")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var exclusive: [1 of uniq/P] = [b@uniq]")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("for v in exclusive\n", "exclusive")));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
 
     [Fact]
     public void ASharedLayerBoundsTheSelectedPathToSharedAccess()

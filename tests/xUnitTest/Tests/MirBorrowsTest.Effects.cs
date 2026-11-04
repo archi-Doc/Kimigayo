@@ -185,7 +185,7 @@ public sealed partial class MirBorrowsTest
                     public func e9() => action = func [] () => ()
                     public func e9b() => _ = Kimi.Intrinsics.exchange(action@uniq, with: func [] () => ())
                     public func e9s(g: () -> ())
-                        var local: () -> () = g
+                        var local: () -> () = g@move
                         let c = counter.view()
                         local = func [] () => ()
                         inspect(c)
@@ -464,7 +464,7 @@ public sealed partial class MirBorrowsTest
                 struct Nest<T>
                     public var value: T
                     public var next: Option<rc/Nest<(T, T)>> = .None
-                    public init(value: T) => self.value = value
+                    public init(value: T) => self.value = value@move
 
                 """);
         Assert.Empty(Problems(c, AnalyzeUnsupported(c, ["count"]), LoanCodes));
@@ -522,7 +522,7 @@ public sealed partial class MirBorrowsTest
             struct Nest<T>
                 public var value: T
                 public var next: Option<rc/Nest<(T, T)>> = .None
-                public init(value: T) => self.value = value
+                public init(value: T) => self.value = value@move
 
             """);
         var program = AnalyzeUnsupported(c, ["x"]);

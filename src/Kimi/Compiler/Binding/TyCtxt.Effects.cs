@@ -9,6 +9,7 @@ namespace Kimi.Compiler;
 // read, all under one premise scope per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
+    private readonly Dictionary<Koto, CopyFacts> copies = new(ReferenceEqualityComparer.Instance); // By premises node (a view, ResetViews).
     private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
 
     // SPEC 8.11.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), a
@@ -64,10 +65,22 @@ internal sealed partial class TyCtxt
     // SPEC 8.11.3: a requirement function item's dispatching Contract reference (DispatchBounds' contract); null for another item.
     internal BindingSymbol? ItemContract(BoundType item) => binding.FunctionItemContext(item)?.RequirementContract;
 
-    // SPEC 8.7.2, 16.3.3: whether a Type is proven Copy, whose destruction does nothing, or Sealed, whose handle's destruction runs only its
-    // own destructor, under a definition's premises.
-    internal bool Copy(BindingSymbol? definition, BoundType type) => binding.ProveCopy(type, binding.EffectPremises(definition)) == ConstraintProof.Proven;
+    // SPEC 8.7.2, 16.3.3: the Copy facts of a definition's premises (CopyFacts), one per node its premises are read at (Binding.DefinitionUse),
+    // a view memo (ResetViews; DECISIONS BU-88).
+    internal CopyFacts Copies(BindingSymbol? definition)
+    {
+        var use = binding.DefinitionUse(definition);
+        if (!this.copies.TryGetValue(use, out var facts))
+        {
+            facts = new(binding, binding.EffectPremises(definition));
+            this.copies.Add(use, facts);
+        }
 
+        return facts;
+    }
+
+    // SPEC 8.7.2, 16.3.3: whether a Type is proven Sealed, whose handle's destruction runs only its own destructor, under a definition's
+    // premises.
     internal bool Sealed(BindingSymbol? definition, BoundType type) => binding.ProveSealed(type, binding.EffectPremises(definition)) == ConstraintProof.Proven;
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
@@ -87,5 +100,25 @@ internal sealed partial class TyCtxt
         }
 
         this.callsRowsChecked = true;
+    }
+
+    /// <summary>Whether each Type is proven Copy, whose destruction does nothing (SPEC 8.7.2, 16.3.3), under one definition's premises,
+    /// resolved once (Binding.EffectPremises): each Type is proven at its first question (DECISIONS BU-88).</summary>
+    /// <param name="binding">The Binding that proves.</param>
+    /// <param name="premises">The definition's premises.</param>
+    internal sealed class CopyFacts(Binding binding, BindingScope premises)
+    {
+        private readonly Dictionary<BoundType, bool> proven = new();
+
+        internal bool Copy(BoundType type)
+        {
+            if (!this.proven.TryGetValue(type, out var copy))
+            {
+                copy = binding.ProveCopy(type, premises) == ConstraintProof.Proven;
+                this.proven.Add(type, copy);
+            }
+
+            return copy;
+        }
     }
 }

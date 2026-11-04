@@ -15,7 +15,7 @@ public class InternalInvariantTest
     {
         var c = MinimalEmissionTest.Analyze("func f() -> i32 => 1\nlet n = f()");
         Assert.True(c.Analysis.IsVerified);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         Assert.Empty(body.Issues);
 
         // A construct recorded as completing whose exit the ownership graph never reaches.

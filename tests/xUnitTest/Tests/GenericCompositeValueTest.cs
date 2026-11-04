@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -63,7 +64,6 @@ public class GenericCompositeValueTest
     [InlineData(Resource + Delivery + "let value: Delivery<Resource> = .Ready(Resource.init(1))\nmatch value@move\n    .Ready(let item) => ()\n    .Missing => ()\nlet invalid = value@move")]
     [InlineData("func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)\nlet value = duplicate<i32>(1)")]
     [InlineData("func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)\nConsole.writeLine(\"unused definition\")")]
-    [InlineData("func duplicate<T>(value: T) -> (T, T) => (value, value)\nConsole.writeLine(\"unused definition\")")]
     [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n    drop => ()\nConsole.writeLine(\"unused definition\")")]
     [InlineData("func observe<T>(value: ref/T) => ()\nfunc relay<T>(value: T) -> T\n    let pending = value@move\n    defer => observe<T>(pending@ref/T)\n    return pending@move\nConsole.writeLine(\"unused definition\")")]
     public void RejectsInvalidOwnershipUniversally(string source)
@@ -74,6 +74,15 @@ public class GenericCompositeValueTest
         using var output = new StringWriter();
         Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
+    }
+
+    // A bare duplicate of an unconstrained T is SPEC 3.5's error at each element, Binding's TransferRequired_Kd (R6-check H1).
+    [Fact]
+    public void ABareDuplicateIsBindingsRecordUniversally()
+    {
+        var c = MinimalEmissionTest.Analyze("func duplicate<T>(value: T) -> (T, T) => (value, value)\nConsole.writeLine(\"unused definition\")");
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "value"), (DiagnosticCode.TransferRequired_Kd, "value")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

@@ -131,7 +131,7 @@ public class LiteralExpressionTest
     public void ALiteralSourceThatDoesNotFitItsJoinsTypeIsItsOwnProblem(string statement, string code, string at)
     {
         var source = "struct P\n    public var y: i8 = 1\n    public var b: bool = true\n    public var x: i64 = 5\nfunc f(c: bool, p: P)\n    " + statement +
-            "\n    _ = t\npublic func main() => ()\n";
+            "\n    _ = t@move\npublic func main() => ()\n"; // An Array join is no Copy, so the discard moves it explicitly (SPEC 3.5 row 3).
         var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (diagnostic.Code, source.Substring(diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length)));
     }

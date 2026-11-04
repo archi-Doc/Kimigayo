@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Backend;
 // R5-M114): the module's runtime identities, numbered once per Write before the items (Number): the erased payload of each Generated
 // ObjectDescriptor item in admission order, then each base on its chain (AdtDef.Base), each erased by TyCtxt.Erase as MonoKey.Type is, so
 // equal Types share one number, from 1 at its first occurrence, a base no creation makes included; a descriptor's token and base tokens and a
-// type test's target read them (Token). A descriptor item's row (ObjectCreation: its payload's representation, Copy by TyCtxt.Copy on the
+// type test's target read them (Token). A descriptor item's row (ObjectCreation: its payload's representation, Copy by TyCtxt.Copies on the
 // representative, its factory's signature, ObjectRuntime.Factory, its token, its payload glue's symbol, the descriptor's first target when
 // the payload may need a drop, its chain's tokens nearest first, and its VTable target's entries, Table) is computed once per Write and the
 // previous one reused while it matches, so a warm module allocates nothing; ObjectRuntime writes it into the function buffer, and the frame
@@ -83,7 +83,7 @@ internal sealed partial class ModuleCodegen
         var targets = this.set.Targets(item);
         var payload = entry.RepresentativeType!;
         var value = this.Layout.Of(payload).Value!; // The collector admits a type-driven item with an Ok verdict (K package 4.8).
-        var copy = this.types.Copy(null, payload);
+        var copy = this.types.Copies(null).Copy(payload);
         var kind = Abi.Kind(Abi.Convention.Internal, payload);
         var destroy = targets.Length > 0 && this.set.Items[targets[0].Item].Key.Kind == MonoKind.DropGlue ? this.Glue(targets[0].Item).Name : null;
         var token = this.Token(entry.Key.Type!);

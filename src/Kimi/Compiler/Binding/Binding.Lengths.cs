@@ -28,18 +28,6 @@ public sealed partial class Binding
     private readonly List<BindingSymbol> activeLengthConstants = new();
     private readonly ScratchBuffers<BoundLength?> lengthScratch = new();
 
-    internal bool IsVerifiedLengthObligation(BindingObligation obligation)
-    {
-        if (obligation is not { Kind: BindingObligationKind.TypeFormation, Deadline: BindingDeadline.Instantiation, Length: { } length } ||
-            obligation.Use.BindingState != BindingState.Resolved || obligation.Use.BoundType is not { IsInteger: true })
-        {
-            return false;
-        }
-
-        var function = this.ConstraintScope(obligation.Use).Function;
-        return (function is not null && IsSignatureLength(obligation.Use, function)) || this.ProveLength(length, function);
-    }
-
     internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
     {
         if (expression.Parameter is { } parameter)
@@ -414,7 +402,10 @@ public sealed partial class Binding
 
         if (symbolic is not null)
         {
-            if (scope.Function is { } function && !IsSignatureLength(syntax, function) && !this.ProveLength(symbolic, function))
+            // SPEC 4.4.1, 4.4.2: a length follows from its declaration where it is formed. Only functions have length slots, so outside
+            // a Function scope (a misplaced length list's recovery) nothing proves a compound length: it fails here, and no length
+            // obligation reaches Final unproven (DECISIONS BU-85).
+            if ((scope.Function is not { } function || !IsSignatureLength(syntax, function)) && !this.ProveLength(symbolic, scope.Function))
             {
                 this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 return null;

@@ -43,6 +43,11 @@ public class ElementBorrowEmissionTest
         { "GuardCandidate", "let a = (\"first\", 0)\nmatch \"other\"@move\n    let s if same(a.0, s) => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"ok\")" },
         { "NestedGuardCandidate", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nlet a = (\"first\", 0)\nmatch \"other\"@move\n    let s if three(a.0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")" },
         { "TransferIndex", "func see(v: ref/string) => Console.writeLine(\"bad\")\nfunc f() -> i32\n    let a: [1 of string] = [\"first\"]\n    defer => if a[0] != \"first\" => Console.writeLine(\"bad\")\n    see(a[(return 42)]@ref)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
+
+        // The located receiver `a.1` stays protected while its index operand evaluates (SPEC 4.6.3), and a write of its sibling `a.0`
+        // there does not touch it, so the program is accepted (R4's 1a verdict, the owner 2026-11-03): the old analysis's
+        // ComparisonLoanConflict_Kd went with the MIR deciding acceptance (H5).
+        { "IndexSibling", "var a: (string, [1 of i32]) = (\"first\", [0])\nlet x = a.1[(label work: do\n    let equal = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work 0\n)]\nif x == 0 and a.0 == \"new\" => Console.writeLine(\"ok\")" },
     };
 
     [Theory]
@@ -80,7 +85,6 @@ public class ElementBorrowEmissionTest
     [InlineData("var a = (\"first\", 0)\nlet equal = a.0 == (label work: do\n    defer => a.0 = \"new\"\n    exit to work \"first\"\n)")]
     [InlineData("var a = (\"first\", 0)\nlet equal = a.0 == (label work: do\n    let nested = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work \"first\"\n)")]
     [InlineData("func inspect(a: ref/string, b: bool) => ()\nvar a = (\"first\", 0)\ninspect(a.0, (label work: do\n    let nested = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work nested\n))")]
-    [InlineData("var a: (string, [1 of i32]) = (\"first\", [0])\nlet x = a.1[(label work: do\n    let equal = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work 0\n)]")]
     public void OverlappingLoansAreRejected(string source)
         => Reject(Same + source, DiagnosticCode.ComparisonLoanConflict_Kd);
 
@@ -224,7 +228,7 @@ public class ElementBorrowEmissionTest
     }
 
     // SPEC 15.6.2: element indices prove no disjointness, so exclusive borrows of parts of two elements conflict exactly as exclusive
-    // borrows of the two elements do.
+    // borrows of the two elements do: the MIR's CallReservationConflict_Kd (H5).
     [Fact]
     public void ExclusivePartBorrowsOfTwoElementsConflictAsTheElementsDo()
     {
@@ -236,7 +240,7 @@ public class ElementBorrowEmissionTest
         }
 
         var parts = Codes("func two(a: uniq/i32, b: uniq/i32) => a@follow += b@follow\ntwo(xs[0].n@uniq, xs[1].n@uniq)");
-        Assert.Contains("CallActivationConflict_Kd", parts);
+        Assert.Contains("CallReservationConflict_Kd", parts);
         Assert.Equal(Codes("func two(a: uniq/Item, b: uniq/Item) => ()\ntwo(xs[0]@uniq, xs[1]@uniq)"), parts);
     }
 

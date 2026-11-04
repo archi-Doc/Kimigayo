@@ -111,7 +111,7 @@ public sealed class TyCtxtTest
         "enum Cell\n    Some(raw/u8 during self)\n    None\n" +
         "struct View<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
         "    public init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
-        "func held(view: View<i32> during static) -> View<i32> during static => view\n" +
+        "func held(view: View<i32> during static) -> View<i32> during static => view@move\n" +
         "func local(x: ref/i32) -> i32\n    let v = View<i32>.init(x)\n    let b = Block.init()\n    let c = Cell.None\n    return 0\n";
 
     // Holders whose stored parts reach a raw layer a Type argument supplies below them: through a Field (Outer), an inline Tuple (Pair2), a
@@ -1916,8 +1916,8 @@ public sealed class TyCtxtTest
     }
 
     // Binding's instantiation for a call's context. A requirement's, under its conforming Self and bound Contract reference, and a direct
-    // base call's into an implementation other than the slot's original, of that implementation in the implementing Type (as
-    // Binding.EffectBounds forms that call), have no CallPlan form: theirs is Binding's instantiation under the substitution once it names the
+    // base call's into an implementation other than the slot's original, of that implementation in the implementing Type, have no
+    // CallPlan form: theirs is Binding's instantiation under the substitution once it names the
     // call's target and conforming Self (a base call's: the implementation, no Self, the implementing Type) and binds the call's Type and
     // length arguments and Origins. Any other call's is its CallPlan form.
     private static BoundType? Instance(Compilation c, BoundType declared, Subst subst, CallPlan context) => context switch

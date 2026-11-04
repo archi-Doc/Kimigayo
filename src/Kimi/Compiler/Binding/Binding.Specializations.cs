@@ -217,8 +217,6 @@ public sealed partial class Binding
     /// <returns>The specializations, or null when it has none.</returns>
     internal List<FunctionKoto>? Specializations(BindingSymbol original) => this.specializationsByOriginal.GetValueOrDefault(original);
 
-    internal FunctionKoto? SelectSpecialization(CallPlan call) => this.SelectSpecialization(call.Target, call.TypeArguments, call.LengthArguments);
-
     // SPEC 8.13, 8.13.3: a body a call of a function under its substitution may run, by index, null past the last: the specialization a
     // closed key selects, else the function itself and each specialization an open key may still select (no substitution: every one).
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index)

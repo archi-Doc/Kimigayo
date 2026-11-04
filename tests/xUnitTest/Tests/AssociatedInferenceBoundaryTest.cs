@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -127,28 +128,38 @@ public class AssociatedInferenceBoundaryTest
         Assert.NotEmpty(Definition(c).Paths.SelectMany(static x => x.InferenceEvidence));
     }
 
+    // R6-check H5 (DECISIONS R5-M185): a base's witness over its effect bound is A4's record, at the base's conformance and at the inheriting
+    // S, so check rejects the program (a layer move of the record from Binding, DECISIONS Q13; H3b round 0).
     [Fact]
     public void AFailedBaseWitnessCannotLeaveAnInheritedCertificate()
     {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Item\n    func read(self: ref/Self) -> Self.Item\n        effect confined\nopen struct Base\n    Self is C\n    public func read(self: ref/Self) -> i32\n        Console.writeLine(\"effect\")\n        return 1\nstruct S: Base");
-        Assert.False(c.Bind().IsComplete);
-        Assert.False(Definition(c).IsVerified);
-        Assert.All(Definition(c).Paths, static x => Assert.False(x.IsVerified));
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item\n    func read(self: ref/Self) -> Self.Item\n        effect confined\nopen struct Base\n    Self is C\n    public func read(self: ref/Self) -> i32\n        Console.writeLine(\"effect\")\n        return 1\nstruct S: Base");
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.False(c.Accepts);
+        Assert.Equal(
+            ["IncompatibleContractImplementation_Kd Self is C", "IncompatibleContractImplementation_Kd Base"],
+            c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
     }
 
+    // R6-check H5 (DECISIONS R5-M185): Binding checks no effect bound, so an implementation over its bound leaves its path,
+    // and the associated evidence inferred through it, verified across rebinds (Binding.Contracts invalidates the evidence of the paths it
+    // rejects; the repeated invalidation after the old check went with it), and the MIR's A4 rejects the program at the obligation. It
+    // re-points LateEffectFailureInvalidatesSharedAndExternalEvidence (a layer move of the record, DECISIONS Q13; H3b round 0).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void LateEffectFailureInvalidatesSharedAndExternalEvidence(bool external)
+    public void AnEffectBoundOverrunLeavesTheEvidenceToTheMir(bool external)
     {
         const string contracts = "contract P\n    associate Item\ncontract C: P\n    func read() -> Self.Item\n        effect confined\n";
-        var c = CompilationTestHelper.ParseSuccess(contracts + (external
+        var c = MinimalEmissionTest.Analyze(contracts + (external
             ? "struct Origin\n    Self is C\n    public func read() -> i32\n        Console.writeLine(\"effect\")\n        return 1\ncontract D\n    associate Value\n    func make() -> Self.Value\nstruct S\n    Self is D\n    public func make() -> Origin.(P).Item => 1"
             : "struct S\n    Self is C and P\n    public func read() -> i32\n        Console.writeLine(\"effect\")\n        return 1"));
-        Assert.False(c.Bind().IsComplete);
-        Assert.False(Definition(c, external ? "D" : "P").IsVerified);
-        Assert.False(c.Bind().IsComplete);
-        Assert.False(Definition(c, external ? "D" : "P").IsVerified);
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.True(Definition(c, external ? "D" : "P").IsVerified);
+        Assert.False(c.Accepts);
+        Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, Assert.Single(c.Problems).Code);
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(Definition(c, external ? "D" : "P").IsVerified);
     }
 
     [Theory]

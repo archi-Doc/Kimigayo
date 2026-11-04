@@ -509,7 +509,7 @@ public sealed partial class Binding
         this.ValidateConformances(mode, true);
         this.ValidateConstraintUses(mode);
         this.ClearCapabilityResults();
-        this.ValidateEffectBounds();
+        this.CollectCallableEffectUses();
         this.InvalidateProjectionCertificates(mode);
         this.ValidateIterationWitnesses();
         this.ValidateExpressionProjectionInputs(mode);
@@ -521,7 +521,6 @@ public sealed partial class Binding
         }
 
         this.ValidateVirtualOverrideConditions();
-        this.ValidateVirtualEffectBounds();
         this.GuardPendingVirtualDeclarations();
     }
 
@@ -803,10 +802,6 @@ public sealed partial class Binding
         {
             this.ReportOverrideFailure(overrideFunction, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd && issue.Node is FunctionKoto effectImplementation)
-        {
-            this.ReportVirtualEffectViolation(effectImplementation, requirement);
-        }
         else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
         {
             virtualFunction.Report(requirement, issue.Code, span: virtualFunction.DispatchModifierSpan, evidence: [this.virtualDeclarationFailures![virtualFunction]], related: [("declaration", virtualFunction, "the virtual or override declaration")]);
@@ -841,10 +836,9 @@ public sealed partial class Binding
                 related: [("contract", agreement.Left.Declaration, first), ("contract", agreement.Right.Declaration, second)],
                 note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.9.2)");
         }
-        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd &&
-            (this.ReportCallablePremiseFailure(issue.Node, requirement) || this.ReportEffectViolation(issue.Node, requirement, issue.Code)))
+        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, requirement))
         {
-            // SPEC 8.11.1: reported at the violating effect.
+            // SPEC 8.11.4: an implementation cannot add an unrequired Callable bound.
         }
         else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, requirement, issue.Code))
         {
@@ -867,7 +861,8 @@ public sealed partial class Binding
         {
             // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
         }
-        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd && this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
+        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd or DiagnosticCode.DefaultArgumentMove_Kd &&
+            this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
         {
             this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
         }

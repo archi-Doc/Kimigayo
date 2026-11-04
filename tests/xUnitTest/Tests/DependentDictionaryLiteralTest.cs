@@ -32,16 +32,24 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     [Theory]
     [InlineData("var value = 0\nvar entries = [1: value@uniq]\nmatch entries.remove(1)\n    .Some((let key, let item))\n        value = 5\n        item@follow = 42\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")")]
     [InlineData("var value = 0\nvar entries = [1: value@uniq]\nmatch entries.remove(1)\n    .Some((let key, let item))\n        item@follow = 42\n        value = 5\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")")]
-    [InlineData("func run(first: uniq/i32 during a, second: uniq/i32 during a)\n    var entries = [1: first@move]\n    match entries.insertOrReplace(1, second@move)\n        .Some(let item) => item@follow = 42\n        .None => $abort(\"missing\")\n    require entries.length == 1 else => $abort(\"length\")")]
     public void ARemovedReferenceDescendsOnlyFromTheSoleInputNamingItsOrigins(string source)
     {
         // `remove` returns `Option<(K, V)>` with Origins of the receiver's Type only, so the item descends from
-        // `entries` and keeps its Loan on `value`; `insertOrReplace` may return its `value: V` argument instead, and an input
-        // other than the receiver that names those Origins prevents the descent (SPEC 15.6.3).
+        // `entries` and keeps its Loan on `value` (SPEC 15.6.3).
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+    }
+
+    // `insertOrReplace` may return its `value: V` argument instead, and an input other than the receiver that names those Origins
+    // prevents the descent (SPEC 15.6.3), so the write through the item meets no Loan and the program is accepted and generated (R4's 1a
+    // verdict, the owner 2026-11-03): the old analysis's loan conflict went with the MIR deciding acceptance (H5).
+    [Fact]
+    public void AReplacedReferenceDoesNotDescendFromTheReceiver()
+    {
+        const string Source = "func run(first: uniq/i32 during a, second: uniq/i32 during a)\n    var entries = [1: first@move]\n    match entries.insertOrReplace(1, second@move)\n        .Some(let item) => item@follow = 42\n        .None => $abort(\"missing\")\n    require entries.length == 1 else => $abort(\"length\")";
+        Assert.Contains("run", MinimalEmissionTest.GeneratedBodies(Source, OutputKind.Library, true));
     }
 
     [Theory]
@@ -129,9 +137,13 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         Assert.Equal("CallActivationConflict_Kd", error.Code);
         Assert.Equal(DiagnosticSeverity.Error, error.Severity);
         Assert.Equal("change(value@uniq)", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        var retained = Assert.Single(error.Related!);
-        Assert.Equal("loan", retained.Role);
-        Assert.Contains("entries", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+
+        // The MIR's record (H5) relates the borrow placed in the literal, the collection's later use and the call's reservation.
+        Assert.Equal(
+            [("borrow", "value@ref", "borrow that created the loan"), ("loan", "entries", "later use of the value retaining the conflicting loan"),
+                ("reservation", "value@uniq", "conflicting exclusive call reservation")],
+            error.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+        Assert.Equal([source.IndexOf("value@ref", StringComparison.Ordinal), source.IndexOf("entries[1]", StringComparison.Ordinal), source.IndexOf("value@uniq", StringComparison.Ordinal)], error.Related!.Select(static x => x.Span!.Value.Start));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("value retaining the conflicting loan", console.Text, StringComparison.Ordinal);
@@ -139,7 +151,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         var identity = SourceIdentity.FromPath(path);
         var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
         Assert.Equal(error.Display!.Range, sent.Range);
-        Assert.Equal(retained.Range, Assert.Single(sent.RelatedInformation!).Location.Range);
+        Assert.Equal(error.Related!.Select(static x => x.Range!.Value), sent.RelatedInformation!.Select(static x => x.Location.Range));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -43,9 +43,20 @@ public class SliceOperationsTest
         "var owning = values[3..].intoIterator()\nmatch owning.next()\n    .Some(let last) => Console.writeLine(last)\n    .None => $abort(\"last\")\n" +
         "require n == 23 else => $abort(\"count\")\nConsole.writeLine(values[0])";
 
+    // SPEC 15.6.4 (R4-M170): Entries is valid, but since G264 (S) S2 A5 errs twice at generic's `for` (the lent item's composed erased
+    // destruction stores next()'s Loan into the iterator, a self-row; ledger d3c9ea47f1c4), and generation refuses it; the old analysis
+    // accepted and ran it to "a\nd\na\n" (fixture SliceEntries). H5's (e) list, row "S2's self-row family" (the owner's O-9, 「(a) 加えて
+    // 着地」): PLAN G416 restores the acceptance and re-points this test back to its run.
     [Fact]
     public void EntriesEnumerateEveryMode()
-        => ScalarEmissionTest.EmitFixture("SliceEntries", Entries, "a\nd\na\n");
+    {
+        var c = MinimalEmissionTest.Analyze(Entries);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var loop = MirTargetSide.At("    C is Iterable\n    var k = 0\n    for v in items => k += 1", "for v in items => k += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
 
     [Fact]
     public void Executes()

@@ -25,9 +25,6 @@ public enum OwnershipRequirement : byte
     DefaultArgumentBorrow,
     Internal,
 
-    // SPEC 15.1.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
-    TransferRequired,
-
     // SPEC 15.4.4: an Origin obligation that neither Binding nor the ownership analysis proves, such as an Origin nothing
     // constrains.
     UnprovenOrigin,

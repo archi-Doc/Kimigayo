@@ -8,6 +8,7 @@ namespace XunitTest;
 
 public class Utf8ReserveEffectTest
 {
+    // The generic rows are refused by A4's X2 whatever the witness does (AGenericComparisonTakesOnlyItsPremisesBounds).
     [Theory]
     [InlineData("==", false, false)]
     [InlineData("!=", false, false)]
@@ -39,22 +40,26 @@ public class Utf8ReserveEffectTest
             """;
         var expression = generic ? "Helpers.compareValues(left@ref, right@ref)" : "left " + operation + " right";
         var values = tuple ? "let first = Compared.init()\n        let last = Compared.init()\n        let left = (first@ref, 1)\n        let right = (last@ref, 2)" : "let left = Compared.init()\n        let right = Compared.init()";
-        var c = Analyze(prefix, values + "\n        _ = " + expression);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        AssertRefused(Analyze(prefix, values + "\n        _ = " + expression));
     }
 
     [Theory]
     [InlineData("first.equals(last@ref)")]
     [InlineData("first.compare(last@ref)")]
-    [InlineData("Helpers.equal(first@ref, last@ref)")]
     public void IntrinsicComparisonWitnessesHaveOnlyInputEffects(string expression)
-    {
-        const string Prefix = "group Helpers\n    public func equal<T>(left: ref/T, right: ref/T) -> bool\n        T is Equatable\n        return left == right\n";
-        var c = Analyze(Prefix, "let first: i32 = 1\n        let last: i32 = 2\n        _ = " + expression);
-        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-    }
+        => EffectBoundImplementationTest.AssertBound(Analyze(EqualHelper, Integers + expression), valid: true, "Self is BufferWriter");
 
+    // SPEC 8.11.3 (A4's X2, DECISIONS R4-M22): a requirement call on an abstract Self uses the bounds of the Contracts its premises prove,
+    // never an implementation's, and Equatable bounds no effect of equals, so `equal<T>`'s `left == right` has unknown effects even over
+    // i32's intrinsic witness, and Writer's confined reserve is refused (R6-check H3b T-12: 1r; Binding's old pass accepted it).
+    [Fact]
+    public void AGenericComparisonTakesOnlyItsPremisesBounds()
+        => AssertRefused(Analyze(EqualHelper, Integers + "Helpers.equal(first@ref, last@ref)"));
+
+    private const string EqualHelper = "group Helpers\n    public func equal<T>(left: ref/T, right: ref/T) -> bool\n" +
+        "        T is Equatable\n        return left == right\n";
+
+    private const string Integers = "let first: i32 = 1\n        let last: i32 = 2\n        _ = ";
     private const string State = "group State\n    public var value: i32 = 0\n";
     private const string Writer = "struct Writer\n    Self is BufferWriter\n    public var local: i32 = 1\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n";
     private const string Formatter = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        ";
@@ -65,8 +70,7 @@ public class Utf8ReserveEffectTest
     public void CustomAccessorEffectsAreChecked(string operation)
     {
         const string Accessors = "struct Noisy\n    public var item: i32 = 0\n        get(self: ref/Self) -> i32 => State.value\n        set(self: uniq/Self, value: i32) -> () => State.value = value\n";
-        var c = Analyze(State + Accessors, operation);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        AssertRefused(Analyze(State + Accessors, operation));
     }
 
     [Fact]
@@ -118,11 +122,7 @@ public class Utf8ReserveEffectTest
     [InlineData("struct Numbers {source}\n    Self is Iterator\n    associate Iterator.Item is i32\n    let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\n    public func next(self: uniq/Self) -> Option<i32>\n        _ = State.value\n        return .None\nstruct Values\n    Self is Iterable\n    associate Iterable.IteratorType(source) is Numbers during source\n    var value: i32 = 7\n    public init() => ()\n    public func iterate(self: ref/Self during source) -> Numbers during source => Numbers.init(self.value@ref)\n", "let values = Values.init()\n        for n in values\n            _ = n")]
     [InlineData("struct Key\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n", "var values: Dictionary<Key, i32> = [:]\n        let borrowed = values@ref\n        _ = borrowed[Key.init()]")]
     public void SynthesizedCallEffectsAreChecked(string declarations, string operation)
-    {
-        var c = Analyze(State + declarations, operation);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-    }
+        => AssertRefused(Analyze(State + declarations, operation));
 
     [Fact]
     public void BorrowingAFieldDoesNotExecuteItsDestructor()
@@ -235,8 +235,7 @@ public class Utf8ReserveEffectTest
     {
         var prefix = State + Formatter + "_ = State.value\n        return .Ok(())\n" +
             "group Helpers\n    public func text<T>(value: ref/T) -> string\n        T is Utf8Format\n        return Text.toString(value)\n";
-        var c = Analyze(prefix, "_ = Helpers.text(Value.init())");
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        AssertRefused(Analyze(prefix, "_ = Helpers.text(Value.init())"));
     }
 
     [Fact]
@@ -258,4 +257,8 @@ public class Utf8ReserveEffectTest
 
     private static Compilation Analyze(string prefix, string operation)
         => MinimalEmissionTest.Analyze(prefix + Writer + "        " + operation + "\n        return .Err(BufferFull.init())");
+
+    // The effect reaches Writer's reserve, so A4 refuses Writer's conformance (R6-check H3b T40).
+    private static void AssertRefused(Compilation c)
+        => EffectBoundImplementationTest.AssertBound(c, valid: false, "Self is BufferWriter");
 }

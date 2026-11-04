@@ -51,7 +51,7 @@ public class ConstraintBindingTest
     [InlineData("i32 and string", "1", false)]
     public void CallsDischargeSubstitutedConstraints(string requirement, string argument, bool success)
     {
-        var c = Parse($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value\nlet result = identity({argument})");
+        var c = Parse($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value@move\nlet result = identity({argument})");
         Assert.Equal(success, c.Bind().IsComplete);
         if (!success)
         {
@@ -333,7 +333,7 @@ public class ConstraintBindingTest
     [Fact]
     public void WarmConstraintPassesReusePropositionsAndFactStorage()
     {
-        var c = Parse("func f<T>(x: T) -> T\n    T is i32 or string\n    return x\n" + string.Join('\n', Enumerable.Range(0, 128).Select(x => $"let x{x} = f({x})")));
+        var c = Parse("func f<T>(x: T) -> T\n    T is i32 or string\n    return x@move\n" + string.Join('\n', Enumerable.Range(0, 128).Select(x => $"let x{x} = f({x})")));
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf();
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));

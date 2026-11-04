@@ -142,7 +142,7 @@ public partial class PropertyBindingTest
     [Fact]
     public void CustomSetterDoesNotRequireCopy()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct S<T>\n    var item: T\n        set(self: uniq/Self, value: T) -> () => storage = value");
+        var c = CompilationTestHelper.ParseSuccess("struct S<T>\n    var item: T\n        set(self: uniq/Self, value: T) -> () => storage = value@move");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 

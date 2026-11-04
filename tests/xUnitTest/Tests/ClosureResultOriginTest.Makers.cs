@@ -49,7 +49,7 @@ public partial class ClosureResultOriginTest
     private const string F1i = Texts + MainBody + "    var x: i32 = 1\n    let u = x@uniq\n    let t = makeText()\n" + ConsumingMaker +
         "    let a = outer@move()\n    let pa = a@move()\n";
 
-    private const string FieldHolder = "struct Holder<F>\n    public let f: F\n    public init(f: F) => self.f = f\n";
+    private const string FieldHolder = "struct Holder<F>\n    public let f: F\n    public init(f: F) => self.f = f@move\n";
 
     private const string OptionCall = "    let o = Option.Some(outer())\n    match o\n        .Some(let c)\n            let r = c()\n";
 
@@ -212,7 +212,7 @@ public partial class ClosureResultOriginTest
         "i1_f1in_bad",
         ReturnH + "    let local: i32 = 1\n" + InputOuter + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
         Unsatisfied + " return a()",
-        Unsatisfied + " a()")]
+        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
     [InlineData("i2_f1inok", Inspect + MainBody + InputMaker + "    let a = outer(local@ref)\n    let r = a()\n" + InspectR + "    local = 2\n", "", null)]
     [InlineData("i2_f1inbad", Inspect + MainBody + InputMaker + "    let a = outer(local@ref)\n    let r = a()\n    local = 2\n" + InspectR, Conflict + " local = 2", null)]
     [InlineData("i3_once_ok", Inspect + MainBody + InputMaker + "    let r = outer(local@ref)()\n" + InspectR + "    local = 2\n", "", null)]
@@ -223,7 +223,7 @@ public partial class ClosureResultOriginTest
         "i5_literal_outer_bad",
         ReturnH + "    let local: i32 = 1\n    return (func (x: ref/i32) => func [x] () => x)(local@ref)()\n" + MainUnit,
         Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)()",
-        Unsatisfied + " (func (x: ref/i32) => func [x] () => x)(local@ref)()")]
+        Unsatisfied + " return (func (x: ref/i32) => func [x] () => x)(local@ref)(); " + Unsatisfied + " (func (x: ref/i32) => func [x] () => x)(local@ref)()")]
     [InlineData("i6_maker_body", MakerBody, "", null)]
     [InlineData("i7_mid_in_outer", MidInOuter, "", null)]
     [InlineData("i8_mixed", Inspect + MainBody + Mixed + "    inspect(r.0)\n    inspect(r.1)\n    local = 2\n", "", null)]
@@ -335,21 +335,25 @@ public partial class ClosureResultOriginTest
         "a17_bad",
         RawReturnH + "    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
         Unsatisfied + " return a()",
-        Unsatisfied + " a()")]
+        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
     [InlineData(
         "a17_static_bad",
         "func h() -> raw/i32 during static\n    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
         Unsatisfied + " return a()",
-        Unsatisfied + " a()")]
+        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
     [InlineData("a18_raw_input_store", RawStore, "", null)]
     [InlineData("a18_ok", RawOut + RawInput + "    let a = outer(q)\n    out@follow = a()\n" + MainUnit, "", null)]
     [InlineData(
         "a18_bad",
         RawOut + "    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    out@follow = a()\n" + MainUnit,
         Unsatisfied + " out@follow = a()",
-        Unsatisfied + " a()")]
+        Unsatisfied + " out@follow = a(); " + Unsatisfied + " a()")]
     [InlineData("a19_raw_receiver", "func use() -> i32\n" + RawReceiver + "    let a = outer()\n    let p = a()\n    return 0\n" + MainUnit, "", null)]
-    [InlineData("a20_raw_receiver_ret_bad", RawReturnH + RawReceiver + "    let a = outer()\n    return a()\n" + MainUnit, Unsatisfied + " return a()", Unsatisfied + " a()")]
+    [InlineData(
+        "a20_raw_receiver_ret_bad",
+        RawReturnH + RawReceiver + "    let a = outer()\n    return a()\n" + MainUnit,
+        Unsatisfied + " return a()",
+        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
     [InlineData("a21_raw_in_ref_store", RawInRefStore, "", null)]
     [InlineData("w1_raw_retain", RawRetain + "    usep(t)\n    local = 2\n", "", null)]
     [InlineData("w1_raw_retain_bad", RawRetain + "    local = 2\n    usep(t)\n", Conflict + " local = 2", null)]
@@ -362,8 +366,8 @@ public partial class ClosureResultOriginTest
     // default side), and a10, its Closure part last, is the control.
     [Theory]
     [InlineData("a1", "func f(a: ref/i32 during static, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    return need(mk().1)\n", UnprovenOwned + " return need(mk().1)", UnprovenOwned + " need(mk().1)")]
-    [InlineData("a2", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + TwoParts + "    let mk = outer(a, x@ref)\n    return mk().1()\n", Unsatisfied + " return mk().1()", Unsatisfied + " mk().1()")]
-    [InlineData("a3", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + RefPart + "    let mk = outer(a, x@ref)\n    return mk().1\n", Unsatisfied + " return mk().1", Unsatisfied + " mk().1")]
+    [InlineData("a2", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + TwoParts + "    let mk = outer(a, x@ref)\n    return mk().1()\n", Unsatisfied + " return mk().1()", Unsatisfied + " return mk().1(); " + Unsatisfied + " mk().1()")]
+    [InlineData("a3", "func f(a: ref/i32 during static) -> ref/i32 during static\n    let x = 5\n" + RefPart + "    let mk = outer(a, x@ref)\n    return mk().1\n", Unsatisfied + " return mk().1", Unsatisfied + " return mk().1; " + Unsatisfied + " mk().1")]
     [InlineData("a5", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + TwoParts + "    let mk = outer(a, a)\n    return mk().1()\n", "", null)]
     [InlineData("a6", "func f(a: ref/i32, b: ref/i32) -> i32\n" + TwoParts + "    let mk = outer(a, b)\n    let p = mk()\n    return 1\n", "", null)]
     [InlineData("a8", "func f(a: ref/i32 during static) -> ref/i32 during static\n" + RefPart + "    let mk = outer(a, a)\n    return mk().1\n", "", null)]
@@ -377,7 +381,8 @@ public partial class ClosureResultOriginTest
     // in source order. The default side, Binding's records and the old analysis's (published on both pipelines until R6-check, DECISIONS
     // R5-M156), rejects an invalid form (D1) and gives a valid one no record but a located Unsupported_Kd (D2). A verdict Binding owns, an
     // Origin relation at a returned or stored value or a Callable or erasure constraint, holds on both sides: the published records are
-    // exactly `published`, code and span.
+    // exactly `published`, code and span (since the MIR decides, H5, an Origin relation's record beside A5's twin at its statement until
+    // H11: H0b §5.4, R4-M108).
     private static void AssertSides(string form, string source, string mir, string? published)
     {
         var c = VerifiedSpecExampleTest.Bind(source);

@@ -10,7 +10,6 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     private readonly List<PairBinder> caseBinders = new();
-    private readonly List<PairBinder> namedBinders = new();
     private readonly List<OwnershipBody> casePool = new();
     private int caseBodyCount;
     private OwnershipBody? caseBody;
@@ -24,19 +23,6 @@ public sealed partial class OwnershipAnalysis
             if ((admitted & Binding.SemanticsOrder[i].ToMask()) != 0)
             {
                 return Binding.SemanticsOrder[i];
-            }
-        }
-
-        return null;
-    }
-
-    private static FunctionKoto? EnclosingFunction(Koto node)
-    {
-        for (var current = node; current is not null; current = current.Parent)
-        {
-            if (current is FunctionKoto function)
-            {
-                return function;
             }
         }
 
@@ -103,8 +89,9 @@ public sealed partial class OwnershipAnalysis
     }
 
     // Builds every case: the first into the listed body, the others into pooled side bodies; the listed body is verified only when
-    // every case is (SPEC 8.15). Its problems are published after the last case, with the cases each was found under, and a problem
-    // every case found shows no case (SPEC 23.1.2). Binding bounds the cases (PairBinder.CaseBound) before the analysis runs.
+    // every case is (SPEC 8.15). Its problems join the result after the last case, with the cases each was found under, and a problem
+    // every case found shows no case (SPEC 23.1.2); only the legacy entry's readers read the result, which nothing publishes since
+    // R6-check H5 (DECISIONS R5-M185; until H10b). Binding bounds the cases (PairBinder.CaseBound) before the analysis runs.
     private void BuildCases(FunctionKoto function, int declarationDefault)
     {
         this.caseBodyCount = 0;
@@ -112,8 +99,6 @@ public sealed partial class OwnershipAnalysis
         this.BuildOnce(function, declarationDefault);
         var listed = this.body;
         this.caseListed = listed;
-        listed.AppendCleanupCase(listed.Cases.Span);
-        this.compilation.Binding.CollectCaseDestructions(listed, listed, this.caseBit);
         var run = 1;
         while (this.NextCase())
         {
@@ -127,8 +112,6 @@ public sealed partial class OwnershipAnalysis
             this.caseBody = side;
             this.BuildOnce(function, declarationDefault);
             this.caseBody = null;
-            listed.AppendCleanupCase(side.Cases.Span);
-            this.compilation.Binding.CollectCaseDestructions(side, listed, this.caseBit);
             listed.IsVerified &= side.IsVerified;
             run++;
         }
@@ -144,8 +127,8 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // Appends the built body's problems to the result. In a case run the listed body publishes after the last case (BuildCases)
-    // and a side body's problems merge into it (SPEC 23.1.2).
+    // Appends the built body's problems to the result. In a case run the listed body's problems join it after the last case
+    // (BuildCases) and a side body's problems merge into it (SPEC 23.1.2).
     private void AppendIssues()
     {
         var storage = this.body.IssueStorage;
@@ -166,21 +149,5 @@ public sealed partial class OwnershipAnalysis
         {
             this.issues.Add(storage[i]);
         }
-    }
-
-    // SPEC 23.1.2: the `case` fact of a problem, or null for a problem of every case or of no case run; the binders it names are left
-    // in namedBinders for the related declarations. Formatted only for a published record, by Binding's Semantics-case renderer
-    // (CaseFact; R6-check Q8-6, DECISIONS BU-82), which this Analysis calls until H10b deletes it.
-    private string? CaseFact(in OwnershipIssue issue, out bool single)
-    {
-        single = false;
-        this.namedBinders.Clear();
-        if (issue.Cases == 0 || EnclosingFunction(issue.Source) is not { } function)
-        {
-            return null;
-        }
-
-        this.compilation.Binding.PairBinders(function, this.caseBinders);
-        return Binding.CaseFact(this.caseBinders, issue.Cases, this.namedBinders, out single);
     }
 }

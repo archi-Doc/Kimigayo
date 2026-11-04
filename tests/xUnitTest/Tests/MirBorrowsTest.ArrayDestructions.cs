@@ -320,7 +320,7 @@ public sealed partial class MirBorrowsTest
     // Every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok, removeAllItemOk, removeAllCapOk), once
     // R4-M143's known false errors, is a correct error under SPEC 15.6's whole-holder text (DECISIONS BU-67, R4-M143's note; the Array
     // holding x is consumed, as consumeDrop2Ok's x). removeAllElemBad's second record, its MIR-only `y = 5` beside the activation
-    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline does not report it.
+    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline reports it since H5.
     [Fact]
     public void ATruncateOrRemoveAllComposesItsElementsDestruction()
     {
@@ -337,36 +337,41 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // SPEC 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′, G160): the records each form publishes, the same on every pipeline (DECISIONS R5-M156;
-    // the default and `-Pipeline mir` runs cover both). A Writer form publishes none, since A5's records stay unpublished (G160; SPEC:
-    // Bad errs at `y = 5`); the Plain forms are published as SPEC says: a borrow of y live across the call is valid (truncatePlainOk,
-    // removeAllPlainOk), a Closure capturing it keeps b's Loan (removeAllCapPlainBad errs at `y = 5`, its twin valid; removeAllCapBad errs
-    // there, by b's Loan), and a Closure capturing the Array or an element borrow live at the call is the activation conflict at the call
-    // (removeAllCapArrBad, removeAllElemBad: callbacks cannot observe the Array). Guards: each row holds today and must hold after.
+    // SPEC 15.6, 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′ and S1, G160; DECISIONS BU-67): the records each form publishes, the MIR's rows on
+    // every pipeline. Since the MIR decides acceptance (R6-check H5, DECISIONS R5-M185), each Writer, Item and Cap form publishes A5's
+    // record at `y = 5`, as ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW
+    // lists: the old analysis accepted these programs, and the MIR closes that unsound acceptance (H3b's 1r). Over an abstract `T` (Gen),
+    // the element's erased destruction may store y's Loan past it, so Bad and Ok err at `y = 5` since G264 (S) S2, as the MIR's list above
+    // says (R4-M147's located Unsupported_Kd at the call left with S2; the Ok twins are the class the owner kept an error, 「Yes,
+    // writable」). The Plain forms are as SPEC
+    // says: a borrow of y live across the call is valid (truncatePlainOk, removeAllPlainOk), a Closure capturing it keeps b's Loan
+    // (removeAllCapPlainBad errs at `y = 5`, its twin valid; removeAllCapBad errs there, by b's Loan), and a Closure capturing the Array or
+    // an element borrow live at the call is the activation conflict at the call (removeAllCapArrBad, removeAllElemBad: callbacks cannot
+    // observe the Array); removeAllElemBad also publishes its `y = 5` since H5. Guards: each row holds today and must hold after.
     [Theory]
-    [InlineData("removeAllDrop2Bad", "")]
-    [InlineData("removeAllDrop2Ok", "")]
-    [InlineData("truncateDrop3Bad", "")]
-    [InlineData("truncateDrop3Ok", "")]
-    [InlineData("truncateFullBad", "")]
-    [InlineData("truncateFullOk", "")]
-    [InlineData("clearDrop2Bad", "")]
-    [InlineData("clearDrop2Ok", "")]
-    [InlineData("removeAllItemBad", "")]
-    [InlineData("removeAllItemOk", "")]
+    [InlineData("removeAllDrop2Bad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("removeAllDrop2Ok", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("truncateDrop3Bad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("truncateDrop3Ok", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("truncateFullBad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("truncateFullOk", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("clearDrop2Bad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("clearDrop2Ok", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("removeAllItemBad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("removeAllItemOk", "ComparisonLoanConflict_Kd y = 5")]
     [InlineData("removeAllCapBad", "ComparisonLoanConflict_Kd y = 5")]
-    [InlineData("removeAllCapOk", "")]
-    [InlineData("truncateGenBad", "")]
-    [InlineData("truncateGenOk", "")]
-    [InlineData("removeAllGenBad", "")]
-    [InlineData("removeAllGenOk", "")]
+    [InlineData("removeAllCapOk", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("truncateGenBad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("truncateGenOk", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("removeAllGenBad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("removeAllGenOk", "ComparisonLoanConflict_Kd y = 5")]
     [InlineData("truncatePlainOk", "")]
     [InlineData("removeAllPlainOk", "")]
     [InlineData("removeAllCapPlainBad", "ComparisonLoanConflict_Kd y = 5")]
     [InlineData("removeAllCapPlainOk", "")]
     [InlineData("removeAllCapArrBad", "CallActivationConflict_Kd a.removeAll(matching: func [v] (e) => v@follow.length > 0)")]
-    [InlineData("removeAllElemBad", "CallActivationConflict_Kd a.removeAll(matching: func (v) => true)")]
-    public void ATruncateOrRemoveAllCallPublishesItsRecordsOnBothPipelines(string form, string records)
+    [InlineData("removeAllElemBad", "CallActivationConflict_Kd a.removeAll(matching: func (v) => true); ComparisonLoanConflict_Kd y = 5")]
+    public void ATruncateOrRemoveAllCallPublishesItsRecords(string form, string records)
     {
         var source = DestructionShapes + Form(Forms, form) + "public func main() => ()\n";
         Assert.Equal($"{form}: {records}", $"{form}: {Records(source)}");

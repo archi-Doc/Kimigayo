@@ -142,8 +142,9 @@ public class NeverContinuationTest
     // SPEC 3.1.3, 4.7.1 (DECISIONS R5-M159): an element access is no Never form, so an owned fixed-array element whose key diverges has its
     // element Type, as an Array's element has: its Field is written and updated, it is updated by a user operator, it is borrowed for a
     // call, shared or exclusively, it is a `uniq/Self` receiver and an intrinsic's exclusive input (fail-before: UnresolvedBinding_Kd,
-    // ArithmeticSelection_Kd, NoApplicableOverload_Kd). Binding accepts `swap`'s, whose later input is the old analysis's first
-    // unreachable local use, its located Unsupported_Kd until R6-check (STATUS Unreachable code).
+    // ArithmeticSelection_Kd, NoApplicableOverload_Kd). `swap`'s later input, unreachable, is checked as its reachable twin (SPEC
+    // 14.10.3, R5-M159's twin rule) and has no record since the MIR decides acceptance (1a, the owner's list of 2026-11-03: the old
+    // analysis's located Unsupported_Kd at its first unreachable local use went with H5). Each program is generated as a Library.
     [Theory]
     [InlineData("b[(return 42)].n = 1")]
     [InlineData("b[(return 42)].n += make()")]
@@ -153,35 +154,54 @@ public class NeverContinuationTest
     [InlineData("b[(return 42)].inc()")]
     [InlineData("Kimi.Intrinsics.replace(a[(return 42)]@uniq, with: \"new\")")]
     [InlineData("let old = Kimi.Intrinsics.exchange(a[(return 42)]@uniq, with: \"new\")")]
-    [InlineData("Kimi.Intrinsics.swap(a[(return 42)]@uniq, other@uniq)", "other")]
-    public void AnElementBelowADivergingKeyIsUsedAtItsElementType(string statement, string? unsupported = null)
+    [InlineData("Kimi.Intrinsics.swap(a[(return 42)]@uniq, other@uniq)")]
+    public void AnElementBelowADivergingKeyIsUsedAtItsElementType(string statement)
     {
-        var c = MinimalEmissionTest.Analyze(Elements + statement + "\n    return 0\n");
+        var source = Elements + statement + "\n    return 0\n";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         c.ReportAnalysis();
-        (string Code, string? Text)[] expected = unsupported is null ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), unsupported)];
-        Assert.Equal(expected, TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true);
     }
 
     // SPEC 14.10.3, 15.1.3, 3.5 (DECISIONS R5-M159): an element consumed where its access cannot complete normally is checked on the
     // assumed path by its reachable twin's Move rules, with the twin's codes at the element: an explicit Move into a local or into a
-    // call has no static Move Path, a part of a temporary neither, and a bare consume is TransferRequired_Kd beside the element path's
-    // Unsupported_Kd (fail-before: each accepted, the old analysis checking nothing there). A Copy element, a Tuple element's or an
-    // element's own, is read as its twin is, with no record.
+    // call has no static Move Path, and a bare consume is TransferRequired_Kd beside the element path's Unsupported_Kd (fail-before: each
+    // accepted, the old analysis checking nothing there). A part of a temporary is moved as its twin `take(make2(42).0@move)` is, with no
+    // record (1a, the owner's list of 2026-11-03: the old analysis's StaticMovePathRequired_Kd there went with H5, the MIR deciding
+    // acceptance). A Copy element, a Tuple element's or an element's own, is read as its twin is, with no record. A program without a
+    // record is generated as a Library, one with a record is not.
     [Theory]
     [InlineData("let s = a[(return 42)]@move", "a[(return 42)]", "StaticMovePathRequired_Kd")]
     [InlineData("take(a[(return 42)]@move)", "a[(return 42)]", "StaticMovePathRequired_Kd")]
-    [InlineData("take(make2((return 42)).0@move)", "make2((return 42)).0", "StaticMovePathRequired_Kd")]
-    [InlineData("let x = a[(return 42)]", "a[(return 42)]", "TransferRequired_Kd Unsupported_Kd")]
+    [InlineData("take(make2((return 42)).0@move)", "make2((return 42)).0", "")]
     [InlineData("let k = t[(return 42)].1", "t[(return 42)].1", "")]
     [InlineData("let c = n[0][(return 42)]", "n[0][(return 42)]", "")]
     public void AMoveBelowADivergingKeyIsCheckedAsItsReachableTwin(string statement, string element, string codes)
     {
-        var c = MinimalEmissionTest.Analyze(Elements + statement + "\n    return 0\n");
+        var source = Elements + statement + "\n    return 0\n";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         c.ReportAnalysis();
         Assert.Equal(
             codes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (x, (string?)element)),
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+        MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: codes.Length == 0);
+    }
+
+    // The bare consume of that theory (`let x = a[(return 42)]`) is Binding's TransferRequired_Kd at the element (R6-check H1, DECISIONS
+    // BU-84), its one published record: the MIR adds none. The old analysis's Unsupported_Kd at the element path beside it is not
+    // restored (1x: the old analysis's limit record, withdrawn at H3b round 0; DECISIONS Q13, R5-M185).
+    [Fact]
+    public void ABareConsumeBelowADivergingKeyIsBindingsRecord()
+    {
+        var c = MinimalEmissionTest.Analyze(Elements + "let x = a[(return 42)]\n    return 0\n");
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.TransferRequired_Kd), (string?)"a[(return 42)]")],
             TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
     }
 
@@ -480,16 +500,12 @@ public class NeverContinuationTest
     }
 
     // The counterpart: a Type storing a Non-Copy part beside Never is Non-Copy, so a bare read of its Place is a Move that needs @move
-    // (SPEC 3.5).
+    // (SPEC 3.5): Binding's TransferRequired_Kd at each read (R6-check H1, DECISIONS BU-84).
     [Fact]
     public void APlaceHoldingNeverAndANonCopyPartIsNotCopied()
     {
         var c = MinimalEmissionTest.Analyze("func f(a: Option<(string, Never)>)\n    let b = a\n    let c = a\n");
-        Assert.Contains(LegacyRecords.Of(c), static x => x.Code == DiagnosticCode.TransferRequired_Kd);
-        HirTables.Publish(c);
-        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "a" && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
-        Assert.Equal(2, reads.Length);
-        Assert.All(reads, static x => Assert.Equal(HirAcquire.Move, HirTables.AdjustOf(x).Acquire));
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "a"), (DiagnosticCode.TransferRequired_Kd, "a")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
     }
 
     [Fact]

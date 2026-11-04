@@ -2,7 +2,8 @@
 
 // Owns the indexed storage of one MIR body and its projection chains.
 // Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records,
-// and the validator's verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183).
+// the validator's verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and
+// whether a construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
 // References use body-local indices; projection chains are interned and ProjectedType owns their Type rule.
 // Must not resolve syntax or introduce a parallel representation for the same body.
 
@@ -93,6 +94,12 @@ internal sealed class MirBody
     /// <summary>Gets or sets a value indicating whether the validator found a broken contract located in the body (MirValidator, its one
     /// writer; tests inject it), so that no consumer reads it (DECISIONS R5-M183).</summary>
     internal bool HasFinding { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a construction record lies in the body: the builder's one record path of the body
+    /// it builds (MirBuilder.Record) is its one writer, and it is read-only after build (DECISIONS R5-M183, GR-1a). The analyses read the
+    /// body, unlike one with <see cref="HasFinding"/>; a record made without a body in hand (a module's broken HIR contract, a collection
+    /// record) marks none.</summary>
+    internal bool HasConstructionRecord { get; set; }
 
     /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
     /// <param name="source">The source of a statement, a terminator or a local.</param>
@@ -221,12 +228,13 @@ internal sealed class MirBody
     internal bool Binds(int binder, BindingSymbol? target) => target is not null && (uint)binder < (uint)this.Binders.Count &&
         ReferenceEquals(this.Binders[binder].Target, target);
 
-    /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain, no finding.</summary>
+    /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain, no finding
+    /// and no record.</summary>
     /// <param name="key">The definition.</param>
     /// <param name="source">The body's syntax.</param>
     internal void Reset(MirDefKey key, SourceRef source)
     {
-        (this.Key, this.Source, this.HasFinding) = (key, source, false);
+        (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord) = (key, source, false, false);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
         this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
         this.projectionIds.Clear();

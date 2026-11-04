@@ -202,8 +202,6 @@ public enum BindingObligationKind : byte
     OriginInference,
     TypeRole,
     TypeFormation,
-    Loan,
-    StaticStorage,
 }
 
 public enum BindingDeadline : byte

@@ -66,10 +66,16 @@ public class RawAddressTest
             "struct AddressSink\n    Self is Sink\n    var count: i32 = 0\n    public func put(self: uniq/Self, value: i32)\n    ";
         var c = MinimalEmissionTest.Analyze(Sink + body + "        unsafe => *slot = value\npublic func main() => ()\n");
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
+        Assert.True(valid || !c.Accepts, MinimalEmissionTest.Describe(c));
+
+        // R6-check H3b T40: the bound is A4's record at `Self is Sink` (EffectBoundImplementationTest.AssertBound), beside Binding's located
+        // Unsupported_Kd at the static's address (no static raw authority, DECISIONS BU-24), which keeps Binding incomplete. Since Binding
+        // is incomplete, its completeness cannot show a returning Binding effect record, and MirTargetSide leaves out Binding's records
+        // that pair with an analysis (the compared set), which that record would; so Binding's issues are counted: only the address's.
+        Assert.Equal(valid ? 0 : 1, c.Binding.Issues.Count);
+        (DiagnosticCode, SyntaxLocation)[] records =
+            [(DiagnosticCode.Unsupported_Kd, new("Metrics.puts@raw")), (DiagnosticCode.IncompatibleContractImplementation_Kd, new("Self is Sink"))];
+        MirTargetSide.Check(c, valid ? [] : records);
     }
 
     // SPEC 13.5.6: a slot storing a raw pointer is borrowed like any other slot.

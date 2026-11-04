@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -288,16 +289,43 @@ public class MinimalEmissionTest
         }
     }
 
-    // A program analyzed for an Application.
-    internal static Compilation Analyze(string source, string path = "Hello.kimi")
+    // A program analyzed for `output`, an Application unless the caller names another.
+    internal static Compilation Analyze(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        c.Binding.CheckStartup(output);
         c.Analyze();
         return c;
+    }
+
+    // The evidence of a verdict through the published pipeline (SPEC 23.2.2): the program analyzed for `output`, then reported and generated
+    // as a build runs them, has the verdict `accepted`. An accepted program has no analysis problem and is generated, with a generated body
+    // for each function it declares other than a Contract's requirement and for its top-level statements (null), of which it has at least
+    // one; a requirement has no body (SPEC 8.4.1: no implementations; 8.6.1; a written one is a syntax error). A Library generates every root
+    // (K11); an Application generates what its startup reaches, so its source is top-level statements that reach every declared function
+    // (not an explicit `main`). A rejected program is not generated. The result is the declaration names of the generated bodies.
+    internal static string?[] GeneratedBodies(string source, OutputKind output, bool accepted)
+    {
+        var c = Analyze(source, output: output);
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        var generated = c.Generate(TextWriter.Null);
+        Assert.True(c.Accepts == accepted && generated == accepted && (!accepted || c.Problems.Count == 0), Describe(c));
+        if (!generated)
+        {
+            return [];
+        }
+
+        var set = c.Instances!;
+        var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
+            .Select(x => set.Items[x].Key.Body.Def.Decl).ToArray();
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => !x.IsRequirement).ToArray();
+        Assert.NotEmpty(functions);
+        Assert.All(functions, f => Assert.Contains(bodies, x => x?.Declaration == (f == c.Kotonoha.GeneratedFunction ? null : f)));
+        return [.. bodies.Select(static x => x?.Name)];
     }
 
     // SPEC 8.15.3, 23.1.1: a valid program past a generation resource limit is refused with GenerationResourceLimit_Kd and no output, checked
@@ -316,23 +344,24 @@ public class MinimalEmissionTest
         Assert.Equal(("GenerationResourceLimit_Kd", DiagnosticSeverity.Error), (error.Code, error.Severity));
     }
 
-    // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the old path's, then the MIR's
-    // records, which check publishes on every pipeline (DECISIONS R5-M156).
+    // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the MIR's rows in the
+    // publisher's order, which check publishes on every pipeline (DECISIONS R5-M185).
     internal static string Problems(Compilation c)
         => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 
-    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location),
-    // the problems with their Op, the MIR's records among them on every pipeline (DECISIONS R5-M156), and the generation records of the
-    // Emission partition (Compilation.Generate's). It only reads, since a message argument is evaluated whether or not the assertion fails.
+    // The failure message of an analysis or generation assertion: the results, Binding's issues (failure, code and location), the
+    // analysis rows with their Op (DECISIONS R5-M185), and the generation records of the Emission partition (Compilation.Generate's). It
+    // only reads, since a message argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c)
         => $"Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
+            string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Failure} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
             string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; Emission=" +
             string.Join(", ", c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics
                 .Select(static x => $"{x.Code} {x.Span}"));
 
-    // SPEC 8.6: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
-    // for the destructions the implementation's bodies actually perform (their planned cleanups).
+    // SPEC 8.6: an effect bound rejects its conformance with A4's IncompatibleContractImplementation_Kd at the obligation subject, for the
+    // Loans, the calls and the destructions the implementation's bodies perform (their planned cleanups): B-del deleted Binding's effect
+    // checks (DECISIONS R5-M185). Binding keeps the code for a bounded Callable premise that a requirement does not declare (SPEC 8.11.4).
     internal static void AssertEffectBoundRejected(Compilation c)
         => Assert.True(
             c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),

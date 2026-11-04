@@ -328,8 +328,8 @@ public class PairAnnotationBindingTest
     {
         // SPEC 15.4.1: a function with Origin clauses completes its omitted slots in their pending order, as it would without the
         // clauses; the Semantics condition of the pair result once fell away there, leaving the result without an Origin.
-        var plain = Parse("func g<s/T>(x: s/i32) -> s/i32 => x");
-        var clause = Parse("func g<s/T>(x: s/i32) -> s/i32\n    origin static outlives static\n    return x");
+        var plain = Parse("func g<s/T>(x: s/i32) -> s/i32 => x@move");
+        var clause = Parse("func g<s/T>(x: s/i32) -> s/i32\n    origin static outlives static\n    return x@move");
         Assert.True(plain.Bind().IsComplete, Describe(plain));
         Assert.True(clause.Bind().IsComplete, Describe(clause));
         Assert.Equal(Function(plain).SymbolOf()!.Type!.Origin?.Kind, Function(clause).SymbolOf()!.Type!.Origin?.Kind);

@@ -12,6 +12,13 @@ public class DefaultAccessTest
 {
     private const string Increment = "func increment(x: uniq/i32) -> i32\n    x@follow += 1\n    return x@follow\n";
 
+    // The Message of each code, as published.
+    private static readonly Dictionary<string, string> Explanations = new()
+    {
+        [nameof(DiagnosticCode.DefaultArgumentAccess_Kd)] = "A default expression cannot modify or exclusively access a preceding prepared argument or its owned contents",
+        [nameof(DiagnosticCode.DefaultArgumentBorrow_Kd)] = "A default result cannot retain a new Borrow or Reborrow of a preceding prepared argument",
+    };
+
     [Theory]
     [InlineData("ReadReserved", "func f(x: uniq/i32, y: i32 = x) -> i32\n    x@follow = y + 1\n    return y\nvar n = 3\nrequire f(n@uniq) == 3 and n == 4 else => $abort(\"read\")")]
     [InlineData("CopyStoredReference", "func f(x: uniq/(ref/i32 during a) during b, y: ref/i32 during a = x) -> i32 => y@follow\nvar n = 3\nvar r = n@ref\nrequire f(r@uniq) == 3 else => $abort(\"stored reference\")")]
@@ -21,12 +28,12 @@ public class DefaultAccessTest
     public void PreparedInputsAreSharedAndIndependentLocalsAreWritable(string name, string source)
         => ScalarEmissionTest.EmitFixture("DefaultAccess" + name, source, string.Empty);
 
-    // The `x@follow@ref` row expects the rule before Loan identity by base (A5 S1): the default keeps a new Borrow of the preceding
-    // argument. A Borrow past a shared dereference forms no Loan of its own (SPEC 15.6.3), so the default Copies an existing shared
-    // borrow, which SPEC 7.2.3 allows (`MirBorrowsTest.ATemplateMayInspectItsSlots`); the default pipeline keeps the old rule until
-    // R6-check. Each row's MIR side is its record, none for that row.
+    // Each row's MIR side is its record. In the `x@follow@ref` row a Borrow past a shared dereference forms no Loan of its own (SPEC
+    // 15.6.3, A5 S1), so the default Copies an existing shared borrow, which SPEC 7.2.3 allows (`MirBorrowsTest.ATemplateMayInspectItsSlots`):
+    // no record. Every other row publishes one record: its Message names the forbidden operation on the prepared argument, and its one
+    // related location is the borrow, the prepared parameter's Type. Since the MIR decides acceptance (R6-check H5) the record is A5's,
+    // with no `preceding prepared parameter` label until A6 publishes one (H3b T49, class 3).
     [Theory]
-    [Trait("OldRule", "S1")]
     [InlineData(Increment + "func f(x: uniq/i32, y: i32 = increment(x)) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd", "increment(x)", "x")]
     [InlineData("func f(x: uniq/i32, y: i32 = label work: do\n    x@follow = 9\n    exit to work 1\n) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd", "x@follow = 9")]
     [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd", "a = x)", "x")]
@@ -37,22 +44,34 @@ public class DefaultAccessTest
     [InlineData("func choose(c: bool, x: ref/i32 during a, z: ref/i32 during a) -> ref/i32 during a => if c => x else => z\nfunc f(x: uniq/i32 during a, z: ref/i32 during a, y: ref/i32 during a = choose(true, x, z)) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd", "choose(true, x, z)", "x")]
     public void PreparedAccessFailuresExplainTheForbiddenOperation(string source, string code, string? mir = null, string? subject = null)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(code, error.Code);
-        Assert.Contains("prepared argument", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Single(error.Related!);
         MirTargetSide.Check(source, mir is null ? [] : [(Enum.Parse<DiagnosticCode>(code), MirTargetSide.At(mir, subject))]);
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(mir is null ? [] : [code], records.Select(static x => x.Code));
+        var parameter = source.IndexOf("func f(x: ", StringComparison.Ordinal) + "func f(x: ".Length;
+        foreach (var error in records)
+        {
+            Assert.Equal((Explanations[code], null, null), (error.Message, error.Label, error.Note));
+            Assert.Equal(
+                [("borrow", parameter, source.IndexOf(',', parameter) - parameter, "borrow that created the loan")],
+                error.Related!.Select(static x => (x.Role, x.Span!.Value.Start, x.Span.Value.Length, x.Label)));
+        }
     }
 
     // SPEC 7.2.3, 8.15: a default of a pair-bound parameter is checked per Semantics case, so `b = a` borrows the prepared argument
-    // exclusively in s = uniq and is rejected there, the case's binding related beside the prepared parameter (R5's F18 probe shape grab).
+    // exclusively in s = uniq and is rejected there, the case's binding related beside the borrow (R5's F18 probe shape grab). Since the
+    // MIR decides acceptance (R6-check H5), the record is A5's: its borrow is a's Type, and it has no `preceding prepared parameter`
+    // label until A6 publishes one (H3b T49, class 3).
     [Fact]
     public void AGenericDefaultIsRejectedInTheCaseThatBorrowsExclusively()
     {
-        var error = Assert.Single(DiagnosticCorpus.Check("func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\npublic func main() => ()").Diagnostics);
+        const string Source = "func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\npublic func main() => ()";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
         Assert.Equal("DefaultArgumentBorrow_Kd", error.Code);
         Assert.Contains("prepared argument", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(["the Semantics binding s", "preceding prepared parameter"], error.Related!.Select(static x => x.Label));
+        Assert.Equal(
+            [("borrow", Source.IndexOf("a: s/T", StringComparison.Ordinal) + 3, 3, "borrow that created the loan"),
+                ("declaration", Source.IndexOf("s/T", StringComparison.Ordinal), 3, "the Semantics binding s")],
+            error.Related!.Select(static x => (x.Role, x.Span!.Value.Start, x.Span.Value.Length, x.Label)));
     }
 
     [Fact]
@@ -72,10 +91,12 @@ public class DefaultAccessTest
         Assert.Equal("DefaultArgumentAccess_Kd", error.Code);
     }
 
+    // Since the MIR decides acceptance (R6-check H5), the record is A5's: its one related location is the borrow, the prepared
+    // parameter's Type, with no `preceding prepared parameter` label until A6 publishes one (H3b T49, class 3).
     [Theory]
-    [InlineData(Increment + "func f(x: uniq/i32, y: i32 = increment(x)) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd")]
-    [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd")]
-    public void DiagnosticsPreserveTheCauseAndParameterInEveryAdapter(string source, string code)
+    [InlineData(Increment + "func f(x: uniq/i32, y: i32 = increment(x)) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd", "uniq/i32")]
+    [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd", "uniq/i32 during a")]
+    public void DiagnosticsPreserveTheCauseAndParameterInEveryAdapter(string source, string code, string borrow)
     {
         var path = Path.GetFullPath("default-access.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -84,7 +105,10 @@ public class DefaultAccessTest
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(code, record.Code);
-        Assert.Equal("preceding prepared parameter", Assert.Single(record.Related!).Label);
+        var cause = Assert.Single(record.Related!);
+        Assert.Equal(
+            ("borrow", source.IndexOf("func f(x: " + borrow, StringComparison.Ordinal) + "func f(x: ".Length, borrow.Length, "borrow that created the loan"),
+            (cause.Role, cause.Span!.Value.Start, cause.Span.Value.Length, cause.Label));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);

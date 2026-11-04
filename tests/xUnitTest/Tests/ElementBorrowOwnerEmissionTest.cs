@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -50,7 +51,6 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData("func inspect(a: ref/string, b: (string, i32)) => ()\nfunc f(a: (string, i32)) => inspect(a.0, a@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
     [InlineData("func take(a: (string, i32)) -> string => \"held\"\nfunc f(a: (string, i32)) -> bool => a.0 == take(a@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
     [InlineData("func f(a: (string, i32)) -> bool\n    let moved = a@move\n    return same(a.0, a.0)", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("let value = make().0", DiagnosticCode.Unsupported_Kd)]
     public void BorrowingDoesNotGrantMove(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(Same + Make + source);
@@ -59,6 +59,22 @@ public class ElementBorrowOwnerEmissionTest
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
+    }
+
+    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5; R6-check H1, DECISIONS BU-84), its one published
+    // record: the MIR adds none. The old analysis's Unsupported_Kd at it is not restored (1x: the old analysis's limit record, withdrawn
+    // at H3b round 0; DECISIONS Q13, R5-M185).
+    [Fact]
+    public void ABareMoveOfATemporarysPartIsBindingsRecord()
+    {
+        var c = MinimalEmissionTest.Analyze(Same + Make + "let value = make().0");
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.TransferRequired_Kd), (string?)"make().0")],
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     public static TheoryData<string, string, string, string, int[]> Audits => new()

@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -37,6 +38,11 @@ public class ElementParameterMoveEmissionTest
         { "GenericNested", "func f<T>(a: ((T, string), string)) -> T => a.0.0@move\nConsole.writeLine(f<string>(((\"first\", \"last\"), \"outer\")))", "first\n", "first=1;last=1;outer=1", [2, 1, 0] },
         { "GenericAggregate", "func f<T>(a: ((T, string), string)) -> T => a.0.0@move\nlet moved = f<(string, string)>((((\"first\", \"second\"), \"last\"), \"outer\"))", string.Empty, "first=1;second=1;last=1;outer=1", [3, 2, 1, 0] },
         { "ConditionalNested", "func f(a: ((string, string), string), take: bool)\n    if take\n        let moved = a.0.0@move\n    else\n        let moved = a.0@move\nf(((\"first\", \"last\"), \"outer\"), true)\nf(((\"first\", \"last\"), \"outer\"), false)", string.Empty, "first=2;last=2;outer=2", [0, 2, 1, 1, 0, 2] },
+
+        // The located receiver stays protected while its index operands evaluate (SPEC 4.7.4), and a move of its sibling there does not
+        // touch it, so the program is accepted (R4's 1a verdict, the owner 2026-11-03): the old analysis's ComparisonLoanConflict_Kd went
+        // with the MIR deciding acceptance (H5).
+        { "IndexSibling", "func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]\nif f((\"first\", [42])) == 42 => Console.writeLine(\"ok\")", "ok\n", "first=1;ok=1", [0, 1] },
     };
 
     [Theory]
@@ -58,10 +64,8 @@ public class ElementParameterMoveEmissionTest
     [InlineData("func take(a: string) -> string => a@move\nfunc f(a: (string, string)) -> bool => a.0 == take(a.0@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
     [InlineData("func f(a: [2 of string], i: isize) -> string => a[i]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
     [InlineData("func f(a: [2 of string]) -> string => a[0 + 0]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
-    [InlineData("let moved = (\"first\", \"last\").0", DiagnosticCode.Unsupported_Kd)]
     [InlineData("func f(a: ([0 of string], string))\n    let moved = a.0@move\n    let twice = a.0@move", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("func f(a: ((string, string), string))\n    let moved = a.0@move\n    let nested = a.0.0@move", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]", DiagnosticCode.ComparisonLoanConflict_Kd)]
     public void InvalidMovesFailBeforeEmission(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");
@@ -70,6 +74,22 @@ public class ElementParameterMoveEmissionTest
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
+    }
+
+    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5; R6-check H1, DECISIONS BU-84), its one published
+    // record: the MIR adds none. The old analysis's Unsupported_Kd at it is not restored (1x: the old analysis's limit record, withdrawn
+    // at H3b round 0, as OwnershipAnalysisTest states for this program; DECISIONS Q13, R5-M185).
+    [Fact]
+    public void ABareMoveOfATemporarysPartFailsBeforeEmission()
+    {
+        var c = MinimalEmissionTest.Analyze("let moved = (\"first\", \"last\").0\nConsole.writeLine(\"ok\")");
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.TransferRequired_Kd), (string?)"(\"first\", \"last\").0")],
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]

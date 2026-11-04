@@ -110,23 +110,6 @@ public sealed class ControlFlowAnalysis
         this.Visit(root);
     }
 
-    /// <summary>Records the definite errors; ownership analysis discards earlier ones when it analyzes again.</summary>
-    public void ReportDiagnostics()
-    {
-        // The require fallthrough check is structural, independent of Binding, but rests on a recovery that guessed what it reads.
-        foreach (var issue in this.issues)
-        {
-            if (this.GuessedBy(issue) is { } syntax)
-            {
-                issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, syntax);
-            }
-            else
-            {
-                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code);
-            }
-        }
-    }
-
     internal void Append(Koto root) => this.Visit(root);
 
     // An omitted default with pending completion cannot be expanded by ownership; the same finite cycle boundary applies.
@@ -181,10 +164,6 @@ public sealed class ControlFlowAnalysis
         receiver = bound?.Receiver ?? call.BoundValueCall?.CalleeValue;
         return bound is not null || call.BoundValueCall is not null;
     }
-
-    // The syntax Errors of the recoveries that guessed the normal completion a require fallthrough check reads, which Binding's one
-    // guess rule judges (Binding.GuessedCompletion), or null when the check reads written syntax alone.
-    private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue) => this.binding.GuessedCompletion(issue.Node, issue.Node);
 
     private void Error(Koto node, DiagnosticCode code)
     {

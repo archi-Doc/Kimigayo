@@ -103,11 +103,11 @@ internal static class CompilerPlanMeasurements
                     milliseconds[sample] = elapsed.TotalMilliseconds / Iterations;
                 }
 
-                var packedTableBytes = c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes);
-                var regionPayloadBytes = c.Ownership.Bodies.Sum(static body => body.LocalRegionStorageBytes);
-                var regionIndexCapacity = c.Ownership.Bodies.Sum(static body => body.LocalRegionIndexCapacity);
-                var peakRegionCells = c.Ownership.Bodies.Sum(static body => body.PeakLocalLoanCells);
-                var defaultContexts = c.Ownership.Bodies.Sum(static body => body.DefaultContexts?.Count ?? 0);
+                var packedTableBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.BorrowStorageBytes);
+                var regionPayloadBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionStorageBytes);
+                var regionIndexCapacity = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionIndexCapacity);
+                var peakRegionCells = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.PeakLocalLoanCells);
+                var defaultContexts = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.DefaultContexts?.Count ?? 0);
                 results.Add(new { name, size, stored, phase, packedTableBytes, regionPayloadBytes, regionIndexCapacity, peakRegionCells, defaultContexts, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
 
                 void RunOnce()
@@ -116,7 +116,7 @@ internal static class CompilerPlanMeasurements
                     {
                         "binding" => c.Bind().IsComplete,
                         "emission" => c.Generate(TextWriter.Null),
-                        _ => c.Ownership.Analyze().IsVerified,
+                        _ => c.AnalyzeLegacyOwnership().Analyze().IsVerified,
                     };
                     if (!valid)
                     {

@@ -181,14 +181,14 @@ public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int 
 public readonly record struct OwnershipLending(Koto Input, Koto Call);
 
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
-// Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name, such
-// as DestroyedTemporary); Borrow is the Borrow that created the Loan, with BorrowCapture its capture entry when it is a closure's
-// (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found under, one bit per case of the function's
-// enumeration (SPEC 8.15, 23.1.2); empty outside a case run and once every case found the problem.
+// Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name);
+// Borrow is the Borrow that created the Loan (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found
+// under, one bit per case of the function's enumeration (SPEC 8.15, 23.1.2); empty outside a case run and once every case found
+// the problem.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
-    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
+    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0,
     OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BindingObligation? Obligation = null,
-    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
+    Koto? Borrow = null, string? Destroyed = null, ulong Cases = 0)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -201,10 +201,9 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement F
         OwnershipRequirement.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
         OwnershipRequirement.DefaultArgumentAccess => DiagnosticCode.DefaultArgumentAccess_Kd,
         OwnershipRequirement.DefaultArgumentBorrow => DiagnosticCode.DefaultArgumentBorrow_Kd,
-        OwnershipRequirement.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-        OwnershipRequirement.UnprovenOrigin => this.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter }
-            ? Binding.RefutesOriginRelation(longer, shorter, this.Obligation.Value.Body) ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd
-            : DiagnosticCode.UnprovenConstraint_Kd,
+        OwnershipRequirement.UnprovenOrigin => this.Obligation is { Longer: { } longer, Shorter: { } shorter } &&
+            Binding.RefutesOriginRelation(longer, shorter, this.Obligation.Value.Body)
+            ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd,
         OwnershipRequirement.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipRequirement.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipRequirement.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
@@ -325,7 +324,6 @@ public sealed partial class OwnershipBody
     internal void Reset(FunctionKoto function, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.ResetResolvedCalls();
-        this.ResetCleanupEffects();
         this.Function = function;
         this.DefaultParameter = -1;
         this.caseBit = caseBit;

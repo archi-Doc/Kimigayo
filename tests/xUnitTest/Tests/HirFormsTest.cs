@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -15,8 +16,8 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
-    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the old
-    // path accepts too (Binding records none), the library and the milestone programs.
+    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the MIR
+    // accepts too (Binding records none), the library and the milestone programs.
     public static TheoryData<string> AcceptedPrograms
     {
         get
@@ -26,7 +27,7 @@ public sealed partial class HirFormsTest
             {
                 for (var i = 0; i < example.Variants.Length; i++)
                 {
-                    if (example.Variants[i] is { Expected.Length: 0 } variant && (variant.Old?.Records.Length ?? 0) == 0)
+                    if (example.Variants[i] is { Expected.Length: 0 } variant && (variant.Mir?.Records.Length ?? 0) == 0)
                     {
                         data.Add($"spec/{example.Name}/{i}");
                     }
@@ -232,29 +233,26 @@ public sealed partial class HirFormsTest
         Assert.Equal(expected, adjusted);
     }
 
-    // SPEC 3.5, 8.14: a bare Place whose Type's Copy is unproven needs a Move (the ownership analysis reports TransferRequired), and a pair
-    // layer whose every admitted case Copies or Reborrows is acquired by case.
+    // SPEC 3.5, 8.14: a bare Place whose Type's Copy is unproven needs a Move, Binding's TransferRequired_Kd (R6-check H1, DECISIONS
+    // BU-84), and a pair layer whose every admitted case Copies or Reborrows is acquired by case.
     [Fact]
     public void ABarePlaceIsAcquiredAsBindingDecides()
     {
         var c = MinimalEmissionTest.Analyze("func keep<T>(x: T) -> T\n    T is Owned\n    return x\nfunc pass<s/T>(value: s/T) -> s/T\n    s is owner or uniq\n    T is Copy\n" +
             "    return value\nrequire keep(1) == 1 else => $abort(\"bare\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "x")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
         HirTables.Publish(c);
-        Assert.Empty(Problems(c.Kotonoha));
-        Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
+        Assert.Equal(HirAcquire.ByCase, HirTables.AdjustOf(Reachable(c.Kotonoha).OfType<JumpKoto>().Last().Expression!).Acquire);
     }
 
     // SPEC 3.5, 3.5.1, 8.15.2 (R6-check (b2)): a pair layer's owner case acquires its target by SPEC 3.5's rows: a Copy target Copies, an
     // exclusive reference Reborrows unless a shared layer is on its path (the binder's own layers are owners there), a nested pair layer
-    // acquires by its own cases; a target without a plan leaves the Move a TransferRequired_Kd needs.
+    // acquires by its own cases; a target without a plan is SPEC 3.5's error there (TransferJudgmentTest, R6-check H1).
     [Theory]
     [InlineData("s/T", "value: s/T", "s is owner or uniq\n    T is Copy", "value", nameof(HirAcquire.ByCase))]
     [InlineData("s/T", "value: s/(uniq/i32 during a)", "s is owner or uniq", "value", nameof(HirAcquire.ByCase))]
     [InlineData("s/T", "value: s/(s/(uniq/i32 during a) during b)", "s is owner or ref", "value@follow", nameof(HirAcquire.ByCase))]
-    [InlineData("s/T", "value: ref/(s/(uniq/i32 during a) during c) during b", "s is owner or ref", "value@follow", nameof(HirAcquire.Move))]
     [InlineData("t/U, s/T", "value: s/t/U", "s is owner or uniq\n    t is owner or uniq\n    U is Copy", "value", nameof(HirAcquire.ByCase))]
-    [InlineData("t/U, s/T", "value: s/t/U", "s is owner or uniq\n    t is owner or rc\n    U is Copy", "value", nameof(HirAcquire.Move))]
     public void APairLayersOwnerCaseAcquiresItsTargetByItsPlan(string generics, string parameters, string constraints, string place, string acquire)
     {
         var c = MinimalEmissionTest.Analyze($"func f<{generics}>({parameters}) -> ()\n    {constraints}\n    let local = {place}\n    _ = local@move\n");
@@ -606,8 +604,8 @@ public sealed partial class HirFormsTest
     }
 
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, as at a value position, and
-    // discarded. Its plan row's Adjust is that acquisition (a pair layer by case, a Copy, a stored exclusive reference's Reborrow, the
-    // Move a bare Non-Copy Place requires, TransferRequired_Kd at it), while its Adjust column keeps its reading: unset, the
+    // discarded. Its plan row's Adjust is that acquisition (a pair layer by case, a Copy, a stored exclusive reference's Reborrow; a bare
+    // Non-Copy Place is Binding's TransferRequired_Kd since R6-check H1, published Error, so it has no row), while its Adjust column keeps its reading: unset, the
     // container discarding its item, or a group's in-place take of its operand. A Place a consumer takes (an initializer, `_ = k`'s
     // operand) has the take in its column and no such row. Each row: the node, its column, its plan row's Adjust.
     [Fact]
@@ -617,6 +615,7 @@ public sealed partial class HirFormsTest
             "    T is Copy\n    value\n    count\n    r\n    (r)\n    items[1]\n    title\n    if c\n        count\n    let k = count\n    _ = k\n" +
             "public func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "title")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
         HirTables.Publish(c);
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var rows = Reachable(c.Kotonoha)
@@ -626,7 +625,7 @@ public sealed partial class HirFormsTest
         Assert.Equal(
             [
                 "value Unset/None ByCase/None", "count Unset/None Copy/None", "r Unset/None Reborrow/None", "(r) Unset/None Reborrow/None",
-                "r None/None Reborrow/None", "items[1] Unset/None Copy/None", "title Unset/None Move/None", "count Unset/None Copy/None",
+                "r None/None Reborrow/None", "items[1] Unset/None Copy/None", "count Unset/None Copy/None",
                 "count Copy/None Unset/None", "k Copy/None Unset/None",
             ],
             rows);
@@ -636,9 +635,9 @@ public sealed partial class HirFormsTest
 
     // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare acquisition Reborrows a stored exclusive reference, or a pair layer in
     // its exclusive case, only where the path grants exclusive access in that case; through a shared layer (a `ref` follow, a Slice
-    // element, a `let`-owned Array element, a Field through `ref`, another binder's pair layer) it has no plan, the Move the old path's
-    // TransferRequired_Kd rejects. An exclusive path, a `var` Array element and the acquiring binder's own layers keep the Reborrow or the
-    // acquisition by case. Each row: the Place, its Adjust (the plan row's for the discarded one).
+    // element, a `let`-owned Array element, a Field through `ref`, another binder's pair layer) it has no plan: Binding's TransferRequired_Kd
+    // (R6-check H1, DECISIONS BU-84). An exclusive path, a `var` Array element and the acquiring binder's own layers keep the Reborrow or
+    // the acquisition by case. Each row: the Place, its Adjust (the plan row's for the discarded one).
     [Fact]
     public void ABareAcquisitionReborrowsOnlyThroughAnExclusivePath()
     {
@@ -650,18 +649,16 @@ public sealed partial class HirFormsTest
             "    s is ref or uniq\n    t is ref or uniq\n    let pair = x@follow\n    let other = w@follow\n    let own = z@follow\n    let part = bx.v\n    let through = q@follow\n" +
             "public func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(
+            new[] { "r@follow", "r@follow", "r@follow", "s[0]", "h.link", "values[0]", "x@follow", "w@follow" }.Select(static x => (DiagnosticCode.TransferRequired_Kd, x)),
+            c.Binding.Issues.OrderBy(static x => x.Node.Span.Start).Select(static x => (x.Code, x.Node.ToString())));
+        var failed = c.Binding.Issues.Select(static x => x.Node).ToHashSet();
         HirTables.Publish(c);
         var rows = Reachable(c.Kotonoha)
-            .Where(static x => (x.Parent is VariableKoto { InitializerKoto: { } initializer } && ReferenceEquals(initializer, x) && x is not ArrayLiteralKoto) ||
-                x.Parent is DiscardKoto || (x.Parent is CodeBlockKoto && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value)))
+            .Where(x => !failed.Contains(x) && ((x.Parent is VariableKoto { InitializerKoto: { } initializer } && ReferenceEquals(initializer, x) && x is not ArrayLiteralKoto) ||
+                x.Parent is DiscardKoto || (x.Parent is CodeBlockKoto && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value))))
             .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(x.Parent is CodeBlockKoto ? HirTables.PlanOf(x).Adjust : HirTables.AdjustOf(x)).Acquire}");
-        Assert.Equal(
-            [
-                "r@follow Move", "r@follow Move", "r@follow Move", "s[0] Move", "h.link Move", "u@follow Reborrow", "values[0] Move", "owned[0] Reborrow",
-                "x@follow Move", "w@follow Move", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase",
-            ],
-            rows);
+        Assert.Equal(["u@follow Reborrow", "owned[0] Reborrow", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase"], rows);
     }
 
     // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan

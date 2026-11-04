@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Xunit;
 
 namespace XunitTest;
@@ -32,14 +33,22 @@ public class FixedArrayEntryTest
 
     // Dispatch through `C.IteratorType` reaches the iterator's `next` only through the entry's result Type, for a fixed
     // array and for a declared collection alike.
+    // SPEC 15.6.4 (R4-M170): both programs are valid, but since G264 (S) S2 A5 errs twice at count's `for` (the lent item's composed erased
+    // destruction stores next()'s Loan into the iterator, a self-row; ledger 68fb94789893, a4dea13bc8f6), and generation refuses them; the
+    // old analysis accepted and ran them to "ok\n" (fixtures FixedArrayEntryGenericFixed and Array). H5's (e) list, row "S2's self-row
+    // family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and re-points this test back to its run.
     [Theory]
     [InlineData("Fixed", "[4 of string]")]
     [InlineData("Array", "Array<string>")]
     public void GenericIterationReachesTheIteratorStep(string name, string type)
-        => ScalarEmissionTest.EmitFixture(
-            "FixedArrayEntryGeneric" + name,
-            "func count<C>(items: ref/C) -> i32\n    C is Iterable\n    var n = 0\n    for item in items => n += 1\n    return n\nlet values: " + type + " = [\"a\", \"b\", \"c\", \"d\"]\nrequire count(values) == 4 else => $abort(\"generic\")\nConsole.writeLine(\"ok\")",
-            "ok\n");
+    {
+        var c = MinimalEmissionTest.Analyze("func count<C>(items: ref/C) -> i32\n    C is Iterable\n    var n = 0\n    for item in items => n += 1\n    return n\nlet values: " + type + " = [\"a\", \"b\", \"c\", \"d\"]\nrequire count(values) == 4 else => $abort(\"generic\")\nConsole.writeLine(\"ok\")");
+        Assert.True(c.Binding.Result.IsComplete, $"{name}: {MinimalEmissionTest.Describe(c)}");
+        Assert.False(c.Accepts);
+        var loop = new SyntaxLocation("for item in items => n += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
 
     [Theory]
     [InlineData("let it = Kimi.Storage.FixedArray.iterate(values)")]
@@ -72,12 +81,19 @@ public class FixedArrayEntryTest
     public void ExplicitOwningEntryYieldsScalarsAndZeroSizedElements()
         => ScalarEmissionTest.EmitFixture("FixedArrayEntryOwningShapes", Shapes, "ok\n");
 
+    // SPEC 15.6.4 (R4-M170): valid, but since G264 (S) S2 A5 errs twice at count's `for` (ledger 9238e164f4f2), and generation refuses it;
+    // the old analysis accepted and ran it to "ok\n" (fixture FixedArrayEntryOwningGeneric). H5's (e) list, row "S2's self-row family"
+    // (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and re-points this test back to its run.
     [Fact]
     public void GenericOwningIterationReachesTheIteratorStep()
-        => ScalarEmissionTest.EmitFixture(
-            "FixedArrayEntryOwningGeneric",
-            "func count<C>(items: C) -> i32\n    C is IntoIterable\n    var n = 0\n    for item in items@move => n += 1\n    return n\nlet values: [3 of string] = [\"a\", \"b\", \"c\"]\nrequire count(values@move) == 3 else => $abort(\"generic\")\nConsole.writeLine(\"ok\")",
-            "ok\n");
+    {
+        var c = MinimalEmissionTest.Analyze("func count<C>(items: C) -> i32\n    C is IntoIterable\n    var n = 0\n    for item in items@move => n += 1\n    return n\nlet values: [3 of string] = [\"a\", \"b\", \"c\"]\nrequire count(values@move) == 3 else => $abort(\"generic\")\nConsole.writeLine(\"ok\")");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var loop = new SyntaxLocation("for item in items@move => n += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
 
     [Fact]
     public void ExplicitExclusiveEntryUpdatesEachElement()

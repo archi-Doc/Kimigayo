@@ -37,7 +37,7 @@ public class LexicalLayoutRecoveryTest(ITestOutputHelper output)
 
     [Theory]
     [InlineData("func f() -> i32\n    if true\n        return 1\n    return 2\nlet n = f()")]
-    [InlineData("func take<T>(value: T) -> T => value\nfunc f() -> i32\n    let n = take<\n        i32\n    >(1)\n    return n\nlet n = f()")]
+    [InlineData("func take<T>(value: T) -> T => value@move\nfunc f() -> i32\n    let n = take<\n        i32\n    >(1)\n    return n\nlet n = f()")]
     [InlineData("func f() -> i32\n    let n = (if true\n        yield 1\n    else\n        yield 2\n    )\n    return n\nlet n = f()")]
     [InlineData("func take(value: i32) -> i32 => value\nlet n = take(\n    match true\n        _\n            let value = 7\n            yield value\n)")]
     public void LookaheadUsesTheSameRecoveredIndentation(string validSource)

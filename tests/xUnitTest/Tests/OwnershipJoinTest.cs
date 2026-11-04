@@ -77,7 +77,7 @@ public class OwnershipJoinTest
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
 
         // SPEC 15.6.6, 16.2.2: one record, at the exit whose cleanup destroys `local`, never also at the join or the later use.
-        var conflict = Assert.Single(c.Ownership.Issues);
+        var conflict = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal((OwnershipRequirement.ComparisonLoanConflict, "local"), (conflict.Failure, conflict.Destroyed));
         Assert.IsType<Kimi.Compiler.Parsing.ExitKoto>(conflict.Source);
         Assert.False(c.Generate(TextWriter.Null));

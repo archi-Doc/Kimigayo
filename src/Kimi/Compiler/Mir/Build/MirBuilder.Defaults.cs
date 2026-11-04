@@ -129,7 +129,7 @@ internal sealed partial class MirBuilder
 
                 if (limit)
                 {
-                    this.program.Report(SourceRef.Of(node), DiagnosticCode.DefaultExpansionLimit_Kd);
+                    this.Record(node, DiagnosticCode.DefaultExpansionLimit_Kd);
                 }
             }
             else

@@ -20,36 +20,35 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     private const string FieldHolders = "struct P\n    public var x: i32 = 0\n    public init() => ()\nstruct H2 {a}\n    public var o: objuniq/P during a\n" +
         "struct H3 {a}\n    public var l: uniq/i32 during a\n";
 
-    // The `OldRule` tests below expect the rule before Loan identity by base (A5 S1). Now a Borrow carries the Loans of the
-    // references it follows, from the last shared one on (SPEC 15.6.3), among them the Loan that the `index`, `indexUniq`
-    // or `tryGet` result keeps on `entries`; clearing or removing from `entries` while `found` is live is then an error.
-    // The default pipeline keeps the old rule for these forms until R6-check; the forms whose names Binding gives through the
-    // index result's layer (DECISIONS BU-27) have SPEC's verdict on it now (ABorrowPastAResultKeepsTheContainersLoan).
+    // Loan identity by base (A5 S1): a Borrow carries the Loans of the references it follows, from the last shared one on (SPEC
+    // 15.6.3), among them the Loan that the `index`, `indexUniq` or `tryGet` result keeps on `entries`; clearing or removing from
+    // `entries` while `found` is live is an error, also below.
     [Theory]
-    [Trait("OldRule", "S1")]
-    [InlineData("Tuple", "entries[1].0@follow@ref")]
-    public void CompoundStoredReferencesOutliveTheContainer(string name, string selection)
+    [InlineData("entries[1].0@follow@ref")]
+    public void CompoundStoredReferencesOutliveTheContainer(string selection)
     {
         var source = Lookup + Compound + selection + "\n    entries.clear()\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq)";
-        ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceCompound" + name, source, string.Empty);
+        MirTargetSide.Check(source, (DiagnosticCode.CallActivationConflict_Kd, new("entries.clear()")));
     }
 
     // SPEC 15.6.3, 4.7.1 (DECISIONS BU-27; formerly OldRule S1 rows, R4-M50 superseded in part): `found` derives from the `index`,
     // `indexUniq` or `tryGet` result and carries that call's Loan on `entries`, which Binding names in `found`'s Type, so clearing or
-    // removing from `entries` while `found` is live is a Loan conflict on the default pipeline too.
+    // removing from `entries` while `found` is live is a Loan conflict. The record is at the mutation, or at
+    // `subject` in it: the Exclusive form's receiver Borrow of `entries` (the MIR's record, H5).
     [Theory]
     [InlineData("OptionalTuple", Lookup + Compound + "match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
     [InlineData("GenericOptionalTuple", Lookup + Compound + "match lookup(entries@ref, 1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
     [InlineData("Shared", Header + "    let found = entries.index(1)@follow@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
-    [InlineData("Exclusive", Header + "    let found = entries.indexUniq(1)@follow@follow@uniq\n    entries.clear()\n    found@follow = 99", "entries.clear()")]
+    [InlineData("Exclusive", Header + "    let found = entries.indexUniq(1)@follow@follow@uniq\n    entries.clear()\n    found@follow = 99", "entries.clear()", "entries")]
     [InlineData("Conditional", "func run(value: uniq/i32 during a, enabled: bool)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    if enabled => _ = entries.tryInsert(1, value@move)\n    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
     [InlineData("Cleared", Header + "    let view = entries@ref\n    let found = view[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")", "entries.clear()")]
     [InlineData("Removed", Header + "    let view = entries@ref\n    let found = view[1]@follow@ref\n    _ = entries.remove(1)\n    require found == 42 else => $abort(\"value\")", "entries.remove(1)")]
-    public void ABorrowPastAResultKeepsTheContainersLoan(string name, string source, string mutation)
+    public void ABorrowPastAResultKeepsTheContainersLoan(string name, string source, string mutation, string? subject = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, name + ": " + MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == mutation);
+        var at = source.IndexOf(mutation, StringComparison.Ordinal) + (subject is null ? 0 : mutation.IndexOf(subject, StringComparison.Ordinal));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject) is var s && s.ToString() == (subject ?? mutation) && s.Span.Start == at);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.False(c.Generate(TextWriter.Null));
     }
@@ -174,17 +173,19 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
 
     // SPEC 15.6.4: a referent stored in a Dictionary stays borrowed from the store until the Dictionary's last use, also on the
     // next iteration of a loop, whose earlier operations follow the store at run time. A write through the reference before the
-    // store and the second exclusive store of the same reference are each a conflict.
+    // store and the second exclusive store of the same reference are each a conflict: at the write, and at the stored argument (the
+    // MIR's records, H5).
     [Fact]
     public void AStoreInALoopRetainsTheReferentOnLaterIterations()
     {
         const string Source = "func run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    var i: i32 = 0\n    while i < 2\n" +
             "        value@follow = 7\n        _ = entries.tryInsert(i, value)\n        i += 1\n    let found = entries[0]@follow@ref\npublic func main() => ()\n";
         var records = DiagnosticCorpus.Check(Source).Diagnostics.OrderBy(static x => x.Span!.Value.Start).ToArray();
-        Assert.Equal(["ComparisonLoanConflict_Kd", "CallActivationConflict_Kd"], records.Select(static x => x.Code));
+        Assert.Equal(["ComparisonLoanConflict_Kd", "ComparisonLoanConflict_Kd"], records.Select(static x => x.Code));
         Assert.Equal(Source.IndexOf("value@follow = 7", StringComparison.Ordinal), records[0].Span!.Value.Start);
-        Assert.Equal("value", Source.Substring(records[0].Span!.Value.Start, records[0].Span!.Value.Length));
-        Assert.Equal("entries.tryInsert(i, value)", Source.Substring(records[1].Span!.Value.Start, records[1].Span!.Value.Length));
+        Assert.Equal("value@follow = 7", Source.Substring(records[0].Span!.Value.Start, records[0].Span!.Value.Length));
+        Assert.Equal(Source.IndexOf("tryInsert(i, value)", StringComparison.Ordinal) + "tryInsert(i, ".Length, records[1].Span!.Value.Start);
+        Assert.Equal("value", Source.Substring(records[1].Span!.Value.Start, records[1].Span!.Value.Length));
     }
 
     // A Dictionary declared in the loop drops the stored reference at the end of each iteration, and a write after the
@@ -222,26 +223,22 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceResume" + name, source, string.Empty);
     }
 
-    // Expects the old rule (PLAN G231, until R6-check): SPEC 3.5.1 forbids a second Reborrow of a stored reference reached through an
-    // exclusive parameter's Field, and a write through that Field, while a Reborrow of it in a Dictionary literal is live. The old analysis
-    // accepts these forms, as it accepts their Array and `let` twins (STATUS Loans); A5 rejects them with a ComparisonLoanConflict_Kd at the
-    // second Reborrow or at the write (DECISIONS R4-M136: each row's ledger key and MIR target side). G231's fix flips the old side.
+    // SPEC 3.5.1 forbids a second Reborrow of a stored reference reached through an exclusive parameter's Field, and a write through that
+    // Field, while a Reborrow of it in a Dictionary literal is live: A5 rejects them with a ComparisonLoanConflict_Kd at the second Reborrow
+    // or at the write. The old analysis accepted them (PLAN G231); the MIR decides acceptance since H5, which closes G231.
     [Theory]
-    [Trait("OldRule", "ledger:1b737830afa3:9")]
-    [Trait("OldRule", "ledger:bf266bcef6ad:10")]
     [InlineData("    let d = [1: h.l, 2: h.l]\n    _ = d@move\n", "2: h.l]", "h.l")]
     [InlineData("    let d = [1: h.l]\n    h.l@follow = 3\n    _ = d@move\n", "h.l@follow = 3", null)]
-    public void AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance(string body, string conflict, string? subject)
+    public void AFieldReborrowConflictInADictionaryLiteralIsRejected(string body, string conflict, string? subject)
     {
         var c = AnalyzedFieldReborrow("func f(h: uniq/(H3 during a) during s) -> i32\n" + body);
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(conflict, subject)));
     }
 
-    // The `objuniq/P` Field's form of AFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance. Each value, adapted at the
-    // literal's value Type, is Reborrowed as the `uniq` Field's is (PLAN G232), so A5 reports only the conflict, no Origin relation.
+    // The `objuniq/P` Field's form of AFieldReborrowConflictInADictionaryLiteralIsRejected. Each value, adapted at the literal's value
+    // Type, is Reborrowed as the `uniq` Field's is (PLAN G232), so A5 reports only the conflict, no Origin relation.
     [Fact]
-    [Trait("OldRule", "ledger:e877352d188e:9")]
-    public void AnObjectViewFieldReborrowConflictInADictionaryLiteralIsG231sKnownAcceptance()
+    public void AnObjectViewFieldReborrowConflictInADictionaryLiteralIsRejected()
     {
         var c = AnalyzedFieldReborrow("func f(h: uniq/(H2 during a) during s) -> i32\n    let d = [1: h.o, 2: h.o]\n    _ = d@move\n");
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("2: h.o]", "h.o")));
@@ -249,12 +246,11 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
 
     // The Conditional form is ABorrowPastAResultKeepsTheContainersLoan's.
     [Theory]
-    [Trait("OldRule", "S1")]
-    [InlineData("Literal", "var entries = [1: value@move]")]
-    public void ConstructionAndConditionalStorageRetainTheInput(string name, string construction)
+    [InlineData("var entries = [1: value@move]")]
+    public void ConstructionAndConditionalStorageRetainTheInput(string construction)
     {
         var source = "func run(value: uniq/i32 during a, enabled: bool)\n    " + construction + "\n    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq, true)";
-        ScalarEmissionTest.EmitFixture("DictionaryStoredReference" + name, source, string.Empty);
+        MirTargetSide.Check(source, (DiagnosticCode.CallActivationConflict_Kd, new("entries.clear()")));
     }
 
     [Fact]
@@ -264,15 +260,21 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceIndependent", source, string.Empty);
     }
 
-    // Every row but SharedCopy follows the old rule, as above.
+    // Every row but SharedCopy is an error, as above, and has no fixture.
     [Theory]
-    [Trait("OldRule", "S1")]
-    [InlineData("Local", "var value = 42\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@ref\nentries.clear()\nrequire found == 42 else => $abort(\"value\")")]
+    [InlineData("Local", "var value = 42\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@ref\nentries.clear()\nrequire found == 42 else => $abort(\"value\")", DiagnosticCode.CallActivationConflict_Kd, "entries.clear()")]
     [InlineData("SharedCopy", "let value = 42\nvar entries = [1: value@ref]\nlet found = entries[1]\nentries.clear()\nrequire found == 42 else => $abort(\"value\")")]
-    [InlineData("String", "var value = \"value\"\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@ref\nentries.clear()\nrequire found == \"value\" else => $abort(\"value\")")]
-    [InlineData("ExclusiveChild", "var value = 0\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@uniq\nentries.clear()\nfound@follow = 42\nrequire value == 42 else => $abort(\"value\")")]
-    public void LocalInputsAndSharedCopiesOutliveTheSlot(string name, string source)
-        => ScalarEmissionTest.EmitFixture("DictionaryStoredReference" + name, source, string.Empty);
+    [InlineData("String", "var value = \"value\"\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@ref\nentries.clear()\nrequire found == \"value\" else => $abort(\"value\")", DiagnosticCode.CallActivationConflict_Kd, "entries.clear()")]
+    [InlineData("ExclusiveChild", "var value = 0\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@uniq\nentries.clear()\nfound@follow = 42\nrequire value == 42 else => $abort(\"value\")", DiagnosticCode.ComparisonLoanConflict_Kd, "entries.clear()", "entries")]
+    public void LocalInputsAndSharedCopiesOutliveTheSlot(string name, string source, DiagnosticCode? code = null, string? mir = null, string? subject = null)
+    {
+        if (code is null)
+        {
+            ScalarEmissionTest.EmitFixture("DictionaryStoredReference" + name, source, string.Empty);
+        }
+
+        MirTargetSide.Check(source, code is { } record ? [(record, MirTargetSide.At(mir!, subject))] : []);
+    }
 
     [Fact]
     public void OrdinaryWritableArgumentsUseTheSameStorageContract()
@@ -299,17 +301,23 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         // SPEC 15.6.2, 15.6.3 (DECISIONS BU-27): each call conflicts with `found` at its argument's reservation and at its index's indexUniq
-        // receiver, an exclusive Borrow of `entries` while `found` keeps the index result's shared Loan on it.
+        // receiver, an exclusive Borrow of `entries` while `found` keeps the index result's shared Loan on it. Each record relates A6's
+        // facts as A5 publishes an activation conflict (R4-M169, the MIR's records since H5): the Borrow of `entries` that created `found`'s
+        // Loan (Anchor), `found`'s later use (Use) and the activated reservation (Reservation): the argument, or indexUniq's receiver.
         Assert.Equal(independent ? 4 : 2, result.Diagnostics.Length);
+        var call = -1;
         for (var i = 0; i < result.Diagnostics.Length; i++)
         {
             var error = result.Diagnostics[i];
+            call = i % 2 == 0 ? source.IndexOf("change(entries[1])", call + 1, StringComparison.Ordinal) : call;
             Assert.Equal("CallActivationConflict_Kd", error.Code);
             Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-            Assert.Equal(i % 2 == 0 ? "change(entries[1])" : "entries[1]", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-            var retained = Assert.Single(error.Related!);
-            Assert.Equal("loan", retained.Role);
-            Assert.Contains("found", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+            Assert.Equal((i % 2 == 0 ? call : call + 7, i % 2 == 0 ? "change(entries[1])" : "entries[1]"), (error.Span!.Value.Start, source.Substring(error.Span.Value.Start, error.Span.Value.Length)));
+            Assert.Equal(
+                [("borrow", source.IndexOf("entries[1]@follow@ref", StringComparison.Ordinal), "entries", "borrow that created the loan"),
+                    ("loan", source.IndexOf("found == 42", StringComparison.Ordinal), "found == 42", "later use of the value retaining the conflicting loan"),
+                    ("reservation", call + 7, i % 2 == 0 ? "entries[1]" : "entries", "conflicting exclusive call reservation")],
+                error.Related!.Select(x => (x.Role, x.Span!.Value.Start, source.Substring(x.Span.Value.Start, x.Span.Value.Length), x.Label)));
         }
 
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -328,7 +336,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
                 Assert.Equal(error.Display!.Range, sent.Range);
                 if (related)
                 {
-                    Assert.Equal(error.Related![0].Range, Assert.Single(sent.RelatedInformation!).Location.Range);
+                    Assert.Equal(error.Related!.Select(static x => x.Range!.Value), sent.RelatedInformation!.Select(static x => x.Location.Range));
                 }
                 else
                 {
@@ -353,11 +361,11 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 
-    // A G231 row's analyzed Program.kimi compilation, the function returning 0 after the given lines, and its old side: accepted.
+    // A G231 row's analyzed Program.kimi compilation, the function returning 0 after the given lines: Binding complete, rejected.
     private static Compilation AnalyzedFieldReborrow(string function)
     {
         var c = MinimalEmissionTest.Analyze(FieldHolders + function + "    return 0\npublic func main() => ()\n", "Program.kimi");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.Result.IsComplete && !c.Accepts, MinimalEmissionTest.Describe(c));
         return c;
     }
 }

@@ -78,7 +78,9 @@ public class DefaultInitializationTest
             Assert.Equal(!invalid, c.Generate(TextWriter.Null));
             if (invalid)
             {
-                Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+                // SPEC 14.10.3: `n` is read after its initializer never completes. Since the MIR decides acceptance (R6-check H5), the record
+                // is A1's UninitializedPlace_Kd at the read, where the old analysis had a located Unsupported_Kd at `n` (H3b T48, class 3).
+                Assert.Equal("UninitializedPlace_Kd n + 1", MinimalEmissionTest.Problems(c));
             }
 
             var allocated = AllocationMeasurement.Measure(() => c.Analyze());

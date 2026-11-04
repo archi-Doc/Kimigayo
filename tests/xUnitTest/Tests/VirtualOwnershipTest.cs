@@ -47,9 +47,14 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
+        Assert.Equal("UnsatisfiedEffectBound_Kd " + (inOverride ? "override" : "public virtual") + " func read(self: objref/Self) -> i32", MinimalEmissionTest.Problems(c));
+
+        // A4's record at the implementation (H0b §5.4) has no label or Note yet (H0a §4.1): Binding's "confined" label naming the
+        // destruction's external operation is lost until A4 publishes the violating effect.
         c.ReportAnalysis();
-        Assert.Contains("confined", Assert.Single(TestDiagnostics.Of(c)).Label!, StringComparison.Ordinal);
+        var shown = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Null(shown.Label);
+        Assert.Null(shown.Note);
         var quiet = MinimalEmissionTest.Analyze(source.Replace("Console.writeLine(\"drop\")", "()", StringComparison.Ordinal));
         Assert.True(quiet.Analysis.IsVerified, MinimalEmissionTest.Describe(quiet));
     }
@@ -84,28 +89,31 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         Assert.Empty(TestDiagnostics.Of(c));
     }
 
+    // A4's record at the virtual function (H0b §5.4) has no label, Note or related location yet (H0a §4.1): Binding's "confined" label
+    // and message text and its bound role are lost until A4 publishes them.
     [Fact]
     public void CleanupFailuresClearAfterAnEditAndKeepTheirPublicEvidence()
     {
         const string Source = "struct Noisy\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        _ = Noisy.init()\n        return 1\n()";
         var path = Path.GetFullPath("virtual-cleanup-bound.kimi");
         var c = MinimalEmissionTest.Analyze(Source, path);
-        Assert.Single(c.Problems);
+        Assert.Equal("UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32", MinimalEmissionTest.Problems(c));
         c.ReportAnalysis();
         var shown = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("UnsatisfiedEffectBound_Kd", shown.Code);
-        Assert.Contains("confined", shown.Label!, StringComparison.Ordinal);
+        Assert.Null(shown.Label);
+        Assert.Null(shown.Note);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
-        Assert.Contains(record.Related!, x => x.Role == "bound");
+        Assert.Null(record.Related);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
         Assert.Equal(record.Display!.Range, sent.Range);
-        Assert.Contains("confined", sent.Message, StringComparison.Ordinal);
+        Assert.Equal(record.Message, sent.Message);
         output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         var drop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsDestructor);
         var donor = MinimalEmissionTest.Analyze(Source.Replace("Console.writeLine(\"drop\")", "()", StringComparison.Ordinal));

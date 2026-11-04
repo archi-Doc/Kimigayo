@@ -65,7 +65,7 @@ public sealed partial class MirEffectsTest
                 foreach (var atom in effects.Items(body, view, out _))
                 {
                     if (!(atom.Kind == MirEffects.Requires ? ReferenceEquals(atom.Requirement, row.Runs) && ReferenceEquals(atom.Type, on)
-                        : atom.Kind == MirEffects.Drop ? c.Types.Copy(operation, atom.Type) || ReferenceEquals(atom.Type, calls) || reached.Contains(atom.Type)
+                        : atom.Kind == MirEffects.Drop ? c.Types.Copies(operation).Copy(atom.Type) || ReferenceEquals(atom.Type, calls) || reached.Contains(atom.Type)
                         : atom.Kind == MirEffects.Shared && ReferenceEquals(atom.Type, calls)))
                     {
                         outside.Add($"{name}: {(atom.Kind == MirEffects.Drop ? "Drop" : atom.Kind)} {atom.Type.Name}");
@@ -125,8 +125,7 @@ public sealed partial class MirEffectsTest
 
     // SPEC 4.9.6: a caller composes an Array operation's row, never its body: appendAll and append run no user code, so A4 accepts a
     // confined witness calling them over elements whose destruction writes the console, and truncate destroys the elements it removes.
-    // Before appendAll had its row (R6-check H4), A4 composed its body, whose drop of the emptied source keeps T's destruction; Binding's
-    // EffectSummary still enters that body and rejects the witness (PLAN G400, BU).
+    // Before appendAll had its row (R6-check H4), A4 composed its body, whose drop of the emptied source keeps T's destruction.
     [Theory]
     [InlineData("        var more: Array<Loud> = []\n        self.items.appendAll(more@move)\n", "")]
     [InlineData("        self.items.append(Loud.init())\n", "")]

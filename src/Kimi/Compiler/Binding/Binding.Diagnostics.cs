@@ -526,8 +526,19 @@ public sealed partial class Binding
             return;
         }
 
+        // SPEC 8.15, 23.1.2 (R6-check H1): a pair-layer Place carries the cases its bare acquisition moves in, as the `case` fact. A
+        // default's move of a prepared argument (SPEC 7.2.3) names no target and offers no transfer, since none is valid in a default.
         var judgment = TakeJudgment(place);
-        node.Report(requirement, code, at: place, evidence: [text], repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
+        var found = this.AcquisitionCases(place, out var single);
+        var prepared = code == DiagnosticCode.DefaultArgumentMove_Kd;
+        node.Report(
+            requirement,
+            code,
+            note: CaseNote(null, found, single),
+            at: place,
+            evidence: CaseEvidence(code, prepared ? null : text, found),
+            related: WithCaseDeclarations(null, this.namedCaseBinders, found),
+            repairs: prepared || judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
     }
 
     // Reports a write failure at its target; an assignment names the target. An

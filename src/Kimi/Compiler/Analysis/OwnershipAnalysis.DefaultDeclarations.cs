@@ -215,7 +215,7 @@ public sealed partial class OwnershipAnalysis
                     {
                         if (entries[entry].Name == capture.Source.Name)
                         {
-                            this.Report(new(closure, OwnershipRequirement.DefaultArgumentMove, Capture: entry));
+                            this.Report(new(closure, OwnershipRequirement.DefaultArgumentMove));
                             break;
                         }
                     }
@@ -244,7 +244,7 @@ public sealed partial class OwnershipAnalysis
 
         private void CheckMove(Koto source)
         {
-            if (this.use != PlaceUseKind.Consume || source.BoundType is not { } type)
+            if (this.use != PlaceUseKind.Consume || source.BoundType is null)
             {
                 return;
             }
@@ -268,8 +268,8 @@ public sealed partial class OwnershipAnalysis
                 root = KotoHelper.UnwrapParentheses(element.Left);
             }
 
-            if (root is IdentifierNameKoto { BoundSymbol: { } symbol } && this.PrecedingParameter(symbol) &&
-                (this.transfer || owner.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Refuted))
+            // A bare read is Binding's judgment (R6-check H1, DECISIONS BU-84); an explicit `a@move` stays here until H10b.
+            if (root is IdentifierNameKoto { BoundSymbol: { } symbol } && this.PrecedingParameter(symbol) && this.transfer)
             {
                 this.Report(new(source, OwnershipRequirement.DefaultArgumentMove));
             }

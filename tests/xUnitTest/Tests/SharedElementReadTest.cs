@@ -85,15 +85,16 @@ public class SharedElementReadTest
         NativeAllocationAudit.WriteFixture("SharedElementExpectedReference", Source, 1, 1, 96, "hello\nhello\nhello\n");
     }
 
+    // SPEC 3.5 (R6-check H1, DECISIONS BU-84): the bare read of a Non-Copy element is Binding's TransferRequired_Kd at the element.
     [Theory]
-    [InlineData("var values: Array<string> = [\"hello\"]\nlet saved = values[0]")]
-    [InlineData("var values: Array<string> = [\"hello\"]\nlet saved = values[..][0]")]
-    [InlineData("var number = 42\nlet values: Array<uniq/i32> = [number@uniq]\nlet saved = values[..][0]")]
-    public void BareNonCopyElementReadsAreRejected(string source)
+    [InlineData("var values: Array<string> = [\"hello\"]\nlet saved = values[0]", "values[0]")]
+    [InlineData("var values: Array<string> = [\"hello\"]\nlet saved = values[..][0]", "values[..][0]")]
+    [InlineData("var number = 42\nlet values: Array<uniq/i32> = [number@uniq]\nlet saved = values[..][0]", "values[..][0]")]
+    public void BareNonCopyElementReadsAreRejected(string source, string place)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal((DiagnosticCode.TransferRequired_Kd, place), (issue.Code, issue.Node.ToString()));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

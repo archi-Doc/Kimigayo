@@ -206,7 +206,6 @@ public class AbstractCallReachTest
     [InlineData(Through)]
     [InlineData(NextPair)]
     [InlineData(SumTwo)]
-    [InlineData(Pairs)]
     [InlineData(TakeLate)]
     [InlineData(Zip)]
     [InlineData(Both)]
@@ -217,6 +216,24 @@ public class AbstractCallReachTest
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 15.6.4 (R4-M170): pairs is valid, but since G264 (S) S2 A5 errs twice at each `for` (the lent item's composed erased destruction
+    // stores next()'s Loan into the iterator, a self-row; ledger 7f5e32eec17f). H5's (e) list, row "S2's self-row family" (the owner's O-9,
+    // 「(a) 加えて着地」): PLAN G416 restores the acceptance and moves Pairs back to AcceptsLaterCallsThatReachNoKeptLoan.
+    [Fact]
+    public void PairsOverOneIterableIsRefusedPendingG416()
+    {
+        var c = MinimalEmissionTest.Analyze(Source + Pairs + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var (outer, inner) = (new SyntaxLocation("for a in values\n        for b in values\n            count += 1"), new SyntaxLocation("for b in values\n            count += 1"));
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, outer),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, outer),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, inner),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, inner));
     }
 
     // An implementation body is an ordinary body: its abstract calls on stored values, of one requirement or of a Callable, reach their
@@ -270,15 +287,17 @@ public class AbstractCallReachTest
             x.Span.Start >= start && x.Span.End <= start + write.Length);
     }
 
-    // A lending item keeps the receiver borrow itself; the existing activation check reports it once.
+    // A lending item keeps the receiver borrow itself; the second receiver Borrow meets it once (the MIR's ComparisonLoanConflict_Kd at
+    // the second `source`, H5).
     [Fact]
-    public void ALendingItemKeepsItsActivationDiagnostic()
+    public void ALendingItemKeepsItsReceiverConflict()
     {
         var c = MinimalEmissionTest.Analyze(LendingTwice + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
-        Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        Assert.Equal(new Kimi.Diagnostics.SourceSpan(LendingTwice.IndexOf("second = source", StringComparison.Ordinal) + "second = ".Length, "source".Length), error.Span);
     }
 
     // SPEC 8.15.1, 15.3.7 (L1 of the adopted proposal Abstract Calls Reach by Paths, its 4.1): a generic body is checked at least as

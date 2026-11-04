@@ -37,7 +37,7 @@ public sealed partial class MirBorrowsTest
             public var o: obj/Cel
             public var p: raw/Cel
             public init(o: obj/Cel)
-                self.o = o
+                self.o = o@move
                 self.p = null
         struct PinView {a}
             public var p: raw/Cel

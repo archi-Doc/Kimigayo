@@ -267,7 +267,8 @@ public sealed partial class MirBuildTest
     public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
 
     // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
-    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call).
+    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call),
+    // which marks f, the body it lies in, alone (MirBody.HasConstructionRecord; GR-1a, fail-before: none).
     [Fact]
     public void ATupleOperatorWithoutItsComparisonIsUnsupported()
     {
@@ -277,6 +278,7 @@ public sealed partial class MirBuildTest
         var record = Assert.Single(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
+        Assert.Equal(["f"], program.Bodies.ToArray().Where(static x => x.HasConstructionRecord && x.Source.Module == 0).Select(static x => x.Key.Decl?.Name));
     }
 
     // SPEC 13.4, 23.1.2 (DECISIONS BU-38, R5-M166): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or
@@ -477,7 +479,7 @@ public sealed partial class MirBuildTest
     public void TextAloneKeepsTheProgramsOtherErrors()
     {
         var program = Compile(
-            "func touch(v: uniq/i32) => ()\nfunc f() -> string\n    var x = 1\n    let r = x@uniq\n    let s = \"a\\(x)b\"\n    touch(r)\n    return s\n" +
+            "func touch(v: uniq/i32) => ()\nfunc f() -> string\n    var x = 1\n    let r = x@uniq\n    let s = \"a\\(x)b\"\n    touch(r)\n    return s@move\n" +
             "func only() -> string => \"\\(\"only\")\"\n").BuildMir();
         Assert.Empty(program.Findings);
         Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);

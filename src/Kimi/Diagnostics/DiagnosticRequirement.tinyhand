@@ -625,9 +625,6 @@
   + Name="Ownership.Internal"
     Description="the analysis keeps its invariants"
 
-  + Name="Ownership.TransferRequired"
-    Description="the transfer is written explicitly"
-
   + Name="Ownership.UnprovenOrigin"
     Description="the Origin obligation is proven"
 

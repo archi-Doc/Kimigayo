@@ -74,7 +74,7 @@ public sealed class MirAnalysisTest
         struct Nest<T>
             public var value: T
             public var next: Option<rc/Nest<(T, T)>> = .None
-            public init(value: T) => self.value = value
+            public init(value: T) => self.value = value@move
         contract Store
             func keep(self: uniq/Self, value: i32) -> i32
                 effect confined
@@ -108,8 +108,7 @@ public sealed class MirAnalysisTest
 
         """;
 
-    // A destructor's environment effect, which A4 composes and Binding's own effect check does not see, and group H's discard, open for
-    // more members.
+    // A destructor's environment effect, which A4 composes from the planned cleanups, and group H's discard, open for more members.
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
         "    public func discard<T>(item: T) => ()\n";
 
@@ -478,7 +477,7 @@ public sealed class MirAnalysisTest
             struct Nest<T>
                 public var value: T
                 public var next: Option<rc/Nest<(T, T)>> = .None
-                public init(value: T) => self.value = value
+                public init(value: T) => self.value = value@move
             func h(n: i32, y: i32 = label w: do
                 var z = 1
                 let nest = Nest<ref/i32>.init(value: z@ref)
@@ -533,7 +532,7 @@ public sealed class MirAnalysisTest
                     s is ref or uniq
                     self.t = t
                 public init(t: s/T, n: i32)
-                    self.t = t
+                    self.t = t@move
 
             """);
         Assert.Empty(c.Binding.Issues);

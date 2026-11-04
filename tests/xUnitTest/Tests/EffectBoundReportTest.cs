@@ -7,9 +7,11 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.11.1: a bound violation is reported at the first violating effect in the implementation's own body; its Reason
-// names the violation and the bound, its Note tells a definite violation from an unknown effect counted as a conflict, and its
-// related locations give the effect, the conformance and the bound.
+// SPEC 8.11.1: a bound violation refuses the implementation. Since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 reports it at
+// the conformance's `Self is C` clause with no Label, Note or related location (R6-check H3b T41). Binding's record was at the first
+// violating effect in the implementation's own body, its Reason named the violation and the bound, its Note told a definite violation
+// from an unknown effect counted as a conflict, and its related locations gave the effect, the conformance and the bound; those facts
+// return when A4 publishes them (H0a 4.1's Effect* rows).
 public class EffectBoundReportTest
 {
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n";
@@ -22,16 +24,17 @@ public class EffectBoundReportTest
     private const string Main = "public func main() => ()\n";
 
     [Theory]
-    [InlineData(Sink + Metrics + "struct LoggingSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        Metrics.record()\n        return .Ok(())\n", "Metrics.record()", "a mutable static access, which confined excludes", "this effect violates it", new[] { "bound", "conformance", "effect" }, "var puts: isize = 0")]
-    [InlineData(Sink + "struct ConsoleSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        Console.writeLine(\"put\")\n        return .Ok(())\n", "Console.writeLine(\"put\")", "an external operation, which confined excludes", "this effect violates it", new[] { "bound", "conformance" }, "")]
-    [InlineData(Sink + "struct DeviceSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            let register = 0x40000000@raw/i32\n            *register = value\n        return .Ok(())\n", "0x40000000@raw/i32", "a pointer made from an integer, which confined excludes", "this effect violates it", new[] { "bound", "conformance" }, "")]
-    public void ReportsTheViolatingEffect(string declarations, string text, string reason, string note, string[] roles, string storage)
+    [InlineData(Sink + Metrics + "struct LoggingSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        Metrics.record()\n        return .Ok(())\n", "var puts: isize = 0")]
+    [InlineData(Sink + "struct ConsoleSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        Console.writeLine(\"put\")\n        return .Ok(())\n", "")]
+    [InlineData(Sink + "struct DeviceSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            let register = 0x40000000@raw/i32\n            *register = value\n        return .Ok(())\n", "")]
+    public void ReportsTheViolatingEffect(string declarations, string storage)
     {
         var result = DiagnosticCorpus.Check(declarations + Main);
         var error = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.IncompatibleContractImplementation_Kd));
-        Assert.Equal(reason, error.Label);
-        Assert.Contains(note, error.Note);
-        Assert.Equal(roles, error.Related!.Select(static x => x.Role).ToArray());
+        Assert.Equal(MirTargetSide.At("Self is Sink").Resolve(declarations), error.Span!.Value);
+        Assert.Null(error.Label);
+        Assert.Null(error.Note);
+        Assert.Null(error.Related);
 
         // A mutable static beside it is also the collector's StaticStorage record at its declaration, at check on every pipeline (DECISIONS
         // R5-M82, R5-M156); P42 reverts it.
@@ -40,18 +43,21 @@ public class EffectBoundReportTest
             storage.Length == 0 ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), declarations.IndexOf(storage, StringComparison.Ordinal), storage.Length)],
             others.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
 
-        var c = MinimalEmissionTest.Analyze(declarations + Main);
-        c.Binding.ReportDiagnostics();
-        Assert.Equal(text, Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Text);
+        EffectBoundImplementationTest.AssertBound(MinimalEmissionTest.Analyze(declarations + Main), valid: false, "Self is Sink");
     }
 
     // The standard bounds are library declarations: their violations offer no change to them.
     [Fact]
     public void LibraryBoundsOfferNoWeakening()
     {
-        var result = DiagnosticCorpus.Check("struct Writer\n    Self is BufferWriter\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        Console.writeLine(\"reserve\")\n        return .Err(BufferFull.init())\n" + Main);
-        var error = Assert.Single(result.Diagnostics);
-        Assert.Equal("an external operation, which confined excludes", error.Label);
+        const string Source = "struct Writer\n    Self is BufferWriter\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        Console.writeLine(\"reserve\")\n        return .Err(BufferFull.init())\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.IncompatibleContractImplementation_Kd), error.Code);
+        Assert.Equal(MirTargetSide.At("Self is BufferWriter").Resolve(Source), error.Span!.Value);
+        Assert.Null(error.Label);
+        Assert.Null(error.Note);
+        Assert.Null(error.Related);
+        Assert.Null(error.Repairs);
     }
 
     // SPEC 8.11.1: semantic inspection exposes the bounds each Contract declares.

@@ -74,7 +74,8 @@ internal static class HoverMeasurements
                     compilation.CollectHover = enabled;
                     compilation.CollectDocumentation = enabled;
                     compilation.Kotonoha.AddSource(new("hover.kimi", HoverWorkloads.Program));
-                    if (!compilation.Bind().IsComplete || !compilation.Binding.CheckStartup(OutputKind.Application).IsComplete || !compilation.Ownership.Analyze().IsVerified)
+                    if (!compilation.Bind().IsComplete || !compilation.Binding.CheckStartup(OutputKind.Application).IsComplete ||
+                        !compilation.Analyze().IsVerified)
                     {
                         throw new InvalidOperationException("The measured compiler workload must verify");
                     }

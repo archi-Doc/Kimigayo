@@ -51,7 +51,7 @@ public sealed class HoverProjectionTest
     [Fact]
     public void CallsUseOneTokenAndPreserveOriginalStaticContract()
     {
-        const string text = "/// Identity.\nfunc same<T>(x: T) -> T => x\nfunc main() -> i32 => same(42)\n";
+        const string text = "/// Identity.\nfunc same<T>(x: T) -> T => x@move\nfunc main() -> i32 => same(42)\n";
         var snapshot = Project(text);
         var callStart = text.LastIndexOf("same", StringComparison.Ordinal);
         var name = At(snapshot, callStart);
@@ -148,7 +148,7 @@ public sealed class HoverProjectionTest
     [Fact]
     public void TypeParameterItemsKeepTheParentsClassificationInputs()
     {
-        const string text = "/// * T: Item type.\n/// * value: Input.\nfunc same<T>(value: T) -> T => value\n";
+        const string text = "/// * T: Item type.\n/// * value: Input.\nfunc same<T>(value: T) -> T => value@move\n";
         var snapshot = Project(text);
         var parent = Assert.Single(At(snapshot, text.IndexOf("same", StringComparison.Ordinal)).Declarations);
         var parameter = Assert.Single(At(snapshot, text.IndexOf("<T>", StringComparison.Ordinal) + 1).Declarations);

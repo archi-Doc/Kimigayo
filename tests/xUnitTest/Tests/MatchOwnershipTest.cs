@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
@@ -251,7 +252,8 @@ public class MatchOwnershipTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: Option<string>)\n    match x@move\n        .Some(let s) => Console.writeLine(s)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, i => i.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        Assert.False(c.Analyze().IsVerified);
+        c.Analyze();
+        Assert.False(c.Accepts); // Since the MIR decides acceptance (R6-check H5), Binding's record rejects the program.
     }
 
     [Fact]
@@ -339,33 +341,45 @@ public class MatchOwnershipTest
         Assert.Single(decompositions);
     }
 
-    // DECISIONS BU-14 (D5 exception until R6-check): a Binding that may borrow a part of the owned Subject or item past a pair layer
-    // admitting owner, or that selects a pair layer, is the old path's located Unsupported_Kd at its match or loop, although Binding
-    // accepts it and the MIR builds it (SPEC 13.5.5, 15.1.6); a borrowed path's pair layer, a Wildcard (a for slot `_` included, SPEC
-    // 14.8.1) and a structural position that only tests stay judged here.
+    // DECISIONS BU-14 (SPEC 13.5.5, 15.1.6): a Binding that may borrow a part of the owned Subject or item past a pair layer admitting
+    // owner, or that selects a pair layer, was the old path's located Unsupported_Kd at its match or loop, although Binding accepts it and
+    // the MIR builds it. Since the MIR decides acceptance (R6-check H5; 1a, the owner 2026-11-03), check accepts it with no record and
+    // generation emits `f`, as the instance `main` calls.
     [Theory]
-    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
-    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
-    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is owner or uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", "match o@move")]
-    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>)\n    s is owner or uniq\n    for (x, _) in arr@move => use(x)", "for (x, _) in arr@move => use(x)")]
-    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items@move => use(x)", "for (x, y) in items@move => use(x)")]
-    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items => use(x)", null)]
-    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", null)]
-    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner or uniq\n    match pair@move\n        (_, let n) => return n", null)]
-    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner\n    match pair@move\n        (_, let n) => return n", null)]
-    [InlineData("func f<s/T>(o: s/Option<T>, marker: s/T) -> bool\n    s is owner or uniq\n    match o@move\n        .Some(_) => return true\n        .None => return false", null)]
-    [InlineData("func f<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    match value@move\n        _ => return 3", null)]
-    [InlineData("struct Holder<E>\n    public computed p: (E, i32)\n        get(self: ref/Self) -> (E, i32)\n            $abort(\"p\")\nfunc f<s/T>(holder: ref/Holder<s/T>)\n    s is owner or uniq\n    match holder.p\n        (_, let n) => use(n)", null)]
-    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>) -> i32\n    s is owner or uniq\n    var total: i32 = 0\n    for (_, n) in arr@move => total += n\n    return total", null)]
-    public void APairLayerBorrowIntoAnOwnedSubjectIsTheOldPathsLimit(string source, string? at)
+    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _) => use(x)", "f((1, 2))")]
+    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is uniq\n    match pair@move\n        (let x, _) => use(x)", "var n: i32 = 1\n    f((n@uniq, 2))")]
+    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is owner or uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", "f(Option<i32>.Some(1), 0)")]
+    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>)\n    s is owner or uniq\n    for (x, _) in arr@move => use(x)", "var a: Array<(i32, i32)> = [(1, 7)]\n    f(a@move)")]
+    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items@move => use(x)", "var a: Array<(i32, i32)> = [(1, 7)]\n    f(a@move, 0)")]
+    public void APairLayerBorrowIntoAnOwnedSubjectIsGenerated(string source, string call)
+    {
+        var c = MinimalEmissionTest.Analyze("func use<T>(value: ref/T) => ()\n" + source + "\npublic func main()\n    " + call + "\n");
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        Assert.Empty(c.Problems);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        var set = c.Instances!;
+        Assert.Contains(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x) && set.Items[x].Key.Body.Def.Decl?.Name == "f");
+    }
+
+    // A borrowed path's pair layer, a Wildcard (a for slot `_` included, SPEC 14.8.1) and a structural position that only tests were never
+    // the old path's limit (BU-14).
+    [Theory]
+    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items => use(x)")]
+    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()")]
+    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner or uniq\n    match pair@move\n        (_, let n) => return n")]
+    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner\n    match pair@move\n        (_, let n) => return n")]
+    [InlineData("func f<s/T>(o: s/Option<T>, marker: s/T) -> bool\n    s is owner or uniq\n    match o@move\n        .Some(_) => return true\n        .None => return false")]
+    [InlineData("func f<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    match value@move\n        _ => return 3")]
+    [InlineData("struct Holder<E>\n    public computed p: (E, i32)\n        get(self: ref/Self) -> (E, i32)\n            $abort(\"p\")\nfunc f<s/T>(holder: ref/Holder<s/T>)\n    s is owner or uniq\n    match holder.p\n        (_, let n) => use(n)")]
+    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>) -> i32\n    s is owner or uniq\n    var total: i32 = 0\n    for (_, n) in arr@move => total += n\n    return total")]
+    public void APairLayerThatOnlyTestsOrBorrowsIsNoLimit(string source)
     {
         var c = MinimalEmissionTest.Analyze("func use<T>(value: ref/T) => ()\n" + source + "\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var unsupported = c.Problems.Where(static x => x.Code == DiagnosticCode.Unsupported_Kd).Select(x => c.SyntaxOf(x.Subject).ToString()!.Split('\n')[0]).ToArray();
-        Assert.Equal(at is null ? [] : [at], unsupported);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
-    private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(b => b.Function.Name == "f");
+    private static OwnershipBody Body(Compilation c) => c.AnalyzeLegacyOwnership().Bodies.Single(b => b.Function.Name == "f");
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);

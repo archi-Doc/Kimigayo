@@ -120,7 +120,7 @@ internal sealed partial class MirBorrows
         BoundType? erased = null;
         if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
         {
-            erased = type.Kind == BoundTypeKind.Function || !types.Copy(definition, type) ? type : null;
+            erased = type.Kind == BoundTypeKind.Function || !types.Copies(definition).Copy(type) ? type : null;
         }
         else if (type.Kind == BoundTypeKind.Semantics)
         {

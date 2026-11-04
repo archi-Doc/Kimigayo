@@ -40,7 +40,7 @@ public class ValueCallActivationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.Ownership.Issues);
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.True(issue.Failure == OwnershipRequirement.ComparisonLoanConflict && issue.Activation, issue.ToString());
         Assert.False(c.Generate(TextWriter.Null));
     }

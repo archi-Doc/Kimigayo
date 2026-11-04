@@ -973,7 +973,7 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(Prelude + """
             struct Wrap<E>
                 var value: E
-                public init(value: E) => self.value = value
+                public init(value: E) => self.value = value@move
                 public func put<U>(self: uniq/Self, v: U) => ()
                 public func touch(self: uniq/Self) => ()
             struct Outer<P>
@@ -984,7 +984,7 @@ public sealed partial class MirBorrowsTest
                 var value: E
                 var u: uniq/(ref/i32 during a) during a
                 public init(value: E, u: uniq/(ref/i32 during a) during a)
-                    self.value = value
+                    self.value = value@move
                     self.u = u
                 public func put<U>(self: uniq/Self, v: U) => ()
             struct G<E> {a}
@@ -1119,7 +1119,7 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(Prelude + """
             struct Wrap<E>
                 var value: E
-                public init(value: E) => self.value = value
+                public init(value: E) => self.value = value@move
                 public func put<U>(self: uniq/Self, v: U) => ()
             struct Outer<P>
                 var w: Wrap<P>

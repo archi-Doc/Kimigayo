@@ -39,17 +39,11 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
     [Theory]
     [InlineData("named", false)]
     [InlineData("named", true)]
-    [InlineData("value", false)]
     [InlineData("value", true)]
-    [InlineData("consuming", false)]
     [InlineData("consuming", true)]
     public void FixedCallStoresRetainTheActualArgument(string form, bool conflict)
     {
-        var source = "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n" +
-            (form == "named" ? "    func store(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    store(holder@uniq, z@follow@ref)\n"
-                : "    var store = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    store" + (form == "consuming" ? "@move" : string.Empty) + "(z@follow@ref)\n") +
-            (conflict ? "    z@follow = 42\n" : string.Empty) + "    return holder@follow\n";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Analyze(FixedCallStore(form, conflict));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c));
         if (conflict)
@@ -58,9 +52,24 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
         else
         {
-            source += "\nvar z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 41 else => $abort(\"store\")";
-            ScalarEmissionTest.EmitFixture("FixedOriginRetentionStore" + form, source, string.Empty);
+            ScalarEmissionTest.EmitFixture("FixedOriginRetentionStore" + form, FixedCallStoreRun(form), string.Empty);
         }
+    }
+
+    // SPEC 15.6.4 (H3b T30, F9): a store through the Closure's capture `holder@uniq` keeps the direct Loan naming its own target past
+    // layer 1, so the MIR rejects these valid programs by the SPEC's letter at `return holder@follow`'s operand, and generation refuses
+    // them; the old analysis accepted and ran them. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2), GXS
+    // adopted with its extension, restores the acceptance and moves the rows back to FixedCallStoresRetainTheActualArgument.
+    [Theory]
+    [InlineData("value")]
+    [InlineData("consuming")]
+    public void ClosureStoresOfTheActualArgumentAreRefusedPendingGxs(string form)
+    {
+        var c = MinimalEmissionTest.Analyze(FixedCallStoreRun(form));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("return holder@follow", "holder@follow")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -133,11 +142,9 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
     }
 
-    // The `false` row expects the rule before SPEC 15.6.4's retention per argument (A5 P4, with P1's holders): `r` kept only
-    // the pair's `x` Loans. Now it carries every Loan of the pair, so writing `w` conflicts; the default pipeline keeps the
-    // old rule until R6-check.
+    // SPEC 15.6.4's retention per argument (A5 P4, with P1's holders): `r` carries every Loan of the pair, so writing `z` or `w`
+    // conflicts.
     [Theory]
-    [Trait("OldRule", "P4")]
     [InlineData(false)]
     [InlineData(true)]
     public void CompleteTypePositionsKeepIndependentSources(bool conflict)
@@ -147,7 +154,6 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             "    let r = first((z@follow@ref, w@follow@ref))\n    " + (conflict ? "z" : "w") + "@follow = 42\n    return r@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c));
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new((conflict ? "z" : "w") + "@follow = 42")));
     }
 
@@ -201,7 +207,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var source = FixedCall(true, false).Replace("    r@follow = 42\n    return z@follow", "    func read(b: uniq/i32 during x) -> ref/i32 during x => b@follow@ref\n    let child = read(r)\n    let seen = r@follow\n    return child@follow + seen", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "r");
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "r@follow"); // the MIR's record (H5)
     }
 
     [Theory]
@@ -225,17 +231,15 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
     }
 
-    // The valid rows expect the rule before SPEC 15.6's holders (A5 P1): writing `holder`'s first part ended the Loan
-    // `store` added. Now it ends none, so `z@follow = 42` conflicts; the default pipeline keeps the old rule until R6-check.
+    // SPEC 15.6's holders (A5 P1): writing a part of `holder` ends no Loan `store` added, so `z@follow = 42` conflicts.
     [Theory]
-    [Trait("OldRule", "P1")]
-    [InlineData("Tuple", 0, true)]
-    [InlineData("Tuple", 1, false)]
-    [InlineData("Array", 0, true)]
-    [InlineData("Array", 1, false)]
-    [InlineData("Struct", 0, true)]
-    [InlineData("Struct", 1, false)]
-    public void PartialReplacementPreservesTheOtherParts(string form, int replaced, bool valid)
+    [InlineData("Tuple", 0)]
+    [InlineData("Tuple", 1)]
+    [InlineData("Array", 0)]
+    [InlineData("Array", 1)]
+    [InlineData("Struct", 0)]
+    [InlineData("Struct", 1)]
+    public void PartialReplacementPreservesTheOtherParts(string form, int replaced)
     {
         var prefix = form == "Struct" ? "struct Pair {source}\n    public var first: ref/i32 during source\n    public var second: ref/i32 during source\n    public init(value: ref/i32 during source)\n        self.first = value\n        self.second = value\n" : string.Empty;
         var declaration = form == "Tuple" ? "var holder = (x, x)" : form == "Array" ? "var holder: [2 of ref/i32 during x] = [x, x]" : "var holder = Pair.init(x)";
@@ -247,13 +251,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             " = x\n    z@follow = 42\n    return " + first + "@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(c.Analysis.IsVerified == valid, MinimalEmissionTest.Describe(c));
         MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("z@follow = 42")));
-        if (valid)
-        {
-            source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 7 else => $abort(\"replacement\")";
-            ScalarEmissionTest.EmitFixture("FixedOriginRetentionPart" + form, source, string.Empty);
-        }
     }
 
     [Theory]
@@ -379,11 +377,15 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
         Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-        Assert.Equal("z", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+
+        // The MIR's record (H5) is at the write through the parent and relates the borrow of `z` and the retained child's later use.
+        Assert.Equal(form == "local" ? "z@follow = 41" : "z@follow = 42", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal("This operation conflicts with an active loan", error.Message);
-        var retained = Assert.Single(error.Related!);
-        Assert.Equal("loan", retained.Role);
-        Assert.Contains(form == "local" ? "y" : "r", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+        Assert.Equal(
+            [("borrow", source.IndexOf(form == "local" ? "= z\n" : "pass(z)", StringComparison.Ordinal) + (form == "local" ? 2 : 5), "z", "borrow that created the loan"),
+                ("loan", source.IndexOf(form == "local" ? "return y@follow" : "return r@follow", StringComparison.Ordinal) + 7, form == "local" ? "y@follow" : "r@follow",
+                    "later use of the value retaining the conflicting loan")],
+            error.Related!.Select(x => (x.Role, x.Span!.Value.Start, source.Substring(x.Span.Value.Start, x.Span.Value.Length), x.Label)));
         var json = System.Text.Json.JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
         Assert.Contains("\"code\":\"ComparisonLoanConflict_Kd\"", json, StringComparison.Ordinal);
         Assert.Contains("\"role\":\"loan\"", json, StringComparison.Ordinal);
@@ -398,7 +400,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             Assert.Equal(error.Display!.Range, sent.Range);
             if (related)
             {
-                Assert.Equal(retained.Range, Assert.Single(sent.RelatedInformation!).Location.Range);
+                Assert.Equal(error.Related!.Select(static x => x.Range!.Value), sent.RelatedInformation!.Select(static x => x.Location.Range));
             }
             else
             {
@@ -449,6 +451,16 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
                 : "    let pass = func (b: uniq/i32 during x) -> uniq/i32 during x => b\n") +
             "    let r = pass(z)\n" + (live ? "    z@follow = 42\n    return r@follow\n"
                 : "    r@follow = 42\n    return z@follow\n");
+
+    private static string FixedCallStore(string form, bool conflict)
+        => "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n" +
+            (form == "named" ? "    func store(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    store(holder@uniq, z@follow@ref)\n"
+                : "    var store = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    store" + (form == "consuming" ? "@move" : string.Empty) + "(z@follow@ref)\n") +
+            (conflict ? "    z@follow = 42\n" : string.Empty) + "    return holder@follow\n";
+
+    // A conflict-free store program with the run its fixture checks.
+    private static string FixedCallStoreRun(string form)
+        => FixedCallStore(form, false) + "\nvar z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 41 else => $abort(\"store\")";
 
     private static string LocalChild(bool annotation, bool live, string mode)
         => "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    let y" +

@@ -946,7 +946,7 @@ public sealed partial class MirBorrowsTest
             ViewProblems("""
                 struct Wrap2c3<E>
                     var value: E
-                    public init(value: E) => self.value = value
+                    public init(value: E) => self.value = value@move
                 func putAny2c3<U, V>(t: uniq/U, v: V) => ()
                 func limitClosure()
                     var x = 1
@@ -1052,7 +1052,7 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(Prelude + """
             struct Wrap2c3<E>
                 var value: E
-                public init(value: E) => self.value = value
+                public init(value: E) => self.value = value@move
             func putAny2c3<U, V>(t: uniq/U, v: V) => ()
             func stores(z: uniq/i32, x: ref/i32) -> i32
                 origin z outlives x

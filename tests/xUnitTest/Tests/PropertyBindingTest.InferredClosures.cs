@@ -12,7 +12,9 @@ namespace XunitTest;
 // L2j, L2k, N1, N3, N3c (f4b), N3e (f4c), R2, R3 and h2 were accepted (valid, now Unsupported_Kd), L2g, m2 and the f4m rows were
 // accepted unsoundly, L2i, N1b, N3d, f4d, R1, h1, m1, v1 and v2 had other records. A generic holder's Closure (N4, N4b) is Binding's
 // located limit at the literal (before, the collector's at the whole literal). The guards keep dev's verdicts: a Closure naming no
-// container Origin (O1a, O1c, O3, O4) and an unresolved initializer (x1).
+// container Origin (O1a, O1c, O3, O4) and an unresolved initializer (x1). Since the MIR decides (R6-check H5; H3b T51, class 4: records
+// added on a program Binding rejects, published directly until A6 2g-1, R5-M184), `mir` is the MIR's record beside Binding's: A5's
+// UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit, and an UninitializedPlace_Kd at x1's constructor.
 public partial class PropertyBindingTest
 {
     private const string ViewHead = "struct View {source}\n    public let data: ref/i32 during source\n    public let ";
@@ -40,10 +42,10 @@ public partial class PropertyBindingTest
     [InlineData("R1", CbView + Local + "    let g: (ref/i32 during r) -> () = view.cb\n    return 1", AtLiteral)]
     [InlineData("R2", CbView + "func take(v: View) -> i32 => 1\n\n" + Local + "    return take(view@move)", AtLiteral)]
     [InlineData("R3", CbView + Local + "    let c = view.cb\n    return 1", AtLiteral)]
-    [InlineData("m1", CbView + Widen, AtLiteral)]
+    [InlineData("m1", CbView + Widen, AtLiteral, "UnprovenOriginRelation_Kd: let a: View during p = w@move")]
     [InlineData("m2", CbView + Narrow, AtLiteral)]
-    [InlineData("v1", CbOnlyView + Widen, AtLiteral)]
-    [InlineData("v2", CbOnlyView + Narrow, AtLiteral)]
+    [InlineData("v1", CbOnlyView + Widen, AtLiteral, "UnprovenOriginRelation_Kd: let a: View during p = w@move")]
+    [InlineData("v2", CbOnlyView + Narrow, AtLiteral, "UnprovenOriginRelation_Kd: let a: View during q = v@move")]
     [InlineData("N1", MkView + Static + "    return need(view.mk)", "Unsupported_Kd: ()")]
     [InlineData("N1b", MkView + Local + "    let c = view.mk()\n    c(r)\n    return 1", "Unsupported_Kd: ()")]
     [InlineData("f4m-mk", MkView + Narrow, "Unsupported_Kd: ()")]
@@ -63,7 +65,11 @@ public partial class PropertyBindingTest
     [InlineData("O1c", ViewHead + "t = Option<ref/i32 during source>.None" + ViewInit + Static + "    return need(view@move)", null)]
     [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", null)]
     [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", null)]
-    [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
-    public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record)
-        => Assert.Equal(record is null ? [id] : [id, record], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
+    [InlineData(
+        "x1",
+        ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1",
+        "UnresolvedBinding_Kd: missingName",
+        "UninitializedPlace_Kd: init(data: ref/i32 during source) => self.data = data")]
+    public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
+        => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 }

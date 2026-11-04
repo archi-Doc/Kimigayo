@@ -3,8 +3,8 @@
 // The Semantics-case renderer (SPEC 8.14, 8.15, 23.1.2; DIAGNOSTICS "Semantics cases"; R6-check Q8-6; DECISIONS BU-82).
 // - Responsibility: the one rendering of Semantics cases in a record: a binder's name and found Semantics (`s = ref or uniq`), a
 //   case set as the `case` fact (CaseFact: per binder when it is a product, else the list of cases), the `case` evidence, the Note
-//   `Found under the Semantics case ... (SPEC 8.15)`, the related declarations of the named bindings, and the explicit-entry Note
-//   tail (FailingCaseNote).
+//   `Found under the Semantics case ... (SPEC 8.15)`, the related declarations of the named bindings, the explicit-entry Note
+//   tail (FailingCaseNote), and the case set of a bare acquisition that moves a pair-layer Place (AcquisitionCases, R6-check H1).
 // - Inputs: a definition's pair binders (PairBinders) and a set of case bits in their enumeration order (the innermost resolved
 //   binder advancing fastest, each in SemanticsMask order: the numbering of BuildCases and of MirCases' views); a failing mask.
 // - Outputs: text, evidence and related declarations; CaseFact leaves the binders it names in the caller's list.
@@ -19,6 +19,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The binders in scope of a record's definition and the ones its case fact names (AcquisitionCases), reused per record.
+    private readonly List<PairBinder> acquisitionBinders = [];
+    private readonly List<PairBinder> namedCaseBinders = [];
+
     // The name a pair binder is declared with (`s` of `s/T`).
     internal static string BinderName(BindingSymbol binder) => binder.Pair?.Name ?? binder.Name;
 
@@ -239,5 +243,62 @@ public sealed partial class Binding
                 return SemanticsOrder[i];
             }
         }
+    }
+
+    // SPEC 8.14, 8.15.2 (R6-check H1): the `case` fact of a bare acquisition that moves a Place: every case of the definition's
+    // resolved binders whose complete Type (CaseType, which takes each layer's Semantics from its own binder, a nested layer's
+    // included) the rows of SPEC 3.5 move; null when no case or every case moves. The binders it names are left in namedCaseBinders.
+    private string? AcquisitionCases(Koto place, out bool single)
+    {
+        single = false;
+        this.namedCaseBinders.Clear();
+        if (place.BoundType is not { ContainsPairLayer: true } type)
+        {
+            return null;
+        }
+
+        var binders = this.acquisitionBinders;
+        this.PairBinders(place, binders);
+        var resolved = 0;
+        var count = 1;
+        for (var b = 0; b < binders.Count; b++)
+        {
+            if (binders[b].Resolved)
+            {
+                count *= BitOperations.PopCount((uint)binders[b].Admitted);
+                resolved++;
+            }
+        }
+
+        Span<SemanticsKind> digits = stackalloc SemanticsKind[resolved];
+        var scratch = this.caseScratch.Rent(resolved);
+        var cases = 0UL;
+        try
+        {
+            var assignment = scratch.AsSpan(0, resolved);
+            for (var index = 0; index < count && index < PairBinder.CaseBound; index++)
+            {
+                CaseDigits(binders, index, digits);
+                for (int j = 0, b = 0; b < binders.Count; b++)
+                {
+                    if (binders[b].Resolved)
+                    {
+                        assignment[j] = new(binders[b].Target, digits[j]);
+                        j++;
+                    }
+                }
+
+                if (this.BareAcquire(this.CaseType(type, assignment), place, assignment, out _, out _) == HirAcquire.Move)
+                {
+                    cases |= 1UL << index;
+                }
+            }
+        }
+        finally
+        {
+            this.caseScratch.Return(scratch, clearArray: true);
+        }
+
+        return CaseFact(binders, cases, this.namedCaseBinders, out single);
     }
 }

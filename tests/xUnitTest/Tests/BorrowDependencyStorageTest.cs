@@ -16,7 +16,7 @@ public class BorrowDependencyStorageTest
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count, true));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
+        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "check");
         var bytePerCell = (2L * body.Places.Count * body.Places.Count) + ((long)body.Places.Count * body.Operations.Count);
         Assert.True(body.BorrowStorageBytes <= bytePerCell / 4, $"Retained {body.BorrowStorageBytes} bytes for {bytePerCell} Boolean/loan cells.");
         var valid = true;
@@ -33,7 +33,7 @@ public class BorrowDependencyStorageTest
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
+        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "check");
         Assert.True(body.Places.Count >= count);
         Assert.Equal(0, body.BorrowDependencyCapacity);
         Assert.True(c.Analyze().IsVerified);
@@ -48,7 +48,7 @@ public class BorrowDependencyStorageTest
         var source = VerificationWorkloads.InspectionLoans(4, stored);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
+        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "check");
         Assert.Equal(stored, body.BorrowDependencyCapacity > 0);
         ScalarEmissionTest.EmitFixture("BorrowDependencyStorage" + stored, source, string.Empty);
     }

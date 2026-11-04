@@ -99,10 +99,10 @@ public sealed partial class MirBuildTest
         struct B<K, T>
             K is Equatable
             public var item: T
-            public init(item: T) => self.item = item
+            public init(item: T) => self.item = item@move
         func see(p: ref/i32) => ()
         func hold(value: ref/i32) -> ref/i32 during value => value
-        func keepS<s/T>(x: s/T) -> s/T => x
+        func keepS<s/T>(x: s/T) -> s/T => x@move
         func g() -> i32 => 0
         func take(x: string) -> i32 => 5
         func use(x: string) => ()

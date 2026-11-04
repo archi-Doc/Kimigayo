@@ -34,7 +34,7 @@ public class TypedBorrowConversionTest
     [Fact]
     public void GenericFieldOriginComesFromReceiver()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n    public func view(self: ref/Self) -> ref/T during self => self.value@ref/T");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func view(self: ref/Self) -> ref/T during self => self.value@ref/T");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

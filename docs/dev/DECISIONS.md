@@ -676,6 +676,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   per program version after build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); MIR problems stay
   unpublished on `MirProgram` until R6 unit a; an analysis exception fails the test. Rejected: MIR deciding codes in R4
   (duplicate records and test churn twice).
+  - Superseded in part by R5-M185 (2026-11-04, H5): the MIR decides acceptance on every pipeline; the old path runs only for the
+    transitional entry's readers until H10b.
 - **R4-M2** Layout: `Mir/Analysis/` in namespace `Kimi.Compiler.Mir`: `MirAnalysis` (driver), `MirDataflow`,
   `MirMoveData`, `MirInit` (A1), `MirDrops` (A2), `MirLints` (A3), `MirEffects` (A4), `MirBorrows` with `.Regions`,
   `.Conflicts` and `.Origins` (A5), `MirReport` (A6). The first unit creates all of them as stubs, so parallel units never
@@ -1496,6 +1498,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   pre-enumerate theories by default, so a row's trait reaches neither discovery, `-trait` selection nor the result file);
   the old verdict in `Expected` with a `Mir` entry (the corpora state the SPEC in `Expected`); `Run` on the row (the SPEC
   rejects its program). Temporary: removed at R6-check with R4-M50's traits.
+  - Superseded by R5-M187 (2026-11-05, H5): S removed the `Old` entries at H5; a pair-cases row's MIR difference is its `Mir`
+    member, judged `Mir ?? Expected`.
 - **R4-M52** (owner, 2026-10-17, choosing the recommended option of each of the planning session's questions on A5 step
   1: 「(b2) 折り畳み」, 「assumed completion + α」, 「(c) base なしで採用」, 「別セッションで実施」, and for unit 1a
   「固定 Origin を関係ありと扱う」; supersedes R4-M39's ending rule and parts of R4-M37) The choices of
@@ -3412,6 +3416,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays; the old reporter still gives it
     for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so `TheComparedSetCoversEachOwnershipCode`
     (R4-M4) needs the row; it goes with the old reporter at R6-check.
+    - Amended (R6-check H1b-3, BU-85, 2026-11-03; R4, the ledger table's owner, and R5 agree): row :51 (UnprovenOrigin,
+      UnprovenConstraint_Kd, A5) dropped at H1b-3: no producer on either side (BU's H1b census); supersedes the kept-row sentence.
   - Ledger (mir Functional with `KIMI_MIR_DIFF`, base b26710690 and head): rows 2,953 -> 2,958, open blocking 180 -> 182: c8c1f3f534b0's
     `UnprovenConstraint_Kd` row leaves; the new tests add three `both` `ComparisonLoanConflict_Kd` rows (the capture stores) and three
     old-only A5 rows, open (b) until F4 lands (`a5-old-origins`): the o4/o5 pair's `UnsatisfiedOriginRelation_Kd` and the clause's
@@ -8308,6 +8314,10 @@ resumed by R4-M86 (2026-10-20).
     r8 (R4, G245 U2): the builder's default copy over Rejected storage keeps its `Unsupported_Kd` (`Instantiates` reads `Apply`; closed
     by R4-M139). The
     residual (R7): a record that exists only inside an instance the collector drops stays unseen.
+  - (2026-11-04) BU-38's "a comparison over it violates nothing" covers only a part Binding rejected (its Missing twin); it does not make
+    a valid program's generic comparison effect-free: a Requirement call on an abstract Self takes the caller's premise bounds, so
+    `Equatable.equals`, declaring none, is Unknown under `confined` (SPEC 8.11.3; R4-M22's X2). StorageBinding's `equals` row is 1r at the
+    flip (H5 T-12).
 
 - **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; the BU planning session; PLAN G160, unit bu42; one
   design, one review) R4-M116 (PQ-7): A5 reads neither `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance
@@ -8588,6 +8598,9 @@ resumed by R4-M86 (2026-10-20).
     a `MovedPlace_Kd` beside `take(x@follow)` (implementation review 1's `i-masked-old-path-error-head`), also in another function
     (`i-masked-other-function`), and `g(x@follow)`'s UnprovenOriginRelation_Kd (`i-vc-uniq-only`). The same gate already masks them
     for every Binding argument rejection (`take(x)` with `owner or uniq` and no Copy). No verdict changes: each program was rejected.
+  - Superseded in part by R5-M184 and R5-M185 (2026-11-05, H5): the old path decides nothing, and the MIR's records publish beside
+    Binding's rejection, so the `MovedPlace_Kd` records above are published (in the same and in another function); `g(x@follow)`'s
+    value-call Origin relation stays unjudged, its UnprovenOriginRelation_Kd lost (PLAN G421).
   - Cost: one allocation-free walk per bare `uniq`/`objuniq` or exclusive-admitting pair Place; `CaseAdmitted` reads its callers'
     `TryPairLayer`. An interleaved, unpinned A/B (Release, one folder, 10 rounds in alternating order, other sessions' heavy runs on
     the machine; warm Bind and HIR publish, medians of 200): Bind B/A 0.97–1.00, publish 0.99–1.01 on Milestone34, Milestone26 and the
@@ -10463,6 +10476,33 @@ resumed by R4-M86 (2026-10-20).
     class requirement, `, ` where every binder must give the class (a product) and `; ` where one suffices (a union), which is not a
     found case set.
 
+- **BU-85 Binding judges its obligations at Final; no obligation reaches Analysis unjudged** (2026-11-03; R6-check H1b, H0b-13 of
+  `draft/Sketches/R6-check/H0b-flip.md`, BU's answer BU-5; H0's division, R5-M182)
+  - The reason is H1b's census (`C:\Users\bwff1\AppData\Local\Temp\claude\bu\r6check\h1b-census.md`, evidence
+    `artifacts/verify/r6-h1b/`). Over the test suite, the corpus, the library and the harnessed milestones (23,298 Final Binds,
+    16,010 complete), no obligation reached the old non-relation branch (`UnprovenConstraint_Kd`) under complete Binding.
+  - `Binding.Obligations` owns the obligations: their record (`AddObligation`), the length verification and the Final pass's
+    verdict (`JudgeObligations`, today the Definition obligations' `FailTypeRole`). Its entry file states the contract.
+  - H1b-1 (behavior-preserving) deletes `BindingObligationKind.Loan` and `StaticStorage`: no rule produced either, so they were
+    unreachable by construction.
+  - H1b-2: a symbolic length is proven where it is formed (`Binding.Lengths` `BindLength`, SPEC 4.4.1, 4.4.2), with or without a
+    Function scope. Before, a length outside a Function scope (only under a misplaced length list, `struct S<length N>`) became an
+    unproven obligation that only the old Analysis' non-relation branch could see. It now fails at the length with the site's
+    existing code, `InvalidTypeFormation` (`InvalidTypeFormation_Kd`). Such a program already carries the Parse error
+    `MisplacedSyntax_Kd`, so the record is a dependent one added on a rejected program (Q13). The Final check can then never fire
+    on a parse-error program.
+  - H1b-3: `JudgeObligations` checks the contract. Every obligation other than a Definition obligation and an Origin relation with
+    both ends is judged by Final:
+    - a length is proven where it forms (H1b-2);
+    - an `OriginInference` is discharged when its local's Type and initializer bind (`ResolveInitializerOrigins`,
+      `InferLocalOrigins`);
+    - no other form is produced.
+
+    One left over bound parts fails its use with `Internal` (`InternalInvariant_Kd`). One over a failed part rests on that failure
+    (rule W, BU-79): the census found all 30 such programs failing at the local's initializer. The old reporter's non-relation
+    branch becomes the same contract (`OwnershipRequirement.Internal`). `UnprovenOrigin` then always names a relation, so
+    `OwnershipIssue.Code` gives it 2 codes, and ledger row :51 is dropped (R4-M112's amendment).
+
 - **BU-86 A Pending candidate's judgment before its proof is one fact** (2026-11-03; PLAN G354 (1), scheduled by the owner after the
   joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」; design `bu\g352-354\design.md` §3, census `census.md`)
   - The defect: a judgment that left a candidate Pending before its proof published no fact, so the call ended in a fact-less
@@ -10499,6 +10539,52 @@ resumed by R4-M86 (2026-10-20).
     Pending before an independent Constraint's refutation. L531's unsubstituted-Origin return stays fact-less: valid programs reach
     it (G354-1c design R2).
 
+- **BU-84 TransferRequired is judged in Binding** (2026-11-03; R6-check H1 on the group branch `claude/r6-flip`; the owner's Q8
+  approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-package.md` §3.7 and `Q8-design-2.md` §2.7; H0's division,
+  R5-M182; Q14's runs 1 and 2)
+  - Subject source and owner: `Binding.Transfers`. After a Final pass's publication (BU-81's seam), `CheckTransfers` scans each
+    module's published Op, Adjust and PlaceShape rows once (0 B). S1 is a written Place in a value Op whose Adjust is `Move` and
+    whose parent is not `x@move`. S2 is a discarded Place the column leaves `Unset`, whose bare acquisition is Move with a proof other
+    than Error. Each fails with `TransferRequired` through `FailAcquisition`. S3, an omitted capture list's capture whose bare
+    acquisition is not Copy, fails the Closure at the end of its binding (`JudgeOmittedCaptures`); a proven capture is set `Copy`.
+  - Records: requirement `Binding.TransferRequired`, at the Place, Take's repair (`ReportAcquisition`). A pair-layer Place carries the
+    case fact over the definition's full case set through BU-82's renderer (Q14 run 2): the cases whose complete Type (`CaseType`,
+    which names each layer by its own binder, a nested layer's included) the rows of SPEC 3.5 move. A prepared parameter or its owned
+    contents (rooted in it through parentheses and projections of owned storage, never past a follow or a reference or object layer:
+    `PreparedRoot`) records `DefaultArgumentMove_Kd` with its case fact and no repair (Q8-4, Q8-8, SPEC 7.2.3); a Place past a borrow
+    the argument holds records `TransferRequired_Kd`. S3's record is the omitted-list form of `ReportCaptureEntry`, with its default
+    tail (SPEC 7.2.3). The deleted sites' Take repair (SPEC 23.1.3) and omitted-capture Note are carried; `TransferJudgmentTest` has a
+    row per deleted site family (a local, a field, a capture: omitted, explicit, in a default; a default's bare read; a raw Place; an
+    indexer call's result; a sequence element directly and through a borrow; an object temporary; a selected referent).
+  - Final order: producers, publication, `CheckTransfers`; when it failed a node, one republication and `AssertTransfers`, which
+    fails any new subject as `InternalInvariant_Kd` (a republished failure is `Error`, which neither S1 nor S2 selects); counting.
+  - Deleted: the old analysis's ten TransferRequired report sites (`OwnershipAnalysis.cs` two, `.Borrows.cs`, `.Closures.cs`,
+    `.Elements.cs`, `.Objects.cs`, `.Pointers.cs` two, `.Sequences.cs` two), its omitted-capture report, the transfer branch of its
+    report loop, its default-declaration check of a bare read (Binding is the one judge of bare reads of prepared inputs; the check
+    stays for an explicit `a@move` until H10b), and `OwnershipRequirement.TransferRequired` (the kinds after it shift).
+  - Until H5 the old analysis skips a program whose Binding is incomplete, so a program H1 rejects loses the old analysis's other
+    records there; H5 restores them (PD29).
+  - Superseded in part by R5-M185's line of 2026-11-04 (the old limit's Unsupported_Kd is 1x).
+- **BU-88 The validator's Copy rule** (2026-11-03; R6-check Q8-3 on `claude/r6-flip`, after H1, BU-84; the owner's Q8 approval, R5-M23,
+  design `draft/Sketches/R5 Step 0/Q8-package.md` §3.9; H0's division, R5-M182)
+  - Rule and owner: `MirValidator`, the builder's one validator (`MirValidator.Rvalues.cs`, the operand visitor's `Operand`). A `Copy`
+    operand of a known Type is valid iff the body definition's Copy facts hold for it (`TyCtxt.Copies(body.Key.Decl).Copy(type)`):
+    Binding's proof under the body definition's premises. The validator proves nothing and has no fallback. A finding is `MirViolation.Operation` (an operand its
+    kind does not admit; no new violation), so the build reports `InternalInvariant_Kd` and refuses generation: the builder or
+    Binding broke its contract.
+  - Exemption: the operands of a case site, read from the one `caseSites` list that `Views` resolves (an Adapt whose Places and token
+    are in range, a PairAcquire's Use). `Statement` marks a location's operands `byCase` when its rvalue joined that list; the list is
+    not restated. A PairAcquire operand is no `Copy` operand anyway.
+  - It covers H1's flip: Binding judges TransferRequired (BU-84), so a bare non-Copy Place can no longer reach MIR as a `Copy`.
+  - Test bodies keep to the contract: a Value callee is a shared borrow of its Function, as the builder forms it; a compiled body is
+    validated with its own compilation's `TyCtxt`.
+  - Cost (the coordinator's decision after the first A/B: validation B/A 1.28, build+validate 1.12): every `TyCtxt.Copy` call
+    re-proved; 21.2 ms for the census's 76,975 Copy operands. 3.4 ms of that was `EffectPremises`' scope walk, 17.8 ms the proof. One
+    representation of the verdict now: `TyCtxt.CopyFacts`, one per node a definition's premises are read at (`Binding.DefinitionUse`).
+    It holds the premises, resolved once, and each Type's answer, proven at its first question and keyed by the interned Type. It is
+    a TyCtxt view (R5-M61), cleared in `ResetViews`. The Checker takes its body's facts once (`Copies`). `MirEffects`,
+    `MirTypes.Destruction` and code generation read the same facts. `TyCtxt.Copy(definition, type)` is gone. No second cache.
+    A warm validation still allocates nothing.
 - **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after
   the joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03
   (PLAN G396); design `bu\g335\design.md` §1, §2)
@@ -10561,6 +10647,27 @@ resumed by R4-M86 (2026-10-20).
     stamp and `EvaluatingBody` for named functions, which moves the nested function's own body verdicts: G230 (A)); an
     Inference-only test (one kind of an open family).
 
+- **BU-90 R6-check H5's Binding hunk (B-del): Binding's old effect-bound checks are deleted** (2026-11-04; R5-M182's H5, BU's part
+  under the division of 2026-11-02; BU's design `bu\r6check\h5-binding-design.md`, accepted by R5 on 2026-11-04 with X1 and X2; on
+  `claude/bu-h5-bdel` from `claude/r6-flip` 04c8f1e62) SPEC 8.11.
+  - No new rule: the deletion R5-M182 schedules at H5, after F stopped the Binding pass's call and R5's D1 and D2 removed the old
+    Analysis's readers. Deleted: the virtual and Callable checks (`Binding.VirtualEffects`, `Binding.CallableEffects`' checks), the
+    conformance check and its walk (`Binding.EffectBounds` with `EffectSummary`, `Binding.EffectViolations`) and their violation
+    tables. `Binding.EffectObligations` follows the conformance's and the function's own validity (R4-M23); its terms on the tables
+    were constant once F stopped the checks. No path reached the deleted code, so no verdict, record or allocation changes.
+  - `CompilerFunctionEffect.Formatting` is removed (the R4-M28 twin): only the old walk read it. `WriterWrite`, `TextToString` and
+    `TextTryFormat` are `Unclassified`, which both remaining readers treat as they treated `Formatting` (`MirEffects.Class`: Limit;
+    the collector: `BodylessWitness`), and A4 composes their published rows (`Formats`, `FormatsValue`) before `TyCtxt.Bodyless`.
+    `EffectBoundImplementationTest`'s expected class of the three kinds changes with the vocabulary only.
+  - X1 (adopted): the members only the walk read go in this unit rather than at H11: `TryResolveFormattingCallback`,
+    `HasFormattingCallback`, the R6 overload `RequirementImplementation(CallPlan, ...)`, `DestructionCall` with `destructionCalls`
+    and `SelectSpecialization(CallPlan)`, and `DictionaryComparison`, which departs from R5-M68 ("`ComparisonPlan(CallPlan)` and
+    `DictionaryComparison` go at H11 after their readers"): its readers went with the walk, so that reason no longer holds for it;
+    `ComparisonPlan(CallPlan)` stays to H11 for `ComparisonCompositionTest` (D-c8). R4-12's R7 retag stands: the private
+    `RequirementImplementation(BindingSymbol, ...)` and `requirementCalls` stay for the R7 comparison composition; their Reason drops
+    "TryResolveFormattingCallback's (H11)".
+  - X2 (adopted): `BindingFailure.VirtualEffectBound` (no producer since F), its code arm and description row stay to H11: the
+    ledger row `MirDifferenceLedger.ComparedSet` reads it until H10a, and removing it shifts the requirement catalog.
 - **BU-91 Raw storage a value holds holds any Type in retention's fits** (2026-11-04; PLAN G415, found by R4: `r4-notes\post-exit\
   state-pun-verify.md`; BU's design note `bu\g415-pun\design.md`) SPEC 15.6.4 ("a borrow formed through it", "a result the call forms
   within the argument's storage"), 5.7 (a `during self` pointee is stored content of the holding value; raw storage holds what is
@@ -10860,6 +10967,8 @@ structure is recorded here by the unit that first implements it.
   MIR records (PD7), so PLAN10 §7's "P11–P12 → Emission" yields for them (K4's OD4 entry). Under sel, collector records
   publish from K4 (MIR construction and validator records already do under `mir`, R3-1). Rejected: publishing PD12 refusals
   at `check` before H5.
+  - Superseded in part by R5-M187 (2026-11-05, H5): generation's step 2, the PD12 refusal at generation between G2 and H5, is
+    gone; the gate is `Accepts`.
 - **R5-M5 `AnalyzeInstance`** (owner, 2026-10-18; OQ6, option (e)) The two definition-level holes `AnalyzeInstance` covers,
   PLAN10-X1 (abstract destruction) and abstract temporaries, are reproduced (Q1) and fixed in the old definition run as D5
   miscompile fixes (Q2, Q3; DEC O3 applies if a library or milestone program is rejected); then Q4 writes the entry
@@ -12210,6 +12319,9 @@ structure is recorded here by the unit that first implements it.
     constraint solver: another contract).
   - Amended by R5-M166 (provisional, G308): A4 now reads `TyCtxt.Comparison` directly for a tuple operator's call (its distinct leaves),
     while its `Require` on a composite Type keeps the legacy plan (`TyCtxt.Witnesses`) until A-12: A4 holds both resolvers until then.
+  - Superseded in part by BU-90 (2026-11-04, H5's B-del, X1): `DictionaryComparison`, and `RequirementImplementation`'s CallPlan
+    overload with `TryResolveFormattingCallback`, went at B-del instead of H11, since their readers went with the old walk (B2).
+    `ComparisonPlan(CallPlan)` keeps H11 for `ComparisonCompositionTest` (D-c8).
 - **R5-M67 Requirement edges of the checked set** (2026-10-19, planning session; plan K6, the K package's §4.3 and §4.5 row 3 with its
   witness results, package F §4.5, S2-S4 X14, X16, X28; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1; `MonoKind.Builtin`,
   `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11, `ExclusiveInheritedWitness` being KD10's and
@@ -13084,6 +13196,10 @@ structure is recorded here by the unit that first implements it.
   - Rejected: composing the fact from `MirProblem.Body` (a second copy of the recording rules, and blind to a copy's dropped problem);
     every Ownership problem of a body (A5's would refuse programs the old analysis accepts); stopping generation at the first refusal (it
     hides independent gaps); a new argument-free Resource code for the arena (departs from PD12 and R5-M4).
+  - Amended (R6-check H5's unit G, 2026-11-03; R5-M185): the gate's step 2 and the arena interim end. IC's contract (`MirDrops`, R4-M69)
+    gives every inexact body a kept Error problem, its own or its template's of the same code, so check rejects its program and the gate
+    (`Accepts`) never lets it through; an inexact body reaching `FunctionCodegen.Write` is `InternalInvariant_Kd` at its subject. A
+    runtime Drop with no group stays `InternalInvariant_Kd`.
 - **R5-M97 The owner confirms E14's departure** (owner, 2026-10-22, on the R5 planning session's explanation; verbatim 「了承しました」;
   the consequences are the planning session's) The departure R5-M94 recorded for the owner's list is confirmed: under MIR code
   generation the compiler pipeline benchmark's stage 5 is empty and stage 6 is the generation entry, against PD26's and C-design-2's
@@ -15380,6 +15496,8 @@ structure is recorded here by the unit that first implements it.
     test of K9b's library location through a source module run as a non-root (G157 (2); a path production never takes).
   - Amended by R5-M160 (G4): `KIMI_CODEGEN=legacy`'s rollback and the kept `C-frame.tsv` are deleted; the depth test's 64-level
     half kept until G4 moved to MIR code generation.
+  - Superseded in part by R5-M185 (2026-11-04, H5): `MirRecords` is gone, and `PublishMirRecords` publishes every merged problem
+    (`MirReport.Merged`: the records and the analyses' problems) and the validator findings; the MIR decides acceptance.
 - **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, R6-gen; plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and
   OI-3 as applied, with the planning session's rulings Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
   - Rule: `KIMI_CODEGEN` unset, empty or `mir` selects MIR code generation on either pipeline; `legacy` selects the old generator, G3's
@@ -16487,6 +16605,8 @@ structure is recorded here by the unit that first implements it.
     sites every Binding cause at its failed node' (the null rule stays; the order goes); H0a-8's 'fixed in R4's chain before H3-2'; H0's
     unit-table prerequisite of H3-2 'R4's exit with A6, G11, Q17, Q8-6, OQ11', of which only 'with A6' goes; H0 §5's chain 'R4's exit (A6
     2g-D–2g-7, A-4) → … → H3-2'. Removal condition: 2g-1.
+  - Amended (the H5 split plan's ruling X1, 2026-11-03): PD29 holds per merge: F stops both old producers; the dead code goes in D1-D3 of
+    the same group merge.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim
   「(a) で設計を始めて」; R5, design `draft/Sketches/R5/G157-1-design.md`, review 3 ACCEPT; under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -16522,6 +16642,15 @@ structure is recorded here by the unit that first implements it.
     first block and `Destroying` make no record on a proof that rests on such an initializer, and `Met`'s second block still runs. Tests:
     `MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems`, `MirBorrowsTest.ABodyWithAFindingLeavesOtherBodiesProblemsRooted`
     (the rows that need a live static Loan, which no source program has until P42).
+  - Amended (GR-1a, 2026-11-04; R5's ruling (a) on the H5 group review's B2, R4's consent to R5 writing the MIR files under its two
+    conditions): a second per-body fact, `MirBody.HasConstructionRecord`, whether a construction record lies in the body. Its one writer
+    is the builder's one record path of the body in hand, `MirBuilder.Record` (every builder record but a module's broken HIR contracts,
+    made before its bodies); `Reset` clears it, and it is read-only after build. A record made without a body in hand (those, the
+    collection records) marks no body. The two facts stay apart because `MirAnalysis.Run` reads them apart: it skips a body with a
+    finding and analyzes a body with a record. Reader: `Compilation.JudgedWithoutProblem` (hover's ownership line, H0b §2.1), true only
+    for a body with neither fact and no merged problem's member. Tests: `VirtualHoverTest`'s
+    `OwnershipChecksArePendingForABodyHoldingAConstructionRecord` and `...WithAValidatorFinding` (injected: no source program makes a
+    finding); `MirBuildTest.ATupleOperatorWithoutItsComparisonIsUnsupported`, `DefaultExpansionStopsAtTheLimit`.
 - **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, R5; design `draft/Sketches/R6-check/H3-2-design.md`, design
   review 2 ACCEPT; under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
   - Rule: `Core/Compilation.Publication.cs` is Core's one publisher of MIR records. It maps one `MirReport.Merged` problem to the
@@ -16545,6 +16674,25 @@ structure is recorded here by the unit that first implements it.
     call meets both, the collector's `Unsupported_Kd` and A5's `OwnershipDepthLimit_Kd` both stay, counted, until R7 removes G128's
     bound). Rejected: the design's §4 (B), a located `PrerequisiteUnavailable_Kd` without `DerivedFrom` for a problem resting on a
     Binding failure (it decides dependence beyond the problem's own inputs); a pipeline column (a mir-only publication before H5).
+- **R5-M185 MIR decides acceptance (R6-check H5, G:R6-check-flip with H1, H1b and Q8-3)** (2026-11-03, R5; H0b §2.1, §2.3 and §11, the H5
+  split plan's unit F; the two `Binding.cs` lines BU's, its consent relayed by R5; under R5-M182 and Q13) Major.
+  - Rule: `Analysis` is verified when the MIR of the version exists and its rows hold no Error. The rows are every `MirReport.Merged`
+    problem (construction and collection records, the analyses' problems) and the validator findings as `InternalInvariant_Kd`;
+    `Problems` gives them in the publisher's order and `ReportAnalysis` publishes them through `PublishMirRecords` (R5-M184), on every
+    pipeline. `Analyze` invalidates the ControlFlow and Ownership partitions and builds the MIR; it no longer runs the old analysis,
+    which runs only through `Compilation.AnalyzeLegacyOwnership()` for its test and benchmark readers until H10b (review B3).
+    Generation's gate step 1 is `Accepts`; `AnalysisResult` is `(IsVerified, ErrorCount)`.
+  - Stopped: Binding's effect checks (its pass calls `CollectCallableEffectUses()` where it called `ValidateEffectBounds`, and no
+    `ValidateVirtualEffectBounds`; the repeated `InvalidateAssociatedEvidence` goes with them, `ValidateConformances` runs it), the old
+    analysis's effect check and both old `ReportDiagnostics` (ruling R2): A4 publishes the effect records at the obligation subject.
+    `MirRecords` and its "until H5" invariants go (R5-M184's removal condition). The dead code goes in D1-D3 and BU's B-del, PD12's
+    refusal in G, hover's old read in H6, the Old sides in S, within the group's one merge (R5-M182's X1 line).
+  - Supersedes R5-M156's 'the old path decides', R4-M1 for the default pipeline, R5-M184's selection until H5 and R4-M112's kept
+    `UnprovenConstraint_Kd` ledger row (successor H1b). Rejected: an analysis verdict reading `LintErrors` (a second copy of Binding's
+    decision); the old analysis as a shadow in every check (review B3); a throwaway rehearsal; a production check of the library's rows.
+  - Amended (2026-11-04; G:R6-check-flip's review B1, unit GR-2b): H5 restores Binding-incomplete programs' independent records through
+    the MIR's direct publication (R5-M184); the old limit's `Unsupported_Kd` beside Binding's `TransferRequired_Kd` is not restored: 1x
+    (H3b round 0, fb5989df8); BU-84's 'H5 restores them (PD29)' reads so.
 
 - **R5-M186 A3's require fallthrough rests on Binding's guessed nodes (R6-check R6-1)** (2026-11-03, R5 with R4 and BU; sketch
   `draft/Sketches/R6-check/R6-1-sketch.md` with its revision 1; design review 1 REVISE, re-check ACCEPT; H3b round 1 ruling 2; under R5-M182 and Q13) Major.
@@ -16586,6 +16734,18 @@ structure is recorded here by the unit that first implements it.
     Completion is not `Diverges`, the guess rule's own first test (the same structural completion), so nested requires whose outer
     failure bodies cannot complete cost no walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay
     quadratic in the walk (BU's 100/392/1552 at N = 8/16/32); the old check paid it only per falling require.
+- **R5-M187 H5's corpus difference member and generation's one gate (R6-check H5 Rec)** (2026-11-05, R5; the H5 split plan's
+  row Rec; T-27's review N1; G's commit 44ddf5a15) Minor.
+  - pair-cases.json: a row whose MIR verdicts differ from the SPEC's keeps the SPEC's verdicts in `Expected` and `Run` and states
+    the MIR's per-case verdicts in a `Mir` member (`Expected` in the row's form and a `Note` naming its (e) row and the PLAN row that
+    restores it); `GenericOwnershipCaseTest` judges `Mir ?? Expected`, the contract S gave spec-cases (`VerifiedSpecExampleTest`).
+    Unlike spec-cases' `SpecDifference` it carries no `Category` or `Clause`: the Note states the class. A row's `Mir` member goes
+    with the unit that restores its acceptance (A4-box-ok and A4-field-ok: G147 (8)). Supersedes R4-M60's `Old` entry, which S
+    removed at H5.
+  - Generation's gate is `Accepts` alone (H5 G): R5-M4's step 2, a PD12 refusal reported at generation as a typed
+    Emission-partition record between G2 and H5 (only A1's and A2's problems refusing), is gone, since every Error row rejects at
+    check (R5-M185); an inexact body that reaches generation is `InternalInvariant_Kd` (R5-M96's amendment). Supersedes R5-M4's
+    step 2.
 
 ## R7, R8 and R9 (adopted 2026-11-03)
 

@@ -191,7 +191,7 @@ internal static partial class MirTypes
         {
             if (type.IsAbstract)
             {
-                this.Outcome = this.Outcome.Join(types.Copy(definition, type) ? MirOutcome.None : MirOutcome.Limit);
+                this.Outcome = this.Outcome.Join(types.Copies(definition).Copy(type) ? MirOutcome.None : MirOutcome.Limit);
                 return false;
             }
 

@@ -3,21 +3,18 @@
 // Owns the one generation entry of a compilation and its gate (R5 plan C0a, C0b1, package C 3.8, S2-S4 X17; DECISIONS R5-M64, R5-M65).
 // Input: the latest analysis; callers generate an accepted program version (Project and the test command, after check).
 // Output: the module text, written to the caller's writer only when generation succeeds, never in part; otherwise the generation
-// records in the Emission partition: ModuleCodegen's, gate step 2's refusals (an inexact body's A1 or A2 code at its subject, an arena
-// skip's Unsupported_Kd until H3; DECISIONS R5-M96, R5-M146; a form the backend does not generate is the capability table's gap at
-// check) and InternalInvariant_Kd at a broken input contract, each keyed by its location (Locate; a record carries no fact; DECISIONS R5-M65),
+// records in the Emission partition: ModuleCodegen's (a form the backend does not generate is the capability table's gap at check) and
+// InternalInvariant_Kd at a broken input contract, an inexact body reaching FunctionCodegen.Write among them (IC's contract: every such
+// body has a kept Error, so check rejects its program; DECISIONS R5-M96, R5-M185), each keyed by its location (Locate; a record carries
+// no fact; DECISIONS R5-M65),
 // and, for a module neither written nor explained, InternalInvariant_Kd at the project. A publication failure (settings, native supplies,
 // the backend or the file system) is EmissionArtifacts.Publish's own record in the same partition (DECISIONS R5-M165), which Project renders.
 // A broken contract checked without a subject throws (a closed table without a row, a missing fact, a framework operation's contract); it
 // ends generation unrecorded here, and the command renders it as the Emission result's fault, CheckFaulted_Kd (DIAGNOSTICS rule 9;
 // DECISIONS R5-M169), as the front end's.
-// Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and the checked set's records, on every
-// pipeline; DECISIONS R5-M156). They are analysis Errors that check publishes (Compilation.Publication.cs), so the refusal adds none, and,
-// like every request, clears the partition first. MIR code generation then needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2,
-// which Project's check reads too).
-// Gate, step 2 (PD12; DECISIONS R5-M96): applied as each body item is written (FunctionCodegen.Write): a body A1 or A2 left inexact
-// (MirDropTable.Incomplete, R4-M102) is not written and its problem's code is recorded at its subject, every other item still written so
-// its gaps are recorded too, and no module (package C 3.8, 3.9); until H5, which decides acceptance by MIR.
+// Gate (PD12; DECISIONS R5-M185): the acceptance check decided (Accepts, SPEC 23.2.2, which Project's check reads too); every MIR row of
+// Error severity fails Analysis, and check publishes it (Compilation.Publication.cs), so the refusal adds none, and, like every request,
+// clears the partition first.
 // Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
 // closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
 // catalog Project discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
@@ -56,14 +53,14 @@ public partial class Compilation
     /// <param name="writer">The caller-owned output, written only when generation succeeds.</param>
     /// <returns>Whether the module was written.</returns>
     /// <remarks>A program check did not accept adds no record (check reported why); an accepted one without its MIR, its checked set or its
-    /// output roots, or a module neither written nor explained by a record, is a broken contract. A record is a code without facts
-    /// (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, gate step 2's refusal, an A1 or A2 code of no argument (DECISIONS R5-M96), or
-    /// InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS 4.1): the records of two nodes at one location, such as the
-    /// siblings an expansion synthesizes with its span, are one problem.</remarks>
+    /// output roots, or a module neither written nor explained by a record, is a broken contract. A record is InternalInvariant_Kd, a code
+    /// without facts and the only generation record since R6-check H5's unit G (DECISIONS R5-M96's amendment), so its location is its
+    /// subject (DIAGNOSTICS 4.1): the records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are
+    /// one problem.</remarks>
     internal bool Generate(TextWriter writer)
     {
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission); // The partition is the latest request's (DECISIONS R5-M165).
-        if (this.MirRecords(null) > 0 || !this.Accepts)
+        if (!this.Accepts)
         {
             return false;
         }

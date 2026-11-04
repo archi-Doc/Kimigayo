@@ -61,8 +61,6 @@ public class EnumOwnershipTest
     [Theory]
     [InlineData("let x = Option<string>.Some(\"a\")\nlet y = x@move\nlet z = x@move", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("let x = Result<i32, i32>.Ok(1)\nlet y = x@move\nlet z = x@move", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("let x = Result<i32, string>.Ok(1)\nlet y = x", DiagnosticCode.TransferRequired_Kd)]
-    [InlineData("func twice<T, E>(r: Result<T, E>)\n    T is Copy\n    let a = r\n    let b = r", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let x: Option<string>\nlet y = x@move", DiagnosticCode.UninitializedPlace_Kd)]
     [InlineData("let x = Option<string>.None\nx = Option<string>.Some(\"a\")", DiagnosticCode.ReassignedLet_Kd)]
     [InlineData("let x = Option<string>.None\nlet y = x@move\nx = Option<string>.None", DiagnosticCode.ReassignedLet_Kd)]
@@ -75,6 +73,16 @@ public class EnumOwnershipTest
         Assert.False(c.Analyze().IsVerified);
         Assert.Contains(c.Problems, x => x.Code == expected);
     }
+
+    // SPEC 3.5, 3.5.2: an enum with a Non-Copy payload, or an unproven one, is moved only explicitly; each bare read is Binding's
+    // TransferRequired_Kd (R6-check H1, DECISIONS BU-84).
+    [Theory]
+    [InlineData("let x = Result<i32, string>.Ok(1)\nlet y = x", "x")]
+    [InlineData("func twice<T, E>(r: Result<T, E>)\n    T is Copy\n    let a = r\n    let b = r", "r|r")]
+    public void BareEnumMovesAreBindingsRecords(string source, string places)
+        => Assert.Equal(
+            places.Split('|').Select(static x => (DiagnosticCode.TransferRequired_Kd, x)),
+            MinimalEmissionTest.Analyze(source).Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
 
     [Fact]
     public void SuccessfulConstructionTransfersPayloadResponsibilityExactlyOnce()
@@ -304,7 +312,7 @@ public class EnumOwnershipTest
         => body.CleanupSteps.Where(x => x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto).ToArray();
 
     private static OwnershipBody Body(Compilation c, string? name = null)
-        => c.Ownership.Bodies.Single(x => name is null ? x.Function.IsGenerated : x.Function.Name == name);
+        => c.AnalyzeLegacyOwnership().Bodies.Single(x => name is null ? x.Function.IsGenerated : x.Function.Name == name);
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);

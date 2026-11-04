@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -52,6 +53,53 @@ public sealed class VirtualHoverTest
         Assert.Contains("Public contract.", rendered);
         Assert.Contains("effect confined", rendered);
         Assert.Contains("Ownership checks: pending", rendered);
+    }
+
+    // R6-check H6 (DECISIONS R5-M185): the ownership line reads the MIR of the latest analysis, completed when the function's body has no
+    // merged problem; before an analysis it is pending (above), and hover never runs one.
+    [Fact]
+    public void OwnershipChecksReadTheLatestAnalysisMir()
+    {
+        var c = Create(Source);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var info = At(HoverBuilder.Create(c), Source.IndexOf("override func read", StringComparison.Ordinal) + "override func ".Length);
+        Assert.Contains("Ownership checks: completed", HoverRenderer.Render(info, false, HoverPlacement.Canonical).Body);
+    }
+
+    // GR-1a (H0b §2.1; DECISIONS R5-M183): a body in which a construction record lies is not judged without a problem. The virtual
+    // function's body holds the builder's located Unsupported_Kd, a Field of a Place whose Type an identity premise makes a struct
+    // (MirBuildTest.AnUnsupportedFieldsSiteNamesItsReceiversRoot), the analysis's one row, so its line is pending (fail-before:
+    // completed, since a record's body is its class, never an ordinal).
+    [Fact]
+    public void OwnershipChecksArePendingForABodyHoldingAConstructionRecord()
+    {
+        const string Text = "struct Pair\n    public var a: i32 = 1\n    public init() => ()\nopen struct A<T>\n    T is Pair\n" +
+            "    public virtual func read(self: objref/Self, s: ref/T) -> i32 => s.a\n()\n";
+        var c = Create(Text);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        c.Analyze();
+        Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(c.Problems).Code);
+        var info = At(HoverBuilder.Create(c), Text.IndexOf("func read", StringComparison.Ordinal) + "func ".Length);
+        Assert.Contains("Ownership checks: pending", HoverRenderer.Render(info, false, HoverPlacement.Canonical).Body);
+    }
+
+    // GR-1a (DECISIONS R5-M183): the analyses skip a body with a validator finding, so it is not judged and its line is pending
+    // (fail-before: completed, no problem having its ordinal). No source program makes a finding, a builder defect, so the test injects
+    // the fact as R5-M183's tests do.
+    [Fact]
+    public void OwnershipChecksArePendingForABodyWithAValidatorFinding()
+    {
+        var c = Create(Source);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        foreach (var body in c.BuildMir().Bodies)
+        {
+            body.HasFinding |= body.Key.Decl?.Name == "read";
+        }
+
+        var info = At(HoverBuilder.Create(c), Source.IndexOf("override func read", StringComparison.Ordinal) + "override func ".Length);
+        Assert.Contains("Ownership checks: pending", HoverRenderer.Render(info, false, HoverPlacement.Canonical).Body);
     }
 
     [Fact]

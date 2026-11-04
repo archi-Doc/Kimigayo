@@ -247,21 +247,24 @@ public class ClosureEnvironmentOriginTest
     private const string RegionMeet = "func use(p: ref/i32, b: bool) -> i32\n    let n: i32 = 1\n    let c = func [n, p, b] () -> ref/i32 during p\n" +
         "        var r = if b => n@ref else => p\n        return r\n    return 0\n";
 
-    // S1 (PLAN G65): these bodies were accepted, and the first aborted at run time with the write observed through `r`.
+    // S1 (PLAN G65): these bodies were accepted, and the first aborted at run time with the write observed through `r`. Each row: the
+    // one record's code and its exact span, `text` (its first occurrence in `context` where the text recurs). Since the MIR decides (R6-check
+    // H5, H3b T44/T46), a write's conflict is at the writing statement (was its operand), and the Reborrow `bump(view)` while `keep(view)`'s
+    // `d` lives is A5's ComparisonLoanConflict_Kd at its argument `view` (was CallActivationConflict_Kd at the call).
     [Theory]
     [InlineData("    let n = 7\n    var f = func [var n] () -> i32\n        let r = n@ref\n        n = 1\n        return r@follow\n    let v = f()\n", "n = 1")]
     [InlineData("    let n = 7\n    var f = func [var n] () -> i32\n        let r = id(n@ref)\n        n = 1\n        return r@follow\n    let v = f()\n", "n = 1")]
-    [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let c = view\n        view@follow = 1\n        c@follow = 2\n        return view@follow\n    let v = f()\n", "view")]
-    [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let c = view@follow@uniq\n        view@follow = 1\n        c@follow = 2\n        return 0\n    let v = f()\n", "view")]
-    [InlineData("    var n = 7\n    var f = func [n@uniq] () -> i32\n        let q = n@follow@ref\n        let s = q@follow\n        n@follow = 3\n        return s * 10 + q@follow\n    let v = f()\n", "n")]
-    [InlineData("    var n = 7\n    let view = n@uniq\n    var outer = func [view] () -> i32\n        var g = func [view] () => view@follow += 1\n        view@follow = 100\n        g()\n        return view@follow\n    let v = outer()\n", "view")]
+    [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let c = view\n        view@follow = 1\n        c@follow = 2\n        return view@follow\n    let v = f()\n", "view@follow = 1")]
+    [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let c = view@follow@uniq\n        view@follow = 1\n        c@follow = 2\n        return 0\n    let v = f()\n", "view@follow = 1")]
+    [InlineData("    var n = 7\n    var f = func [n@uniq] () -> i32\n        let q = n@follow@ref\n        let s = q@follow\n        n@follow = 3\n        return s * 10 + q@follow\n    let v = f()\n", "n@follow = 3")]
+    [InlineData("    var n = 7\n    let view = n@uniq\n    var outer = func [view] () -> i32\n        var g = func [view] () => view@follow += 1\n        view@follow = 100\n        g()\n        return view@follow\n    let v = outer()\n", "view@follow = 100")]
     [InlineData("    var a: Array<i32> = [1, 2]\n    let view = a@uniq\n    var f = func [view] () -> i32\n        let r = view[0]@ref\n        view.append(3)\n        return r@follow\n    let v = f()\n", "view.append(3)", nameof(DiagnosticCode.CallActivationConflict_Kd))]
-    [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let d = keep(view)\n        bump(view)\n        d@follow += 4\n        return view@follow\n    let v = f()\n", "bump(view)", nameof(DiagnosticCode.CallActivationConflict_Kd))]
-    public void EnvironmentLoansAreCheckedInTheBody(string body, string text, string code = nameof(DiagnosticCode.ComparisonLoanConflict_Kd))
+    [InlineData("    var n = 7\n    let view = n@uniq\n    var f = func [view] () -> i32\n        let d = keep(view)\n        bump(view)\n        d@follow += 4\n        return view@follow\n    let v = f()\n", "view", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "bump(view)")]
+    public void EnvironmentLoansAreCheckedInTheBody(string body, string text, string code = nameof(DiagnosticCode.ComparisonLoanConflict_Kd), string? context = null)
     {
         var source = "func id(x: ref/i32) -> ref/i32 during x => x\nfunc keep(x: uniq/i32) -> uniq/i32 during x => x\nfunc bump(x: uniq/i32) => x@follow += 50\n" + Main + body;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal((code, (SourceSpan?)MirTargetSide.At(context ?? text, context is null ? null : text).Resolve(source)), (error.Code, error.Span));
     }
 
     private const string Bindings = "    let n = 7\n    let t = (1, 2)\n    var f = func [var n, var t] () -> i32\n";
@@ -317,13 +320,14 @@ public class ClosureEnvironmentOriginTest
 
     // S2: the result borrows the environment binding's own slot, so it depends on the closure's receiver and is not a fixed external
     // result; it was accepted and outlived the Move of the closure (SPEC 15.8.2). Binding binds it with the receiver's Origin (DECISIONS
-    // R4-M152), and the old analysis's gate keeps R1's located Unsupported_Kd at the call until R6-check.
+    // R4-M152), and since the MIR decides (R6-check H5; H3b T48, was the old analysis's located Unsupported_Kd at the call) the Move of
+    // `f` while `r` lives is A5's ComparisonLoanConflict_Kd at `f@move`'s `f`.
     [Fact]
     public void ASlotBorrowOfAnEnvironmentBindingIsReceiverDependent()
     {
         var source = Main + "    let n = 7\n    let f = func [n@ref] () => n@ref\n    let r = f()\n    let g = f@move\n    require r@follow@follow == 7 else => $abort(\"r\")\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "f()"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), (SourceSpan?)MirTargetSide.At("f@move", "f").Resolve(source)), (error.Code, error.Span));
     }
 
     // SPEC 15.8.2, 15.6.1, 23.1: a result inferred from the body that borrows the call's own storage, a parameter, a body local or
@@ -331,25 +335,49 @@ public class ClosureEnvironmentOriginTest
     // operand), with the borrow as the longer end and the closure's call result as the shorter, related at the Borrow and at the header.
     // The Closure keeps its Type and its calls bind (DECISIONS R4-M152, R4-M126 P8; OQ-F7-2 (a)): an indented body's record was at the
     // Closure, which failed with a `Never` result, NotCallable_Kd or UnresolvedBinding_Kd at its calls and two MIR validator findings.
+    // Each row: the published records by code and text, then Binding's (the one related at the header) at `text`. Since the MIR decides
+    // (R6-check H5; H3b T50, class 4), A5's twin of Binding's record stands beside it until H11 (H0b §5.4, R4-M108), at the returned value
+    // or at its `return`, and the Consuming row also publishes A5's MovedPlace_Kd at its `return`.
     [Theory]
-    [InlineData("func keep(s: string, r: ref/string) -> ref/string during r => r\n" + Main + "    let a = \"x\"\n    let b = \"y\"\n    let take = func [a@move, b@move] () => keep(a@move, b@ref)\n", "keep(a@move, b@ref)", "b@ref")]
-    [InlineData("func keep(s: string, r: ref/i32) -> ref/i32 during r => r\n" + Main + "    let a = \"x\"\n    let n = 7\n    let take = func [a@move, n] () => keep(a@move, n@ref)\n", "keep(a@move, n@ref)", "n@ref")]
-    [InlineData(Main + "    let s = \"x\"\n    let n = 7\n    let take = func [s@move, n] () => (s@move, n@ref)\n", "(s@move, n@ref)", "n@ref")]
-    [InlineData(Main + "    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "x@ref", "x@ref")]
-    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", "x@ref", "x@ref")]
-    [InlineData(Inspect + Main + "    let c = func ()\n        let l: i32 = 1\n        return l@ref\n    inspect(c())\n", "l@ref", "l@ref")]
+    [InlineData(
+        "func keep(s: string, r: ref/string) -> ref/string during r => r\n" + Main + "    let a = \"x\"\n    let b = \"y\"\n    let take = func [a@move, b@move] () => keep(a@move, b@ref)\n",
+        Unsatisfied + " keep(a@move, b@ref); " + Unsatisfied + " keep(a@move, b@ref)",
+        "keep(a@move, b@ref)",
+        "b@ref")]
+    [InlineData(
+        "func keep(s: string, r: ref/i32) -> ref/i32 during r => r\n" + Main + "    let a = \"x\"\n    let n = 7\n    let take = func [a@move, n] () => keep(a@move, n@ref)\n",
+        Unsatisfied + " keep(a@move, n@ref); " + Unsatisfied + " keep(a@move, n@ref)",
+        "keep(a@move, n@ref)",
+        "n@ref")]
+    [InlineData(
+        Main + "    let s = \"x\"\n    let n = 7\n    let take = func [s@move, n] () => (s@move, n@ref)\n",
+        Unsatisfied + " (s@move, n@ref); " + Unsatisfied + " (s@move, n@ref)",
+        "(s@move, n@ref)",
+        "n@ref")]
+    [InlineData(Main + "    let f = func (x: i32) => x@ref\n    let r = f(1)\n", Unsatisfied + " x@ref; " + Unsatisfied + " x@ref", "x@ref", "x@ref")]
+    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", Unsatisfied + " return x@ref; " + Unsatisfied + " x@ref", "x@ref", "x@ref")]
+    [InlineData(
+        Inspect + Main + "    let c = func ()\n        let l: i32 = 1\n        return l@ref\n    inspect(c())\n",
+        Unsatisfied + " return l@ref; " + Unsatisfied + " l@ref",
+        "l@ref",
+        "l@ref")]
     [InlineData(
         Consume + "func inspectText(value: ref/string) => ()\n" + Main + "    let text = \"a\"\n    let other = \"b\"\n" +
             "    let c = func [text@move, other@move] ()\n        consumeText(other@move)\n        return text@ref\n    inspectText(c@move())\n",
+        "MovedPlace_Kd return text@ref; " + Unsatisfied + " return text@ref; " + Unsatisfied + " text@ref",
         "text@ref",
         "text@ref")]
-    public void AResultOverCallLocalStorageIsRefuted(string source, string text, string borrow)
+    public void AResultOverCallLocalStorageIsRefuted(string source, string records, string text, string borrow)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        var related = error.Related!.Select(x => x.Span is { } at ? source.Substring(at.Start, at.Length) : string.Empty).ToArray();
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(records, string.Join("; ", diagnostics.Select(x => $"{x.Code} {Text(x.Span)}")));
+        var error = Assert.Single(diagnostics, x => (x.Related ?? []).Any(r => Text(r.Span).StartsWith("func", StringComparison.Ordinal)));
+        Assert.Equal((Unsatisfied, text), (error.Code, Text(error.Span)));
+        var related = error.Related!.Select(x => Text(x.Span)).ToArray();
         Assert.Contains(borrow, related);
         Assert.Contains(related, static x => x.StartsWith("func", StringComparison.Ordinal) && x.EndsWith(')'));
+
+        string Text(SourceSpan? span) => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;
     }
 
     // On the MIR the same record is one (DECISIONS R4-M152): the returned value's twin row, whose Refuted relation W derives the storage
@@ -372,14 +400,16 @@ public class ClosureEnvironmentOriginTest
 
     // DECISIONS R4-M126 P8, R4-M152: each published position is the meet of its admissible sources, so where one returned value is a
     // Borrow of an environment binding (ρ under the Shared receiver) and another a body local's, the position is ρ and only the local's
-    // Borrow is Refuted, at its returned value; the call carries the receiver's Origin.
+    // Borrow is Refuted, at its returned value; the call carries the receiver's Origin. Since the MIR decides (R6-check H5; H3b T50,
+    // class 4), A5's twin of Binding's record stands at its `return` until H11 (H0b §5.4, R4-M108).
     [Fact]
     public void ACallLocalSourceBesideAnAdmissibleOneIsRefutedAgainstIt()
     {
         var source = Inspect + Main + "    let n: i32 = 4\n    let c = func [n] (flag: bool)\n        if flag\n            return n@ref\n        let l: i32 = 1\n" +
             "        return l@ref\n    inspect(c(true))\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "l@ref"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal(
+            $"{Unsatisfied} return l@ref; {Unsatisfied} l@ref",
+            string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
     }
 
     // A Reborrow or Copy of a captured reference keeps its external Origin, and a moved-out owned value is no borrow.
@@ -392,10 +422,13 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 15.6.5, 15.3.4 (PLAN G227, DECISIONS BU-28): in a Closure body the Origins of its captures are fixed, so the body never bounds
     // them. Storing the call's own input or another capture's Origin into the environment is Unknown, and storing a borrow local to the call
-    // is Refuted, on both pipelines. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
+    // is Refuted. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
     // to StaticDirect) are memory-safe and rejected because SPEC 15.6.5 stays (the owner, 2026-10-23), their rewrites over a written Origin
     // being PLAN's open issue (a). A local clause over a capture's Origin is Binding's record at the initializer, as one over an enclosing
-    // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15).
+    // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15). Since the MIR decides (R6-check
+    // H5), CopyStore and MovedStore, whose borrow reaches the environment through the aggregate `.Some(...)`, also have A5's
+    // ComparisonLoanConflict_Kd at the local's declaration (`conflict`): H3b family F-b, class 4, an independent record by SPEC 15.6.5
+    // rule W's letter (R4's F-b verdict, h3b-round2.md; both programs were rejected on the base).
     [Theory]
     [InlineData(VarStore, Unproven, "x)")]
     [InlineData(StoreHead + "let arr: Array<ref/i32> = []" + StoreTail, Unproven, "x)")]
@@ -406,8 +439,8 @@ public class ClosureEnvironmentOriginTest
     [InlineData(Nested, Unproven, "y)")]
     [InlineData(RawStore, Unproven, "y@follow@raw")]
     [InlineData(LocalStore, Unsatisfied, "local@ref")]
-    [InlineData(CopyStore, Unsatisfied, "local@ref")]
-    [InlineData(MovedStore, Unsatisfied, "inner@move")]
+    [InlineData(CopyStore, Unsatisfied, "local@ref", "let local: i32 = n")]
+    [InlineData(MovedStore, Unsatisfied, "inner@move", "let local: i32 = 1")]
     [InlineData(TwoRegions, Unproven, "a1[0]")]
     [InlineData(InputDuringP, Unproven, "x)")]
     [InlineData(CapturedParameter, Unproven, "p)")]
@@ -420,9 +453,16 @@ public class ClosureEnvironmentOriginTest
     [InlineData(ClauseOverCapture, Unproven, "H.init(r)")]
     [InlineData(ClauseOverCaptureFromInput, Unproven, "H.init(y)")]
     [InlineData(BodyError, nameof(DiagnosticCode.TypeMismatch_Kd), "5\n")]
-    public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at)
+    public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at, string? conflict = null)
     {
-        var error = Assert.Single(ContextualCaptureTest.PublishedRecords(source));
+        var records = ContextualCaptureTest.PublishedRecords(source);
+        var conflictSpan = conflict is null ? (SourceSpan?)null : MirTargetSide.At(conflict).Resolve(source);
+        if (conflictSpan is not null)
+        {
+            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Assert.Single(records, x => x.Span == conflictSpan).Code);
+        }
+
+        var error = Assert.Single(records, x => x.Span != conflictSpan);
         Assert.Equal(code, error.Code);
         Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
     }
@@ -437,7 +477,7 @@ public class ClosureEnvironmentOriginTest
 
     // The valid twins: reading the environment, also into an inferred result or a body local, storing the environment's own Origin back,
     // an outer store after a Copy capture, two levels of Closures, a raw pointer over a `var` region kept unused and an element written
-    // `during static` are accepted on both pipelines.
+    // `during static` are accepted.
     [Theory]
     [InlineData("func ok() -> isize\n    let arr: Array<ref/i32> = []\n    var f = func [var arr@move] () -> isize => arr.length\n    return f@uniq()\n")]
     [InlineData("func ok() -> i32\n    let a: Option<ref/i32> = .None\n    var f = func [var a] (n: i32) -> i32 => n\n    return f@uniq(2)\n")]
@@ -463,7 +503,7 @@ public class ClosureEnvironmentOriginTest
 
     // SPEC 15.3.4 (PLAN G230; DECISIONS BU-56, an interim until G230's (A)): a named nested or root function's signature or clause that
     // names an enclosing body local's set or annotated value and selects a body local's atom is, valid or not, a located Unsupported_Kd
-    // at each such written Origin on both pipelines, and nothing rests on it. dev bound the name to an atom of the local's annotation that
+    // at each such written Origin, and nothing rests on it. dev bound the name to an atom of the local's annotation that
     // no body links to the local's region and accepted the store (d6 ran `leak 41`, d6c failed LLVM generation; the root form, a
     // document-local named by a top-level function, ran `leak 41` under MIR code generation); d6v and d6r are the valid twins.
     [Theory]
@@ -560,7 +600,7 @@ public class ClosureEnvironmentOriginTest
     // SPEC 15.8.2, 15.6.3, 7.7.2 (DECISIONS R4-M126 P3-P5; PLAN G65's G6 and n2b): an environment binding is a Field of the call receiver's
     // referent, so a Borrow through a layer stored in it is also contained in the receiver Origin ρ (a nested bare entry's binding too), and
     // a Borrow of the binding itself lies in ρ under a borrowed receiver; storing either into an Origin of the enclosing body, or returning
-    // it `during` one, is Unknown once the Closure is classified, Binding's one record on both pipelines. The MIR accepted G6's stores
+    // it `during` one, is Unknown once the Closure is classified, Binding's one record. Before G65 the MIR accepted G6's stores
     // (g6a's use-after-free: one call stores `p[0]@uniq` into `*q`, the next appends to `p`), both pipelines the uncalled forms, and the
     // Borrows of `n` were Refuted. Each record stays beside an unrelated Binding error (SPEC 23.1.2).
     [Theory]
@@ -640,8 +680,8 @@ public class ClosureEnvironmentOriginTest
         }
     }
 
-    // The same for a region's chain, which the old analysis judges until R6-check (a recorded old-path limit: with an unrelated Binding
-    // error it does not run, so no record stands beside that error): a region's later assignment, its store and a meet's operand.
+    // The same for a region's chain, which the MIR judges since it decides acceptance (R6-check H5, DECISIONS R5-M185): a region's later
+    // assignment, its store and a meet's operand, each its function's one record.
     [Theory]
     [InlineData(EnvBorrow + "    let c = func [n, p] () -> ref/i32 during p\n        var r = p\n        r = n@ref\n        return r\n    return 0\n", "r\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
     [InlineData(RegionStore, "r\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
@@ -655,24 +695,32 @@ public class ClosureEnvironmentOriginTest
     // SPEC 23.1, 15.3.3 (DECISIONS R4-M133): a local clause over an environment Borrow names the Borrow its end resolves to through the
     // local's declaration, before the receiver (the Supplier): directly, through a moved local and at the clause's second slot; the
     // plain and Consuming twins name it too. An implicit Borrow of a Field shows by its Place, `s.f`, plain or through the environment.
-    // Each is its function's one record, also beside an unrelated Binding error (SPEC 23.1.2).
+    // Each is its function's one Binding record, also beside an unrelated Binding error (SPEC 23.1.2). Since the MIR decides (R6-check H5;
+    // H3b T50, class 4), a Refuted row also has A5's twin of Binding's record until H11 (H0b §5.4, R4-M108), at `twin`'s exact text: the
+    // clause, or the `return`.
     [Theory]
     [InlineData(ClauseOverEnv, Unproven, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
     [InlineData(ClauseOverMovedLocal, Unproven, "h0@move", "the borrow n@ref", "n@ref", null)]
     [InlineData(ClauseOverSecondEnv, Unproven, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null)]
-    [InlineData(ClauseOverPlain, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
-    [InlineData(ClauseOverSecondPlain, Unsatisfied, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null)]
-    [InlineData(ClauseOverEnvConsuming, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
-    [InlineData(ImplicitFieldPlain, Unsatisfied, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p")]
+    [InlineData(ClauseOverPlain, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null, "origin x.s outlives p")]
+    [InlineData(ClauseOverSecondPlain, Unsatisfied, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null, "origin x.t outlives p")]
+    [InlineData(ClauseOverEnvConsuming, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null, "origin x.s outlives p")]
+    [InlineData(ImplicitFieldPlain, Unsatisfied, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p", "return pass(s.f)")]
     [InlineData(ImplicitFieldEnv, Unproven, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p")]
-    public void AClauseOrFieldRecordShowsTheBorrowThatSuppliedItsEnd(string function, string code, string at, string longer, string related, string? destination)
+    public void AClauseOrFieldRecordShowsTheBorrowThatSuppliedItsEnd(string function, string code, string at, string longer, string related, string? destination, string? twin = null)
     {
         foreach (var beside in new[] { false, true })
         {
             var source = function + (beside ? "func unrelated() -> i32\n    let wrong: bool = 3\n    return 0\n" : string.Empty) + "public func main() => ()\n";
             var records = DiagnosticCorpus.Check(source).Diagnostics;
-            Assert.Equal(beside ? 2 : 1, records.Length);
-            var error = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd));
+            Assert.Equal((beside ? 2 : 1) + (twin is null ? 0 : 1), records.Length);
+            var twinSpan = twin is null ? (SourceSpan?)null : MirTargetSide.At(twin).Resolve(source);
+            if (twinSpan is not null)
+            {
+                Assert.Single(records, x => x.Code == code && x.Span == twinSpan);
+            }
+
+            var error = Assert.Single(records, x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd) && x.Span != twinSpan);
             var verdict = code == Unproven ? "not proven" : "false";
             Assert.Equal((code, $"requires {longer} outlives p, which is {verdict}"), (error.Code, error.Label));
             Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
@@ -685,9 +733,11 @@ public class ClosureEnvironmentOriginTest
     // annotation's fit at its initializer, under a Consuming receiver too (d3, Refuted; and d1 above), and a failure that no chain refutes
     // in a failed Origin environment a dependent of that failure only when a repair of the failed clause could prove it (DECISIONS BU-69;
     // b1: `p outlives zz`'s repairs `p outlives static` and `p outlives q`, and the form with no clause, all report the Unknown at `p`).
-    // They were at the whole declaration and an independent record.
+    // They were at the whole declaration and an independent record. Since the MIR decides (R6-check H5; H3b T50/T51, class 4: records
+    // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), d3 also has A5's MovedPlace_Kd and its twin of
+    // Binding's record (H0b §5.4, until H11) at the declaration.
     [Theory]
-    [InlineData(LocalAnnotatedConsuming, "UnsatisfiedOriginRelation_Kd n@ref")]
+    [InlineData(LocalAnnotatedConsuming, "MovedPlace_Kd let r: ref/i32 during p = n@ref; " + Unsatisfied + " let r: ref/i32 during p = n@ref; " + Unsatisfied + " n@ref")]
     [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]
     public void APendingRelationIsRecordedAsABindingTimeFit(string function, string records)
     {
@@ -766,7 +816,7 @@ public class ClosureEnvironmentOriginTest
     // captured references of independent Origins are not equal (`swap` and `swap3` instantiate one `T`), and a Borrow of a Closure local
     // stored into an environment binding does not outlive that binding's Origin. Under `owner/Self` the receiver is the environment by
     // value, with no ρ, so a captured reference returned as a static one stays Unproven (BU's own3, the guard's twin). Each keeps its
-    // record on both pipelines.
+    // record.
     [Theory]
     [InlineData(
         "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
@@ -816,13 +866,13 @@ public class ClosureEnvironmentOriginTest
     // DECISIONS R4-M126 §2.5: a pending relation waits for its Closure's classification, which runs on every path that bound the body:
     // beside a failed parameter Type or a failed result (a), the two early returns after the body, also with a pair-layer capture its
     // bare use marks (the receiver from the mark, 2c-2's review N5), for a closure argument bound under a consultation (d), and again
-    // after a warm rebind, its record is one, located at its value, on both pipelines.
+    // after a warm rebind, its record is one, located at its value.
     [Theory]
     [InlineData(G6Single + "    var c = func [p@move, q@move] (z: Missing) -> i32\n        q@follow = p\n        return 0\n    return 0\n", 2)]
     [InlineData(G6Single + FailedResult + "    return 0\n", 2)]
     [InlineData(MarkedHead + "    var c = func [value, p@move, q@move] (z: Missing) -> ()\n        let local = value\n        _ = local\n        q@follow = p\n", 2)]
     [InlineData(MarkedHead + "    var c = func [value, p@move, q@move] (k: bool)\n        let local = value\n        _ = local\n" + FailedReturns, 2)]
-    [InlineData(ConsultedStore, 1)]
+    [InlineData(ConsultedStore, 2)] // With `return value`'s TransferRequired_Kd (R6-check H1; Q13, a record added on a rejected program).
     public void APendingRelationIsJudgedOnceOnEveryPathThatBindsTheBody(string function, int count)
     {
         var source = function + "public func main() => ()\n";

@@ -57,6 +57,7 @@ public sealed partial class InstanceCollectorTest
         { "a function's Closure in a held context", Program(GenericClosureIdentityTest.HeldContext), 4, string.Empty },
         { "the same with an Origin parameter", Program(GenericClosureIdentityTest.HeldContextRef), 4, string.Empty },
         { "a held context in a held context", Program(GenericClosureIdentityTest.HeldContextNested), 6, string.Empty },
+        { "holder in the owner's frame", HolderFrame, 1, string.Empty },
     };
 
     // A stored Closure of Box<i64> read and called in Box<i32>'s method.
@@ -74,17 +75,17 @@ public sealed partial class InstanceCollectorTest
 
     private const string UseSelf = "\nfunc use(x: ref/i32) -> isize\n    let v = GV<i64>.init(x)\n    return v.pick(true, x)\nConsole.writeLine(\"ok\")\n";
 
+    // Box<T>'s member joining self.n and Holder<T>.g (Box<U>.init().n): one Closure Type in the owner's frame.
+    private const string HolderFrame = SizedBox + "    public func pick(self: ref/Self, c: bool) -> isize\n        let h = Holder<T>.init()\n" +
+        "        let g = if c => self.n else => h.g\n        return g()\nstruct Holder<U>\n    public var g = Box<U>.init().n\n    public init() => ()\n" +
+        "let k = Box<i64>.init().pick(true)\n";
+
     // The form, the program and its records.
     public static TheoryData<string, string, string> OneInstanceCases => new()
     {
-        { "self joined", $"{SelfOwner}        let g = if c => self.n else => other.n\n        return g(){UseSelf}", $"Unsupported_Kd {Sized}; UninitializedPlace_Kd let g = if c => self.n else => other.n; Unsupported_Kd self.n; Unsupported_Kd g()" },
-        { "self assigned", $"{SelfOwner}        var g = self.n\n        g = other.n\n        return g(){UseSelf}", $"Unsupported_Kd {Sized}; Unsupported_Kd self.n; Unsupported_Kd g()" },
-        {
-            "holder in the owner's frame",
-            $"{SizedBox}    public func pick(self: ref/Self, c: bool) -> isize\n        let h = Holder<T>.init()\n        let g = if c => self.n else => h.g\n" +
-                "        return g()\nstruct Holder<U>\n    public var g = Box<U>.init().n\n    public init() => ()\nlet k = Box<i64>.init().pick(true)\n",
-            "UninitializedPlace_Kd let g = if c => self.n else => h.g; Unsupported_Kd self.n"
-        },
+        { "self joined", $"{SelfOwner}        let g = if c => self.n else => other.n\n        return g(){UseSelf}", $"Unsupported_Kd {Sized}; Unsupported_Kd g()" },
+        { "self assigned", $"{SelfOwner}        var g = self.n\n        g = other.n\n        return g(){UseSelf}", $"Unsupported_Kd {Sized}; Unsupported_Kd g()" },
+        { "holder in the owner's frame", HolderFrame, string.Empty },
         {
             "two instances",
             $"{PassBox}func two(x: ref/i32, w: ref/i64) -> ()\n    let a = Box<ref/i32>.init(v: x)\n    let b = Box<ref/i64>.init(v: w)\n    var g = a.f\n    g = b.f\n    return\nConsole.writeLine(\"ok\")\n",
@@ -107,7 +108,8 @@ public sealed partial class InstanceCollectorTest
     // InternalInvariant_Kd, R5's B1). An owner instance with an Origin position stays that gap, as before, until a use opens it (PLAN G300). A
     // function nested in such an initializer or in a generic getter is the gap at its call, as in a method (PLAN G149). A Closure in a
     // getter, a constructor or a method has one item per instance, a closed struct's initializer Closure is a root and an initializer
-    // without a definition has none, each without a record. Every admitted representative closes its body.
+    // without a definition has none, each without a record. Every admitted representative closes its body: also Box<i64>'s n where Box<T>'s
+    // member joins self.n and Holder<T>.g, the evidence for OneInstanceModuloOriginsHasOneClosureType's accepted row (BU-60's condition).
     [Theory]
     [MemberData(nameof(EnclosedCases))]
     public void DefinitionsOutsideAFunctionBodyNeedTheirEnclosingInstance(string form, string source, int closures, string records)
@@ -149,8 +151,12 @@ public sealed partial class InstanceCollectorTest
     // SPEC 3, 6.1.3 (DECISIONS BU-60, the owner's (a)): one producer forms a held closure's context from the instance modulo Origins, none
     // in the owner's own frame (the identity test), so every read of one instance has one Closure Type and two instances never share one.
     // In GV<T>{o}'s member, self.n and GV<T>.init(x).n, and in Box<T>'s, self.n and Holder<T>.g (Box<U>.init().n), join or assign as one
-    // Type: dev's records (before: TypeMismatch_Kd hiding them). Box<ref/i32> and Box<ref/i64> are two instances (SPEC 3's Concrete Closure
-    // Type): TypeMismatch_Kd at the assignment beside the gap (before: none, one shared Type), and each erased read is the gap at its read.
+    // Type (before: TypeMismatch_Kd hiding the records). Since the MIR decides acceptance (H5, DECISIONS R5-M182), GV's records are the
+    // collector's gaps at the literal and at the call g() (1x: the old analysis's read-site gap at self.n and its UninitializedPlace_Kd at
+    // the join went), and Box's program is accepted (1a, the owner's list of 2026-11-03), its one Closure item closed
+    // (DefinitionsOutsideAFunctionBodyNeedTheirEnclosingInstance). Box<ref/i32> and Box<ref/i64> are two instances (SPEC 3's Concrete
+    // Closure Type): TypeMismatch_Kd at the assignment beside the gap (before: none, one shared Type), and each erased read is the gap at its
+    // read.
     [Theory]
     [MemberData(nameof(OneInstanceCases))]
     public void OneInstanceModuloOriginsHasOneClosureType(string form, string source, string records)

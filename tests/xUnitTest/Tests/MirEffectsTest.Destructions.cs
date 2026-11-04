@@ -20,6 +20,10 @@ public sealed partial class MirEffectsTest
 
     private const string Confined = "IncompatibleContractImplementation_Kd";
 
+    // A4's published record of a `confined` violation: at the conformance subject, the `Self is Sink` clause (SPEC 8.11.3; R6-check H5
+    // T-14a's ruling, DIAGNOSTICS' bound-violation paragraph).
+    private const string AtSink = Confined + " Self is Sink";
+
     // A struct without a destructor, the quiet twin of `Loud`, and a local of each that a Closure captures by move.
     private const string Quiet = "struct Quiet\n    public var n: i32 = 0\n";
 
@@ -39,23 +43,23 @@ public sealed partial class MirEffectsTest
     // SPEC 4.9.6, 8.11.4, 15.6.4 (PLAN G264 U0′): `truncate` and `removeAll` compose through their rows at the caller: the elements'
     // destruction, which `Loud`'s drop makes an environment effect (E5, E7; E8 `clear`'s row, the comparison), and `removeAll`'s calls of
     // `matching` through the actual argument, a printing function item (E1) or a Closure calling it (E3), each `confined`'s violation at
-    // the conformance on the MIR and at the call in the published records; the quiet twins (E2, E4, E6) are valid. A row without the
-    // Callable composition would accept E1 and E3. The by-value input's destruction after the last call (SPEC 15.6.4, 16.3.3) runs the
+    // the conformance on the MIR and in the published records (`Self is Sink`, T-14a's ruling since the MIR decides acceptance); the
+    // quiet twins (E2, E4, E6) are valid. A row without the Callable composition would accept E1 and E3. The by-value input's destruction after the last call (SPEC 15.6.4, 16.3.3) runs the
     // `drop` of a `Loud` its Closure owns (RmLoud; RmLoudLocal on a local Array), a `Quiet` nothing (RmQuiet), nor a Closure that only
     // borrows a `Loud` (RmRefLoudLocal); a row without that destruction would accept RmLoud and RmLoudLocal.
     // Guards: each row holds today through the bodies and must hold through the rows.
     [Theory]
-    [InlineData("E1", "Array<i32> = []", "        self.table.removeAll(matching: H.noisyTrue)\n", Failed, Confined + " self.table.removeAll(matching: H.noisyTrue)")]
+    [InlineData("E1", "Array<i32> = []", "        self.table.removeAll(matching: H.noisyTrue)\n", Failed, AtSink)]
     [InlineData("E2", "Array<i32> = []", "        self.table.removeAll(matching: H.quietTrue)\n", "", "")]
-    [InlineData("E3", "Array<i32> = []", "        self.table.removeAll(matching: func (v) => H.noisyTrue(v))\n", Failed, Confined + " self.table.removeAll(matching: func (v) => H.noisyTrue(v))")]
+    [InlineData("E3", "Array<i32> = []", "        self.table.removeAll(matching: func (v) => H.noisyTrue(v))\n", Failed, AtSink)]
     [InlineData("E4", "Array<i32> = []", "        self.table.removeAll(matching: func (v) => true)\n", "", "")]
-    [InlineData("E5", "Array<Loud> = []", "        self.table.truncate(0)\n", Failed, Confined + " self.table.truncate(0)")]
+    [InlineData("E5", "Array<Loud> = []", "        self.table.truncate(0)\n", Failed, AtSink)]
     [InlineData("E6", "Array<i32> = []", "        self.table.truncate(0)\n", "", "")]
-    [InlineData("E7", "Array<Loud> = []", "        self.table.removeAll(matching: func (v) => true)\n", Failed, Confined + " self.table.removeAll(matching: func (v) => true)")]
-    [InlineData("E8", "Array<Loud> = []", "        self.table.clear()\n", Failed, Confined + " self.table.clear()")]
-    [InlineData("RmLoud", "Array<i32> = []", LoudLocal + "        self.table." + RemoveLoud + "\n", Failed, Confined + " self.table." + RemoveLoud)]
+    [InlineData("E7", "Array<Loud> = []", "        self.table.removeAll(matching: func (v) => true)\n", Failed, AtSink)]
+    [InlineData("E8", "Array<Loud> = []", "        self.table.clear()\n", Failed, AtSink)]
+    [InlineData("RmLoud", "Array<i32> = []", LoudLocal + "        self.table." + RemoveLoud + "\n", Failed, AtSink)]
     [InlineData("RmQuiet", "Array<i32> = []", QuietLocal + "        self.table.removeAll(matching: func [quiet@move] (v) => quiet.n == 0)\n", "", "")]
-    [InlineData("RmLoudLocal", "Array<i32> = []", LocalArray + LoudLocal + "        a." + RemoveLoud + "\n", Failed, Confined + " a." + RemoveLoud)]
+    [InlineData("RmLoudLocal", "Array<i32> = []", LocalArray + LoudLocal + "        a." + RemoveLoud + "\n", Failed, AtSink)]
     [InlineData("RmRefLoudLocal", "Array<i32> = []", LocalArray + RefLoud + "        a.removeAll(matching: func [r] (v) => r.n == 0)\n", "", "")]
     public void ATruncateOrRemoveAllRowComposesItsDestructionAndItsCallback(string form, string table, string body, string problems, string records)
     {
@@ -67,12 +71,12 @@ public sealed partial class MirEffectsTest
     // `pruneBound`'s body is valid and a `confined` witness calling it with a quiet function item is valid (pruneWitness); the bound is
     // owed where the input binds: `H.noisyTrue` as `pruneBound`'s argument is `UnsatisfiedEffectBound_Kd` there, `H.quietTrue` valid
     // (pruneUse). The bound covers only the call: `removeAll`'s destruction of the input it receives is the witness's effect (SPEC 8.11.4,
-    // 15.6.4), a moved `Loud`'s `drop` (PruneLoud), a `Quiet` nothing (PruneQuiet). Guards: each row holds today through the body and must
-    // hold through the row.
+    // 15.6.4), a moved `Loud`'s `drop` (PruneLoud, published at `Self is Sink`), a `Quiet` nothing (PruneQuiet). Guards: each row holds
+    // today through the body and must hold through the row.
     [Theory]
     [InlineData("pruneUse", "func pruneUse()\n    var a: Array<i32> = [1]\n    H.pruneBound(a@uniq, H.noisyTrue)\n    H.pruneBound(a@uniq, H.quietTrue)\n", "UnsatisfiedEffectBound_Kd H.noisyTrue 18446744073709551615", "UnsatisfiedEffectBound_Kd H.noisyTrue")]
     [InlineData("pruneWitness", "        H.pruneBound(self.table@uniq, H.quietTrue)\n        return .Ok(())\n", "", "")]
-    [InlineData("PruneLoud", LoudLocal + "        " + PruneLoud + "\n        return .Ok(())\n", Failed, Confined + " " + PruneLoud)]
+    [InlineData("PruneLoud", LoudLocal + "        " + PruneLoud + "\n        return .Ok(())\n", Failed, AtSink)]
     [InlineData("PruneQuiet", QuietLocal + "        H.pruneBound(self.table@uniq, func [quiet@move] (v) => quiet.n == 0)\n        return .Ok(())\n", "", "")]
     public void ACallThroughAnAbstractCallableInputKeepsItsPremisesBound(string form, string body, string problems, string records)
     {

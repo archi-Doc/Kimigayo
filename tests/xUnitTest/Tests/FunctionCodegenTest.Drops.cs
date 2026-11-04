@@ -361,37 +361,39 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([("InternalInvariant_Kd", (string?)site)], Records(c));
     }
 
-    // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96, R4-M102): a body A1 or A2 left inexact is not written; its refusal is the problem's
-    // own code at its subject in the Emission partition, never InternalInvariant_Kd, and no module is written. The old analysis accepts the
-    // program, so the gate is what refuses it under MIR code generation.
+    // DECISIONS R5-M185, R4-M102: a body A1 or A2 left inexact has its problem kept (IC's contract), so check rejects the program with that
+    // code published at its subject, and generation, refused by the gate, adds no record.
     [Fact]
     public void AnInexactBodyIsRefusedWithItsProblem()
     {
         var c = Analyze(WholeIncomplete);
-        Assert.True(c.Accepts);
+        Assert.False(c.Accepts);
+        c.ReportAnalysis();
+        Assert.Equal([("MovedPlace_Kd", (string?)"a.indices")], Records(c));
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("MovedPlace_Kd", (string?)"a.indices")], Records(c));
-        Assert.True(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
     }
 
-    // R4-M102, R4-M69: a problem found in an inline default copy, which MirReport drops as its template's, marks the caller, which is refused
-    // with that problem: the template's code at the template's subject.
+    // R4-M102, R4-M69: a problem found in an inline default copy, which MirReport drops as its template's, marks the caller; check rejects the
+    // program with the template's code at the template's subject, and generation adds no record.
     [Fact]
     public void ACopysProblemRefusesItsCaller()
     {
         var c = Analyze(CopiedIncomplete);
-        Assert.True(c.Accepts);
+        Assert.False(c.Accepts);
+        c.ReportAnalysis();
+        Assert.Equal([("MovedPlace_Kd", (string?)"a.indices")], Records(c));
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("MovedPlace_Kd", (string?)"a.indices")], Records(c));
     }
 
-    // R4-M15a, PD12: a body A1 skips at the arena limit has no drop rows and is inexact. No program the old analysis accepts reaches this
-    // before G2 (the old arena trips first), so the skip is simulated: the version's table is rebuilt with f's rows, points and views
-    // cleared and its fact set, A1's record at the body, every other body's kept. Interim (DECISIONS R5-M96): the refusal is one located
-    // Unsupported_Kd at the body (f's), never InternalInvariant_Kd or a throw, until a generation record carries the arguments
-    // OwnershipStorageLimit_Kd takes, which A1's arena problem holds as facts (G213, R4-M132).
+    // IC's contract (MirDropTable.Incomplete, R4-M69; DECISIONS R5-M96's H5 line, R5-M185): every inexact body has a kept Error problem, so
+    // the gate never lets one reach generation, and one that does is a broken contract. The arena skip is injected: the version's table is
+    // rebuilt with f's rows, points and views cleared and its fact set, A1's record at the body, every other body's kept, the report
+    // unchanged; the body is InternalInvariant_Kd at its subject (f's), never a throw.
     [Fact]
-    public void AnArenaSkippedBodyIsUnsupportedUntilARecordCarriesItsArguments()
+    public void AnIncompleteBodyReachingGenerationIsABrokenContract()
     {
         var c = Analyze("func f()\n    Console.writeLine(\"a\")\nf()\n");
         var (table, bodies) = (c.BuildMir().Drops, c.BuildMir().Bodies.ToArray());
@@ -412,33 +414,18 @@ public sealed partial class FunctionCodegenTest
         }
 
         Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("Unsupported_Kd", (string?)"f()\n    Console.writeLine(\"a\")")], Records(c));
+        Assert.Equal([("InternalInvariant_Kd", (string?)"f()\n    Console.writeLine(\"a\")")], Records(c));
     }
 
-    // PD12, R5-M4: only A1's and A2's problems refuse; a Loan problem A5 records in a body, or a control-flow problem A3 records (like A4's),
-    // leaves the module written.
-    [Theory]
-    [InlineData("A5")]
-    [InlineData("A3")]
-    public void AnA3OrA5ProblemLeavesTheModuleWritten(string analysis)
-    {
-        var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var (code, requirement) = analysis == "A3" ? (DiagnosticCode.RequireFallthrough_Kd, DiagnosticRequirement.ControlFlow)
-            : (DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict));
-        program.Problems.Add(new(code, requirement, program.Bodies[0].Source, 0, 1));
-        Assert.True(c.Generate(TextWriter.Null));
-        Assert.Empty(Records(c));
-    }
-
-    // Package C 3.9, SPEC 23.1.2 (the planning session's ruling Q2): a refusal skips its body only; every other item is still written, so
-    // another body's own refusal is recorded beside it (g's, the same form), and no module is written.
+    // SPEC 23.1.2: check publishes every inexact body's problem, another body's beside it (g's, the same form), and generation, refused by
+    // the gate, adds none (DECISIONS R5-M185).
     [Fact]
     public void ARefusalLeavesTheOtherBodiesRecorded()
     {
         var c = Analyze(WholeIncomplete + "func g()\n    let b: [2 of string] = [\"c\", \"d\"]\n    _ = b[0]@move\n    for j in b.indices\n" +
             "        Console.writeLine(\"j\")\ng()\n");
-        Assert.True(c.Accepts);
+        Assert.False(c.Accepts);
+        c.ReportAnalysis();
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("MovedPlace_Kd", (string?)"a.indices"), ("MovedPlace_Kd", "b.indices")], Records(c));
     }

@@ -168,24 +168,6 @@ public sealed partial class Binding
     internal DiagnosticKey[]? RestingCauses(Koto node)
         => SuppliedCause(node) is { } supplied ? [supplied] : this.FailureCauses(node) ?? (IsUnresolvedGuess(node) ? [DiagnosticKey.Unresolved] : null);
 
-    /// <summary>Gets the check key of row 12 when the pass recorded it at a function's body: the old analysis's missing result at
-    /// that body's end rests on it until H10.</summary>
-    /// <param name="function">The function.</param>
-    /// <returns>The key, or null when the body cannot fall through.</returns>
-    [Transitional("R6", Reason = "The old analysis's derived missing result; H10 deletes it with the old analysis.")]
-    internal DiagnosticKey? FallthroughKey(FunctionKoto function)
-    {
-        foreach (var (node, row, _) in this.lints)
-        {
-            if (row == LintRow.FunctionFallthrough && node == function.Body)
-            {
-                return node.KeyOf(DiagnosticRequirement.Binding(BindingFailure.None), (ushort)row);
-            }
-        }
-
-        return null;
-    }
-
     // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
     private static bool IsBodyItem(Koto node) => node.Parent switch
     {

@@ -222,12 +222,12 @@ public sealed partial class InstanceCollectorTest
 
     // Closed functions, a generic one and a generic struct, a closure, calls only the checks reach, a computed property with both
     // accessors, mutually recursive defaults (template calls) and top-level statements that call them and the library.
-    private const string Source = "func plain() -> i32 => 1\nfunc pick<T>(value: T) -> T => value\n" +
+    private const string Source = "func plain() -> i32 => 1\nfunc pick<T>(value: T) -> T => value@move\n" +
         "func host() -> i32\n    let add = func [] (x: i32) -> i32 => x + 1\n    return add(plain())\n" +
         "func after() -> i32\n    return 1\n    _ = later()\n    _ = Kimi.Time.Duration.init(microseconds: 5)\n    return 2\nfunc later() -> i32 => 3\n" +
         "func f(n: i32, value: i32 = if n == 0 => 1 else => g(n - 1)) -> i32 => value\n" +
         "func g(n: i32, value: i32 = if n == 0 => 2 else => f(n - 1)) -> i32 => value\n" +
-        "struct Box<T>\n    public var value: T\n    public init(value: T) => self.value = value\n" +
+        "struct Box<T>\n    public var value: T\n    public init(value: T) => self.value = value@move\n" +
         "struct Cell\n    var stored: i32\n    public computed value: i32\n        get(self: ref/Self) -> i32 => self.stored\n" +
         "        set(self: uniq/Self, value: i32) -> () => self.stored = value\n    public init(stored: i32) => self.stored = stored\n" +
         "var cell = Cell.init(3)\ncell.value = 4\nlet box = Box<i32>.init(cell.value)\nvar watch = Kimi.Time.Stopwatch.init()\n" +
@@ -1717,7 +1717,7 @@ public sealed partial class InstanceCollectorTest
     public void AClosuresGlueDestroysItsCapturesLastToFirst()
     {
         var (program, set) = Collect("func capture(text: string, names: Array<i32>) -> i32\n    let f = func [text@move, names@move] () -> i32 => 1\n" +
-            "    let e: () -> i32 = f\n    return e()\n");
+            "    let e: () -> i32 = f@move\n    return e()\n");
         Assert.Equal(["Closure capture", "DropGlue closure () -> i32"], Targets(program, set, "ClosureErasure closure () -> i32"));
         Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Targets(program, set, "DropGlue closure () -> i32"));
         Assert.Empty(Targets(program, set, "DropGlue () -> i32"));

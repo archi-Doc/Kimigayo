@@ -200,7 +200,7 @@ public sealed partial class MirBorrowsTest
             WkForm("sneakR3", "(zr: ref/i32 during r, zp: ref/(Box2 during a) during p, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during p) during q) -> () => ()\n") +
             WkForm("r3Ok", "(zr: ref/i32 during r, zp: ref/(Box2 during a) during p, a2: uniq/(raw/(Box2 during a) during r) during p, a3: raw/(Box2 during a) during r, w0: uniq/(uniq/i32 during p) during q) -> ()\n", "sneakR3(zr, zp, a2@follow@uniq, w0@follow@uniq)\na2@follow = a3") +
             WkForm("sneakR3R", "(zr: ref/i32 during r, x: uniq/(RBox during r) during p, w: uniq/(uniq/i32 during p) during q) -> () => ()\n") +
-            WkForm("r3RBad", "(zr: ref/i32 during r, a2: uniq/(RBox during r) during p, a3: RBox during r, w0: uniq/(uniq/i32 during p) during q) -> ()\n", "sneakR3R(zr, a2@follow@uniq, w0@follow@uniq)\na2@follow = a3"),
+            WkForm("r3RBad", "(zr: ref/i32 during r, a2: uniq/(RBox during r) during p, a3: RBox during r, w0: uniq/(uniq/i32 during p) during q) -> ()\n", "sneakR3R(zr, a2@follow@uniq, w0@follow@uniq)\na2@follow = a3@move"),
         ["viewHolds"] =
             WkForm("iterClearBad", "() -> ()\n", WkDict + "var it = d.iterate()\nd.clear()\n_ = it.next()") +
             WkForm("iterClearOk", "() -> ()\n", WkDict + "var it = d.iterate()\n_ = it.next()\nd.clear()") +
@@ -441,7 +441,7 @@ public sealed partial class MirBorrowsTest
     // (BU's r3Bad), as (iii) intends: the `during p` position can hold neither the argument's Type nor a borrow formed through its path,
     // which through the raw layer lies within r (SPEC 5.2.2), and nothing proves r outlives p. Fails on dev by design: r3Ok
     // `a2@follow = a3` 1.
-    [InlineData("rawPath", "r3RBad: a2@follow = a3 1|rdBad: x@follow.1@follow@uniq 1|rdRelBad: x@follow.1@follow@uniq 1|rdRelSwapBad: x@follow.0@follow@uniq 1|rdSwapBad: x@follow.0@follow@uniq 1")]
+    [InlineData("rawPath", "r3RBad: a2@follow = a3@move 1|rdBad: x@follow.1@follow@uniq 1|rdRelBad: x@follow.1@follow@uniq 1|rdRelSwapBad: x@follow.0@follow@uniq 1|rdSwapBad: x@follow.0@follow@uniq 1")]
     [InlineData("use", "use3Bad: x.1 1")] // Fails on dev by design: use2 `x@follow` 1 (BU-49's pin).
     public void TheBorrowsFormedThroughTheArgumentCountAsItsOwnValue(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));

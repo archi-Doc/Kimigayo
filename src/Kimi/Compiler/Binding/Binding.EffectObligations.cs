@@ -21,15 +21,13 @@ public sealed partial class Binding
 {
     /// <summary>Lists the <c>confined</c> obligations of the latest pass (DECISIONS R4-M22): each witness of a conformance whose Contract
     /// or an ancestor declares <c>confined</c> for its requirement, each virtual function whose slot declares it, and each selected use of a
-    /// Callable clause declaring it whose premises do not prove it. A conformance or virtual function that the effect checks rejected
-    /// keeps its obligation; a holding premise adds none.</summary>
+    /// Callable clause declaring it whose premises do not prove it; a holding premise adds none.</summary>
     /// <param name="rows">The caller-owned list to append to.</param>
     internal void EffectObligations(List<EffectObligation> rows)
     {
         foreach (var path in this.activeConformancePaths)
         {
-            // R6: the old effect checks' violations do not void the obligation; once R6 deletes them, it follows the path's validity.
-            if ((!path.IsVerified && this.effectViolations?.ContainsKey(path.Use) != true) || path.Contract.Contract is not { } shape)
+            if (!path.IsVerified || path.Contract.Contract is not { } shape)
             {
                 continue;
             }
@@ -61,9 +59,7 @@ public sealed partial class Binding
             var original = function.IsVirtual ? function : this.virtualOverrides.GetValueOrDefault(function).Slot.Original;
             var bounded = original is not null && this.virtualEffectBounds.GetValueOrDefault(original) is not null;
 
-            // R6: likewise the old virtual effect check's violations, until R6 deletes it.
-            if (bounded && function.BoundSymbol is { } symbol &&
-                (function.BindingFailure == BindingFailure.None || this.virtualEffectViolations?.ContainsKey(function) == true))
+            if (bounded && function.BoundSymbol is { } symbol && function.BindingFailure == BindingFailure.None)
             {
                 var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.VirtualEffectBound);
                 rows.Add(new(SourceRef.Of(function), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, symbol, null, default, Owner: false));
@@ -111,13 +107,6 @@ public sealed partial class Binding
     // row's Callable input must declare (TyCtxt.Published); null where it has several signatures or none.
     internal SemanticsKind? CallableReceiver(BindingSymbol definition, BoundType input)
         => this.TryCallable(input, this.EffectPremises(definition), out _, out var receiver) ? receiver : null;
-
-    /// <summary>Gets whether an old Binding record of a conformance, Callable use or virtual function was made by an effect check: a bound
-    /// violation or an effect-limit Unsupported, which the MIR difference ledger compares with A4 (DECISIONS R4-M23).</summary>
-    /// <param name="node">The record's node.</param>
-    /// <returns>Whether an effect check recorded it.</returns>
-    [Transitional("R6", Reason = "The ledger's old-side effect subset; R6 deletes it with the old effect checks.")]
-    internal bool IsEffectRecord(Koto node) => this.effectViolations?.ContainsKey(node) == true || this.IsEffectLimit(node);
 
     // SPEC 8.11.3, virtual-dispatch 6: the premises a definition's effects are judged under (null: a module's top-level statements),
     // an override's inherited implementation premises where present.

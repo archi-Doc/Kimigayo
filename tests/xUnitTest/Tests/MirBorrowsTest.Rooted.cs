@@ -202,7 +202,7 @@ public sealed partial class MirBorrowsTest
             ["e9s: local = func []() => ()"],
             RootedEffects("""
                     public func e9s(g: () -> ())
-                        var local: () -> () = g
+                        var local: () -> () = g@move
                         var sc = Root.counter()
                         let c = sc.view()
                         local = func [] () => ()

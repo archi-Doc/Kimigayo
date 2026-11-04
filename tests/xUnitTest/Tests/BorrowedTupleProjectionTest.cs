@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Tinyhand;
 using Xunit;
@@ -49,13 +50,21 @@ public class BorrowedTupleProjectionTest
     [Theory]
     [InlineData(Counter + "func first(pair: ref/(Counter, bool)) -> ref/Counter during pair => pair.0@ref\nlet item = first((Counter.init(), true))\nlet value = item.value")]
     [InlineData(Counter + "func bad(pair: uniq/(Counter, bool))\n    let item = pair.0@ref\n    let other = pair.0@uniq\n    other.value = 9\n    let value = item.value")]
-    [InlineData(Counter + "func bad(pair: ref/(Counter, bool))\n    let moved = pair.0")]
     [InlineData(Counter + "var counter = Counter.init()\nlet pair = (counter@ref, true)\nlet view = pair@ref\nlet item = view.0@follow@ref\ncounter = Counter.init()\nlet value = item.value")]
     public void RejectsEscapesConflictsAndImplicitMoves(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
+        Assert.False(c.Generate(TextWriter.Null));
+    }
+
+    // The implicit move of a borrowed Tuple's element is SPEC 3.5's error, Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84).
+    [Fact]
+    public void AnImplicitMoveOfABorrowedElementIsBindingsRecord()
+    {
+        var c = MinimalEmissionTest.Analyze(Counter + "func bad(pair: ref/(Counter, bool))\n    let moved = pair.0");
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "pair.0")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

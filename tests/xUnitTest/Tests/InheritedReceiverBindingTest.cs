@@ -217,7 +217,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void InheritedTypeFunctionWitnessPreservesBaseArguments()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct Box<T>\ncontract C\n    associate E\n    func f(x: E) -> E\nopen struct Base<T>\n    public func f(x: Box<T>) -> Box<T> => x\nstruct D<U>: Base<U>\n    Self is C\n    associate C.E is Box<U>");
+        var c = CompilationTestHelper.ParseSuccess("struct Box<T>\ncontract C\n    associate E\n    func f(x: E) -> E\nopen struct Base<T>\n    public func f(x: Box<T>) -> Box<T> => x@move\nstruct D<U>: Base<U>\n    Self is C\n    associate C.E is Box<U>");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var witness = Assert.Single(Path(c, "D", "C").Witnesses);
         Assert.Equal("Base", witness.Function!.DeclaringType.Symbol!.Name);

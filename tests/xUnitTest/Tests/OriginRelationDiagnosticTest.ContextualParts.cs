@@ -139,11 +139,14 @@ public partial class OriginRelationDiagnosticTest
     // valid and stay ClosureEnvironmentOriginTest's rows (not repeated). Their twins store a Closure local's Borrow toward the enclosing `q`
     // through the same shapes: a Refuted relation. A Case whose expected Type the parameter fixes (r03_n, r04_n, r06_n) is judged by its own
     // fit, at the payload; only a position the call opens records at the argument (r05_n's `.None`; D-1's scope, decided 2026-10-29).
+    // r03_n's, r04_n's and r06_n's payload record has the MIR's twin at the same span until H11 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
+    // r05_n also has A5's Loan conflict at `let short = 2`: `*s` may retain `short`'s Loan through the aggregate argument, which is neither
+    // the borrow nor a Copy, so the record is independent by SPEC 15.6.5 rule W's letter (family F-b, class 4; R4's verdict, R6-check H5).
     [Theory]
-    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
-    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@uniq", null)]
-    [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
-    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@uniq; UnsatisfiedOriginRelation_Kd short@uniq", null)]
+    [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
+    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
     public void AContextualPartInsideAClosureIsJudged(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
 
@@ -166,6 +169,7 @@ public partial class OriginRelationDiagnosticTest
     // the argument; when an annotation settles the construction (cs1_ty), the annotation proves its contextual payload at its written Type,
     // as in ea1 (R4-M164 U1d; the payload's record waits for H11). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
     // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
+    // cr5's and cr6's payload record has the MIR's twin at the same span until H11 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
     [Theory]
     [InlineData("cv1", PayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "", null)]
     [InlineData("cv1_n", WeakPayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "UnprovenOriginRelation_Kd Option.Some(v)", null)]
@@ -176,9 +180,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
     [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
-    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
-    [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr6_ok", "func good(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    p@follow = .Some(v)\n    return 0\n", "", null)]
     public void AnArgumentsCaseIsJudgedAtTheArgument(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
@@ -209,8 +213,9 @@ public partial class OriginRelationDiagnosticTest
     // failing positions, each at the argument with the payload related (D-1). j01f is j01 (not repeated); t7c has its own theory below.
     // cx2's and c3n's family with a written qualifier (c3q, cx2q) or an expected Type (c3a, cx2e, cx2c) errs at `.None` as the named
     // call c3m does: a payload's evidence binds T, so `.None` is a Signature position (U4's review B1). cx2q/cx2e/cx2c's T holds the
-    // written Type's omitted Origin, a body region that never outlives `static`: DIAGNOSTICS requires UnsatisfiedOriginRelation_Kd, but
-    // the shared judge returns Unknown for an open initializer Origin, so it is Unproven, pinned until PLAN G392. wf (a Function
+    // written Type's omitted Origin, a body region that never outlives `static`, so the record is UnsatisfiedOriginRelation_Kd as
+    // DIAGNOSTICS requires: the MIR's, which decides since the flip (DECISIONS R5-M185; R6-check H5), where the old analysis's shared
+    // judge gave Unproven (PLAN G392). wf (a Function
     // payload's written header) and wt (an aggregate payload's typed child) bind T in a call but not in a construction's F1, so their
     // `.None` stays a Result position and both are accepted, while the named calls record: pinned until PLAN G391.
     [Theory]
@@ -229,11 +234,11 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("c3a", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: W<ref/i32 during q> = W.Make(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
     [InlineData("c3a_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w: W<ref/i32 during q> = W.Make(q, .None)\n    return 0\n", "", null)]
     [InlineData("c3m", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc mkw<T>(t: T, w: Option<ref/T during static>) -> W<T>\n    return W.Make(t@move, w@move)\nfunc bad(q: ref/i32) -> i32\n    let w: W<ref/i32 during q> = mkw(q, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
-    [InlineData("cx2q", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W<ref/i32>.Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2q", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w = W<ref/i32>.Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2q_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w = W<ref/i32>.Make(p, .None)\n    return 0\n", "", null)]
-    [InlineData("cx2e", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = W.Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2e", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = W.Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2e_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = W.Make(p, .None)\n    return 0\n", "", null)]
-    [InlineData("cx2c", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = .Make(short@ref, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("cx2c", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = .Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2c_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = .Make(p, .None)\n    return 0\n", "", null)]
     [InlineData("wf", "enum WF<T>\n    Make((T) -> i32, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WF<ref/i32 during q> = WF.Make(func [] (x: ref/i32 during q) -> i32 => 0, .None)\n    return 0\n", "", null)]
     [InlineData("wt", "enum WT<T>\n    Make((T, i32), Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WT<ref/i32 during q> = WT.Make((q, 1), .None)\n    return 0\n", "", null)]
@@ -243,12 +248,12 @@ public partial class OriginRelationDiagnosticTest
         => AssertRecordsRelating(form, body, records, payload);
 
     // An ill-formed explicit Type argument whose slot a contextual argument fills (DECISIONS R4-M164; the planning session's ruling,
-    // 2026-11-03): the call records at the argument (Binding). The written Type's own record is the old ownership analysis's body
-    // obligation, which does not run beside a Binding record (PLAN G56): u1's, expl's and boxe's each return at H11.
+    // 2026-11-03): the call records at the argument (Binding). The written Type's own record is the body obligation the old ownership
+    // analysis did not judge beside a Binding record (PLAN G56); the MIR publishes it there since the flip (DECISIONS R5-M184; R6-check H5).
     [Theory]
-    [InlineData("u1", "func use1<T>(x: T) -> i32 => 0\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    return use1<Option<ref/(ref/i32 during q) during r>>(Option.None)\n", "UnprovenOriginRelation_Kd Option.None")]
-    [InlineData("expl", "func id<T>(x: T) -> T => x@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = id<Option<ref/(ref/i32 during q) during r>>(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None")]
-    [InlineData("boxe", "struct Box<T>\n    public let item: T\n    public init(item: T) => self.item = item@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = Box<Option<ref/(ref/i32 during q) during r>>.init(item: Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None")]
+    [InlineData("u1", "func use1<T>(x: T) -> i32 => 0\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    return use1<Option<ref/(ref/i32 during q) during r>>(Option.None)\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("expl", "func id<T>(x: T) -> T => x@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = id<Option<ref/(ref/i32 during q) during r>>(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("boxe", "struct Box<T>\n    public let item: T\n    public init(item: T) => self.item = item@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = Box<Option<ref/(ref/i32 during q) during r>>.init(item: Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     public void AnExplicitTypeArgumentsContextualArgumentRecordsAtTheArgument(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 

@@ -106,7 +106,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("limit+deep", 10, "putTwo(h@uniq, dd@uniq, z@ref) Unsupported_Kd")]
     public void OneVerdictAnUnsupportedPartAndAPartPastTheBoundMeetAtGetsOneRecord(string form, int depth, string expected)
     {
-        const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value\n    public func put<U>(self: uniq/Self, v: U) => ()\n" +
+        const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n    public func put<U>(self: uniq/Self, v: U) => ()\n" +
             "func putAny<U, V>(t: uniq/U, v: V) => ()\nfunc putTwo<U, V, T>(a: uniq/U, b: uniq/V, v: T) => ()\n";
         const string Lead = "    var x = 1\n    var y = 2\n    var z = 3\n    var w: ref/i32 = x@ref\n    var r = w@uniq\n" +
             "    var h = Wrap.init(r@follow@raw@raw/u8)\n    var k: ref/i32 = y@ref\n";
@@ -185,7 +185,7 @@ public sealed partial class MirBorrowsTest
     [InlineData(10, "{call} Unsupported_Kd")]
     public void IndependentChecksAtOneSubjectKeepTheirOwnRecords(int depth, string expected)
     {
-        const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value\n";
+        const string Wrap = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\n";
         var value = $"(Wrap.init(r@follow@raw@raw/u8), {Nested("z@ref", depth)})";
         var (s, call) = ($"var s = {value}", $"Kimi.Intrinsics.replace(s@uniq, with: {value})");
         var c = CompileDepthForm(Prelude + Wrap + "func f()\n    var x = 1\n    var z = 3\n    var w: ref/i32 = x@ref\n    var r = w@uniq\n" +

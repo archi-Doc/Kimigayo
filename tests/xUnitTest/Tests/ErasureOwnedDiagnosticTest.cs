@@ -21,10 +21,6 @@ public class ErasureOwnedDiagnosticTest
     // A join's arms are erased at the join's expected Type, and the join records from the two Types (SPEC 7.7.4).
     private const string Join = Main + "    require k(true) == 0 else => $abort(\"j\")\n\nfunc k(c: bool) -> i32\n";
 
-    // The old Analysis' stop of a maker's result through a call (DECISIONS R4-M159's K5), unchanged by G353.
-    private const string P2Records = "Unsupported_Kd: (x: ref/i32) | Unsupported_Kd: (y: ref/i32 during x) -> i32 | " +
-        "Unsupported_Kd: let c = outer(p) | Unsupported_Kd: outer(p) | Unsupported_Kd: c";
-
     // A let annotation, a default, a call argument, a captured reference value and a join give the same record at the converted value;
     // of two failing captures the body-local borrow is named, whatever their order, and in a nested closure the enclosing body's borrow
     // is fixed while the body's own is local (R4-M161).
@@ -260,14 +256,24 @@ public class ErasureOwnedDiagnosticTest
 
     // SPEC 7.7.4, 15.2.3 (DECISIONS BU-73, PLAN G353): an erasure judges its subject's complete environment, never its call signature,
     // which the required Function Type states: a Closure whose signature fixes an enclosing function's Origin converts (p1, p11), a
-    // capture of the borrowed parameter stays the one record at the value (p12), and a maker's result keeps the old Analysis' stop (p2).
+    // capture of the borrowed parameter stays the one record at the value (p12), and a maker's result converts (p2, below).
     [Theory]
     [InlineData("p1", "func f(r: ref/i32) -> i32\n    let inner = func (y: ref/i32 during r) => ()\n    let g: (ref/i32 during r) -> () = inner\n    return 1", null)]
     [InlineData("p11", "func f(r: ref/i32) -> i32\n    let n = 1\n    let inner = func [n] (y: ref/i32 during r) -> i32 => n\n    let g: (ref/i32 during r) -> i32 = inner\n    return 1", null)]
     [InlineData("p12", "func f(r: ref/i32) -> i32\n    let inner = func [r] (y: ref/i32 during r) -> i32 => 0\n    let g: (ref/i32 during r) -> i32 = inner\n    return 1", "UnprovenConstraint_Kd: inner")]
-    [InlineData("p2", "func h(p: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func (y: ref/i32 during x) -> i32 => 0\n    let c = outer(p)\n    let g: (ref/i32 during p) -> i32 = c@move\n    return 1", P2Records)]
     public void AnErasureJudgesTheEnvironmentNotTheSignature(string id, string declarations, string? records)
         => Assert.Equal([id, .. records is null ? [] : records.Split(" | ")], [id, .. RawPointerSyntaxTest.Records(declarations)]);
+
+    // p2: a maker's result through a call. The old Analysis' stop at it (DECISIONS R4-M159's K5: five located Unsupported_Kd, at the
+    // maker's two signatures, `let c = outer(p)`, `outer(p)` and `c`) went with the MIR deciding acceptance (H5; 1a, the owner
+    // 2026-11-03): the program has no record, and a Library build (every root, K11) generates h.
+    [Fact]
+    public void AMakersResultThroughACallConverts()
+    {
+        const string Declarations = "func h(p: ref/i32) -> i32\n    let outer = func (x: ref/i32) => func (y: ref/i32 during x) -> i32 => 0\n    let c = outer(p)\n    let g: (ref/i32 during p) -> i32 = c@move\n    return 1";
+        Assert.Empty(RawPointerSyntaxTest.Records(Declarations));
+        Assert.Contains("h", MinimalEmissionTest.GeneratedBodies(Declarations + "\npublic func main() => ()\n", OutputKind.Library, accepted: true));
+    }
 
     private static string[] Records(string source) => [.. DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")];
 

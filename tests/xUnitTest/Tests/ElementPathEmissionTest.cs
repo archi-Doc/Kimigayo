@@ -88,7 +88,7 @@ public class ElementPathEmissionTest
     }
 
     // A Loan that outlives the RHS still conflicts with the exclusive element access, and the located
-    // receiver stays protected while its index operands evaluate (SPEC 4.6.3).
+    // receiver stays protected while its index operands evaluate (SPEC 4.7.4).
     [Theory]
     [InlineData("let r = a@ref\na[0] += r[1]\nlet n = r[0]")]
     [InlineData("let r = a@ref\na[i] += 1\nlet n = r[0]")]
