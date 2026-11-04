@@ -254,7 +254,7 @@ The full workflow is maintained in [DIAGNOSTIC_WORKFLOW.md](DIAGNOSTIC_WORKFLOW.
 
 ## 11. Audit findings (D1)
 
-This section retains unresolved findings, not completed repair history. D0–D5/R1–R7 and a passing snapshot never certify all reporting sites. G55/G60 are paused by the user; their [handoff](G55_G60.md) distinguishes verified repairs from cases still needing reproduction. Other historical findings below must likewise be reproduced on the working revision before changing behavior; this documentation cleanup does not close them.
+This section retains unresolved findings, not completed repair history. D0–D5/R1–R7 and a passing snapshot never certify all reporting sites. PLAN G55 holds the Binding review's remainder, rechecked on 2026-11-05. Other historical findings below must likewise be reproduced on the working revision before changing behavior; this documentation cleanup does not close them.
 
 | Finding | Rule | Stage |
 | --- | --- | --- |

@@ -1300,3 +1300,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   B2′, verbatim 「この方針で」; DECISIONS R4-M170), and `chain<T>` shows B7's reach through retention (its store
   while another Loan lives is 5.2.1's raw access). The owner read the text (RQ10 (a)), verbatim 「SPEC改訂、推奨どおりでOKです」
   (2026-11-04); round 5's alignments change no meaning.
+
+## 2026-11-05 — docs/dev reduction (PLAN G420)
+
+- Correction (the files are frozen): the owner's 「Q-a： 削除して」「Q-c： promptsも削除して」 deleted `G55_G60.md`,
+  `BINDING_REVIEW.md`, `PARSING_REVIEW.md`, `P34_REMAINING.md` and `prompts/` from docs/dev; their text is in git history at
+  4fb6fcdb1. 「Q-b： draft に移して」 moved `LLVM_OPTIMIZATION.md` from docs/dev to [Design](Design/LLVM_OPTIMIZATION.md). The links
+  and paths to them in `Changes/2026-10-09 G34 G73 G80 Fix Plan.md`, `Design/2026-09-29 Diagnostics.md`, `Proposals/2026-10-12
+  Pre-R5 Work Items.md`, `Sketches/R5 Step 0/C-design-2.md`, `C-package.md`, `deep-dives/q2-codegen-shape.md` and
+  `Sketches/R6-gen/G8-design.md`, and the older entries above, are unchanged and read at that commit or at the new path.
