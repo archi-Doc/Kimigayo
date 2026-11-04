@@ -8582,7 +8582,8 @@ resumed by R4-M86 (2026-10-20).
     dictionary literals) and its part b's "a part Binding rejected, a failed nested join included, is no waiting part (AddResultPart;
     PartsConflict.Rejected)": now `PartFailed` and `PartsConflict.Failed`, and `PositionKind`'s row is deleted (a classified join holds
     no failed part).
-  - The cover rule (the owner's 「もう 1 回だけ直す (推奨)」, 2026-10-27): superseded by R6.
+  - The cover rule (the owner's 「もう 1 回だけ直す (推奨)」, 2026-10-27): superseded by R6. Supersedes the outcome rule's "when that one
+    failed, is `Dependent` on it (`DecideWaiting`)" and its `TypedConflict`.
   - R6, a join tree judged once at its root (the owner, 2026-10-27, on the held branch's per-conflict attribution: 「一段上で作り直す (推奨)」, and
     on this unit's flow: 「複数並列の設計・実装は不要です。実装が完了したら、独立レビューを通してください」). B3 and B7 (a conflict nobody records), B5 and B6 (one recorded
     twice or lost) and B4 had one cause: a join tree (a join holding nested joins through its sources, the forms that deliver them and
