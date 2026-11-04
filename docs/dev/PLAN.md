@@ -1,6 +1,6 @@
 # Kimigayo Compiler Plan
 
-Current plan only: position, milestone order, completion conditions, next actions and open issues. Update when position, next actions or blockers change, under [AGENTS Documentation](../../AGENTS.md#documentation). Required behavior is in [SPEC.md](../SPEC.md); implemented support is in [STATUS.md](../STATUS.md). Commits and artifacts hold unit evidence; [PLAN_HISTORY.md](PLAN_HISTORY.md) preserves selected historical summaries and is maintained only on explicit request. Items deferred by [Appendix D](../spec/appendices/D-deferred-features.md) are not planned here.
+Current plan only: position, milestone order, completion conditions, next actions and open issues. Update when position, next actions or blockers change, under [AGENTS Documentation](../../AGENTS.md#documentation). Required behavior is in [SPEC.md](../SPEC.md); implemented support is in [STATUS.md](../STATUS.md). Commits and artifacts hold unit evidence; [PLAN_HISTORY.md](PLAN_HISTORY.md) keeps the summaries other documents link and is maintained only on explicit request. Items deferred by [Appendix D](../spec/appendices/D-deferred-features.md) are not planned here.
 
 ## 1. Scope
 
@@ -14,7 +14,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 
 ## 2. Working rules
 
-Work policy (commit and push per unit, a final Session per working session) is in [AGENTS.md](../../AGENTS.md); design and review in [WORKFLOW.md](WORKFLOW.md); checks and evidence in [VERIFICATION.md](VERIFICATION.md); structure rules, migration rules and the stage ledger in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md). PLAN holds current work and keeps explicit blockers with their next steps. A closed §7 row moves to [PLAN_HISTORY](PLAN_HISTORY.md#closed-open-issues) as a one-line summary (the owner, 2026-11-01, verbatim 「完了済みの行を PLAN_HISTORY に要約して移す」); its open remainder stays here.
+Work policy (commit and push per unit, a final Session per working session) is in [AGENTS.md](../../AGENTS.md); design and review in [WORKFLOW.md](WORKFLOW.md); checks and evidence in [VERIFICATION.md](VERIFICATION.md); structure rules, migration rules and the stage ledger in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md). PLAN holds current work and keeps explicit blockers with their next steps. A closed §7 row leaves with one line in its commit (G420, the owner's 「Q-e： 一度に行って。…」, after 2026-11-01's 「完了済みの行を PLAN_HISTORY に要約して移す」); [PLAN_HISTORY](PLAN_HISTORY.md#closed-open-issues) keeps the summaries other documents link; its open remainder stays here.
 
 ## 3. Current position
 
