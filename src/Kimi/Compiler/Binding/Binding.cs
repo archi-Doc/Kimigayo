@@ -191,6 +191,13 @@ public sealed partial class Binding
         this.types.ResetViews();
     }
 
+    // A scope's place in the scope tree: its parent, and the function it is in.
+    private static void AttachScope(BindingScope scope, BindingScope? parent)
+    {
+        scope.Parent = parent;
+        scope.Function = scope.Owner is FunctionKoto function ? function : parent?.Function;
+    }
+
     /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
@@ -976,8 +983,7 @@ public sealed partial class Binding
             this.scopes.Add(key, scope);
         }
 
-        scope.Parent = parent;
-        scope.Function = scope.Owner is FunctionKoto function ? function : parent?.Function;
+        AttachScope(scope, parent);
         return scope;
     }
 

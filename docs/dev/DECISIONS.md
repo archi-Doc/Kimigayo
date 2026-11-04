@@ -10533,6 +10533,45 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: an `Unsupported_Kd` from publication (a reporter beyond ARCH's three, G9 Q4); the check before the import's own ones
     (it would hide their Language errors).
 
+- **BU-94 A Constraint region is the Origin owner of the sets its Constraints name** (2026-11-05; PLAN G417 (3) U1; the owner's
+  「(1) Constraint region ちょうど」 and 「推奨どおり」; BU's design `bu\batch\G417\binding-design.md` revision 3, three design reviews,
+  U0 and U1 ACCEPT) SPEC 8.2.1, 15.3.4. The cause it removes: `OriginOwner` filed a Constraint's `{k}` under the enclosing function's
+  or container's declaration. A function's binds every clause in its header, before `BindConstraints` binds the Constraint Types, so
+  a related set kept `MissingOriginBinding_Kd`. The set was also visible in the signature, the body and a struct's members.
+  - **Contract** (Binding.OriginDeclarations.cs).
+    - Responsibility: one Origin declaration per set-bearing Constraint region (§8.2.1):
+      - a body's leading region;
+      - a struct or enum fragment's leading Constraints;
+      - a function requirement's region;
+      - one `when` list;
+      - each Contract-wide clause.
+
+      An associated-Type requirement keeps its own owner.
+    - Key: the anchor, the region's first Constraint IsKoto (`RegionAnchor`). `OriginOwner` returns it for every node inside a
+      region's Constraint. A former anchor is an inert entry, as a removed owner's is.
+    - Inputs: the region's sets, filed by the collection loop as before.
+    - Outputs:
+      - `Members`, the region's other Constraints, which its completion rewrites;
+      - `Clauses`, its owner's relations that name one of its sets, filed once per pass by `FileRegion`, the owner keeping the rest;
+      - `HeldScope`, the region scope (Owner = the anchor, Parent = the owner's scope, by `AttachScope`). It is created once, kept by
+        `Reset` and reattached at filing. `BeginOriginDeclaration` uses a held scope in place of the caller's.
+    - Lifecycle: today's per-Type window (Types.cs: begin and complete around one Type). Its completion binds the region's relations
+      and pulls each set's Type on demand, across `BindConstraints`' passes. No declaration stays open between passes.
+    - Invariants:
+      - Constraints bind in the owner's scope (they reach the sets through `OriginOwner(use)`); only relations bind in the region
+        scope.
+      - A region completes only its sets' slots: `PendingOrigin` captures a use within one of `Sets`' occurrences, and every other
+        omission keeps the position rule.
+    - Prohibitions: a region never sees the body; the signature, the body and members never see a region's sets.
+  - **Unchanged.** An unrelated set, and one related only by `outlives`, keeps `MissingOriginBinding_Kd`, which is conservative.
+    U2 quantifies it (the owner's 「(b) U2 を今実装する。その上で、既定のパイプラインでは、この形に位置付きの Unsupported_Kd を返す見張りを置く」).
+  - **Rejected.**
+    - Option B: binding set-naming Constraints inside the header's declaration. It reorders every Constraint against
+      `BindConstraints`' passes.
+    - Binding Constraints in the region scope: `BindConstraint` judges subjects by `scope.Owner`.
+    - Keying the region scope in `scopes`: `NodeScope` would return it for the anchor clause.
+    - Keeping a declaration open across passes: later passes would read unbound Origins.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

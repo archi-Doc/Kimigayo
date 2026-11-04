@@ -534,6 +534,16 @@ public sealed partial class Binding
         // The nodes besides Owner whose Types its completion rewrites; null or empty when Owner is the only one.
         internal List<Koto>? Members { get; set; }
 
+        // A Constraint region's (DECISIONS BU-94): its Owner is the region's anchor, its first Constraint.
+        internal bool IsRegion => this.Owner is IsKoto { IsAssociatedConstraint: false };
+
+        // A Constraint region's own scope (DECISIONS BU-94): Owner the anchor, Parent the owner's scope; created once, kept by Reset and
+        // reattached at filing each pass, so its completion binds the region's relations there; null for any other declaration.
+        internal BindingScope? HeldScope { get; set; }
+
+        // The list Clauses is filed into when its owner's clauses are split between the owner and its Constraint region; reused.
+        internal List<OriginRelationKoto>? FiledClauses { get; set; }
+
         internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal List<PendingOriginSlot> Pending { get; } = new(2);

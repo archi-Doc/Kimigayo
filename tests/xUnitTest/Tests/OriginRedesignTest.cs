@@ -9,6 +9,10 @@ namespace XunitTest;
 
 public class OriginRedesignTest
 {
+    private const string RegionPrelude = "contract Source\n    associate Item\ncontract Marker\nstruct Cursor {at}\n    Self is Source\n" +
+        "    associate Item is ref/i32 during at\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n" +
+        "public func main() => ()\n";
+
     [Theory]
     [InlineData("struct V<T> {source}\n    struct Inner\n        let value: ref/T during source")]
     [InlineData("func identity<T>(x: ref/T during s) -> ref/T during s => x")]
@@ -176,5 +180,56 @@ public class OriginRedesignTest
         Assert.True(
             bindingBytes <= AllocationMeasurement.MeasuredOperations * 288 && ownershipBytes == 0 && emissionBytes == 0,
             $"Binding: {bindingBytes}; ownership: {ownershipBytes}; emission: {emissionBytes}");
+    }
+
+    // SPEC 15.3.4 (DECISIONS BU-94): a set named in a Constraint belongs to exactly its Constraint region, in any order, for every
+    // region kind; a use outside the region (the signature, the body, a member) resolves nothing; a second {k} in one region is a
+    // duplicate, and two `when` lists are two regions. An unrelated or outlives-only set keeps MissingOriginBinding_Kd until G417 (3) U2
+    // quantifies it (the last two rows; the owner's 「(b) U2 を今実装する」).
+    [Theory]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    origin k.at == y\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "")]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    origin k.at == y\n    return 0", "")]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor during y).Item\n    return 0", "")]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    origin k.at == y\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    let z: ref/i32 during k.at = y\n    return 0", "InvalidOriginBinding_Kd")]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32, w: ref/i32 during k.at) -> i32\n    origin k.at == y\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "InvalidOriginBinding_Kd")]
+    [InlineData("struct Holder<T> {h}\n    origin k.at == h\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    public let w: ref/i32 during h", "")]
+    [InlineData("struct Holder<T> {h}\n    origin k.at == h\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    public let w: ref/i32 during k.at", "InvalidOriginBinding_Kd")]
+    [InlineData("enum Choice<T> {h}\n    origin k.at == h\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    One(ref/i32 during k.at)", "InvalidOriginBinding_Kd")]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    origin k.at outlives y\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "MissingOriginBinding_Kd")]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "InvalidConstraint_Kd InvalidConstraint_Kd MissingOriginBinding_Kd")]
+    public void ConstraintRegionsOwnTheirSets(string declaration, string codes)
+    {
+        var records = string.Join(' ', ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code));
+        Assert.Equal(codes, records);
+    }
+
+    [Theory]
+    [InlineData("func f<T, U>(value: ref/T, other: ref/U, y: ref/i32) -> i32\n    origin k.at == y\n    T is Source\n    U is Source\n    T.(Source).Item is (Cursor{k}).Item\n    U.(Source).Item is (Cursor{k}).Item\n    return 0", true)]
+    [InlineData("struct W<T> {w}\n    public let v: i32\n    Self is Source when T is (Cursor{k}).Item, T is (Cursor{k}).Item\n        associate Item is i32", true)]
+    [InlineData("struct W<T> {w}\n    public let v: i32\n    Self is Source when T is (Cursor{k}).Item\n        associate Item is i32\n    Self is Marker when T is (Cursor{k}).Item", false)]
+    [InlineData("struct W<T> {w}\n    origin k.at == w\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    public let v: i32\n    Self is Marker when T is (Cursor{k}).Item", false)]
+    public void ASetRepeatsOnlyWithinOneRegion(string declaration, bool duplicate)
+        => Assert.Equal(duplicate, ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Any(static x => x.Code == nameof(DiagnosticCode.DuplicateBinding_Kd)));
+
+    // SPEC 15.3.4 (DECISIONS BU-94): a region completes only its sets' slots, so an omitted Origin elsewhere in its Constraints keeps the
+    // position rule whether or not the region names a set, in either order, in a function and in a struct region.
+    [Theory]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    origin k.at == y\n    T is Source\nSET\nOMIT\n    return 0", false)]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    origin k.at == y\n    T is Source\nOMIT\nSET\n    return 0", false)]
+    [InlineData("struct Holder<T> {h}\n    origin k.at == h\n    T is Source\nSET\nOMIT\n    public let w: ref/i32 during h", true)]
+    [InlineData("struct Holder<T> {h}\n    origin k.at == h\n    T is Source\nOMIT\nSET\n    public let w: ref/i32 during h", true)]
+    public void ARegionCompletesOnlyItsOwnSlots(string declaration, bool container)
+    {
+        const string omitted = "    T.(Source).Item is ref/i32";
+        var withSet = Omitted(declaration.Replace("SET", "    T.(Source).Item is (Cursor{k}).Item", StringComparison.Ordinal));
+        var without = Omitted(declaration.Replace("SET\n", string.Empty, StringComparison.Ordinal).Replace(container ? "    origin k.at == h\n" : "    origin k.at == y\n", string.Empty, StringComparison.Ordinal));
+        Assert.Equal(without, withSet);
+
+        string Omitted(string text)
+        {
+            var source = RegionPrelude + text.Replace("OMIT", omitted, StringComparison.Ordinal) + "\n";
+            var line = source[..source.IndexOf(omitted, StringComparison.Ordinal)].Count(static x => x == '\n');
+            return string.Join(' ', ContextualCaptureTest.PublishedRecords(source).Where(x => source[..x.Span.Start].Count(static c => c == '\n') == line).Select(static x => x.Code));
+        }
     }
 }

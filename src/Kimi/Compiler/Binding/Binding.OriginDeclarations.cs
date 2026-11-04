@@ -11,12 +11,20 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, OriginDeclaration> originDeclarations = new(ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
+
+    // The anchors of this pass's set-bearing Constraint regions, filed after the collection loop (FileRegion).
+    private readonly List<Koto> regionAnchors = new();
     private OriginRewriteVisitor? originRewriteVisitor;
 
     private static Koto? OriginOwner(Koto node)
     {
         for (var current = node; current is not null; current = current.Parent)
         {
+            if (current is IsKoto { IsAssociatedConstraint: false } clause && RegionAnchor(clause) is { } anchor)
+            {
+                return anchor;
+            }
+
             if (current is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto or IsKoto { IsAssociatedConstraint: true } ||
                 current is VariableKoto || current.Akind is KotoKind.EnumCase or KotoKind.AssociatedType)
             {
@@ -27,6 +35,55 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    // SPEC 8.2.1, 15.3.4 (DECISIONS BU-94): the anchor of the Constraint region that holds a Constraint, the region's first Constraint.
+    // A body's leading region, a struct or enum fragment's leading Constraints and a function requirement's region list their Constraints
+    // on their owner, and a `when` list is one region; a Contract-wide clause is its own. Null for an IsKoto outside a region.
+    private static IsKoto? RegionAnchor(IsKoto clause)
+    {
+        switch (clause.Parent)
+        {
+            case ContractKoto contract:
+                return Holds(contract.ConstraintNodes, clause) ? clause : null;
+            case DeclarationContainerKoto container:
+                return Holds(container.ConstraintNodes, clause) ? container.ConstraintNodes[0] : null;
+            case FunctionKoto function:
+                return Holds(function.TypeConstraints, clause) ? (IsKoto)function.TypeConstraints[0] : null;
+            case SyntaxFormKoto { Parent: SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conformance } premises
+                when conformance.Operands.Length > 1 && ReferenceEquals(conformance.Operands[1], premises) && premises.Operands[0] is IsKoto first:
+                return first;
+            default:
+                return null;
+        }
+
+        static bool Holds<T>(IReadOnlyList<T> list, Koto item)
+            where T : Koto
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (ReferenceEquals(list[i], item))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    // SPEC 15.3.4 (DECISIONS BU-94): whether a use lies within one of a Constraint region's set occurrences.
+    private static bool WithinSet(Koto use, OriginDeclaration declaration)
+    {
+        for (var node = use; node is not null && !ReferenceEquals(node, declaration.Owner.Parent); node = node.Parent)
+        {
+            if (node is TypeSemanticsKoto { BindingSetName: { } name } && declaration.Sets.TryGetValue(name, out var set) && ReferenceEquals(set, node))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool OriginVisible(BoundOrigin origin, Koto use)
@@ -165,6 +222,10 @@ public sealed partial class Binding
                 {
                     this.Fail(annotation, BindingFailure.Duplicate);
                 }
+                else if (declaration.IsRegion && declaration.Sets.Count == 1)
+                {
+                    this.regionAnchors.Add(owner);
+                }
 
                 if (owner is VariableKoto and not PropertyKoto && owner.BoundSymbol is { } local)
                 {
@@ -200,6 +261,13 @@ public sealed partial class Binding
 
             Discover(expression, owner);
         }
+
+        for (var i = 0; i < this.regionAnchors.Count; i++)
+        {
+            this.FileRegion(this.originDeclarations[this.regionAnchors[i]]);
+        }
+
+        this.regionAnchors.Clear();
 
         static bool IsSignature(Koto node, FunctionKoto function)
         {
@@ -294,11 +362,11 @@ public sealed partial class Binding
             return null;
         }
 
-        (declaration.Scope, declaration.Body, declaration.State) = (scope, this.formingBody, 1);
+        (declaration.Scope, declaration.Body, declaration.State) = (declaration.HeldScope ?? scope, this.formingBody, 1);
         this.originStateVersion++;
         foreach (var entry in declaration.Sets)
         {
-            for (var current = scope; current is not null; current = current.Parent)
+            for (var current = declaration.Scope; current is not null; current = current.Parent)
             {
                 var scalar = current.Origins?.ContainsKey(entry.Key) == true;
                 var value = current.Values.TryGetValue(entry.Key, out var symbol) && symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
@@ -353,6 +421,12 @@ public sealed partial class Binding
             return null;
         }
 
+        // SPEC 15.3.4 (DECISIONS BU-94): a Constraint region completes only its sets' slots; any other omission keeps the position rule.
+        if (declaration.IsRegion && !WithinSet(use, declaration))
+        {
+            return null;
+        }
+
         for (var i = 0; i < declaration.Pending.Count; i++)
         {
             if (ReferenceEquals(declaration.Pending[i].Use, use) && declaration.Pending[i].Slot == slot)
@@ -364,6 +438,72 @@ public sealed partial class Binding
         var origin = this.OriginAtom(use, OriginKind.Unbound, slot);
         declaration.Pending.Add(new(use, scope, context, requirement, slot, origin, borrowCondition));
         return origin;
+    }
+
+    // SPEC 15.3.4 (DECISIONS BU-94): a set-bearing Constraint region rewrites its other Constraints, binds in its own scope under its
+    // owner's, and binds the relations of its owner that name one of its sets; the owner keeps the rest. Filed once per pass.
+    private void FileRegion(OriginDeclaration region)
+    {
+        var anchor = (IsKoto)region.Owner;
+        var owner = anchor.Parent is SyntaxFormKoto premises ? premises.Parent! : anchor.Parent!;
+        var members = region.Members ??= new();
+        switch (anchor.Parent)
+        {
+            case ContractKoto:
+                break;
+            case DeclarationContainerKoto container:
+                for (var i = 1; i < container.ConstraintNodes.Count; i++)
+                {
+                    members.Add(container.ConstraintNodes[i]);
+                }
+
+                break;
+            case FunctionKoto function:
+                for (var i = 1; i < function.TypeConstraints.Count; i++)
+                {
+                    members.Add(function.TypeConstraints[i]);
+                }
+
+                break;
+            case SyntaxFormKoto list:
+                for (var i = 1; i < list.Operands.Length; i++)
+                {
+                    members.Add(list.Operands[i]);
+                }
+
+                break;
+        }
+
+        if (this.scopes.GetValueOrDefault(owner) is { } parent)
+        {
+            AttachScope(region.HeldScope ??= new(anchor), parent);
+        }
+
+        if (this.originDeclarations.GetValueOrDefault(owner) is not { Clauses.Count: > 0 } header)
+        {
+            return;
+        }
+
+        var own = header.FiledClauses ??= new();
+        var moved = region.FiledClauses ??= new();
+        own.Clear();
+        moved.Clear();
+        foreach (var clause in header.Clauses)
+        {
+            (NamesSet(clause.Left) || NamesSet(clause.Right) ? moved : own).Add(clause);
+        }
+
+        (header.Clauses, region.Clauses) = (own, moved);
+
+        // §15.3.4 forbids a new set from hiding a visible name, so a name that matches a region set's label is that set.
+        bool NamesSet(Koto syntax) => syntax switch
+        {
+            IdentifierNameKoto name => region.Sets.ContainsKey(name.IdentifierName),
+            ParenthesizedKoto parentheses => NamesSet(parentheses.Operand),
+            MemberAccessKoto member => NamesSet(member.Left),
+            BinaryKoto binary => NamesSet(binary.Left) || NamesSet(binary.Right),
+            _ => false,
+        };
     }
 
     private BoundOrigin ResolveOrigin(BoundOrigin origin, OriginDeclaration declaration, int depth = 0)
