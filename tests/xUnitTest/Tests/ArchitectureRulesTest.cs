@@ -57,7 +57,7 @@ public class ArchitectureRulesTest
     // only by LegacyRecords, and direct calls of the old control-flow entries cannot grow. R6-check H5 (H0b §2.1, review B3): the old
     // analysis is read only through its transitional entry, AnalyzeLegacyOwnership (D3 deleted Compilation's property).
     [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", LegacyOwnership + @"(?:Analyze|Result|ReportDiagnostics)\b", 0)]
-    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 15)]
+    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 4)]
     [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 28)]
     [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 1)]
     [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 64)]

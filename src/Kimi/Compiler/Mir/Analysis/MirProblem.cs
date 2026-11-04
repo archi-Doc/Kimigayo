@@ -4,8 +4,8 @@
 // record (R6-check H3-1), and its Reason, the relation an Origin problem names (2a0-D D18, DECISIONS R4-M113); its related sites are
 // MirFact values (MirFact.cs).
 // Input: the values a recording rule gives: its code, the requirement it judged, its subject, the body it found it in, the Semantics case
-// views that have it and, for an Origin problem, its relation. Output: MirProblem values, which MirReport keeps (the Reason in its key) and
-// the difference ledger reads.
+// views that have it and, for an Origin problem, its relation. Output: MirProblem values, which MirReport keeps (the Reason in its key), Core's
+// publisher (`Compilation.Publication`) publishes and the test MIR side (`MirTargetSide.MirSide`) reads.
 // Invariants: a problem's requirement is the one its recording rule names (the Ownership partition's, or ControlFlow for A3, DIAGNOSTICS
 // rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows, and
 // the C1-F4 view's broken contracts, DECISIONS R4-M118) has NoBody, whose views name no body's cases (A4's codes take no case fact); a

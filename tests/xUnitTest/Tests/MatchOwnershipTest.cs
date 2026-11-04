@@ -139,18 +139,18 @@ public class MatchOwnershipTest
         Assert.Equal([local.Id, outer.PayloadStart + 1, inner.PayloadStart + 1], destroyed);
     }
 
+    // An arm that a warning covers still runs, so its Move joins the moved state: the later Move is the MIR's MovedPlace_Kd at `s`
+    // (H5, DECISIONS R5-M185), beside Binding's warning.
     [Fact]
     public void WarningCoveredArmParticipatesInMovedStateJoin()
     {
-        var c = Parse("func f(x: i32)\n    let s = \"text\"\n    match x\n        _\n            ()\n        0\n            _ = s@move\n    let again = s@move");
+        const string Source = "func f(x: i32)\n    let s = \"text\"\n    match x\n        _\n            ()\n        0\n            _ = s@move\n    let again = s@move";
+        var c = Parse(Source);
         Assert.Single(c.Binding.PatternWarnings);
         Assert.False(c.Analyze().IsVerified);
-        var body = Body(c);
-        var s = body.Places.Single(p => p.Source is FieldKoto f && f.NameKoto.IdentifierName == "s");
-        var use = body.Operations.Select((o, i) => (o, i)).Last(x => x.o.Kind == OwnershipOperationKind.Consume && x.o.Place == s.Id);
-        Assert.True((body.GetInputState(use.i, s.Id) & PlaceState.MayMoved) != 0);
-        Assert.All(body.MatchArms, arm => Assert.True(body.IsReachable(arm.Test)));
-        Assert.Contains(body.Issues, i => i.Failure == OwnershipRequirement.PossiblyMovedUse);
+        c.ReportAnalysis();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal((nameof(DiagnosticCode.MovedPlace_Kd), MirTargetSide.At("again = s@move", "s").Resolve(Source)), (record.Code, record.Span));
     }
 
     [Fact]

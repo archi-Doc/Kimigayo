@@ -34,8 +34,9 @@ internal static class MirTargetSide
         Assert.Equal(Rows(source, mir), Observed(MirSide(c)));
     }
 
-    /// <summary>Lists a compilation's MIR side (R6-check H10a D3, D4) after <see cref="Compilation.Analyze"/>, which it runs (a no-op on an
-    /// analyzed version): Binding's issues and HIR lint Error records in their order, without a twin (D4: an Origin relation record of a
+    /// <summary>Lists a compilation's MIR side (R6-check H10a D3, D4) after <see cref="Compilation.Analyze"/>, which it runs; Analyze
+    /// rebuilds and analyzes the MIR and clears the ControlFlow and Ownership partitions on every call, and it publishes nothing
+    /// (<see cref="Compilation.ReportAnalysis"/> does): Binding's issues and HIR lint Error records in their order, without a twin (D4: an Origin relation record of a
     /// node <see cref="Binding.IsTwinRecord"/> names, whose A5 row stands for it until H11), then <c>Compilation.Problems</c>' rows as the
     /// publisher has them, without a requirement: every merged problem of the MIR's report under its own code (construction and collection
     /// records, derived problems), then each validator finding as <c>InternalInvariant_Kd</c>. It never runs the old analysis.</summary>
