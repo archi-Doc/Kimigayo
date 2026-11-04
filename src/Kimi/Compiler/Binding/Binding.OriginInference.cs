@@ -36,6 +36,7 @@ public sealed partial class Binding
         inference.Bounds.Clear();
         inference.Variables.Clear();
         inference.WellFormed.Clear();
+        inference.PremiseSolved.Clear();
         inference.Comparison = default;
         inference.Source = default;
         return inference;
@@ -166,9 +167,10 @@ public sealed partial class Binding
 
                 // An input's well-formedness only shortens the meet of a covariant variable that other bounds already limit, where they do
                 // not prove it: an Origin that no argument bounds, such as a receiver Borrow formed later, stays open, and a redundant
-                // operand would make the solution name an Origin it does not depend on. A variable only a premise discovered (polarity 0,
-                // DiscoverPremiseOrigins; SPEC 15.3.6, DECISIONS BU-95) takes the meet of its premises' longer ends as its upper bound.
-                for (var i = 0; (upper is not null || variable.Polarity == 0) && variable.Polarity != 3 && i < inference.WellFormed.Count; i++)
+                // operand would make the solution name an Origin it does not depend on. An Origin that only positions without evidence
+                // name (PremiseSolved; SPEC 15.3.6, DECISIONS BU-95) takes the meet of its premises' longer ends as its upper bound, which
+                // its other bounds are then checked against.
+                for (var i = 0; (upper is not null || inference.PremiseSolved.Contains(variable.Origin)) && variable.Polarity != 3 && i < inference.WellFormed.Count; i++)
                 {
                     if (ReferenceEquals(inference.WellFormed[i].Shorter, variable.Origin) && Resolve(inference.WellFormed[i].Longer, true) is { } stored &&
                         (upper is null || !this.ProvesOriginOutlives(stored, upper, use, inference.Comparison)))
@@ -398,6 +400,11 @@ public sealed partial class Binding
 
         // SPEC 15.6.4 step 3: the relations of the call's inputs' well-formedness, each an upper limit of its shorter end only.
         internal List<(BoundOrigin Longer, BoundOrigin Shorter)> WellFormed { get; } = new();
+
+        // SPEC 15.3.6 (R2', DECISIONS BU-95): the callee's Origins that a position without evidence names and no evidence position's
+        // pattern does, which their premises solve (DiscoverPremiseOrigins, the one writer); empty for a solve without such positions.
+        // The first published "which position fixes this Origin" fact: U4's Decided column takes it over (its removal condition).
+        internal List<BoundOrigin> PremiseSolved { get; } = new();
 
         // The Callable comparison whose implementation the solve instantiates (ContractFits), whose premises its proofs assume; default
         // for a call's solve.

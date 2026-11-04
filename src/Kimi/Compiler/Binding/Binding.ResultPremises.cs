@@ -273,8 +273,8 @@ public sealed partial class Binding
 
     // R2' (SPEC 15.3.6; DECISIONS BU-95): a position that gives no evidence, a Signature leaf row or a default the call uses, makes each
     // Origin of the callee that its instantiated Type `type` names and no evidence position's pattern names (EvidenceNames) a variable of
-    // the solve with no evidence polarity (0), which its premise then bounds from above (SolveOriginInference's WellFormed step); an
-    // Origin that evidence fixes, also after this solve, keeps its polarity's rule.
+    // the solve, published as premise-solved (OriginInference.PremiseSolved): its premise then bounds it from above (SolveOriginInference's
+    // WellFormed step). An Origin that evidence names, also one it fixes after this solve, keeps the step's own rule.
     private void DiscoverPremiseOrigins(in SlotSolution solution, OriginInference inference, BoundType type)
     {
         if (!type.CarriesOrigin)
@@ -305,9 +305,11 @@ public sealed partial class Binding
                 DiscoverPremiseOrigin(solution, inference, origin.Operands[i]);
             }
 
-            if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, inference.Binder) && !EvidenceNames(solution, origin.Slot))
+            if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, inference.Binder) && !inference.PremiseSolved.Contains(origin) &&
+                !EvidenceNames(solution, origin.Slot))
             {
                 inference.Discover(origin, 0);
+                inference.PremiseSolved.Add(origin);
             }
         }
     }
@@ -548,7 +550,7 @@ public sealed partial class Binding
 
         // A pair layer of the pattern stores its slot whatever its substitution is; any other layer only beside the same shape.
         var shaped = pattern.Kind == result.Kind && pattern.Components.Count == result.Components.Count;
-        if (!pattern.StoresOrigin || pattern.Kind == BoundTypeKind.Function || (!shaped && !TryPairLayer(pattern, out _, out _)))
+        if (!result.StoresOrigin || pattern.Kind == BoundTypeKind.Function || (!shaped && !TryPairLayer(pattern, out _, out _)))
         {
             return true;
         }
