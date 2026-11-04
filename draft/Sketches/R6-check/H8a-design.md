@@ -236,3 +236,16 @@ files shrink, and the goldens are data.
     - The R5-M188 amendment and its back-references, the earlier "commit 5", are now commit 7.
     - "Commits 2–4 proceed" (OQ3) now reads "the other commits proceed".
   - Follow-up 5 is taken in commit 2, since H8a touches OwnershipStorageLimitTest.
+
+### R5's fixes after design review 2 (R4's re-check 1: REVISE, B4; WORKFLOW Review table: the planning session fixes the design)
+
+- **B4:** D10's MIR-dump comparison covers the 12 designator spellings only. `EnumOwnershipTest.RebindingChangedStorageInvalidatesTheSupportedTypeCache`
+  (`:229`) and `MatchOwnershipTest.ChangedPayloadStorageRebuildsMatchAndDecompositionPlans` (`:324`) keep their `AdtDef.CaseTypes`
+  assertions (NotSame, 2 cases, the new case's Ref and Static component: a Types fact, not the old analysis's); only their old-analysis
+  reads go (D1's scope: a read of `Bodies`, `Issues` or `LegacyRecords`, nothing else). Cause judged by R5: B2 left a MIR-observed rule
+  without a successor; B4 moved a non-old-analysis assertion into the wrong layer (a scope error against D1). Different causes, so
+  WORKFLOW's shared-cause stop does not apply.
+- **N11:** D10 names the `M/constructors` function that is the baseline (or pins its text). **N12:** the stripping helper sits beside
+  `MirDumpTest.Dump`. **N13:** §8's first block is superseded where the later rulings differ. **N14:** commit 6 may run as its own phase
+  under Q12 if the hour is short.
+- The implementation review (R4's reviewer, the same one) first checks B4 (WORKFLOW Repeated reviews 1).
