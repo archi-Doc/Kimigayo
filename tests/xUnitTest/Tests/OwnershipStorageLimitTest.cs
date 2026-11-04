@@ -32,11 +32,14 @@ public class OwnershipStorageLimitTest
         var path = Path.GetFullPath("ownership-storage.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        c.AnalyzeLegacyOwnership(); // The old analysis's full-size preparation (the ledger's Analyzed observer may have run it already).
         var previous = OwnershipStorage.ByteLimit;
         try
         {
-            // Repeat after full-size preparation: retained capacity must never bypass the logical limit.
+            // Repeat after full-size preparation: retained capacity must never bypass the logical limit. The legacy entry runs once per
+            // version, so each repeat invalidates it first.
             OwnershipStorage.ByteLimit = 4096;
+            c.InvalidateOwnership();
             Assert.Equal(!independent, c.Analyze().IsVerified);
             var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues, static x => x.Failure == OwnershipRequirement.StorageLimit);
             Assert.True(issue.RequiredBytes > 4096);
@@ -54,6 +57,7 @@ public class OwnershipStorageLimitTest
             var moved = (nameof(DiagnosticCode.MovedPlace_Kd), source.LastIndexOf("value", StringComparison.Ordinal), "value".Length);
             Assert.Equal(independent ? [moved] : [], result.Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
 
+            c.InvalidateOwnership();
             Assert.Equal(!independent, c.Analyze().IsVerified);
             Assert.Equal(issue, Assert.Single(c.AnalyzeLegacyOwnership().Issues, static x => x.Failure == OwnershipRequirement.StorageLimit));
         }
