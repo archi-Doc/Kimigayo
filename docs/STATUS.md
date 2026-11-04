@@ -64,7 +64,6 @@ Known defects are not safe rejection boundaries.
 | Object target variance | obj/objuniq View Target invariance is incomplete (P39). Direct obj targets still accept covariant `outlives` fits where equality is required. |
 | Retained exclusive children | G75 E6/E7 do not retain every child moved back out of placed elements/Fields or stored through a captured exclusive reference. Some conflicting programs are accepted. |
 | Contextual `.None` arguments | A contextually typed `.None` argument over the call's own Origins has its instantiated well-formedness judged at a direct or aggregate argument position and in a Case construction (G216 (a) U2.2, DECISIONS R4-M164; `j02`, `cx2`, `b01`, `b02`, `d09` are rejected), but not inside a join argument, root or nested (`jt1`, `mj1`, `jt2`, `mj2`, `kd`, `dn2`, `nn`, `nd`), nor as a child of a Result-position aggregate (`rb`, `mk2`, `c3a`): these are accepted, an unsound acceptance. A part's own fit records at the payload, not the argument (`js2`-`js5`, `dn2p`, `dl1`); an annotated construction's Function or aggregate payload (`wf`, `wt`) and a written qualifier's omitted Origin (`cx2q`: Unproven where Unsatisfied is due) differ from a call. PLAN G216's proposed common fix, G388-G392, G396. |
-| Never payloads | Binding rejects a read of a Never payload binding (`.Err(let e) => e` on `Result<i32, Never>`), as SPEC states it (G145 closed: the owner's option (a), 2026-11-03). |
 
 ## 4. LLVM Generation Coverage
 
