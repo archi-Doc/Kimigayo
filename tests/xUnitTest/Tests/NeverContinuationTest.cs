@@ -432,7 +432,7 @@ public class NeverContinuationTest
     }
 
     // SPEC 3.1.3: Never is Copy and Owned, so a Type storing it is Copy and Owned by its structure, and a bare read of a Place of such
-    // a Type is a Copy. The old path's Unsupported_Kd for every Place of a Type holding Never stays its only record until R6-check.
+    // a Type is a Copy. The MIR accepts every row (R6-check H5).
     [Theory]
     [InlineData("func f()\n    var t = (1, stop())\n", "t", 0)]
     [InlineData("func f()\n    let a: Option<Never> = .None\n", "a", 0)]
@@ -443,7 +443,7 @@ public class NeverContinuationTest
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);
         Assert.Empty(c.Binding.Issues);
-        Assert.All(LegacyRecords.Of(c).Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)), static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x));
+        Assert.Empty(c.Problems);
         HirTables.Publish(c);
         var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x.ToString() == place && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
         Assert.Equal(copies, reads.Length);
@@ -471,17 +471,18 @@ public class NeverContinuationTest
     }
 
     // SPEC 14.9.3, 14.10.3, 13.5.6: an explicit borrow of a Place of Type Never forms its Loan like any explicit borrow and supplies no
-    // normal completion, so a later Move of the Place is a Loan conflict on the assumed path.
+    // normal completion, so a later Move of the Place is a Loan conflict on the assumed path. `var y = x` supplies no value either
+    // (SPEC 14.10.3), so the exclusive borrows read an uninitialized `y`: the MIR's UninitializedPlace_Kd at the borrow (ledger row a1-c3).
     [Theory]
-    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@(ref/Never), x@move)\n", "x@(ref/Never)", true)]
-    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@ref, x@move)\n", "x@ref", true)]
-    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@(uniq/Never))\n", "y@(uniq/Never)", false)]
-    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@uniq)\n", "y@uniq", false)]
-    public void AnExplicitBorrowOfANeverPlaceFormsItsLoan(string source, string borrow, bool conflict)
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@(ref/Never), x@move)\n", "x@(ref/Never)", DiagnosticCode.ComparisonLoanConflict_Kd, "x@move", "x")]
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@ref, x@move)\n", "x@ref", DiagnosticCode.ComparisonLoanConflict_Kd, "x@move", "x")]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@(uniq/Never))\n", "y@(uniq/Never)", DiagnosticCode.UninitializedPlace_Kd, "y@(uniq/Never)", null)]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@uniq)\n", "y@uniq", DiagnosticCode.UninitializedPlace_Kd, "y@uniq", null)]
+    public void AnExplicitBorrowOfANeverPlaceFormsItsLoan(string source, string borrow, DiagnosticCode code, string at, string? subject)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal(conflict, MirTargetSide.MirSide(c).Any(static x => x.Code.IsLoanConflict()));
+        MirTargetSide.Check(c, (code, MirTargetSide.At(at, subject)));
         HirTables.Publish(c);
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(x => x.ToString() == borrow);
         Assert.Equal((HirOp.Borrow, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));

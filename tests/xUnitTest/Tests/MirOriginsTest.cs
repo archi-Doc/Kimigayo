@@ -244,24 +244,27 @@ public sealed partial class MirOriginsTest
         Assert.Empty(Origins(c));
     }
 
-    // audit-origins rows 7, 9c and 19 with their twins (2a0-D §10): the MIR's Origin problem of a body chain is the one Binding's twin or the
-    // old reporter records at the same site, so the ledger pairs them: an invariant `==` one direction of which the clause proves (row 7),
-    // a Reborrow through two exclusive layers and a stored exclusive reference's Reborrow into a fixed layer (row 9c's containment), and a
-    // local's Borrow through locals with no candidate, each a local region (row 19), returned or read into a local. The twins are the old
-    // path's records (LegacyRecords, until H10b): since the flip a compilation's Problems are the MIR's own (DECISIONS R5-M185; R6-check H5).
+    // audit-origins rows 7, 9c and 19 (2a0-D §10): the MIR's Origin problems of a body chain, at the sites where the old reporter recorded
+    // their twins: an invariant `==` one direction of which the clause proves (row 7), a Reborrow through two exclusive layers and a stored
+    // exclusive reference's Reborrow into a fixed layer (row 9c's containment), and a local's Borrow through locals with no candidate, a
+    // local region (row 19), returned. With the old reporter gone (R6-check H8a D4) the rows pin the MIR's lines.
     [Theory]
-    [InlineData(R7Inv)]
-    [InlineData(Layers)]
-    [InlineData("func f(p: uniq/(uniq/i32 during a)) -> ()\n    var local: i32 = 1\n    var r = local@uniq\n    p@follow = r\n")]
-    [InlineData("func f(y: ref/i32) -> Option<ref/i32 during y>\n    let l = 1\n    let a: Option<ref/i32> = .Some(l@ref)\n" +
-        "    let b: Option<ref/i32> = a\n    return b\n")]
-    [InlineData("func f(y: ref/i32) -> ref/i32 during y\n    let l = 1\n    var a: ref/i32 = y\n    a = l@ref\n    let b: ref/i32 = a\n    return b\n")]
-    public void AnAuditRowsChainPairsItsTwin(string source)
+    [InlineData(R7Inv, "UnprovenOriginRelation_Kd let z: uniq/(ref/i32 during a) = y; UnprovenOriginRelation_Kd uniq/(ref/i32 during a)")]
+    [InlineData(Layers, "UnsatisfiedOriginRelation_Kd rr@follow@follow@ref; UnsatisfiedOriginRelation_Kd rr@follow@follow@ref")]
+    [InlineData("func f(p: uniq/(uniq/i32 during a)) -> ()\n    var local: i32 = 1\n    var r = local@uniq\n    p@follow = r\n", "UnsatisfiedOriginRelation_Kd r")]
+    [InlineData("func f(y: ref/i32) -> ref/i32 during y\n    let l = 1\n    var a: ref/i32 = y\n    a = l@ref\n    let b: ref/i32 = a\n    return b\n", "UnsatisfiedOriginRelation_Kd b")]
+    public void AnAuditRowsChainHasItsOriginProblems(string source, string origins)
+        => Assert.Equal(origins, string.Join("; ", Origins(MirBuildTest.Compile(source + Main)).Order(StringComparer.Ordinal)));
+
+    // audit-origins row 19 read into a local Option: the MIR's Origin problem is the one Binding's twin records at the same site, so the
+    // ledger paired them (DECISIONS R4-M108; H11 removes the twins).
+    [Fact]
+    public void AnAuditRowsChainPairsBindingsTwin()
     {
-        var c = MirBuildTest.Compile(source + Main);
-        var old = MinimalEmissionTest.Analyze(source + Main, "Program.kimi");
+        var c = MirBuildTest.Compile("func f(y: ref/i32) -> Option<ref/i32 during y>\n    let l = 1\n    let a: Option<ref/i32> = .Some(l@ref)\n" +
+            "    let b: Option<ref/i32> = a\n    return b\n" + Main);
         var codes = new[] { DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.UnprovenOriginRelation_Kd };
-        string[] twins = [.. LegacyRecords.Of(old).Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {x.Node.ToString()!.Split('\n')[0].Trim()}")];
+        string[] twins = [.. c.Binding.Issues.Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {x.Node.ToString()!.Split('\n')[0].Trim()}")];
         Assert.NotEmpty(twins);
         Assert.Equal(twins.Order(StringComparer.Ordinal), Origins(c).Order(StringComparer.Ordinal));
     }

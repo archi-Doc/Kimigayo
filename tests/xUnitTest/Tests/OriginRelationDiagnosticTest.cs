@@ -325,7 +325,8 @@ public partial class OriginRelationDiagnosticTest
     public void ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence(string body, string written, string premise, string text, params string[] relations)
     {
         var source = body + Main;
-        var record = Assert.Single(LegacyRecords.Of(MinimalEmissionTest.Analyze(source))); // A meet's further operands are published with it.
+        // A meet's further operands are published with it; A5 records no twin, since a declaration's relation has no body row (BU-26).
+        var record = Assert.Single(MirTargetSide.MirSide(MinimalEmissionTest.Analyze(source)));
         Assert.Equal(DiagnosticRequirement.Binding(BindingFailure.OriginRelation), record.Requirement);
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal(relations.Select(static x => $"requires {x}, which is not proven"), errors.Select(static x => x.Label));
