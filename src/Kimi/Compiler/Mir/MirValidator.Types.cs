@@ -9,7 +9,8 @@ namespace Kimi.Compiler.Mir;
 //   make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
 //   Adapts); every Semantics case view resolves each Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule
 //   1's (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
-// - Inputs: an rvalue whose arity holds, with its destination's Type; operands and their Places; the body's case views (MirCases).
+// - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
+//   and their Places; the body's case views (MirCases).
 // - Outputs: Type, Operation and SharedPath findings; the case sites for Views (caseSites: the Adapts whose Places and token are in range
 //   and the PairAcquire Uses whose Place is); the unknown mask Unknown gives the checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
@@ -161,24 +162,10 @@ internal sealed partial class MirValidator
             }
         }
 
-        // The Type of an aggregate's operand, as the Place it initializes projects it: a Tuple's element, a Closure's capture, a struct's base
-        // then its own Fields, a Case's payload, a fixed array's, a Fill's or an Array's element.
-        private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
-        {
-            MirAggregateKind.FixedArray or MirAggregateKind.Fill or MirAggregateKind.Array => rvalue.Type!.Components[0],
-            MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
-                body.ProjectedType(
-                    rvalue.Type,
-                    MirProjectionKind.Downcast,
-                    rvalue.Arg),
-                MirProjectionKind.Field,
-                index),
-            MirAggregateKind.Adt when AdtDef.Base(rvalue.Type!) is { } parent => index == 0 ? parent : body.ProjectedType(
-                rvalue.Type,
-                MirProjectionKind.Field,
-                index - 1),
-            _ => body.ProjectedType(rvalue.Type, MirProjectionKind.Field, index),
-        };
+        // The Type of an aggregate's operand, as its shape (Shape) gives it: its element, or the base, then the Fields of its parts.
+        private readonly BoundType? Component(in AggregateShape shape, int index) => shape.Element ?? (shape.Base is null
+            ? body.ProjectedType(shape.Parts, MirProjectionKind.Field, index)
+            : index == 0 ? shape.Base : body.ProjectedType(shape.Parts, MirProjectionKind.Field, index - 1));
 
         // SPEC 8.14: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
         // into its target Type. A Place or a constant out of range is the walk's finding.
@@ -242,9 +229,13 @@ internal sealed partial class MirValidator
                 caseSites.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
             }
 
-            for (var i = 0; rvalue.Kind == MirRvalueKind.Aggregate && i < operands.Length; i++)
+            if (rvalue.Kind == MirRvalueKind.Aggregate)
             {
-                this.Agree(this.Component(rvalue, i), this.TypeOf(operands[i]));
+                var shape = Shape(rvalue); // Its Count is the operands' (Rvalue's Arity).
+                for (var i = 0; i < operands.Length; i++)
+                {
+                    this.Agree(this.Component(shape, i), this.TypeOf(operands[i]));
+                }
             }
         }
     }

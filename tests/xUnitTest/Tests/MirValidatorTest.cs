@@ -163,7 +163,8 @@ public sealed class MirValidatorTest
     }
 
     // The Type tier (MirTypes.Agree, modulo Origins): each form it checks, broken alone, is a finding of its rule at the syntax that breaks
-    // it: an Assign's rvalue, an aggregate's operand, a call's argument (the receiver first, a default template's shared references) and
+    // it: an Assign's rvalue, an aggregate's operand (a Tuple's element, a struct's base, a Case's payload element, a Closure's capture:
+    // each row of the aggregate's shape), a call's argument (the receiver first, a default template's shared references) and
     // result, a Value callee's argument and _0 at a Return disagreeing with their Types; an operator's operands, a shift count, a raw
     // pointer's displacement, a comparison's operands below their layers, a Cast, a Ref, an object upcast and a branch's operand that their
     // kind does not admit; an Adapt whose operand is no by-value acquisition, whose source token is not its operand's Type, that a case
@@ -179,6 +180,9 @@ public sealed class MirValidatorTest
     [Theory]
     [InlineData("assign", "Type")]
     [InlineData("component", "Type")]
+    [InlineData("base", "Type")]
+    [InlineData("case", "Type")]
+    [InlineData("capture", "Type")]
     [InlineData("argument", "Type")]
     [InlineData("receiver", "Type")]
     [InlineData("result", "Type")]
@@ -1214,8 +1218,10 @@ public sealed class MirValidatorTest
         Assign(a, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Move(never), one), false));
         Assign(pair, MirRvalue.Aggregate(MirAggregateKind.Tuple, Operands(MirOperand.Move(never), yes), 2, tuple));
         Assign(view, MirRvalue.Use(Operands(MirOperand.Copy(broken == "never" ? nowhere : view))), "never");
-        Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(MirOperand.Move(parent), one, yes), 3, types.Point));
-        Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));
+        Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(broken == "base" ? one : MirOperand.Move(parent), one, yes), 3, types.Point), "base");
+        Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, broken == "case" ? yes : one), 2, types.Shape, 1), "case");
+        var closure = c.Types.Intern(BoundTypeKind.Closure, types.Function, SemanticsKind.Owner, [BoundType.I32]);
+        Assign(Local(closure), MirRvalue.Aggregate(MirAggregateKind.Closure, Operands(broken == "capture" ? yes : one), 1, closure), "capture");
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(one, one, one), 3, types.Array));
         Assign(index, MirRvalue.Len(array));
         Assign(index, MirRvalue.Discriminant(shape));

@@ -4,18 +4,24 @@ namespace Kimi.Compiler.Mir;
 
 // Rvalues and operands (plan 5.4).
 // - Responsibility: an rvalue's kind row, operand range, marked Use (a PairAcquire's only, A3 E13 (4)), Opaque site and arity by its
-//   kind and Type (Rvalue, Arity), a Discriminant's enum Place and a Len's sequence Place (IsSequence); and each operand MirUses
-//   reports (Operand): its kind row, a constant in range, a PairAcquire only as a marked Use's whole rvalue and of its Place's pair
-//   binder, a function item constant only as an Assign's Use (G154), and a Copy, but a case site's (Views), only of a Type Binding
-//   proves Copy under the body definition's premises (its TyCtxt.Copies; DECISIONS BU-88).
+//   kind and Type (Rvalue, Arity), an aggregate's by its shape, the one rule of its operand count and each operand's Type (Shape), a
+//   Discriminant's enum Place and a Len's sequence Place (IsSequence); and each operand MirUses reports (Operand): its kind row, a
+//   constant in range, a PairAcquire only as a marked Use's whole rvalue and of its Place's pair binder, a function item constant only
+//   as an Assign's Use (G154), and a Copy, but a case site's (Views), only of a Type Binding proves Copy under the body definition's
+//   premises (its TyCtxt.Copies; DECISIONS BU-88).
 // - Inputs: an Assign's rvalue with its destination's Type; each location's operands, with the positions Statement marks.
 // - Outputs: UnknownKind, OperandRange, Operation, Opaque, Arity, Discriminant, Len, Const and Binder findings; each Opaque value
-//   counted for Finish; an rvalue whose arity holds goes to the Type tier (MirValidator.Types).
+//   counted for Finish; an rvalue whose arity holds goes to the Type tier (MirValidator.Types), which reads an aggregate's shape.
 // - Invariants: Rvalue returns false when its operands or its Opaque site are out of range, which MirUses then does not walk.
 // - Prohibitions: no Type agreement (MirValidator.Types), no Call rule (MirValidator.Calls) and no proof of its own: a Copy reads
 //   Binding's.
 internal sealed partial class MirValidator
 {
+    // An aggregate's shape (Shape): Count operands, -1 when its kind and Type disagree, each initializing, as the Place it initializes
+    // projects it, Element (a fixed array's, a Fill's or an Array's), or else the struct's Base first, then the Fields of Parts in order
+    // (a Tuple's elements, a Closure's captures, a struct's own Fields, a Case's payload Tuple's elements).
+    private readonly record struct AggregateShape(int Count, BoundType? Element = null, BoundType? Base = null, BoundType? Parts = null);
+
     private partial struct Checker
     {
         public void Operand(in MirOperand operand)
@@ -58,32 +64,40 @@ internal sealed partial class MirValidator
             => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 ReferenceEquals(type, BoundType.String);
 
-        // The operands an rvalue has: one or two, as many as its Type's elements, Fields (the base first) or Case payload, or captures; -1
-        // when an aggregate's kind and Type disagree. A fixed array built from no operand stores no element (SPEC 4.3.4 noinit), the only
-        // count at a generic length, and a Fill has its one value (SPEC 4.3.3, DECISIONS R4-M81); an Array has any number of elements, none
-        // for `[]`, and a Dictionary is built from none, the empty collection (SPEC 4.3.1, 12.4.1; DECISIONS R5-M129).
-        private static int Arity(in MirRvalue rvalue)
+        // The operands an rvalue has: one or two, or an aggregate's by its shape (Shape); none for the other kinds.
+        private static int Arity(in MirRvalue rvalue) => rvalue.Kind switch
+        {
+            MirRvalueKind.Use or MirRvalueKind.UnaryOp or MirRvalueKind.Cast => 1,
+            MirRvalueKind.BinaryOp or MirRvalueKind.Adapt => 2,
+            MirRvalueKind.Aggregate => Shape(rvalue).Count,
+            _ => 0,
+        };
+
+        // An aggregate's shape by its kind and Type, the one rule its arity and its operands' Types read: as many operands as its Type's
+        // elements, Fields (the base first) or Case payload elements, or captures, -1 when its kind and Type disagree. A fixed array built
+        // from no operand stores no element (SPEC 4.3.4 noinit), the only count at a generic length, and a Fill has its one value (SPEC
+        // 4.3.3, DECISIONS R4-M81); an Array has any number of elements, none for `[]`, and a Dictionary is built from none, the empty
+        // collection (SPEC 4.3.1, 12.4.1; DECISIONS R5-M129).
+        private static AggregateShape Shape(in MirRvalue rvalue)
         {
             var type = rvalue.Type;
-            return rvalue.Kind switch
+            return (MirAggregateKind)rvalue.Op switch
             {
-                MirRvalueKind.Use or MirRvalueKind.UnaryOp or MirRvalueKind.Cast => 1,
-                MirRvalueKind.BinaryOp or MirRvalueKind.Adapt => 2,
-                MirRvalueKind.Aggregate => (MirAggregateKind)rvalue.Op switch
-                {
-                    MirAggregateKind.Tuple when type?.Kind == BoundTypeKind.Tuple => type.Components.Count,
-                    MirAggregateKind.Closure when type?.Kind == BoundTypeKind.Closure => type.Components.Count,
-                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => rvalue.Count == 0 || type.LengthExpression is not null
-                        ? 0 : (int)type.Length,
-                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.Dictionary => 0,
-                    MirAggregateKind.Array when type?.Kind == BoundTypeKind.Array => rvalue.Count,
-                    MirAggregateKind.Fill when type?.Kind == BoundTypeKind.FixedArray => 1,
-                    MirAggregateKind.Adt when AdtDef.IsStruct(type) => AdtDef.Count(type!) + (AdtDef.Base(type!) is null ? 0 : 1),
-                    MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length &&
-                        cases[rvalue.Arg] is { } payload ? payload.Components.Count : -1,
-                    _ => -1,
-                },
-                _ => 0,
+                MirAggregateKind.Tuple when type?.Kind == BoundTypeKind.Tuple => new(type.Components.Count, Parts: type),
+                MirAggregateKind.Closure when type?.Kind == BoundTypeKind.Closure => new(type.Components.Count, Parts: type),
+                MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => new(
+                    rvalue.Count == 0 || type.LengthExpression is not null ? 0 : (int)type.Length,
+                    type.Components[0]),
+                MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.Dictionary => new(0),
+                MirAggregateKind.Array when type?.Kind == BoundTypeKind.Array => new(rvalue.Count, type.Components[0]),
+                MirAggregateKind.Fill when type?.Kind == BoundTypeKind.FixedArray => new(1, type.Components[0]),
+                MirAggregateKind.Adt when AdtDef.IsStruct(type) && AdtDef.Base(type!) is var parent => new(
+                    AdtDef.Count(type!) + (parent is null ? 0 : 1),
+                    Base: parent,
+                    Parts: type),
+                MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length &&
+                    cases[rvalue.Arg] is { } payload ? new(payload.Components.Count, Parts: payload) : new(-1),
+                _ => new(-1),
             };
         }
 
