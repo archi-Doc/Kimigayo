@@ -564,8 +564,9 @@ public sealed partial class MirBorrowsTest
 
     // R-a: a copy that only inspects its slots adds nothing at its omitting call (SPEC 7.2.3): ReceiverDefaultTest's ReservedMethod (round
     // 19's dc-reserved-inspect: a method call on the reserved input), the 1c design's fe (a read through the reserved slot), a temporary
-    // with a `drop` holding an inspection Loan of the exclusive slot (fg; the copy's temporaries end before callee entry, R4-M134 F2), and
-    // the omissions of p13's fb and DefaultAccessTest's fa, whose templates' Access is the one record (R4-M98).
+    // with a `drop` holding an inspection Loan of the exclusive slot or of the reserved receiver's Field (fg, Tally.g; the copy's
+    // temporaries end before callee entry, R4-M134 F2), and the omissions of p13's fb and DefaultAccessTest's fa, whose templates'
+    // Access is the one record (R4-M98).
     [Fact]
     public void AnInspectingCopyAddsNothingAtItsCall()
         => Assert.Equal(
@@ -578,6 +579,9 @@ public sealed partial class MirBorrowsTest
                     public func get(self: ref/Self) -> i32 => 0
                     drop => ()
                 func fg(x: uniq/i32, k: i32 = Guard.init(x@ref).get()) => ()
+                struct Tally
+                    public var n: i32 = 0
+                    public func g(self: uniq/Self, k: i32 = Guard.init(self.n@ref).get()) => self.n = k
                 func fb(x: uniq/i32, y: i32 = label work: do
                     x@follow = 9
                     exit to work 1
@@ -595,6 +599,9 @@ public sealed partial class MirBorrowsTest
                 func pg()
                     var m = 1
                     fg(m@uniq)
+                func tallied()
+                    var tally = Tally.init()
+                    tally.g()
                 func p13()
                     var n = 3
                     fb(n@uniq)

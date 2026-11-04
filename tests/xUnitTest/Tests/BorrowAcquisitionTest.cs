@@ -138,8 +138,8 @@ public class BorrowAcquisitionTest
     // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
     // through `ref` in the uniq case, an owned `q` at `uniq/i32`) whose Origin also misfits has both records, each twin one of them; a
     // misfit only in Origins is the relation at the payload, a structural one the construction's mismatch with no acquisition record.
-    // A value call's Origin relation at an argument Binding rejects is not published beside the rejection (DECISIONS BU-45). Each row:
-    // Binding's errors.
+    // A value call's Origin relation at an argument Binding rejects is not judged, so its independent record is lost beside the
+    // rejection (`g(x@follow)`'s row), a limit until PLAN G421 (DECISIONS BU-45). Each row: Binding's errors.
     [Theory]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
     [InlineData("x: ref/(s/T during a) during b", "s is ref", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]

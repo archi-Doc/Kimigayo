@@ -16,9 +16,7 @@ public class LoanFieldTest
 
     private const string Phantom = "struct View {source}\n    Self is Copy\n    let length: isize\n    public init(target: ref/i32 during source) => self.length = 0\n";
 
-    private const string HolderReadK = PairAnnotationBindingTest.HolderOwnerUniq + "func make(r: uniq/i32, k: ref/i32) -> Holder<uniq/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<uniq/i32 during q>) => ()\n";
-
-    private const string ConcreteReadK = "struct Holder {a}\n    public let item: uniq/i32 during a\nfunc make(r: uniq/i32, k: ref/i32) -> Holder during k => $abort(\"x\")\nfunc use(h: ref/Holder) => ()\n";
+    private const string UniqSlotSharedK = PairAnnotationBindingTest.HolderOwnerUniq + "func make(r: uniq/i32, k: ref/i32) -> Holder<uniq/i32 during r> during k => $abort(\"x\")\nfunc use(h: ref/Holder<uniq/i32 during q>) => ()\n";
 
     [Theory]
     [InlineData("Loan<i32>")]
@@ -78,12 +76,11 @@ public class LoanFieldTest
         }
     }
 
-    // SPEC 15.3.5, 15.6 (DECISIONS BU-44; on the default pipeline the owner's D5 exception of 2026-10-26): a holder keeps the Loan of a
-    // slot only a conditional pair slot uses as its instance's case requires it: none in an owner case, also of `s is owner` and of a
-    // nested `Inner<i32>`, so `y` is written while `h` is live; shared in a `ref` case, which a write conflicts with, and exclusive in a
-    // `uniq` case, which a read conflicts with, `s is uniq`'s included. A `uniq` slot keeps its own argument's Loan only, so with
-    // `k: ref/i32` the holder keeps `y`'s shared Loan: a read of `y` while `h` is live is accepted and a write conflicts, through a
-    // conditional slot's `uniq` case as through a concrete `uniq/i32` Field.
+    // SPEC 15.3.5, 15.6 (DECISIONS BU-44): a holder keeps the Loan of a slot only a conditional pair slot uses as its instance's case
+    // requires it: none in an owner case, also of `s is owner` and of a nested `Inner<i32>`, so `y` is written while `h` is live; shared
+    // in a `ref` case, which a write conflicts with, and exclusive in a `uniq` case, which a read conflicts with, `s is uniq`'s included.
+    // The `uniq` case keeps its own argument's Loan only, so with `k: ref/i32` the holder keeps `y`'s shared Loan: a read of `y` while `h`
+    // is live is accepted and a write conflicts.
     [Theory]
     [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "func make(r: ref/i32) -> Holder<i32> during r => $abort(\"x\")\nfunc use(h: ref/Holder<i32>) => ()\n", "y@ref", "y = 3", null)]
     [InlineData("struct V<s/T> {a}\n    s is owner\n    public let item: s/T during a\nfunc make(k: ref/i32) -> V<i32> during k => $abort(\"x\")\nfunc use(h: ref/V<i32>) => ()\n", "y@ref", "y = 3", null)]
@@ -112,15 +109,22 @@ public class LoanFieldTest
         "x@uniq, y@uniq",
         "let z = y",
         nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    [InlineData(HolderReadK, "x@uniq, y@ref", "let z = y", null)]
-    [InlineData(HolderReadK, "x@uniq, y@ref", "y = 3", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    [InlineData(ConcreteReadK, "x@uniq, y@ref", "let z = y", null)]
-    [InlineData(ConcreteReadK, "x@uniq, y@ref", "y = 3", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData(UniqSlotSharedK, "x@uniq, y@ref", "let z = y", null)]
+    [InlineData(UniqSlotSharedK, "x@uniq, y@ref", "y = 3", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
     public void AConditionalSlotKeepsTheLoanOfItsCase(string declarations, string arguments, string access, string? code)
-    {
-        var source = declarations + $"func run() -> i32\n    var x: i32 = 0\n    var y: i32 = 1\n    let h = make({arguments})\n    {access}\n    use(h@ref)\n    return x + y\npublic func main() => ()\n";
-        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
-    }
+        => AssertLoans(declarations, arguments, access, code);
+
+    // SPEC 15.3.5, 15.6: a concrete `uniq/i32` Field keeps its own argument's Loan only, so with `k: ref/i32` the holder keeps `y`'s
+    // shared Loan, as the conditional slot's `uniq` case does: a read of `y` while `h` is live is accepted and a write conflicts.
+    [Theory]
+    [InlineData("let z = y", null)]
+    [InlineData("y = 3", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AUniqFieldKeepsOnlyItsOwnArgumentsLoan(string access, string? code)
+        => AssertLoans(
+            "struct Holder {a}\n    public let item: uniq/i32 during a\nfunc make(r: uniq/i32, k: ref/i32) -> Holder during k => $abort(\"x\")\nfunc use(h: ref/Holder) => ()\n",
+            "x@uniq, y@ref",
+            access,
+            code);
 
     // A covariant view keeps a raw/() address beside its Loan Field and converts the address just before an access.
     [Fact]
@@ -144,5 +148,12 @@ public class LoanFieldTest
             Console.writeLine("windowed")
             """;
         ScalarEmissionTest.EmitFixture("LoanFieldWindow", source, "windowed\n");
+    }
+
+    // The published codes of `run`, which makes a holder `h` from `x` and `y`, accesses `y` while `h` is live and then uses `h`.
+    private static void AssertLoans(string declarations, string arguments, string access, string? code)
+    {
+        var source = declarations + $"func run() -> i32\n    var x: i32 = 0\n    var y: i32 = 1\n    let h = make({arguments})\n    {access}\n    use(h@ref)\n    return x + y\npublic func main() => ()\n";
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 }
