@@ -4241,7 +4241,7 @@ Separator:
                 return ParseJumpExpression(ref reader);
 
             case TokenKind.OpenParenthesis:
-                return IsBoundContainerQualifier(ref reader)
+                return IsBoundContainerQualifier(ref reader, out var borrowOrigin) && !borrowOrigin
                     ? ParseDeclarationType(ref reader, parseFunctionType: false, parseContainerSuffix: false)
                     : ParseParenthesizedExpression(ref reader);
 
@@ -4647,6 +4647,8 @@ Separator:
         var parameterList = false;
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
         {
+            // SPEC F.5: only a BoundContainerQualifier takes a PathSuffix .Name.
+            var qualifier = parseContainerSuffix && IsBoundContainerQualifier(ref reader, out _);
             var openRange = reader.CurrentTokenRange;
             reader.Advance();
 
@@ -4689,8 +4691,9 @@ Separator:
             }
 
             parameterList = true;
-            if (parseContainerSuffix && reader.CurrentTokenKind == TokenKind.Dot)
+            if (qualifier || (parseContainerSuffix && reader.CurrentTokenKind == TokenKind.Dot && reader.PeekKind() == TokenKind.OpenParenthesis))
             {
+                // A Contract-qualified projection .(C).Name takes any grouped base (SPEC 8.5.2: the base may be a Core).
                 type = ParseGroupedContainerSuffix(ref reader, type);
                 parameterList = false;
             }

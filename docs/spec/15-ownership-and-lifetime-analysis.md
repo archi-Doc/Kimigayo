@@ -273,7 +273,7 @@ func peek<T>(value: ref/T, y: ref/i32) -> i32
 
 func start(r: ref/i32) -> i32
     let c: Cursor during r = Cursor.init(r)      // The body's form of a fixed slot.
-    // let d = (Cursor during r).init(r)          // Error: an expression qualifier takes only a binding set.
+    // let d = (Cursor during r).init(r)         // Error: an expression qualifier takes only a binding set.
     return 0
 ```
 
