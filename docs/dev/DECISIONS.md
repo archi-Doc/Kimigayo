@@ -5317,6 +5317,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     rows pass. Open (PLAN G264): `insertOrReplace`'s unused key is composed one level lower than an exact receiver; removeAllWriteBad (a
     callback's store through its captures, no destruction) stays Explicit.
   - Numbering: R4-M150 was reserved for G264's R4 side.
+  - S2 (2026-11-04, G264 (S); the owner, verbatim 「(e) に加えて S2 着地 (推奨)」 and 「(a) 加えて着地」 under 「両方その方針で」 (O-9):
+    S2 lands without GXS): A4 and A5 compose an abstract part's erased destruction at Drop sites and destruction calls, and read one
+    `Sealed` predicate, `MirTypes.SealedPayload` (a handle's View Target where Binding proves it Sealed, else an erased destruction
+    Copy does not empty; SPEC 16.3.3). Its SPEC-valid rejections are H5's (e) rows: count<S> (spec case 15.6.4-abstract-reach/0's
+    `Mir` entry, MirCensusTest's spec census, MirBorrowsTest.TheGuardReadsEachPart), BlockEscapeLoanTest's show<C> x2, the 17 ForKoto
+    ledger programs and UserArithmeticUpdateTest.GenericUpdateRetainsThePublishedContract (778c6e6ebc84, `value += value`; passes
+    while the old path publishes). Cause: the lent item's composed erased destruction stores next()'s Loan on the iterator (or the
+    result's Loan on `value`) into that holder, a self-row. PLAN G416 (the holdings fact) restores them.
 - **R4-M151 A5's `Past` reads an Origin-less raw layer by Binding's statement mark (U0's revision; supersedes R4-M147's P2 bullet and
   its Known limits' supplied-layer gap, and R4-M120's outside-instance pointee for layers a declaration writes)** (2026-10-27; the R4
   planning session; implemented in BU's U0 revision commit beside DECISIONS BU-46; design-U0r-1r1 with design 2's findings, R4's design
@@ -6521,6 +6529,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     writerExclOk (an erased `uniq/Self` call taking `m@uniq` of a local raw pointer: the uniq Loan is kept as the input's own value) and
     writerPairOk (a by-value Tuple holding a `ref` beside a raw pointer). tiedExclOk, tiedExclOk2 and tiedPairOk2 err on dev too (their
     records move). BU's A2, which would remove the first shape, waits for the owner's GO. The ledger's corpus holds neither shape.
+  - S2 (2026-11-04, G264 (S); the owner's O-9, S2 lands without GXS): an abstract part's erased destruction is composed and reaches
+    what this rule lets it write; A4 and A5 share `MirTypes.SealedPayload`. count<S> stays valid by this rule, yet A5 errs at its
+    `for` (`$for.iterator`, `for _ in items`) until PLAN G416: the lent item's composed destruction passes the item by next()'s
+    exclusive Loan on the iterator (route (1)) and stores that Loan into the iterator, a self-row; an (e) row (R4-M150's S2 line).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
