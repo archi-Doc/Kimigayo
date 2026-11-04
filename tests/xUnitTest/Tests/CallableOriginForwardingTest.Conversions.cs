@@ -124,6 +124,50 @@ public partial class CallableOriginForwardingTest
 
     private const string FlatApply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\n";
 
+    private const string InnerHead = "func k(a: ref/i32, w: ref/(ref/i32 during b)) -> i32\n";
+
+    private const string BOutlivesA = "    origin b outlives a\n";
+
+    private const string BothWays = BOutlivesA + "    origin a outlives b\n";
+
+    private const string InnerClosure = "func [] (p: ref/(ref/i32 during a)) -> i32 => p@follow@follow";
+
+    private const string InnerLet = "    let f: (ref/(ref/i32 during b)) -> i32 = " + InnerClosure + "\n    return f(w)\n";
+
+    private const string UniqHead = "func k(a: ref/i32, w: ref/(uniq/i32 during b)) -> i32\n";
+
+    private const string UniqClosure = "func [] (p: ref/(uniq/i32 during a)) -> i32 => p@follow@follow";
+
+    private const string UniqLet = "    let f: (ref/(uniq/i32 during b)) -> i32 = " + UniqClosure + "\n    return f(w)\n";
+
+    private const string OuterClosure = "func [] (p: ref/i32 during a) -> i32 => p@follow";
+
+    private const string OuterHead = "func k(a: ref/i32, w: ref/i32 during b) -> i32\n";
+
+    private const string OuterLet = "    let f: (ref/i32 during b) -> i32 = " + OuterClosure + "\n    return f(w)\n";
+
+    private const string ValueRun = "func run<T>(f: (T) -> i32, s: T) -> i32\n    return f(s@move)\n";
+
+    private const string CallableHolder = "struct H<F, T>\n    F is Callable<(T) -> i32>\n    public init() => ()\n";
+
+    private const string InnerHolder = "    let o: Option<H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>> = .None\n    return 0\n";
+
+    private const string NestedT = "struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n" +
+        "    public init(x: ref/i32 during a) => self.x = x\n\n";
+
+    private const string NestedClauseHead = NestedT + "func k(q: ref/i32, f: (() -> Option<T during q>) -> i32) -> i32\n    return 0\n\n";
+
+    private const string NestedClauseK = NestedT + "func k(q: ref/i32, f: (() -> Option<T during q>) -> i32) -> i32\n" +
+        "    origin q outlives static\n    return 0\n\n" + NestedHost;
+
+    private const string NestedHost = "func host(s: ref/i32) -> i32\n";
+
+    private const string NestedLet = NestedT + NestedHost + "    let f: (() -> Option<T during s>) -> i32 = ";
+
+    private const string NestedWritten = "func [] (g: () -> Option<T during s>) -> i32 => 5";
+
+    private const string HolderConstraint = "UnprovenConstraint_Kd H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>";
+
     private const string LeakMk = "func mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n";
 
     private const string LeakUse = "func use(g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let local: i32 = 5\n    let pair = g(local@ref)\n    return pair.1\n";
@@ -376,5 +420,57 @@ public partial class CallableOriginForwardingTest
     [InlineData("c15", WeakerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("c15_c", StrongerHead + OriginRelationDiagnosticTest.IndependentConflict + "    let t: (" + WeakerTarget + ", i32) = (f@move, 1)\n    return 0\n", "ComparisonLoanConflict_Kd x = 2")]
     public void AnIllFormedHeadLosesTheIndependentRecordUntilH11(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // PLAN G404 (SPEC 10.7, 15.3.7; DECISIONS BU-93): a Closure's or a Function Type's whole-contract comparison, at a conversion and
+    // in a Callable proof, is judged at its use with the use's premises, as a Function value's is (nest2_c): a member Origin that a
+    // clause relates (one1, `b outlives a`), a member and the Closure's own well-formedness each related by one of two clauses (two2), an
+    // invariant member equal through two clauses (uniq2), the Closure converted at an argument after selection (arg2) and a Function
+    // Type proven Callable at a Type argument (cal2) are valid. Equality by one clause (eq2) holds without premises. The invalid twins
+    // lack a clause the relation needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n; arg2_n's solution of T is `(b and a)`, which the
+    // Closure now fits, so its record is the argument `w`, whose fit needs `a outlives w`). An inferred parameter's Function Type,
+    // identical to the required one, keeps its condition, its result's well-formedness at the use (pnest1, as ResultPremiseTest's n1a at
+    // the root; dev: a fact-less UnprovenConstraint_Kd at the call); a `static` argument proves it (pnest1_c).
+    [Theory]
+    [InlineData("one1", OuterHead + BOutlivesA + OuterLet, "")]
+    [InlineData("one1_n", OuterHead + "    origin a outlives b\n" + OuterLet, "UnprovenOriginContract_Kd " + OuterClosure)]
+    [InlineData("two2", InnerHead + BothWays + InnerLet, "")]
+    [InlineData("two2_n", InnerHead + BOutlivesA + InnerLet, "UnprovenOriginContract_Kd " + InnerClosure)]
+    [InlineData("two2_none", InnerHead + InnerLet, "UnprovenOriginContract_Kd " + InnerClosure)]
+    [InlineData("eq2", InnerHead + "    origin a == b\n" + InnerLet, "")]
+    [InlineData("uniq2", UniqHead + BothWays + UniqLet, "")]
+    [InlineData("uniq2_n", UniqHead + BOutlivesA + UniqLet, "UnprovenOriginContract_Kd " + UniqClosure)]
+    [InlineData("arg2", ValueRun + InnerHead + BothWays + "    return run(" + InnerClosure + ", w)\n", "")]
+    [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginRelation_Kd w")]
+    [InlineData("cal2", CallableHolder + InnerHead + BothWays + InnerHolder, "")]
+    [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, "UnprovenConstraint_Kd .None; " + HolderConstraint + "; " + HolderConstraint)]
+    [InlineData("pnest1", NestedClauseHead + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during q>")]
+    [InlineData("pnest1_c", NestedClauseHead + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] (g) => 5)\n", "UnprovenOriginRelation_Kd Option<T during q>")]
+    public void AClosuresContractIsJudgedWithItsUsesPremises(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // PLAN G404 (DECISIONS BU-93, R4-M162): a nested Function Type identical to the required one keeps its implementation's condition,
+    // so the Closure records UnprovenOriginContract_Kd, a Binding-level relation record beside which the old ownership analysis stops
+    // on both pipelines (PLAN G56's owner-accepted limit, R4-M162's lost records) until H11 and H3. Lost: the let annotation's
+    // UnprovenOriginRelation_Kd (pl_n at 8:19, p3_n at 8:20), that one and the Closure parameter annotation's (pl_n_written at 8:19 and
+    // 8:66), and the second `v@move`'s MovedPlace_Kd at 10:13 with the annotation's UnprovenOriginRelation_Kd at 11:19 (pmv_let). A
+    // non-identical form already recorded only the Closure (pl_nonid). At H11/H3 these rows fail, and the restored records join them.
+    [Theory]
+    [InlineData("pl_n", NestedLet + "func [] (g) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
+    [InlineData("p3_n", NestedT + NestedHost + "    let f: ((() -> Option<T during s>) -> i32) -> i32 = func [] (h) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (h) => 5")]
+    [InlineData("pl_n_written", NestedLet + NestedWritten + "\n    return 0\n", "UnprovenOriginContract_Kd " + NestedWritten)]
+    [InlineData("pmv_let", NestedT + NestedHost + "    var v = [1, 2]\n    let m = v@move\n    let n = v@move\n    let f: (() -> Option<T during s>) -> i32 = func [] (g) => 5\n    return 0\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
+    public void ANestedIdenticalContractLosesTheIndependentRecordsUntilH11(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // PLAN G418 (DECISIONS BU-93; STATUS Diagnostics, G10/G56): a failed Closure contract hides the call's other argument Origin
+    // records. A nested identical Function Type now fails the Closure's (UnprovenOriginContract_Kd), so the call loses k's clause record,
+    // UnprovenOriginRelation_Kd at `s` (12:14), and its own UnprovenConstraint_Kd at `k` (12:12), as base does beside a non-identical
+    // Closure (pk_noclause_nonid_n); a Function value argument keeps both. When G418 lands these rows fail, and the restored records join
+    // them.
+    [Theory]
+    [InlineData("pk_noclause", NestedClauseK + "    return k(s, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
+    [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten)]
+    public void AFailedClosureContractMasksTheCallsOtherRecordsUntilG418(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 }
