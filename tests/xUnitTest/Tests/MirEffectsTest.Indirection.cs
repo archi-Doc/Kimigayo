@@ -47,6 +47,22 @@ public sealed partial class MirEffectsTest
         Assert.Equal(Expected(expected), Problems(Sink + Loud + declarations + Witness + $"        let v: {local} = .None\n        return .Ok(())\n"));
     }
 
+    // PLAN G349 (design note §7): a declaration with an Origin slot, growing below an indirection, composes its node through the
+    // instance's Type and Origin arguments, the substitution Binding.StoredType makes of its Fields (TyCtxt.Arguments): the atom of its
+    // Field X reads Loud, whose drop prints, or i32, and no slot reads as a limit. A Type declaration has no length slot (SPEC 4.4.1).
+    [Theory]
+    [InlineData("Loud", Failed)]
+    [InlineData("i32", "")]
+    public void ADeclarationsOriginSlotComposesThroughTheInstance(string argument, string expected)
+    {
+        const string Slots = "struct T<X> {s}\n    public var a: Option<X>\n    public var r: Option<ref/i32 during s>\n" +
+            "    public var f0: obj/(T<(X, X)> during s)\n";
+        var c = MirBuildTest.Compile(Sink + Loud + Slots + Witness + $"        let v: Option<obj/(T<{argument}> during static)> = .None\n" +
+            "        return .Ok(())\npublic func main() => ()\n");
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(Expected(expected), Problems(c, c.BuildMir()));
+    }
+
     // IMPL 21.3.2, A.4 (problem statement §2): the program's result is the instance collector's located record, as on dev: its
     // GenerationResourceLimit_Kd at the local (br1, br2, br3 with wrappers, arr3's) or at the parameter's Type (br3p); for the drop form
     // the located Unsupported_Kd at the local (dev: the destructor's instance meets Binding's storage bound first, PLAN G128, not G349's);

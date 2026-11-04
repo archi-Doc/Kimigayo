@@ -135,10 +135,11 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.15, 15.3.5 (PLAN G349): a struct or enum declaration's Type in its own parameters, whose stored Types its per-declaration
     // facts read, and the substitution an instance makes of its slots, as its stored Types read them (Binding.StoredType: the instance's
-    // Type arguments; its length and Origin arguments are not bound here, an open limit of the prototype, PLAN G349).
+    // Type and Origin arguments; a Type declaration has no length slot, SPEC 4.4.1).
     internal BoundType DeclarationType(BindingSymbol declaration) => binding.SelfType(declaration);
 
-    internal Subst Arguments(BoundType instance) => this.Intern(instance.Symbol!, null, null, (BoundType?[])instance.Components, [], [], []);
+    internal Subst Arguments(BoundType instance)
+        => this.Intern(instance.Symbol!, null, null, (BoundType?[])instance.Components, [], (BoundOrigin[])instance.OriginArguments, []);
 
     // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5): its declaring Type's instance and its Type
     // arguments; its Origins are the analyses' to relate.
