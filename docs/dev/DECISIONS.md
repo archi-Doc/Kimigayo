@@ -6967,6 +6967,10 @@ resumed by R4-M86 (2026-10-20).
   `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
   receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
   the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409), fixed by BU-10. Not temporary.
+  - Amended by PLAN G426 (2026-11-05, unit bu146): the claims are written at every take, the consumer's and the discard row's
+    (R4-M145's `Discarded`, the Place in Discard Context's bare acquisition), through one `Claim` before `ExclusiveUse` reads them.
+    A discarded element that Reborrows (`d[1]`, `(d[1])`, `d[1].link`, an exclusive pair case) selected `index`, so the MIR Reborrowed
+    through its shared Deref and the validator's SharedPath gave `InternalInvariant_Kd`; it now selects `indexUniq`, as `_ = d[1]` does.
 - **BU-9** (2026-10-19; the BU planning session; PLAN G129 design E7, unit U5; supersedes R4-M59, whose removal condition holds)
   MIR builds a literal whose Type holds a Never element at the Type Binding publishes, with no record (`MirBuilder.Aggregate`;
   `HoldsNeverElement`, its branch and its header clause are deleted). Binding publishes that Type through G129's three components:
