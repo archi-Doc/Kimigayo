@@ -4,26 +4,95 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Default copies (plan 5.6.2, SPEC 7.2.3): where a call omits a default whose template is not recursive and did not fail (Defaults), its
-// value is a copy of the template's MIR in the calling body, folded once under the call's substitution. Each statement and terminator of
-// a copy is its template's, folded: at its template's location, in the copy's scopes under the one Inlined at the call; its case decides
-// a PairAcquire's rvalue again (ByCase). Only the pending slots and the prologue's borrows (Defaults) and the Unsupported value of a fold
-// that fails are the caller's.
+// Default copies (plan 5.6.2, SPEC 7.2.3): where a call omits a default whose template is not recursive, did not fail and instantiates
+// under the call's substitution (Defaults), its value is a copy of the template's MIR in the calling body, folded once under that
+// substitution. Each statement and terminator of a copy is its template's, folded: at its template's location, in the copy's scopes under
+// the one Inlined at the call; its case decides a PairAcquire's rvalue again (ByCase). Only the pending slots and the prologue's borrows
+// (Defaults) are the caller's. Whether the substitution instantiates the copy is decided before it is written, so none is written in part.
 internal sealed partial class MirBuilder
 {
     private readonly List<int> folded = []; // A copy's scopes, locals and blocks in this body.
+    private readonly Dictionary<BoundType, BoundType> instances = []; // Each Type a copy folds, in the call's instance (Instantiates).
+    private readonly Dictionary<Subst, Subst> compositions = []; // Each callee substitution a copy holds, composed (Instantiates).
 
-    // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution: its scopes in a scope Inlined at the
-    // call, its locals after this body's (its result the slot, its parameters the borrows from at), its entry block the current one (the
-    // builder targets no entry block) and its returns going on after it; each Type applied and each callee's substitution composed
-    // (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent
-    // acquisition its case's (ByCase), each static and constant added again, and a Drop the instance's Type does not need left out. A Type
-    // or callee the call does not instantiate is unsupported at the call. No MustNotComplete row is copied: a copy's verdict is its
-    // template's, which A3 judges once (SPEC 7.2.3).
+    // SPEC 23.1.1 (DECISIONS R4-M127, R4-M139): whether the call's substitution instantiates a copy of the template, decided before any of
+    // it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's) and each
+    // callee's substitution, in the call's instance as every reader of an instance reads it (TyCtxt.ReadableInstance, a composition by
+    // Readable over its deciding part: Prepared or Rejected, whose rejected parts hold nothing, never a Limit), each kept for Inline, which
+    // folds by them.
+    private bool Instantiates(MirBody template, Subst subst)
+    {
+        this.instances.Clear();
+        this.compositions.Clear();
+        foreach (ref readonly var local in template.Locals)
+        {
+            if (local.Kind is not (MirLocalKind.Return or MirLocalKind.Arg) && !this.Instance(local.Type, subst))
+            {
+                return false;
+            }
+        }
+
+        foreach (ref readonly var constant in template.Consts)
+        {
+            if (!this.Instance(constant.Type, subst))
+            {
+                return false;
+            }
+        }
+
+        foreach (ref readonly var statement in template.Statements)
+        {
+            if (statement.Kind == MirStatementKind.Assign && statement.Rvalue.Type is { } type && !this.Instance(type, subst))
+            {
+                return false;
+            }
+        }
+
+        foreach (ref readonly var block in template.Blocks)
+        {
+            if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
+            {
+                // A composition's verdict is its parts' (TyCtxt.Compose); the guard reads the part deciding it, none when Prepared.
+                if (compilation.Types.Compose(inner, subst) is not ({ } composed, var storage, var part) ||
+                    (part is not null && !compilation.Types.Readable(part, storage)))
+                {
+                    return false;
+                }
+
+                this.compositions.Add(inner, composed);
+            }
+        }
+
+        return true;
+    }
+
+    // A Type of a copy in the call's instance (Instantiates), each once.
+    private bool Instance(BoundType type, Subst subst)
+    {
+        if (this.instances.ContainsKey(type))
+        {
+            return true;
+        }
+
+        if (compilation.Types.ReadableInstance(type, subst) is not { } instance)
+        {
+            return false;
+        }
+
+        this.instances.Add(type, instance);
+        return true;
+    }
+
+    // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution, which instantiates it (Instantiates):
+    // its scopes in a scope Inlined at the call, its locals after this body's (its result the slot, its parameters the borrows from at;
+    // a Result temp, delivered into the slot, is no result of this body: it keeps no role, DECISIONS R4-M132),
+    // its entry block the current one (the builder targets no entry block) and its returns going on after it; each Type applied and each
+    // callee's substitution composed (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its
+    // case's layer and a case-dependent acquisition its case's (ByCase), each static and constant added again, and a Drop the instance's
+    // Type does not need left out. No MustNotComplete row is copied: a copy's verdict is its template's, which A3 judges once (SPEC 7.2.3).
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
         var map = this.folded;
-        var failed = false;
         var after = this.body.AddBlock();
         map.Clear();
         foreach (ref readonly var scope in template.Scopes)
@@ -50,7 +119,8 @@ internal sealed partial class MirBuilder
             }
             else
             {
-                mapped = this.body.AddLocal(local with { Type = FoldType(local.Type), Source = FoldInfo(local.Source) });
+                var role = local.Role == MirLocalRole.Result ? MirLocalRole.None : local.Role;
+                mapped = this.body.AddLocal(local with { Type = FoldType(local.Type), Source = FoldInfo(local.Source), Role = role });
             }
 
             map.Add(mapped);
@@ -102,10 +172,11 @@ internal sealed partial class MirBuilder
                 this.body.AddCase(template.Cases[terminator.Start + i].Value, Target(template.Cases[terminator.Start + i].Target));
             }
 
-            var composed = terminator.Callee.Subst is { } inner && subst is not null ? compilation.Types.Compose(inner, subst) : terminator.Callee.Subst;
-            failed |= composed is null && terminator.Callee.Subst is not null;
             var place = call || terminator.Kind == MirTerminatorKind.Drop ? FoldPlace(terminator.Place) : default;
-            var callee = terminator.Callee with { Subst = composed ?? terminator.Callee.Subst };
+            var callee = terminator.Callee with
+            {
+                Subst = terminator.Callee.Subst is { } inner && subst is not null ? this.compositions[inner] : terminator.Callee.Subst,
+            };
             if (callee.Kind == MirCalleeKind.Value)
             {
                 callee = callee with { Arg = FoldOperand(MirOperand.Const(callee.Arg)).Arg }; // Its signature, a constant (C8).
@@ -133,21 +204,12 @@ internal sealed partial class MirBuilder
 
         this.current = after;
         this.arguments.RemoveRange(at, this.arguments.Count - at);
-        if (failed)
-        {
-            this.Unsupported(node, slot);
-        }
 
         int Target(int block) => block < 0 ? block : map[blocks + block];
 
         SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = (ushort)map[info.Scope] };
 
-        BoundType FoldType(BoundType type)
-        {
-            var applied = subst is null ? type : compilation.Types.Apply(type, subst);
-            failed |= applied is null;
-            return applied ?? type;
-        }
+        BoundType FoldType(BoundType type) => subst is null ? type : this.instances[type];
 
         MirPlace FoldPlace(MirPlace place)
         {

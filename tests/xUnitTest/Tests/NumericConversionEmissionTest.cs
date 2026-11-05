@@ -117,7 +117,7 @@ public class NumericConversionEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 13.5.4: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
@@ -144,13 +144,13 @@ public class NumericConversionEmissionTest
     public void FloatingLiteralsTruncateExactlyAtCompileTime(string expression, string type, string payload)
     {
         var c = MinimalEmissionTest.Analyze($"let w = {expression}");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         Assert.Same(BoundType.Primitives[type], conversion.TypeOf());
         Assert.Same(BoundType.Primitives[type], Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NumberLiteralKoto>()).TypeOf());
         Assert.Equal(ConversionBinding.Literal, conversion.ConversionOf().Kind);
         Assert.Equal(Int128.Parse(payload, CultureInfo.InvariantCulture), Assert.NotNull(conversion.ConversionOf().Folded));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -174,18 +174,17 @@ public class NumericConversionEmissionTest
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal("InvalidNumericLiteral_Kd", error.Code);
         Assert.Contains(note, error.Note);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void FoldedLiteralsEmitNoConversion()
     {
         var ir = ScalarEmissionTest.EmitFixture("NumericConvertLiteralFolded", "var a = 3.9@i32\nvar b = -1e3@i64\nvar c = 1e38@u128\nif a == 3 and b == -1000 and c > 0 => Console.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.DoesNotContain("fptosi", body);
-        Assert.DoesNotContain("fptoui", body);
-        Assert.DoesNotContain("fcmp", body);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.DoesNotContain(body, static x => x.Opcode == "fptosi");
+        Assert.DoesNotContain(body, static x => x.Opcode == "fptoui");
+        Assert.DoesNotContain(body, static x => x.Opcode == "fcmp");
     }
 
     [Theory]
@@ -197,7 +196,7 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -218,28 +217,24 @@ public class NumericConversionEmissionTest
     [InlineData("Narrow", "f64", "f32", "1.25")]
     [InlineData("ToInteger", "f32", "i32", "1.25")]
     [InlineData("FromInteger", "u64", "f32", "16777217")]
-    public void ConversionPlansAreRevalidatedAndSurviveReload(string name, string sourceType, string targetType, string value)
+    public void ConversionPlansSurviveRebindingAndReload(string name, string sourceType, string targetType, string value)
     {
-        var c = MinimalEmissionTest.Analyze($"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")");
+        var source = $"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")";
+        var c = MinimalEmissionTest.Analyze(source);
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
-        var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
-        conversion.SetConversion(ConversionBinding.Integer);
-        using var failed = new StringWriter();
-        Assert.False(c.WriteIr(failed, out _));
-        Assert.Empty(failed.ToString());
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         using var rebound = new StringWriter();
-        Assert.True(c.WriteIr(rebound, out error), error);
+        Assert.True(c.Generate(rebound), MinimalEmissionTest.Describe(c));
         Assert.Equal(original.ToString(), rebound.ToString());
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.WriteIr(writer, out error), error);
+        Assert.True(restored.Generate(writer), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("NumericConvertReload" + name, writer.ToString(), "ok\n");
     }
@@ -250,10 +245,10 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func convert(x: f64) -> u64 => x@f32@u64\nlet x = 5000000000@f64\nlet y = convert(x)@f32\nif y > 0.0 => Console.writeLine(\"ok\")");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Numeric conversion analysis or writing failed.");
             }

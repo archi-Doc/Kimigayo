@@ -72,7 +72,7 @@ public class SpecializationBindingTest
         var c = MinimalEmissionTest.Analyze(Receiver + specialization);
         Assert.False(c.Binding.Result.IsComplete);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -83,8 +83,8 @@ public class SpecializationBindingTest
     public void InheritsDefaultsWithoutRedeclaringThem()
     {
         var c = MinimalEmissionTest.Analyze(Defaults + "specialize func find<i32>(value: i32, count: i32) -> i32 => count + 1\nrequire find<i32>(10) == 2 and find<i32>(10, count: 5) == 6 and find<bool>(true) == 1 else => $abort(\"defaults\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -124,7 +124,7 @@ public class SpecializationBindingTest
         var c = MinimalEmissionTest.Analyze(Named + specialization);
         Assert.False(c.Binding.Result.IsComplete);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -138,7 +138,7 @@ public class SpecializationBindingTest
         var c = MinimalEmissionTest.Analyze(Lengths + specialization);
         Assert.False(c.Binding.Result.IsComplete);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -149,8 +149,8 @@ public class SpecializationBindingTest
     public void AcceptsClosedImplementation(string specialization)
     {
         var c = MinimalEmissionTest.Analyze(Ordinary + specialization + "\nfunc forward<T>(value: ref/T) -> i32 => weight<T>(value)\nlet value: i32 = 4\nlet result = forward<i32>(value@ref/i32)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -169,7 +169,7 @@ public class SpecializationBindingTest
         var c = MinimalEmissionTest.Analyze(Ordinary + specialization);
         Assert.False(c.Binding.Result.IsComplete);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 

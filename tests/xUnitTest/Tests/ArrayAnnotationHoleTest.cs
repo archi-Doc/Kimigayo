@@ -62,7 +62,7 @@ public class ArrayAnnotationHoleTest
     {
         var compilation = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(compilation.WriteIr(output, out _));
+        Assert.False(compilation.Generate(output));
     }
 
     [Theory]

@@ -62,7 +62,7 @@ public class AssociatedOriginSyntaxTest
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate " + head + "\nConsole.writeLine(\"unreachable\")");
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 }

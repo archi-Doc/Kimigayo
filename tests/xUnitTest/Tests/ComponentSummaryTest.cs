@@ -162,6 +162,20 @@ public class ComponentSummaryTest
         Assert.True(complete == (records.Length == 0), id);
     }
 
+    // SPEC 23.1.1 (DECISIONS BU-76): a site a proof needed before Binding.Check's loop fails its Use in the prologue, and the loop
+    // publishes and counts it once: Bind gives the issues and the count CheckBound gives on the same facts.
+    [Fact]
+    public void ASiteNeededBeforeTheLoopIsPublishedOnce()
+    {
+        var c = CompilationTestHelper.ParseSuccess(Prelude + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: () -> () = func [x@move] () => ()\n    ()");
+        var bound = c.Bind();
+        var issues = c.Binding.Issues.Select(static x => x.Code).ToArray();
+        Assert.Single(issues, static x => x == DiagnosticCode.Unsupported_Kd);
+        var again = c.Binding.CheckBound();
+        Assert.Equal(issues, c.Binding.Issues.Select(static x => x.Code));
+        Assert.Equal(again.InvalidCount, bound.InvalidCount);
+    }
+
     // SPEC 8.3.3 (DECISIONS BU-22): a conformance binding that uses itself at a deeper instance grows a proof without end, at the use
     // (the growth guard) and in a summary's walk (Error resting on the stored Type); the conformance has its own record, and Binding ends.
     // A deeper instance of a declaration reached through another conformance is no such growth and stays exact.
@@ -213,19 +227,24 @@ public class ComponentSummaryTest
         Assert.Equal(record, string.Join(" | ", TestDiagnostics.Of(c).Select(static x => x.Code)));
     }
 
-    // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and the old
-    // Emission meets its existing generation depth limit with it, as with any value of that Type; the acceptance change adds no runtime
-    // form to the old path, so no old-path guard is needed.
+    // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and check
+    // meets the existing generation limits with it, as with any value of that Type, on every pipeline (DECISIONS R5-M156): each call
+    // requesting an instance over Chain<i32>, whose storage walk passes Binding's bound, is the capability table's storage-nesting gap
+    // (PLAN G128, PD30's (e) row), and the value's drop glue grows through its object handle, Chain<(T, T)> at each step, so the collector
+    // stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the acceptance change adds no runtime form. Since the MIR
+    // decides acceptance (R6-check H5), A5's walk over the value also meets its depth bound at each call, a located OwnershipDepthLimit_Kd
+    // there (DECISIONS R4-M153), counted on this program that both sides reject (H3b; class 4 by DECISIONS Q13).
     [Fact]
-    public void ANewlyOwnedNonRegularValueMeetsTheOldGenerationLimit()
+    public void ANewlyOwnedNonRegularValueMeetsTheGenerationLimits()
     {
-        var old = MinimalEmissionTest.Analyze(
+        var c = MinimalEmissionTest.Analyze(
             "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" + Need +
-            "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")",
-            codegen: CompilerCodegen.Legacy);
-        Assert.True(old.Binding.Result.IsComplete, Describe(old));
-        Assert.False(old.WriteIr(TextWriter.Null, out var failure));
-        Assert.Contains("depth limit of 64 levels", failure, StringComparison.Ordinal);
+            "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.Equal(
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | " +
+                "Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move) | GenerationResourceLimit_Kd c@move",
+            MinimalEmissionTest.Problems(c));
     }
 
     // Immutable after Bind and pooled: a warm rebind that solves the summaries again allocates nothing, a family's settled limit included.

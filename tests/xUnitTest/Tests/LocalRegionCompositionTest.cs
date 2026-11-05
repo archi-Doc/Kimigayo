@@ -34,10 +34,13 @@ public class LocalRegionCompositionTest
 
     private const string MutableValues = "var a = 1\nvar b = 2\n";
 
-    // From FieldEnded on, the rows expect the rule before SPEC 15.6's holders (A5 P1): writing a part ended that part's
-    // Loans. Now it ends none, so `a = 3` conflicts; the default pipeline keeps the old rule until R6-check.
+    // The rows of CompleteAndPartialReplacementEndOnlyTheOldLoans that write a part, so the MIR keeps the old part's Loan (A5 P1).
+    private static readonly string[] PartWrites = ["FieldEnded", "InitializerAliasEnded", "TuplePartEnded", "TuplePartsEnded", "NestedPartsEnded",
+        "FixedPartsEnded", "TupleBranchEnded", "TupleCopyAfterParts"];
+
+    // SPEC 15.6's holders (A5 P1): writing a part ends none of its Loans, so in the rows that write a part (PartWrites) `a = 3`
+    // conflicts and they have no fixture.
     [Theory]
-    [Trait("OldRule", "P1")]
     [InlineData("TupleEnded", MutableValues + "var value = (a@ref, 7)\nvalue = (b@ref, 9)\na = 3\nrequire value.0@follow == 2 else => $abort(\"tuple\")")]
     [InlineData("FixedEnded", MutableValues + "var value: [1 of ref/i32] = [a@ref]\nvalue = [b@ref]\na = 3\nrequire value[0]@follow == 2 else => $abort(\"fixed\")")]
     [InlineData("StructEnded", Cell + MutableValues + "var value = Cell.init(a@ref)\nvalue = Cell.init(b@ref)\na = 3\nrequire value.item@follow == 2 else => $abort(\"struct\")")]
@@ -54,7 +57,15 @@ public class LocalRegionCompositionTest
     [InlineData("TupleBranchEnded", MutableValues + "var value = (a@ref, a@ref)\nif a == 1\n    value.0 = b@ref\nelse\n    value.0 = b@ref\nvalue.1 = b@ref\na = 3\nrequire value.0@follow == 2 and value.1@follow == 2 else => $abort(\"branch\")")]
     [InlineData("TupleCopyAfterParts", MutableValues + "var value = (a@ref, a@ref)\nvalue.0 = b@ref\nvalue.1 = b@ref\nlet saved = value\na = 3\nrequire saved.0@follow == 2 and saved.1@follow == 2 else => $abort(\"saved\")")]
     public void CompleteAndPartialReplacementEndOnlyTheOldLoans(string name, string source)
-        => ScalarEmissionTest.EmitFixture("LocalRegionComposition" + name, source, string.Empty);
+    {
+        var partWrite = PartWrites.Contains(name);
+        if (!partWrite)
+        {
+            ScalarEmissionTest.EmitFixture("LocalRegionComposition" + name, source, string.Empty);
+        }
+
+        MirTargetSide.Check(source, partWrite ? [(DiagnosticCode.ComparisonLoanConflict_Kd, new("a = 3"))] : []);
+    }
 
     [Theory]
     [InlineData(MutableValues + "var value = (a@ref, 7)\nvalue = (b@ref, 9)\nb = 3\nrequire value.0@follow == 2 else => $abort(\"tuple\")", "b = 3")]
@@ -77,13 +88,9 @@ public class LocalRegionCompositionTest
         Assert.DoesNotContain(errors, x => x.Category == DiagnosticCategory.Unsupported);
     }
 
-    // The first and third rows write a part and then `a`, valid only under the rule before SPEC 15.6's holders (A5 P1).
     [Theory]
     [Trait("Purpose", "Allocation")]
-    [Trait("OldRule", "P1")]
-    [InlineData(MutableValues + "var value = (a@ref, a@ref)\nvalue.0 = b@ref\nvalue.1 = b@ref\na = 3\nrequire value.0@follow == 2 else => $abort(\"parts\")")]
     [InlineData(Values + "var value: Option<ref/i32> = .None\nvalue = .Some(b@ref)\nmatch value\n    .Some(let item) => require item@follow == 2 else => $abort(\"some\")\n    .None => ()")]
-    [InlineData(Box + MutableValues + "var value = Box<ref/i32>.init(a@ref)\nvalue.item = b@ref\na = 3\nrequire value.item@follow == 2 else => $abort(\"alias\")")]
     [InlineData(Values + "let f = func [a@ref, b@ref] ()\n    var view = a\n    view = b\n    return view\nrequire f()@follow == 2 else => $abort(\"result\")")]
     public void CompositeRegionsReuseTheirGraphsAndStorage(string source)
     {
@@ -93,8 +100,9 @@ public class LocalRegionCompositionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
+        MirTargetSide.Check(c);
     }
 }

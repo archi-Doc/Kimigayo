@@ -24,7 +24,11 @@ they do not change language guarantees or mark pending work as supported.
 - Virtual declarations retain their original public contract; overrides additionally display their own header and comments.
   Calls distinguish a dynamic slot from the selected direct base implementation. Detached identities retain the bound
   declaring Type, base lookup and implementation, including virtual Function Items. Receiver and erasure details read
-  checked operations; projection never creates a generation context. Binding and ownership completion remain distinct.
+  checked operations; projection never creates a generation context. Binding and ownership completion remain distinct:
+  ownership is completed when the latest analysis judged the function's MIR body without a problem: no validator finding,
+  no construction record in it and no merged problem with a member in it (`Compilation.JudgedWithoutProblem`, DECISIONS
+  R5-M183, R5-M185), else pending; a record made in no body (a collection record, a module's broken HIR contract) is
+  outside it. Hover runs no analysis.
 - Function and Property syntax writers also write body-free headers. Verified accessor metadata supplements implicit
   operations. A missing named-function result means Unit; it is not inferred from the body.
 - Documentation inputs retain immutable partial placement maps. Editor links reuse profile validation and logical
@@ -43,8 +47,10 @@ they do not change language guarantees or mark pending work as supported.
   before publication; contract fields remain indivisible. Unsupported syntax is escaped, and links use source placement.
 - Containers use inline code and declarations use normal-size code blocks. Comment heading levels are preserved.
   Parameter items use the existing classified documentation path once, then move immediately after the variable header.
-  Known physical source names are computed once per module source using its own project base, independently of comments;
-  embedded/generated/unknown mappings invent no physical path. Stable attribution accompanies a reserved source footer,
+  A source's footer name is asked live from the module its document came from (`Kotonoha.HoverSourceName`, the logical name,
+  memoized in that module), independently of comments: relative to that module's own project base, and any path outside it
+  (another drive, an unknown mapping, another `://` scheme) by its own text; a built-in or Mod-generated document has none, and
+  a document no client can name (a path with NUL) has no hover. Stable attribution accompanies a reserved source footer,
   including after documentation truncation. Agreement includes these names and variable facts.
 
 ## Deterministic limits
@@ -104,7 +110,8 @@ identity DAG and a wide identity tree, each across four independent configuratio
 seven samples, 64 initial requests or 10,000 repeated requests per sample; history uses all 256 admitted edits.
 Variable/parameter and operation workloads additionally use four independent compiler snapshots of `ValueProgram`, at
 their actual token positions. Cached and queued requests use those same positions and immutable source text.
-The full compilation comparison uses 16 iterations per sample with collection disabled/enabled, including ownership.
+The full compilation comparison uses 16 iterations per sample with collection disabled/enabled, including check's
+analysis (`Compilation.Analyze`, the MIR's), which the ownership line reads.
 
 Review criteria on the measured host: warmed initial-target samples at most 100 ms/request, repeated lookup at most
 1 ms/request with zero lookup allocations, and an edit queued behind 100 cached requests applied within 250 ms in every

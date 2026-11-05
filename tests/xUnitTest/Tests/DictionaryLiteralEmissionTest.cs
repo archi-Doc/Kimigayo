@@ -123,16 +123,16 @@ public class DictionaryLiteralEmissionTest
         var c = MinimalEmissionTest.Analyze("let value = \"owned\"\nlet entries = [1: value@move]\nlet again = value@move");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void DependentLiteralStorageUsesTheOrdinaryConstructionPath()
     {
         var c = MinimalEmissionTest.Analyze("let value = 1\nlet entries = [1: value@ref]");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -141,10 +141,12 @@ public class DictionaryLiteralEmissionTest
         const string source = "let entries = [(1, 2): \"ok\"]\nConsole.writeLine(entries[(1, 2)])";
         var c = MinimalEmissionTest.Analyze(source);
 
-        // Library reach of the literal's duplicate-key callee, until R5 C8e (DECISIONS R4-M13a, R5-M27): the old analysis collects it for
-        // a literal with entries, and the checked set has it only once C8e roots the hidden DictionaryStorage instances. C8e moves this
-        // read to the Generated mark.
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.RequireAbsent).Declaration));
+        // The library reach of the literal's duplicate check in the checked set (SPEC 12.4.3; DECISIONS R4-M13a, R5-M27, R5-M124): MIR looks
+        // each key up through findEntry and fails itself (KIMI_E_DUPLICATE_KEY), so findEntry is reached and the old generator's
+        // requireAbsent, which its CheckKey helper calls, never is.
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(source);
+        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
+        Assert.DoesNotContain(sel.Library.DictionaryStorage(DictionaryCallee.RequireAbsent).Declaration, generated);
         var original = CompilationTestHelper.WriteIr(c);
         var loaded = CompilationTestHelper.Reload(c);
         Assert.True(loaded.Bind().IsComplete);
@@ -173,10 +175,10 @@ public class DictionaryLiteralEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Dictionary literal compilation failed.");
             }

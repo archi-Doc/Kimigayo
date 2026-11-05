@@ -15,6 +15,12 @@ public sealed partial class Binding
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
     private int originPremiseDepth;
 
+    // DECISIONS BU-62, BU-69: the premise depth whose requests read failed contracts (ReadFailedContract), set by the two dependence
+    // queries, the declaration judge (JudgeDeclarationRows) and the fit judge's (DependenceCause), for their own requests only; -1 when
+    // none. A request nested in their extraction, such as a capability proof whose summary is kept, sees a failed contract unavailable,
+    // as every other request does.
+    private int readingFailedContracts = -1;
+
     // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
     // whether any of them still references an Origin, a Type, a declaration or syntax.
     internal (int Environments, int Nodes, int Edges, bool Retains) OriginPremiseStorage
@@ -28,7 +34,8 @@ public sealed partial class Binding
                 nodes = Math.Max(nodes, capacity.Nodes);
                 edges = Math.Max(edges, capacity.Edges);
                 retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null;
+                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null ||
+                    environment.Comparison.Expected is not null;
             }
 
             return (this.originPremiseEnvironments.Count, nodes, edges, retains);
@@ -51,7 +58,7 @@ public sealed partial class Binding
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
     // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure).
-    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition)
     {
         if (OriginOutlives(longer, shorter))
         {
@@ -66,6 +73,7 @@ public sealed partial class Binding
         var environment = this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
+        environment.Comparison = comparison;
         try
         {
             var closure = environment.Closure;
@@ -97,7 +105,8 @@ public sealed partial class Binding
             this.originPremiseEnvironments.Add(new());
         }
 
-        var environment = this.originPremiseEnvironments[this.originPremiseDepth++];
+        var environment = this.originPremiseEnvironments[this.originPremiseDepth];
+        environment.ReadsFailedContracts = this.originPremiseDepth++ == this.readingFailedContracts;
         environment.Use = use;
         return environment;
     }
@@ -157,8 +166,8 @@ public sealed partial class Binding
     }
 
     // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
-    // (R4), the inputs (R2) and result (R3) of each enclosing signature, a computed or requirement Property's header being its getter's
-    // result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
+    // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or
+    // requirement Property's header being its getter's result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
     // Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5), including Places
     // that those Origins introduce, so the closure applies R5 at every expression it reaches.
     private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
@@ -185,6 +194,11 @@ public sealed partial class Binding
                     }
                 }
 
+                if (signature is FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } literal)
+                {
+                    this.AddReceiverPremises(environment, literal, plan);
+                }
+
                 // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
                 if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
                     signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
@@ -197,11 +211,20 @@ public sealed partial class Binding
             if ((node is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || requirement) &&
                 this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
             {
-                foreach (var relation in declaration.Relations)
+                this.AddDeclarationPremises(environment, declaration.Relations);
+                if (environment.ReadsFailedContracts && declaration.Failure is not null)
                 {
-                    this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
+                    this.ReadFailedContract(environment, declaration, OriginPremiseRule.Declaration, null);
                 }
             }
+        }
+
+        // SPEC 15.3.7, the owner's (a): a request made in a Callable comparison assumes the own well-formedness of the comparison's
+        // required signature and of each enclosing comparison's; no other request sees them.
+        this.AddRequiredPremises(environment, environment.Comparison.Expected);
+        for (var outer = environment.Comparison.Outer; outer is not null; outer = outer.Outer)
+        {
+            this.AddRequiredPremises(environment, outer.Required);
         }
 
         var closure = environment.Closure;
@@ -216,6 +239,66 @@ public sealed partial class Binding
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }
         }
+    }
+
+    // A required signature's own well-formedness: its inputs' and its result's.
+    private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
+    {
+        if (required is not { Components: [var inputs, var result] })
+        {
+            return;
+        }
+
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            this.AddTypePremises(environment, inputs.Components[i], OriginPremiseRule.Input);
+        }
+
+        this.AddResultPremises(environment, result);
+    }
+
+    // R1: an established enclosing declaration's clauses.
+    private void AddDeclarationPremises(OriginPremiseEnvironment environment, List<OriginRelation> relations)
+    {
+        foreach (var relation in relations)
+        {
+            this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
+        }
+    }
+
+    // DECISIONS BU-62, BU-69: a failed contract read where the extraction reads that contract (R1, or a Type's premises substituted with
+    // the occurrence's Origin `arguments`): its bound clauses (RejectedRelations) are premises of the declaration judge; the fit judge's
+    // dependence query keeps them by contract, with one repair per failed clause (DependenceCause).
+    private void ReadFailedContract(OriginPremiseEnvironment environment, OriginDeclaration declaration, OriginPremiseRule rule, BoundOrigin[]? arguments)
+    {
+        var read = environment.Reads.Count;
+        foreach (var relation in declaration.RejectedRelations!)
+        {
+            var a = Substitute(relation.Longer)!;
+            var b = Substitute(relation.Shorter)!;
+            if (environment.Dependence)
+            {
+                environment.Rejected.Add((a, b, relation.Equality, rule, read));
+            }
+            else
+            {
+                this.AddPremise(environment, a, b, relation.Equality, rule);
+            }
+        }
+
+        if (!environment.Dependence)
+        {
+            return;
+        }
+
+        environment.Reads.Add(declaration.Failure!);
+        foreach (var (clause, left, right) in declaration.FailedClauses!)
+        {
+            environment.Repairs.Add((clause, Substitute(left), Substitute(right), arguments is null ? declaration.Owner : null, arguments));
+        }
+
+        BoundOrigin? Substitute(BoundOrigin? origin)
+            => origin is null || arguments is null ? origin : this.SubstituteStoredOrigin(origin, declaration.Owner, arguments);
     }
 
     // SPEC 8.5.4: an associated application's inherited formation and its requirement's clauses, substituted with its
@@ -247,14 +330,42 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.6.1, 15.8.2 (DECISIONS R4-M152, PLAN G270): R2 of a Closure's call receiver `R/Env during ρ`, input 0 of its contract
+    // (R4-M148): its body may assume the receiver's Type well formed. Each environment binding's Type is (AddTypePremises), and under a
+    // borrowed receiver every Origin stored in one outlives ρ; under `owner/Self` the receiver is the environment by value, with no layer.
+    // The bindings are the components EnvironmentType interns, read here because BindConcreteClosure publishes EnvironmentType only
+    // after it judges the pending relations, the first judge that needs them. Before classification ρ is pending (DECISIONS R4-M133),
+    // so a relation naming it waits and no edge is needed; a Borrow of a binding, `env_i`, resolves to ρ at its use (PremiseNode).
+    private void AddReceiverPremises(OriginPremiseEnvironment environment, FunctionKoto literal, BoundClosure closure)
+    {
+        var receiver = closure.Classified && closure.Receiver != SemanticsKind.Owner
+            ? this.PremiseNode(environment, this.OriginAtom(literal, OriginKind.Projection, ClosureValueSlot)) : -1;
+        for (var i = 0; i < closure.Captures.Count; i++)
+        {
+            if (closure.Captures[i].Environment.Type is not { } binding)
+            {
+                continue;
+            }
+
+            this.AddTypePremises(environment, binding, OriginPremiseRule.Input);
+            if (receiver >= 0)
+            {
+                this.AddStoredPremises(environment, binding, receiver, OriginPremiseRule.Input, false);
+            }
+        }
+    }
+
     // SPEC 15.3.4, 15.3.7, 8.1.1: a well-formed input Type's own clauses substituted with its Origin arguments, and the Origins stored
     // below each borrow or slice layer outliving that layer's Origin. In the admitted borrow cases a pair layer is a borrow of its
     // target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value cases no
     // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). The stored Origins include
-    // the implicit `o` of an original pair layer below a borrow layer (StoresOrigin). Each Type is visited once per environment.
+    // the implicit `o` of an original pair layer below a borrow layer (StoresOrigin). Each Type is visited once per environment. A nested
+    // Function Type adds none. Its inputs' well-formedness is that signature's premise, proven at each call (RequireInputPremises;
+    // DECISIONS R4-M137). Its result is judged where it is written, under the enclosing premises and its own inputs (SPEC 15.3.4, 15.6.1;
+    // DECISIONS R4-M162). Neither is a premise of the body whose input holds the Function Type.
     private void AddTypePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
-        if (!environment.Types.Add(type))
+        if (type.Kind == BoundTypeKind.Function || !environment.Types.Add(type))
         {
             return;
         }
@@ -266,6 +377,12 @@ public sealed partial class Binding
                 var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 this.AddPremise(environment, a, b, relation.Equality, rule);
+            }
+
+            // The declaration judge reads R1 only (DECISIONS BU-69's limit: no declaration row reaches a failed Type's premises here).
+            if (environment.Dependence && declaration.Failure is not null)
+            {
+                this.ReadFailedContract(environment, declaration, rule, (BoundOrigin[])type.OriginArguments);
             }
         }
 
@@ -319,7 +436,12 @@ public sealed partial class Binding
     // Every Origin stored in `type` outlives the node `shorter`; with `result`, Origins inside a nested Function Type are not stored.
     // `condition` is the Semantics case of the storage itself; a pair layer's own slot, the implicit `o` of an original `s/T` included
     // (SPEC 8.1.1), is stored only in its binder's borrow cases, while its target is stored in every case (SPEC 15.6.5).
+    // Each distinct part is visited once per call (DECISIONS BU-19, PLAN G309): a revisit adds the same edges, which the closure reaches
+    // anyway.
     private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition = 0)
+        => this.StoredPremisePart(environment, type, shorter, rule, result, condition, this.visitedParts.Begin(this.storageVersion));
+
+    private void StoredPremisePart(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition, uint query)
     {
         if ((result && type.Kind == BoundTypeKind.Function) || !type.StoresOrigin)
         {
@@ -338,7 +460,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddStoredPremises(environment, type.Components[i], shorter, rule, result, condition);
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.StoredPremisePart(environment, type.Components[i], shorter, rule, result, condition, query);
+            }
         }
     }
 
@@ -360,6 +485,22 @@ public sealed partial class Binding
 
         internal BindingScope? Scope { get; set; }
 
+        // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
+        internal CallableInstance Comparison { get; set; }
+
+        // Whether this request is a dependence query's own, which reads failed contracts (readingFailedContracts; DECISIONS BU-69).
+        internal bool ReadsFailedContracts { get; set; }
+
+        // A fit's dependence query's reads of failed contracts (DECISIONS BU-69): each read's failed clause, its bound clauses by read,
+        // and a repair of each failed clause with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
+        internal bool Dependence { get; set; }
+
+        internal List<Koto> Reads { get; } = new();
+
+        internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginPremiseRule Rule, int Read)> Rejected { get; } = new();
+
+        internal List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right, Koto? Owner, BoundOrigin[]? Arguments)> Repairs { get; } = new();
+
         internal void Clear()
         {
             this.Closure.Clear();
@@ -369,6 +510,12 @@ public sealed partial class Binding
             this.Resolvers.Clear();
             this.Use = null!;
             this.Scope = null;
+            this.Comparison = default;
+            this.ReadsFailedContracts = false;
+            this.Dependence = false;
+            this.Reads.Clear();
+            this.Rejected.Clear();
+            this.Repairs.Clear();
         }
     }
 }

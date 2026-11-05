@@ -28,7 +28,7 @@ public class SharedIterationTest
         var c = MinimalEmissionTest.Analyze("var first: i32 = 40\nvar second: i32 = 41\nlet values: " + annotation + " = " + initializer + "\nfirst = 42\nlet value: ref/i32 = values[0]\nrequire value == 40 else => $abort(\"owner\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -103,6 +103,6 @@ public class SharedIterationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

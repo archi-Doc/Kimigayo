@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
@@ -43,7 +44,7 @@ public class MatchOwnershipTest
     public void SupportedMatchesVerify(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -64,7 +65,7 @@ public class MatchOwnershipTest
     public void NeverSubjectCreatesNoValueOrArmStorage(string subject, int calls)
     {
         var c = Parse($"func fail() -> Never => fail()\nfunc f() -> i32 => match ({subject})\n    _ => 1");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         Assert.Equal(calls, body.Operations.Count(o => o.Kind == OwnershipOperationKind.Call));
         Assert.DoesNotContain(body.Places, p => p.Kind == OwnershipPlaceKind.Subject);
@@ -75,7 +76,7 @@ public class MatchOwnershipTest
     public void TestsReadAnIntactSubjectBeforeAnyAcquisition()
     {
         var c = Parse("enum E\n    Pair(string, i32)\nfunc f(x: E) => match x@move\n    .Pair(let s, 0) => Console.writeLine(s)\n    .Pair(_, _) => ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var match = Assert.Single(body.Matches);
         var dispatch = body.Operations.Select((o, i) => (o, i)).Single(x => x.o.Kind == OwnershipOperationKind.MatchDispatch).i;
@@ -99,7 +100,7 @@ public class MatchOwnershipTest
     public void CopyBindingAlsoHasADecomposedInitializedInput()
     {
         var c = Parse("func f(x: Option<i32>) -> i32 => match x@move\n    .Some(let n) => n\n    .None => 0");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var acquire = body.Operations.Select((o, i) => (o, i)).Single(x => x.o.Kind == OwnershipOperationKind.AcquirePattern);
         Assert.Equal(AcquisitionKind.Copy, acquire.o.Acquisition);
@@ -112,7 +113,7 @@ public class MatchOwnershipTest
     public void CleanupUsesReverseStructureAfterBodyBindings()
     {
         var c = Parse("enum E\n    Pair(string, string)\nfunc f(x: E) => match x@move\n    .Pair(let a, _) => ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var match = Assert.Single(body.Matches);
         var split = Assert.Single(body.Decompositions);
@@ -127,7 +128,7 @@ public class MatchOwnershipTest
     public void NestedCleanupDoesNotFollowProjectionCreationOrder()
     {
         var c = Parse("enum Inner\n    Pair(string, string)\nenum Outer\n    Pair(Inner, string)\nfunc f(x: Outer) => match x@move\n    .Pair(.Pair(let a, _), _) => ()\n    .Pair(_, _) => ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var match = Assert.Single(body.Matches);
         var outer = body.Decompositions[0];
@@ -156,7 +157,7 @@ public class MatchOwnershipTest
     public void SubjectAndPayloadsHaveFreshLifetimesInsideLoops()
     {
         var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")@move\n            .Some(let s)\n                Console.writeLine(s)\n            .None\n                ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var match = Assert.Single(body.Matches);
         var split = Assert.Single(body.Decompositions);
@@ -177,7 +178,7 @@ public class MatchOwnershipTest
     public void SubjectIsEvaluatedOnceAndMaterializedWithoutAnotherConsume()
     {
         var c = Parse("func make() -> Option<string> => .Some(\"text\")\nfunc f() => match make()\n    .Some(let s) => Console.writeLine(s)\n    .None => ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var initialize = Assert.Single(body.Operations, o => o.Kind == OwnershipOperationKind.InitializeSubject);
         Assert.Single(body.Operations, o => o.Kind == OwnershipOperationKind.Call && o.Source is InvocationKoto call && call.CallOf()!.Target.Name == "make");
@@ -191,7 +192,7 @@ public class MatchOwnershipTest
     public void TransfersSecureValueBeforeBodyAndSubjectCleanup(string transfer, CleanupReason reason)
     {
         var c = Parse($"enum E\n    Pair(string, string)\nfunc f(c: bool, x: E) -> string => match x@move\n    .Pair(let a, _)\n        let local = \"body\"\n        {transfer}");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var split = Assert.Single(body.Decompositions);
         var local = body.Places.Single(p => p.Source is FieldKoto f && f.NameKoto.IdentifierName == "local");
@@ -206,7 +207,7 @@ public class MatchOwnershipTest
     public void DeepReturnCleansActiveDecompositionBeforeOuterTemporary()
     {
         var c = Parse("enum E\n    Pair(string, string)\nfunc make() -> string => \"outer\"\nfunc consume(a: string, b: string) => ()\nfunc f(c: bool, x: E)\n    consume(\n        make(),\n        match x@move\n            .Pair(let a, _)\n                if c\n                    let local = \"inner\"\n                    return\n                yield a@move\n    )");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var split = Assert.Single(body.Decompositions);
         var patternLocal = body.Places.Single(p => p.Kind == OwnershipPlaceKind.Local && p.Source is SyntaxFormKoto { Akind: KotoKind.BindingPattern });
@@ -220,7 +221,7 @@ public class MatchOwnershipTest
     public void NestedSubjectsUseTheirOwnActiveCaseDuringReturn()
     {
         var c = Parse("enum E\n    Pair(string, string)\nfunc f(x: E, y: E) -> string => match x@move\n    .Pair(let a, _) => match y@move\n        .Pair(let b, _)\n            return b@move");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         Assert.Equal(2, body.Matches.Count);
         Assert.Equal(2, body.Decompositions.Count);
@@ -235,7 +236,7 @@ public class MatchOwnershipTest
     public void OuterLoopContinueCleansTheSelectedSubject()
     {
         var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")@move\n            .Some(let s)\n                continue\n            .None\n                ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var local = body.Places.Single(p => p.Kind == OwnershipPlaceKind.Local && p.Source is SyntaxFormKoto { Akind: KotoKind.BindingPattern });
         var cleanup = body.CleanupPlans.Single(p => p.Reason == CleanupReason.LoopTransfer);
@@ -251,14 +252,15 @@ public class MatchOwnershipTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: Option<string>)\n    match x@move\n        .Some(let s) => Console.writeLine(s)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, i => i.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        Assert.False(c.Analyze().IsVerified);
+        c.Analyze();
+        Assert.False(c.Accepts); // Since the MIR decides acceptance (R6-check H5), Binding's record rejects the program.
     }
 
     [Fact]
     public void SubjectEvaluationTemporariesKeepTheirExpressionLifetime()
     {
         var c = Parse("func make() -> string => \"temporary\"\nfunc consume(a: i32, b: i32) => ()\nfunc f()\n    consume(\n        2,\n        match make() == \"expected\"\n            true => 1\n            false => 0\n    )");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var inputTemporary = body.Places.Single(p => p.Source is InvocationKoto call && call.CallOf()!.Target.Name == "make");
         var destroy = Assert.Single(body.CleanupSteps, s => s.Place == inputTemporary.Id && s.Action == CleanupAction.Destroy);
@@ -270,7 +272,7 @@ public class MatchOwnershipTest
     public void AbortAfterAcquisitionHasNoReachableCleanup()
     {
         var c = Parse("func fail() -> Never => fail()\nfunc f(x: Option<string>) => match x@move\n    .Some(let s) => fail()\n    .None => fail()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         Assert.All(body.CleanupSteps, s => Assert.False(body.IsReachable(s.Operation)));
         Assert.Equal(2, body.Edges.Count(e => e.Kind == OwnershipEdgeKind.Abort));
@@ -280,7 +282,7 @@ public class MatchOwnershipTest
     public void YieldToIfIsNotRedirectedIntoTheMatchFrame()
     {
         var c = Parse("func f(x: bool) -> i32 => match x\n    true => (if x\n        yield 1\n    else\n        yield 2\n    )\n    false => 0");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Empty(c.Problems);
     }
 
@@ -292,7 +294,7 @@ public class MatchOwnershipTest
     {
         var source = "func consume(a: i32, b: i32) => ()\nfunc f(x: bool)\n    consume(\n        match x\n            true => 1\n            false => 0\n        , 2\n    )".Replace("\n", newline, StringComparison.Ordinal);
         var c = Parse(source);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Single(Body(c).Matches);
         Assert.Single(Body(c).Operations, o => o.Kind == OwnershipOperationKind.Call);
     }
@@ -309,7 +311,7 @@ public class MatchOwnershipTest
     public void BodyBindingsAreAcquiredLeftToRightAndCleanedInReverse()
     {
         var c = Parse("enum E\n    Pair(string, string)\nfunc f(x: E) => match x@move\n    .Pair(let a, let b) => ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var acquisitions = body.Operations.Where(o => o.Kind == OwnershipOperationKind.AcquirePattern).ToArray();
         Assert.Equal(["a", "b"], acquisitions.Select(o => body.Places[o.Input].Source.SymbolOf()!.Name));
@@ -322,7 +324,7 @@ public class MatchOwnershipTest
     public void ChangedPayloadStorageRebuildsMatchAndDecompositionPlans()
     {
         var c = Parse("enum E\n    One(i32)\nfunc f(x: E) => match x@move\n    .One(let a) => ()\n    _ => ()");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var matches = body.Matches;
         var decompositions = body.Decompositions;
@@ -331,7 +333,7 @@ public class MatchOwnershipTest
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Borrowed(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var rebuilt = body.Places[Assert.Single(matches).Subject].Type;
         Assert.Single(originalCases);
         Assert.NotSame(originalCases, AdtDef.CaseTypes(rebuilt));
@@ -339,33 +341,45 @@ public class MatchOwnershipTest
         Assert.Single(decompositions);
     }
 
-    // DECISIONS BU-14 (D5 exception until R6-check): a Binding that may borrow a part of the owned Subject or item past a pair layer
-    // admitting owner, or that selects a pair layer, is the old path's located Unsupported_Kd at its match or loop, although Binding
-    // accepts it and the MIR builds it (SPEC 13.5.5, 15.1.6); a borrowed path's pair layer, a Wildcard (a for slot `_` included, SPEC
-    // 14.8.1) and a structural position that only tests stay judged here.
+    // DECISIONS BU-14 (SPEC 13.5.5, 15.1.6): a Binding that may borrow a part of the owned Subject or item past a pair layer admitting
+    // owner, or that selects a pair layer, was the old path's located Unsupported_Kd at its match or loop, although Binding accepts it and
+    // the MIR builds it. Since the MIR decides acceptance (R6-check H5; 1a, the owner 2026-11-03), check accepts it with no record and
+    // generation emits `f`, as the instance `main` calls.
     [Theory]
-    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
-    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
-    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is owner or uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", "match o@move")]
-    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>)\n    s is owner or uniq\n    for (x, _) in arr@move => use(x)", "for (x, _) in arr@move => use(x)")]
-    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items@move => use(x)", "for (x, y) in items@move => use(x)")]
-    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items => use(x)", null)]
-    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", null)]
-    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner or uniq\n    match pair@move\n        (_, let n) => return n", null)]
-    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner\n    match pair@move\n        (_, let n) => return n", null)]
-    [InlineData("func f<s/T>(o: s/Option<T>, marker: s/T) -> bool\n    s is owner or uniq\n    match o@move\n        .Some(_) => return true\n        .None => return false", null)]
-    [InlineData("func f<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    match value@move\n        _ => return 3", null)]
-    [InlineData("struct Holder<E>\n    public computed p: (E, i32)\n        get(self: ref/Self) -> (E, i32)\n            $abort(\"p\")\nfunc f<s/T>(holder: ref/Holder<s/T>)\n    s is owner or uniq\n    match holder.p\n        (_, let n) => use(n)", null)]
-    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>) -> i32\n    s is owner or uniq\n    var total: i32 = 0\n    for (_, n) in arr@move => total += n\n    return total", null)]
-    public void APairLayerBorrowIntoAnOwnedSubjectIsTheOldPathsLimit(string source, string? at)
+    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _) => use(x)", "f((1, 2))")]
+    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is uniq\n    match pair@move\n        (let x, _) => use(x)", "var n: i32 = 1\n    f((n@uniq, 2))")]
+    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is owner or uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", "f(Option<i32>.Some(1), 0)")]
+    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>)\n    s is owner or uniq\n    for (x, _) in arr@move => use(x)", "var a: Array<(i32, i32)> = [(1, 7)]\n    f(a@move)")]
+    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items@move => use(x)", "var a: Array<(i32, i32)> = [(1, 7)]\n    f(a@move, 0)")]
+    public void APairLayerBorrowIntoAnOwnedSubjectIsGenerated(string source, string call)
     {
-        var c = MinimalEmissionTest.Analyze("func use<T>(value: ref/T) => ()\n" + source + "\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var unsupported = c.Problems.Where(static x => x.Code == DiagnosticCode.Unsupported_Kd).Select(x => c.SyntaxOf(x.Subject).ToString()!.Split('\n')[0]).ToArray();
-        Assert.Equal(at is null ? [] : [at], unsupported);
+        var c = MinimalEmissionTest.Analyze("func use<T>(value: ref/T) => ()\n" + source + "\npublic func main()\n    " + call + "\n");
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        Assert.Empty(c.Problems);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        var set = c.Instances!;
+        Assert.Contains(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x) && set.Items[x].Key.Body.Def.Decl?.Name == "f");
     }
 
-    private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(b => b.Function.Name == "f");
+    // A borrowed path's pair layer, a Wildcard (a for slot `_` included, SPEC 14.8.1) and a structural position that only tests were never
+    // the old path's limit (BU-14).
+    [Theory]
+    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items => use(x)")]
+    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()")]
+    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner or uniq\n    match pair@move\n        (_, let n) => return n")]
+    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner\n    match pair@move\n        (_, let n) => return n")]
+    [InlineData("func f<s/T>(o: s/Option<T>, marker: s/T) -> bool\n    s is owner or uniq\n    match o@move\n        .Some(_) => return true\n        .None => return false")]
+    [InlineData("func f<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    match value@move\n        _ => return 3")]
+    [InlineData("struct Holder<E>\n    public computed p: (E, i32)\n        get(self: ref/Self) -> (E, i32)\n            $abort(\"p\")\nfunc f<s/T>(holder: ref/Holder<s/T>)\n    s is owner or uniq\n    match holder.p\n        (_, let n) => use(n)")]
+    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>) -> i32\n    s is owner or uniq\n    var total: i32 = 0\n    for (_, n) in arr@move => total += n\n    return total")]
+    public void APairLayerThatOnlyTestsOrBorrowsIsNoLimit(string source)
+    {
+        var c = MinimalEmissionTest.Analyze("func use<T>(value: ref/T) => ()\n" + source + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+    }
+
+    private static OwnershipBody Body(Compilation c) => c.AnalyzeLegacyOwnership().Bodies.Single(b => b.Function.Name == "f");
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);
@@ -387,7 +401,7 @@ public class MatchOwnershipTest
             }
 
             var c = Parse(source.ToString());
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
             var body = Body(c);
             var plans = body.Matches;
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
@@ -401,7 +415,7 @@ public class MatchOwnershipTest
             Assert.Equal(count, plans.Count);
             c.Bind();
             Assert.False(body.IsVerified);
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         }
     }
 }

@@ -14,7 +14,7 @@ public sealed partial class Binding
     private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundOrigin> regionWork = new();
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
-    private readonly List<Koto?> regionEvidence = new();
+    private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
     private int regionVersion;
 
     internal static bool IsLocalRegion(BoundOrigin origin)
@@ -111,15 +111,16 @@ public sealed partial class Binding
 
     // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent read through
     // OriginAtUse at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound whose
-    // parent is `source` or a meet holding it; null when `region` holds `source` itself or does not reach it. A local's own initializer
-    // stands for its declaration.
-    internal Koto? LocalRegionSourceUse(BoundOrigin region, BoundOrigin source)
+    // parent is `source` or a meet holding it, with that parent as the bound recorded it (before OriginAtUse, the atom a record's Borrow
+    // carries; DECISIONS R4-M133); null when `region` holds `source` itself or does not reach it. A local's own initializer stands for its
+    // declaration.
+    internal (Koto Value, BoundOrigin Parent)? LocalRegionSourceUse(BoundOrigin region, BoundOrigin source)
     {
         this.regionWork.Clear();
         this.regionEvidence.Clear();
         this.regionVisited.Clear();
         this.regionWork.Add(region);
-        this.regionEvidence.Add(null);
+        this.regionEvidence.Add((null, null));
         while (this.regionWork.Count != 0)
         {
             var current = this.regionWork[^1];
@@ -128,7 +129,7 @@ public sealed partial class Binding
             this.regionEvidence.RemoveAt(this.regionEvidence.Count - 1);
             if (ReferenceEquals(current, source))
             {
-                return Use(evidence);
+                return Use(evidence.Value, evidence.Parent);
             }
 
             if (!this.regionVisited.Add(current))
@@ -143,11 +144,11 @@ public sealed partial class Binding
                     var parent = this.OriginAtUse(bounds.Parents[i], bounds.Values[i]);
                     if (ReferenceEquals(parent, source))
                     {
-                        return Use(bounds.Values[i]); // A direct parent first, before a longer path.
+                        return Use(bounds.Values[i], bounds.Parents[i]); // A direct parent first, before a longer path.
                     }
 
                     this.regionWork.Add(parent);
-                    this.regionEvidence.Add(bounds.Values[i]);
+                    this.regionEvidence.Add((bounds.Values[i], bounds.Parents[i]));
                 }
             }
 
@@ -160,7 +161,8 @@ public sealed partial class Binding
 
         return null;
 
-        static Koto? Use(Koto? value) => value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value;
+        static (Koto Value, BoundOrigin Parent)? Use(Koto? value, BoundOrigin? parent)
+            => value is null || parent is null ? null : (value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value, parent);
     }
 
     private void ResetLocalRegions()

@@ -40,7 +40,7 @@ public class CopyPropertyEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -49,7 +49,7 @@ public class CopyPropertyEmissionTest
             }
 
             c.Binding.CheckStartup(OutputKind.Application);
-            if (!c.Analyze().IsVerified || !c.Validate(out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Accessor generation failed.");
             }
@@ -100,7 +100,7 @@ public class CopyPropertyEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var item: i32 = 1\n        " + setter + "\nlet s = S.init()\nlet taken = s.item" + transfer);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public class CopyPropertyEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Meter + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -152,7 +152,7 @@ public class CopyPropertyEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("struct Point\n    Self is Copy\n    public var x: i32 = 1\n    public func update(self: uniq/Self) => self.x = 9\nstruct S\n    public var point: Point = Point.init()\n        get() -> Point => storage\nvar s = S.init()\n" + operation);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]

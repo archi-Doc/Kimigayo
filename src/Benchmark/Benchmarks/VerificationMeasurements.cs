@@ -50,7 +50,7 @@ internal static class VerificationMeasurements
 
         void Analyze()
         {
-            if (!c.Ownership.Analyze().IsVerified)
+            if (!c.AnalyzeLegacyOwnership().Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Measurement input must pass ownership verification.");
             }

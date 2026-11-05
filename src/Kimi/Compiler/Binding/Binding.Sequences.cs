@@ -117,7 +117,16 @@ public sealed partial class Binding
             var symbol = name.BoundSymbol!;
             symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach);
             symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned || (!userEntry && source.Mode != SubjectMode.ByValue);
-            Complete(name, symbol.Type);
+            if (iterable is null)
+            {
+                // SPEC 23.1.2: a binding of a failed iterable rests on it, as a local rests on a failed initializer (BindReference).
+                this.CompleteDependent(name, source.Iterable);
+            }
+            else
+            {
+                Complete(name, symbol.Type);
+            }
+
             if (decomposition is not null && slot is not null)
             {
                 var proof = this.ProveCopy(slot, name);

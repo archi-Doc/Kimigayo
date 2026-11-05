@@ -69,18 +69,6 @@ public sealed partial class OwnershipBody
 
     internal static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
 
-    internal PlaceState GetBorrowInputState(int operation)
-    {
-        if (!this.IsReachable(operation))
-        {
-            return PlaceState.None;
-        }
-
-        this.LoadInput(operation);
-        var borrow = this.Operations[operation];
-        return this.TryOwnedBorrowState(borrow, out var state) ? state : this.CompleteState(borrow.Place);
-    }
-
     // Borrow validity follows CFG uses, including the implicit use by drop.
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
@@ -463,7 +451,7 @@ public sealed partial class OwnershipBody
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                AddOrigin(place, type.OriginArguments[i], (LoanRequirement)Math.Min((int)bound, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref)));
+                AddOrigin(place, type.OriginArguments[i], (LoanRequirement)Math.Min((int)bound, (int)this.SlotLoanRequirement(type, i)));
             }
 
             // SPEC 3.3.2: shared access cannot use an inner uniq exclusively, so a Type below a shared layer (ref/uniq/T) keeps
@@ -596,7 +584,7 @@ public sealed partial class OwnershipBody
                 // Types carry it. Those bindings are Fields of the closure's receiver, so the Loans fall on their Places.
                 void RecordCarriers()
                 {
-                    if (rooted || this.Function is not { IsAnonymous: true, ClosureStorage: { } plan })
+                    if (rooted || this.Function is not { IsAnonymous: true, ClosureAsCreated: { } plan })
                     {
                         return;
                     }
@@ -1049,6 +1037,12 @@ public sealed partial class OwnershipBody
         }
     }
 
+    // The owner's D5 exception (2026-10-26, 「(a) 場合ごとの読みを許可 (推奨)」; DECISIONS BU-44): slot `i` of `type` keeps the Loan its
+    // strongest case requires (SPEC 15.3.5; Binding.RequirementAt), `ref` without a schema; removed with the old analysis at R6-check.
+    private LoanRequirement SlotLoanRequirement(BoundType type, int i)
+        => type.Symbol?.Schema?.Origins[i] is { } slot
+            ? this.Function.CodeContext.Compilation.Binding.RequirementAt(slot, type).Strongest : LoanRequirement.Ref;
+
     private LoanRequirement NamedOriginRequirement(BoundType type, BoundOrigin origin, bool sourceBounds = false)
     {
         if (type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
@@ -1063,7 +1057,7 @@ public sealed partial class OwnershipBody
         {
             if (Contains(type.OriginArguments[i], origin))
             {
-                result = (LoanRequirement)Math.Max((int)result, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref));
+                result = (LoanRequirement)Math.Max((int)result, (int)this.SlotLoanRequirement(type, i));
             }
         }
 
@@ -1170,6 +1164,15 @@ public sealed partial class OwnershipBody
 
         bool Names(BoundOrigin origin)
         {
+            // A result may retain any constituent of a meet; the separate sole-input check requires the whole contract.
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Names(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
             if (this.NamedOriginRequirement(input, origin) != LoanRequirement.None)
             {
                 return true;
@@ -1652,28 +1655,14 @@ public sealed partial class OwnershipBody
     }
 
     // SPEC 15.6.2, 16.2.2: the record of destroying `root` while `holder` keeps its Loan, with the Borrow that created the Loan: a
-    // conversion such as `n@ref`, an implicit Borrow at its operand, or a capture entry such as `[n@ref]` of a closure.
+    // conversion such as `n@ref`, an implicit Borrow at its operand, or the closure whose capture entry, such as `[n@ref]`, borrows.
     private OwnershipIssue DestructionIssue(Koto source, int holder, int root, int lending)
     {
         Koto? borrowed = null;
-        var capture = -1;
         if (lending >= 0 && this.LendingBorrow(lending, root) is >= 0 and var borrow)
         {
             borrowed = this.Operations[borrow].Source;
-            if (borrowed is FunctionKoto { BoundClosure: { } closure, Captures: { } entries })
-            {
-                for (var i = 0; i < closure.Captures.Count && capture < 0; i++)
-                {
-                    if (this.SymbolPlaces.TryGetValue(closure.Captures[i].Source, out var captured) && captured == root)
-                    {
-                        for (var entry = 0; entry < entries.Length && capture < 0; entry++)
-                        {
-                            capture = entries[entry].Name == closure.Captures[i].Source.Name ? entry : -1;
-                        }
-                    }
-                }
-            }
-            else if (borrowed.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion)
+            if (borrowed is not FunctionKoto { ClosureAsCreated: not null, Captures: not null } && borrowed.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion)
             {
                 borrowed = conversion;
             }
@@ -1689,9 +1678,7 @@ public sealed partial class OwnershipBody
             }
         }
 
-        var temporary = name is null && this.Places[root].Kind == OwnershipPlaceKind.Temporary ? this.Places[root].Source : null;
-        var loan = this.Places[holder].Source;
-        return new(source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, LoanSource: loan, Borrow: borrowed, BorrowCapture: capture, Destroyed: name ?? string.Empty, DestroyedTemporary: temporary);
+        return new(source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source, Borrow: borrowed, Destroyed: name ?? string.Empty);
     }
 
     private void PrepareSlicePaths()

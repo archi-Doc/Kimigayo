@@ -32,8 +32,9 @@ public enum OriginKind : byte
     // Types, never in an instance's stored Types; every read replaces it (Binding.ReadHolder).
     Holder,
 
-    // SPEC 5.7 (DECISIONS BU-24): the Origin a raw layer without `during` counts as stating, which every Origin outlives; only in
-    // relations and their records, never in a Type (Binding.UnstatedRelation).
+    // SPEC 5.7 (DECISIONS BU-24, BU-46): the Origin a raw layer without `during` counts as stating, which every Origin outlives; in
+    // relations and their records (Binding.UnstatedRelation), and on a kept part's raw layer its declaration writes without `during`
+    // (Binding.WithUnstatedOrigins), never in any other Type.
     Unstated,
 }
 
@@ -52,14 +53,155 @@ public enum LoanRequirement : byte
     Uniq,
 }
 
+/// <summary>A declared slot's Loan requirement over the Semantics cases of its declaration's pair binders (SPEC 15.3.5; DECISIONS BU-44):
+/// <see cref="Unconditional"/> in every case, joined in one case with the class of each binder in <see cref="Binders"/> that the case
+/// gives a borrow Semantics (`ref` for ref and objref, `uniq` for uniq and objuniq). A member is a pair binder's ordinal among the pair
+/// slots of the schema listing the slot (own then inherited; Type slots take none), for a binder admitting a borrow. Binding.RequirementAt
+/// reads it at an instance.</summary>
+/// <param name="Unconditional">The requirement in every case.</param>
+/// <param name="Binders">The pair binders whose borrow cases use the slot.</param>
+public readonly record struct SlotRequirement(LoanRequirement Unconditional, BinderSet Binders);
+
+/// <summary>A set of pair-slot ordinals, the binders of a <see cref="SlotRequirement"/> (DECISIONS BU-44), with no width limit: ordinals
+/// below 64 inline and the others in words beyond them, word i holding ordinals 64 + 64i to 127 + 64i. Sets compare by their members.
+/// Every operation on binders goes through these members; only the requirement fixed point builds a set beyond 64 into a buffer, its
+/// slot's or a reused scratch one (<see cref="Union"/>).</summary>
+public readonly struct BinderSet : IEquatable<BinderSet>
+{
+    private readonly ulong low;
+    private readonly ulong[]? high;
+
+    internal BinderSet(ulong low, ulong[]? high) => (this.low, this.high) = (low, high);
+
+    /// <summary>Gets a value indicating whether the set has no member.</summary>
+    public bool IsEmpty => this.Next(0) < 0;
+
+    // The words beyond the 64th ordinal, the buffer a slot's own set is built into (OriginParameter.Absorb).
+    internal ulong[]? Words => this.high;
+
+    /// <summary>Tests two sets for equal members.</summary>
+    /// <param name="left">A set.</param>
+    /// <param name="right">Another set.</param>
+    /// <returns>Whether their members are equal.</returns>
+    public static bool operator ==(BinderSet left, BinderSet right) => left.Equals(right);
+
+    /// <summary>Tests two sets for different members.</summary>
+    /// <param name="left">A set.</param>
+    /// <param name="right">Another set.</param>
+    /// <returns>Whether their members differ.</returns>
+    public static bool operator !=(BinderSet left, BinderSet right) => !left.Equals(right);
+
+    /// <summary>Gets the least member at or after an ordinal, for iteration without allocation.</summary>
+    /// <param name="ordinal">The least ordinal to consider, 0 or more.</param>
+    /// <returns>The member, or -1 when none remains.</returns>
+    public int Next(int ordinal)
+    {
+        if (ordinal < 64 && (this.low >> ordinal) != 0)
+        {
+            return ordinal + System.Numerics.BitOperations.TrailingZeroCount(this.low >> ordinal);
+        }
+
+        for (var i = Math.Max(ordinal - 64, 0) / 64; this.high is not null && i < this.high.Length; i++)
+        {
+            var skip = Math.Max(ordinal - 64 - (64 * i), 0);
+            if ((this.high[i] >> skip) != 0)
+            {
+                return 64 + (64 * i) + skip + System.Numerics.BitOperations.TrailingZeroCount(this.high[i] >> skip);
+            }
+        }
+
+        return -1;
+    }
+
+    /// <inheritdoc/>
+    public bool Equals(BinderSet other)
+    {
+        for (var i = 0; i < Math.Max(this.high?.Length ?? 0, other.high?.Length ?? 0); i++)
+        {
+            if (Word(this.high, i) != Word(other.high, i))
+            {
+                return false;
+            }
+        }
+
+        return this.low == other.low;
+    }
+
+    /// <inheritdoc/>
+    public override bool Equals(object? obj) => obj is BinderSet other && this.Equals(other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = this.low.GetHashCode();
+        for (var i = 0; this.high is not null && i < this.high.Length; i++)
+        {
+            hash = this.high[i] == 0 ? hash : HashCode.Combine(hash, i, this.high[i]);
+        }
+
+        return hash;
+    }
+
+    // The set of one ordinal; one beyond 63 in `words`, the caller's array for it (a Binding keeps one per ordinal, so a warm pass
+    // allocates nothing).
+    internal static BinderSet Of(int ordinal, ulong[]? words)
+    {
+        if (words is null)
+        {
+            return new(1UL << ordinal, null);
+        }
+
+        words[(ordinal - 64) / 64] = 1UL << ((ordinal - 64) % 64);
+        return new(0, words);
+    }
+
+    // The empty set over this set's words, cleared and kept for a new pass of the fixed point (OriginParameter.ResetRequirement).
+    internal BinderSet Cleared()
+    {
+        if (this.high is not null)
+        {
+            Array.Clear(this.high);
+        }
+
+        return new(0, this.high);
+    }
+
+    // The union with `other`, whether `other` added a member; beyond 64 built into `buffer`, the caller's (a slot's own words, a scratch
+    // one), reused and grown only when an ordinal needs a word it lacks. Each word is read before it is written, so either set may live
+    // there; a set another holds is never written.
+    internal BinderSet Union(BinderSet other, ref ulong[]? buffer, out bool added)
+    {
+        added = (other.low & ~this.low) != 0;
+        for (var i = 0; !added && other.high is not null && i < other.high.Length; i++)
+        {
+            added = (other.high[i] & ~Word(this.high, i)) != 0;
+        }
+
+        var words = Math.Max(this.high?.Length ?? 0, other.high?.Length ?? 0);
+        if (!added || words == 0)
+        {
+            return added ? new(this.low | other.low, null) : this;
+        }
+
+        var target = buffer is not null && buffer.Length >= words ? buffer : new ulong[words];
+        for (var i = 0; i < target.Length; i++)
+        {
+            target[i] = Word(this.high, i) | Word(other.high, i);
+        }
+
+        buffer = target;
+        return new(this.low | other.low, target);
+    }
+
+    private static ulong Word(ulong[]? words, int i) => words is not null && i < words.Length ? words[i] : 0;
+}
+
 public enum BindingObligationKind : byte
 {
     OriginOutlives,
     OriginInference,
     TypeRole,
     TypeFormation,
-    Loan,
-    StaticStorage,
 }
 
 public enum BindingDeadline : byte
@@ -106,7 +248,25 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
 
     public OriginVariance Variance { get; internal set; }
 
-    public LoanRequirement LoanRequirement { get; internal set; }
+    public SlotRequirement Requirement { get; internal set; }
+
+    // Joins a use into Requirement (SPEC 15.3.5: the stronger unconditional part, every binder), the requirement fixed point being its one
+    // writer; whether it changed.
+    internal bool Absorb(SlotRequirement use)
+    {
+        var words = this.Requirement.Binders.Words;
+        var binders = this.Requirement.Binders.Union(use.Binders, ref words, out var added);
+        if (!added && use.Unconditional <= this.Requirement.Unconditional)
+        {
+            return false;
+        }
+
+        this.Requirement = new(use.Unconditional > this.Requirement.Unconditional ? use.Unconditional : this.Requirement.Unconditional, binders);
+        return true;
+    }
+
+    // Starts a pass of the requirement fixed point: no requirement, its binders' words cleared and kept (BinderSet.Cleared).
+    internal void ResetRequirement() => this.Requirement = new(LoanRequirement.None, this.Requirement.Binders.Cleared());
 }
 
 /// <summary>Shared ordered generic and Origin binders for one declaration.</summary>
@@ -171,9 +331,10 @@ public sealed class BoundOrigin
 /// <summary>A retained semantic requirement, independent of successful name resolution. An <see cref="BindingObligationKind.OriginOutlives"/>
 /// obligation with <c>Equality</c> requires <c>Longer == Shorter</c>, the relation at an invariant position (SPEC 15.6.1); one with a
 /// <c>Clause</c> is a substituted declaration clause at its supplying argument or Type occurrence <c>Use</c> (SPEC 15.3.3, 15.6.1); one with
-/// <c>WellFormed</c> is a callee's result premise substituted at the call <c>Use</c>, the well-formedness of its result, or the intrinsic
-/// relation of an input's instantiated Type at that input (SPEC 15.3.7, 15.6.4 step 3), which classifies the record's source and is
-/// discharged by judgment. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
+/// <c>WellFormed</c> is the well-formedness of the Type occurrence <c>Use</c> (SPEC 15.6.1), a callee's result premise substituted at the
+/// call <c>Use</c>, the well-formedness of its result, or the intrinsic relation of an input's instantiated Type at that input (SPEC 15.3.7,
+/// 15.6.4 step 3); one with neither is a fit (<see cref="Binding.IsFitObligation"/>), the producer's statement every consumer reads for the
+/// record's source. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
 /// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
 /// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Body</c> is the executable
 /// body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its identity.</summary>
@@ -192,25 +353,48 @@ internal enum TypePosition : byte
     StaticStorage,
 }
 
-// SPEC 10.7, 15.3.7: one Callable comparison of an implementation signature (Actual) with a required one (Expected). The Origins that
-// the implementation binds per call are instantiated at the required inputs in the same positions; the required per-call Origins are
-// rigid symbols of the comparison, and every other Origin is compared as written.
+// SPEC 15.3.7, the owner's (a): the required signatures of the Callable comparisons that enclose one, innermost first. A proof request
+// made in a comparison assumes the well-formedness of its own required signature and of each enclosing one (ExtractOriginPremises);
+// no other request sees them.
+internal sealed class ComparisonPremises(BoundType required, ComparisonPremises? outer)
+{
+    internal BoundType Required { get; } = required;
+
+    internal ComparisonPremises? Outer { get; } = outer;
+}
+
+// SPEC 10.7, 15.3.7: one Callable comparison of an implementation signature (Actual) with a required one (Expected), nested in the
+// comparisons Outer names. The Origins that the implementation binds per call are instantiated at the required inputs in the same
+// positions; the required per-call Origins are rigid symbols of the comparison, related only through the required signatures' own
+// well-formedness, and every other Origin is compared as written. A comparison without an implementation signature (ContractFits
+// solves the implementation's Origins itself) only carries the premises.
 internal readonly struct CallableInstance
 {
     private readonly BoundType? actual;
     private readonly Koto? actualBinder;
     private readonly BoundType? expected;
     private readonly Koto? expectedBinder;
+    private readonly ComparisonPremises? outer;
 
-    internal CallableInstance(BoundType? actual, Koto? actualBinder, BoundType? expected, Koto? expectedBinder)
+    internal CallableInstance(BoundType? actual, Koto? actualBinder, BoundType? expected, Koto? expectedBinder, ComparisonPremises? outer)
     {
         this.actual = actual;
         this.actualBinder = actualBinder;
         this.expected = expected;
         this.expectedBinder = expectedBinder;
+        this.outer = outer;
     }
 
     internal BoundType? Actual => this.actual;
+
+    // The required signature whose own well-formedness the comparison's proofs assume; null outside a comparison.
+    internal BoundType? Expected => this.expected;
+
+    internal ComparisonPremises? Outer => this.outer;
+
+    // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.
+    // A signature that carries no Origin has no well-formedness, so it adds no node.
+    internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
@@ -312,6 +496,10 @@ public sealed partial class Binding
     {
         internal Koto Owner { get; } = owner;
 
+        // A local's (a FieldKoto, the parser's local declaration), whose clauses are checks that assume nothing (SPEC 15.3.3); every
+        // other owner's clauses are its contract.
+        internal bool IsLocal => this.Owner is FieldKoto;
+
         internal BindingScope? Scope { get; set; }
 
         // The body that opened it: a local's, or none for a declaration's (DECISIONS R4-M101 E1), whose late rows it owns.
@@ -320,6 +508,20 @@ public sealed partial class Binding
         internal int State { get; set; }
 
         internal Koto? Failure { get; set; }
+
+        // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
+        // failed before completion. Written for every owner and read only for a declaration's rows (UnboundCause): a local's pending
+        // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
+        internal Koto? PendingFailure { get; set; }
+
+        // The clauses that bound in a declaration whose contract failed: never premises of its uses (the contract is unavailable), only of
+        // the dependence queries (ReadFailedContract while readingFailedContracts; DECISIONS BU-62, BU-69).
+        internal List<OriginRelation>? RejectedRelations { get; set; }
+
+        // Each clause that failed with its bound Origins, null where an operand is unavailable (FailOriginClause): a local's failed clause
+        // leaves Unbound only the inference variables they name (RestsOnFailedClause; DECISIONS BU-68), and a contract's is repaired by
+        // the dependence query (DECISIONS BU-69). Kept across binds.
+        internal List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses { get; set; }
 
         internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
 
@@ -337,6 +539,9 @@ public sealed partial class Binding
         {
             this.State = 0;
             this.Failure = null;
+            this.PendingFailure = null;
+            this.RejectedRelations?.Clear();
+            this.FailedClauses?.Clear();
             this.Scope = null;
             this.Body = default;
             this.Sets.Clear();

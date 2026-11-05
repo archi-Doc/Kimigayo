@@ -16,7 +16,7 @@ public class ConditionalPremiseAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source("public", "public", "internal", "public", requirement));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);

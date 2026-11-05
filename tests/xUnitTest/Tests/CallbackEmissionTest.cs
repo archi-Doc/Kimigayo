@@ -98,8 +98,8 @@ public class CallbackEmissionTest
     public void OptionCapturesAreEnvironmentBindings(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var failure), failure);
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -126,7 +126,7 @@ public class CallbackEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -166,12 +166,14 @@ public class CallbackEmissionTest
     }
 
     // A reference receiver of a value call is used again at the call, so the Place it borrows stays lent while the arguments
-    // run, as for a method receiver; the loan is retained by the reference local or by the borrowed field or element.
+    // run, as for a method receiver; the loan is retained by the reference local or by the borrowed field or element. Since the MIR
+    // decides (R6-check H5; H3b T49, class 3), the record is A5's: it relates the borrow (the reference local's `g@ref`, or the field or
+    // element read), the value call that uses it later as the loan (was the borrow alone), and the argument's exclusive reservation.
     [Theory]
-    [InlineData("func lend(g: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nlet n = r(lend(g@uniq))", "lend(g@uniq)", "let r = g@ref")]
-    [InlineData("struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc lend(h: uniq/H) -> i32 => 1\nvar h = H.init(func [] (v) => v * 3)\nlet n = (h.f)(lend(h@uniq))", "lend(h@uniq)", "h.f")]
-    [InlineData("func grow(a: uniq/Array<(i32) -> i32>) -> i32\n    a.append(func [] (v) => v)\n    return 1\nvar fs: Array<(i32) -> i32> = [func [] (v) => v + 1]\nlet n = fs[0](grow(fs@uniq))", "grow(fs@uniq)", "fs[0]")]
-    public void ReferenceReceiversStayLentWhileArgumentsRun(string source, string reserved, string retained)
+    [InlineData("func lend(g: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nlet n = r(lend(g@uniq))", "lend(g@uniq)", "g@ref", "r(lend(g@uniq))", "g@uniq")]
+    [InlineData("struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc lend(h: uniq/H) -> i32 => 1\nvar h = H.init(func [] (v) => v * 3)\nlet n = (h.f)(lend(h@uniq))", "lend(h@uniq)", "(h.f)", "(h.f)(lend(h@uniq))", "h@uniq")]
+    [InlineData("func grow(a: uniq/Array<(i32) -> i32>) -> i32\n    a.append(func [] (v) => v)\n    return 1\nvar fs: Array<(i32) -> i32> = [func [] (v) => v + 1]\nlet n = fs[0](grow(fs@uniq))", "grow(fs@uniq)", "fs[0]", "fs[0](grow(fs@uniq))", "fs@uniq")]
+    public void ReferenceReceiversStayLentWhileArgumentsRun(string source, string reserved, string borrow, string retained, string reservation)
     {
         var path = Path.GetFullPath("value-receiver-conflict.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -182,11 +184,16 @@ public class CallbackEmissionTest
         var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
         Assert.Equal("CallActivationConflict_Kd", error.Code);
         Assert.Equal(reserved, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        var loan = Assert.Single(error.Related!);
-        Assert.Equal("loan", loan.Role);
-        Assert.StartsWith(retained, source.Substring(loan.Span!.Value.Start, loan.Span.Value.Length), StringComparison.Ordinal);
+        Assert.Equal<(string, string, string?)>(
+            [
+                ("borrow", borrow, "borrow that created the loan"),
+                ("loan", retained, "later use of the value retaining the conflicting loan"),
+                ("reservation", reservation, "conflicting exclusive call reservation"),
+            ],
+            error.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+        Assert.Null(error.Note);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -196,7 +203,7 @@ public class CallbackEmissionTest
         const string Source = "let n: i32 = 6\nlet f: () -> i32 = func [n] () => n\nf()";
         var c = MinimalEmissionTest.Analyze(Source);
         using var first = new StringWriter();
-        Assert.True(c.WriteIr(first, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(first), MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
@@ -212,50 +219,7 @@ public class CallbackEmissionTest
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var second = new StringWriter();
-        Assert.True(restored.WriteIr(second, out failure), MinimalEmissionTest.Describe(restored, failure));
+        Assert.True(restored.Generate(second), MinimalEmissionTest.Describe(restored));
         Assert.Equal(first.ToString(), second.ToString());
-    }
-
-    [Theory]
-    [InlineData("capture")]
-    [InlineData("signature")]
-    [InlineData("argument")]
-    [InlineData("loan")]
-    public void CorruptCallbackPlansAreRejected(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let n: i32 = 6\nlet f: (i32) -> bool = func [n] (v: i32) => v == n\nf(6)");
-        Assert.True(c.Validate(out var failure), failure);
-        var body = c.Ownership.Bodies.Single(x => x.Values.Any(v => v.Kind == OwnershipValueKind.Closure));
-        var create = body.OperationStorage.FindIndex(x => x.Source is FunctionKoto created && created.ClosureOf() is not null && x.Kind == OwnershipOperationKind.Produce);
-        var closure = ((FunctionKoto)body.Operations[create].Source).ClosureOf()!;
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto called && called.ValueCallOf() is not null);
-        var invocation = (InvocationKoto)body.Operations[call].Source;
-        switch (defect)
-        {
-            case "capture":
-                body.Values[create] = body.Values[create] with { Count = 0 };
-                break;
-            case "signature":
-                closure.Signature = BoundType.Unit;
-                break;
-            case "argument":
-                var plan = invocation.ValueCallOf()!;
-                var arguments = plan.ArgumentOperations.ToArray();
-                arguments[0] = arguments[0] with { ParameterType = BoundType.Unit };
-                plan.SetValue(plan.CalleeValue, plan.Signature, arguments, plan.Signature, default, plan.ReceiverKind);
-                break;
-            case "loan":
-                var loan = body.ComparisonLoans[0];
-                body.ComparisonLoans[0] = loan with { Place = 0 };
-                break;
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Bind().IsComplete);
-        c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out failure), failure);
     }
 }

@@ -150,7 +150,7 @@ public class KeyedIndexingTest
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
@@ -165,7 +165,7 @@ public class KeyedIndexingTest
     public void RejectsAtOwnership(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code == code);
     }
 
@@ -175,11 +175,11 @@ public class KeyedIndexingTest
     public void IneligibleMovesAreExplainedOnce()
     {
         var c = MinimalEmissionTest.Analyze("var names: [2 of string] = [\"a\", \"b\"]\nlet n: isize = 0\nlet a = names[n]@move\nlet b = names[0@isize]@move\nlet d = names[1 + 0]@move\nlet e = names[2]@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(4, c.Problems.Count);
         Assert.All(c.Problems, static x => Assert.Equal(DiagnosticCode.StaticMovePathRequired_Kd, x.Code));
 
         var valid = MinimalEmissionTest.Analyze("var names: [2 of string] = [\"a\", \"b\"]\nlet a = names[(0)]@move\nlet b = names[0x1]@move");
-        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid, null));
+        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid));
     }
 }

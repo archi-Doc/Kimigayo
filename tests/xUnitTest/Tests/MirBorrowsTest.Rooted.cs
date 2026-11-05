@@ -202,7 +202,7 @@ public sealed partial class MirBorrowsTest
             ["e9s: local = func []() => ()"],
             RootedEffects("""
                     public func e9s(g: () -> ())
-                        var local: () -> () = g
+                        var local: () -> () = g@move
                         var sc = Root.counter()
                         let c = sc.view()
                         local = func [] () => ()
@@ -381,14 +381,66 @@ public sealed partial class MirBorrowsTest
                     .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
     }
 
-    // ALimitIsUnsupportedAndADerivedEffectReportsNothing on rooted bodies (AGENTS Diagnostics; R4-M10, R4-M91, R4-M92): A4's Limit is the
-    // located Unsupported_Kd where a live mutable-static Loan would be met (e12a), nothing where none is (e12b), Unknown beside it decides
-    // (e12c); a dependent of an error reports nothing by itself (e13a), a key beside it stays checked (e13b).
+    // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems's rows that need a live static Loan, on rooted bodies (SPEC 23.1.2,
+    // DECISIONS R5-M183): wipe, x's initializer and pair's have a validator finding. d2's call of wipe is a Derived site (MirEffects.Views),
+    // so the Loan it would meet gives no record, while writes() meets it; r4's read of x meets the unique Loan, and the initialization
+    // proof consults x's initializer, so it rests on it and makes no record, while writes() meets the counter's Loan; at r5's readDeep() the
+    // read of pair meets the unique Loan and the proof rests on pair's initializer, so Met's first block makes no record, and its second
+    // still reports A4's Deep (Lim.run) for the shared Loan a write would meet (Root.pair, pair's stand-in, ends group Root). Fail-before:
+    // wipe(), useX() and readDeep() are conflicts.
+    [Fact]
+    public void ABodyWithAFindingLeavesOtherBodiesProblemsRooted()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public func wipe() => State.counter = Counter.init()
+                public func readDeep() -> i32
+                    Lim.run()
+                    return State.pair.1
+                public func d2()
+                    var sc = Root.counter()
+                    let lc = sc.view()
+                    wipe()
+                    _ = writes()
+                    inspect(lc)
+                public func r4()
+                    var sx = Root.x()
+                    var sc = Root.counter()
+                    let u = sx.viewU()
+                    let lc = sc.view()
+                    _ = useX()
+                    _ = writes()
+                    u@follow = 1
+                    inspect(lc)
+                public func r5()
+                    var sp = Root.pair()
+                    let u = sp.0@uniq
+                    let s = sp.1@ref
+                    _ = readDeep()
+                    u@follow = 1
+                    inspect(s)
+
+            """ + EffectRoots + "    public func pair() -> (i32, i32) => (1, 2)\n");
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        foreach (var (name, kind) in new[] { ("wipe", MirBodyKind.Fn), ("x", MirBodyKind.StaticInit), ("pair", MirBodyKind.StaticInit) })
+        {
+            program.Bodies.ToArray().Single(x => x.Key.Kind == kind && x.Key.Decl?.Name == name).HasFinding = true;
+        }
+
+        Assert.Equal(
+            ["d2: writes()", "r4: writes()", "r5: readDeep() OwnershipDepthLimit_Kd"],
+            Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]));
+    }
+
+    // ALimitIsUnsupportedAndADerivedEffectReportsNothing on rooted bodies (AGENTS Diagnostics; R4-M10, R4-M91, R4-M92): A4's Deep (Lim's
+    // destruction past the walk's bound) is the depth limit where a live mutable-static Loan would be met (e12a; the owner's 「G272: (1)」,
+    // R4-M153), nothing where none is (e12b), Unknown beside it decides (e12c); a dependent of an error reports nothing by itself (e13a), a
+    // key beside it stays checked (e13b).
     [Fact]
     public void ALimitIsUnsupportedAndADerivedEffectReportsNothingRooted()
     {
         Assert.Equal(
-            ["e12a: Lim.run() Unsupported_Kd", "e12c: both(g@move)"],
+            ["e12a: Lim.run() OwnershipDepthLimit_Kd", "e12c: both(g@move)"],
             RootedEffects("""
                     public func e12a()
                         var sc = Root.counter()
@@ -463,12 +515,13 @@ public sealed partial class MirBorrowsTest
 
                 """));
 
-    // AHeldEffectIsUnsupported on rooted bodies (R4-M73, R4-M92, R-a): an effect conflict in a held view is the located Unsupported_Kd at its
-    // call (e17, beside the hold's own record); a static Loan a default's copy keeps meets the call's unknown effect (copied).
+    // R4-M92, R-a on rooted bodies: an effect conflict is a Loan problem at its call, also after a generic loop whose iterator's store the
+    // per-part guard decides (e17, a located Unsupported_Kd under P13's body hold until R4-M147); a static Loan a default's copy keeps meets
+    // the call's unknown effect (copied).
     [Fact]
-    public void AHeldEffectIsUnsupportedRooted()
+    public void AnEffectConflictIsALoanProblemRooted()
         => Assert.Equal(
-            ["e17: g() Unsupported_Kd", "e17: var xs: Array<T> = [] Unsupported_Kd", "copied: g()"],
+            ["e17: g()", "copied: g()"],
             RootedEffects("""
                     public func e17<T>(a: T, g: () -> ())
                         T is Copy
@@ -591,7 +644,7 @@ public sealed partial class MirBorrowsTest
     // V16 "F5 effects" (DECISIONS R4-M92) on rooted bodies: one body with M Loans on M mutable statics live across N calls, each to a function
     // writing one of K other statics, checks each call's keys once per effect root (A4's row, the root's two bits and its candidates): the
     // work grows linearly in N at M = 4, K = 8 and within the bound's M × (holders) term in M at N = 32. A guard, not a regression: no problem
-    // arises. No staticEnsure precedes a rooted Borrow, so the shape has M checked sites fewer than its source form.
+    // arises. Each rooted Borrow follows its static's staticEnsure (Rooted), as in its source form.
     [Fact]
     public void EffectsScaleWithCallsAndStaticLoans()
     {
@@ -688,10 +741,11 @@ public sealed partial class MirBorrowsTest
     // 23.1.1; R4-M97): a failure found in a copy is the caller's unless every event taking part lies in one evaluation of one copy, recorded at
     // the outermost omitting call with the default's operation as its Evaluated fact: the copy's poke activating against the caller's
     // reservation (g171; facts Reservation and Evaluated), its effect form (fx), the access in a copy nested in an explicit argument's copy
-    // (n1, at State.f()), two calls (twiceBoth), a two-view generic caller (gen: both views), a held caller (held, the hold's U at the omitting
-    // call too). Kept: the disjoint, read and explicit twins; a Limit inside a copy, at its operation (limit, so the record names addl's
-    // Lim.run()). Template-owned: f2's own Loan met in g's copy, f2's record at its State.g() (facts Anchor, Use, Reservation, Evaluated), and
-    // effOwn's effect conflict on its own Loan, omitted in its callers alone and in a loop; addh's held template.
+    // (n1, at State.f()), two calls (twiceBoth), a two-view generic caller (gen: both views), and a caller whose own conflict precedes a
+    // copy of addh, whose generic loop the per-part guard decides (held: its reservation conflict at the omitting call; held under P13's body
+    // hold until R4-M147). Kept: the disjoint, read and explicit twins; a Limit inside a copy, at its operation (limit, so the record names
+    // addl's Lim.run()). Template-owned: f2's own Loan met in g's copy, f2's record at its State.g() (facts Anchor, Use, Reservation,
+    // Evaluated), and effOwn's effect conflict on its own Loan, omitted in its callers alone and in a loop; addh's activation conflict.
     [Fact]
     public void ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted()
     {
@@ -755,12 +809,12 @@ public sealed partial class MirBorrowsTest
         var program = AnalyzeRooted(c);
         Assert.Equal(
             [
-                "f2: State.g() CallActivationConflict_Kd", "addh: State.poke(sc@uniq) Unsupported_Kd", "effOwn: State.touch()",
+                "f2: State.g() CallActivationConflict_Kd", "addh: State.poke(sc@uniq) CallActivationConflict_Kd", "effOwn: State.touch()",
                 "g171: State.add(sc@uniq) CallReservationConflict_Kd", "g171Explicit: State.poke(sc@uniq) CallReservationConflict_Kd",
                 "fx: sc.add() CallReservationConflict_Kd", "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
                 "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(sc@uniq) CallReservationConflict_Kd",
-                "gen: State.addg(v, sc@uniq) CallReservationConflict_Kd", "held: y0 = 2 Unsupported_Kd", "held: State.addh(sc@uniq) Unsupported_Kd",
-                "addl: Lim.run() Unsupported_Kd", "limit: y0 = 2",
+                "gen: State.addg(v, sc@uniq) CallReservationConflict_Kd", "held: y0 = 2", "held: State.addh(sc@uniq) CallReservationConflict_Kd",
+                "addl: Lim.run() OwnershipDepthLimit_Kd", "limit: y0 = 2",
             ],
             Problems(c, program, DefaultCodes));
         Assert.Equal(
@@ -800,13 +854,13 @@ public sealed partial class MirBorrowsTest
         Assert.ThrowsAny<XunitException>(() => Sound(program));
     }
 
-    // The Loan problems and located Unsupported_Kd records of an effect program's rooted bodies: the prelude, the effect Types and group
-    // State with the given members, the markers, then the given declarations.
+    // The Loan problems and limit records (a located Unsupported_Kd, the depth limit) of an effect program's rooted bodies: the prelude, the
+    // effect Types and group State with the given members, the markers, then the given declarations.
     private static string[] RootedEffects(string members, string declarations = "")
     {
         var c = MirBuildTest.Compile(Prelude + EffectTypes + members + EffectRoots + declarations);
         Assert.Empty(c.Binding.Issues);
-        return Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+        return Problems(c, AnalyzeRooted(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]);
     }
 
     // A5's work on a program's rooted bodies with no Loan problem.
@@ -836,7 +890,7 @@ public sealed partial class MirBorrowsTest
     private static MirProgram Sound(MirProgram program)
     {
         Assert.Empty(program.Findings);
-        Assert.DoesNotContain(program.Records, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         return program;
     }
@@ -851,10 +905,11 @@ public sealed partial class MirBorrowsTest
 
     // Each body of the program's own module with its stand-ins rooted at their statics, validated: a stand-in is a Var or Temp local a call of
     // group Root initializes, standing for the static that function names, which a body of the program accesses, and of its Type up to
-    // Origins (MirTypes.Agree, MIR's Type agreement). The copy leaves out the stand-in's storage statements, turns that call and the
-    // stand-in's Drop into Gotos to their targets and roots each of its Places at the static (so its projections are the static's); every
-    // other row and the block numbers are the built body's, so A2's verdicts of the body (its Ordinal) apply. So a Borrow of a stand-in is a
-    // Borrow of its static, with no staticEnsure before it: no such ensure the source tests ran met a live Loan. A4's summaries are the built
+    // Origins (MirTypes.Agree, MIR's Type agreement). The copy leaves out the stand-in's storage statements, turns that call into the
+    // static's staticEnsure (into a Unit temp of its own, the builder's form, which MirValidator requires of a static's Places, G191) and
+    // the stand-in's Drop into a Goto to its target, and roots each of its Places at the static (so its projections are the static's);
+    // every other row and the block numbers are the built body's, so A2's verdicts of the body (its Ordinal) apply. So a Borrow of a
+    // stand-in is a Borrow of its static after the static's staticEnsure, as P42's source form has it. A4's summaries are the built
     // program's, so a twin function's lacks its stand-ins' static accesses; no witness composes one (copies are inlined).
     private static MirBody[] Rooted(Compilation c, MirProgram program)
     {
@@ -934,7 +989,13 @@ public sealed partial class MirBorrowsTest
 
             foreach (var end in built.MustNotComplete)
             {
-                body.AddMustNotComplete(end);
+                var start = body.GuessedSites.Length; // The copy's sites, re-based into this body's (R5-M186).
+                foreach (var site in built.GuessedSites.Slice(end.Start, end.Count))
+                {
+                    body.AddGuessedSite(site);
+                }
+
+                body.AddMustNotComplete(end with { Start = start });
             }
 
             foreach (var block in built.Blocks)
@@ -953,9 +1014,20 @@ public sealed partial class MirBorrowsTest
                     }
                 }
 
-                var copied = Marker(terminator) is not null || (terminator.Kind == MirTerminatorKind.Drop && StandIn(terminator.Place))
-                    ? MirTerminator.Goto(terminator.Target, terminator.Source, terminator.CheckTarget)
-                    : terminator with { Place = Map(terminator.Place), Operand = terminator.Operand with { Place = Map(terminator.Operand.Place) } };
+                MirTerminator copied;
+                if (Marker(terminator) is not null)
+                {
+                    var slot = body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, ~roots[terminator.Place.Root]))));
+                    var unit = new MirPlace(body.AddLocal(new(BoundType.Unit, MirLocalKind.Temp, terminator.Source)));
+                    copied = MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), slot, 1, unit, terminator.Target, terminator.Source);
+                }
+                else
+                {
+                    copied = terminator.Kind == MirTerminatorKind.Drop && StandIn(terminator.Place)
+                        ? MirTerminator.Goto(terminator.Target, terminator.Source, terminator.CheckTarget)
+                        : terminator with { Place = Map(terminator.Place), Operand = terminator.Operand with { Place = Map(terminator.Operand.Place) } };
+                }
+
                 body.Terminate(b, copied);
             }
 

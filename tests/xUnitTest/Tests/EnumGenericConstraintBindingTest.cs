@@ -44,7 +44,7 @@ public class EnumGenericConstraintBindingTest
     public void ValidNestedArgumentsStillPublishPlans(string argument)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is " + argument + "\nenum E<T>\n    Empty\ngroup Consumer\n    func make() -> E<Box<" + argument + ">> => .Empty");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.TryGetEnumConstruction(Use(c), out _));
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -55,7 +55,7 @@ public class EnumGenericConstraintBindingTest
     public void DependentArgumentsRetainDefinitionEvidence()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is Copy\nenum E<T>\n    Empty\ngroup Consumer\n    func make<U>() -> E<Box<U>>\n        U is Copy\n        return .Empty");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 

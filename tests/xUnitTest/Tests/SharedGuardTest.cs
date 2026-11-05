@@ -33,11 +33,11 @@ public class SharedGuardTest
     {
         const string Source = "let value = (\"hello\", 42)\nmatch value\n    (let text, let number) if text == \"hello\" and number == 42 => Console.writeLine(text)\n    (_, _) => ()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Shared guard verification failed.");
             }
@@ -152,14 +152,14 @@ public class SharedGuardTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void ANewCandidateBorrowCannotEscapeItsGuard()
     {
         var c = MinimalEmissionTest.Analyze("func get(value: ref/(string, i32)) -> ref/string during value\n    match value\n        (let text, _) if (return text) => ()\n        (_, _) => ()\n    $abort(\"none\")");
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         Assert.False(c.Binding.Result.IsComplete);
     }
 }

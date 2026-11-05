@@ -45,14 +45,14 @@ public class SliceCostTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             var valid = stage switch
             {
                 "Binding" => c.Bind().IsComplete,
                 "Ownership" => c.Analyze().IsVerified,
-                _ => c.WriteIr(TextWriter.Null, out _),
+                _ => c.Generate(TextWriter.Null),
             };
             if (!valid)
             {

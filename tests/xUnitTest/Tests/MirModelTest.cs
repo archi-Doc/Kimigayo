@@ -142,6 +142,27 @@ public sealed class MirModelTest
         Assert.Equal(new MirScope(-1, MirScopeKind.Lexical, default), Assert.Single(body.Scopes.ToArray()));
     }
 
+    // A scope lies in the innermost scope of a kind that encloses it, itself included: a defer body's nested scopes and an inline copy in
+    // it lie in its Deferred scope, a sibling in none; Inlining is the Inlined kind's.
+    [Fact]
+    public void ScopesLieInTheInnermostEnclosingScopeOfAKind()
+    {
+        var (_, types) = Fixture();
+        var body = NewBody(types);
+        var deferred = body.AddScope(0, MirScopeKind.Deferred, default);
+        var nested = body.AddScope(deferred, MirScopeKind.Lexical, default);
+        var copy = body.AddScope(nested, MirScopeKind.Inlined, default);
+        var inner = body.AddScope(copy, MirScopeKind.Deferred, default);
+        var sibling = body.AddScope(0, MirScopeKind.Lexical, default);
+        Assert.Equal(deferred, body.Enclosing(nested, MirScopeKind.Deferred));
+        Assert.Equal(deferred, body.Enclosing(copy, MirScopeKind.Deferred));
+        Assert.Equal(inner, body.Enclosing(inner, MirScopeKind.Deferred));
+        Assert.Equal(-1, body.Enclosing(sibling, MirScopeKind.Deferred));
+        Assert.Equal(-1, body.Enclosing(0, MirScopeKind.Deferred));
+        Assert.Equal(copy, body.Inlining(inner));
+        Assert.Equal(-1, body.Inlining(nested));
+    }
+
     // Clearing a program returns its bodies to the pool, and the next build reuses them in order.
     [Fact]
     public void ProgramReusesItsBodiesInOrder()
@@ -170,6 +191,7 @@ public sealed class MirModelTest
         var program = new MirProgram();
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
         var key = new MirDefKey(types.Function, MirBodyKind.Fn);
+        int[] roots = [1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             program.Clear();
@@ -188,7 +210,7 @@ public sealed class MirModelTest
                 body.Terminate(block, MirTerminator.Goto(block + 1, At));
             }
 
-            body.AddOpaque(default, [1]);
+            body.AddOpaque(default, roots);
             body.Static(new(types.Function, BoundType.I32, false, false));
             body.AddScope(0, MirScopeKind.Unsafe, default);
         }));

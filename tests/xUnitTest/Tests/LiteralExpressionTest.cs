@@ -63,8 +63,8 @@ public class LiteralExpressionTest
     public void AControlFlowArgumentOfLiteralsIsALiteral(string source)
     {
         var c = MinimalEmissionTest.Analyze("let c = true\nlet d = false\n" + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 14.9.2 step 3, 4.3, 12.3: a literal source of a join, or a literal leaf of a Tuple, array or dictionary literal source or of an
@@ -89,6 +89,12 @@ public class LiteralExpressionTest
     [InlineData("let t = if c => p.x else => (label inner: if d => 4000000000 else => 3)", "3", "i64")]
     [InlineData("let t = if c => p.x else => (4000000000)", "4000000000", "i64")]
     [InlineData("let t = if c => (n, (return 1)) else => (n, 5)", "(n, (return 1))", "(i64, i32)")]
+    [InlineData("let t = if c => (n, (return 1)) else => (5, n)", "(5, n)", "(i64, i64)")]
+    [InlineData("let t = if c => (n, 5) else => (6, n)", "(n, 5)", "(i64, i64)")]
+    [InlineData("let t = if c => (n, 5) else => (6, 7)", "(6, 7)", "(i64, i32)")]
+    [InlineData("let t = if c => [2 of 5] else => [2 of n]", "[2 of 5]", "[2 of i64]")]
+    [InlineData("let x: i32 = 1\n    let r = x@ref\n    let t = if c => r else => (if d => 6 else => (return 1))", "6", "i32")]
+    [InlineData("let x = [[2 of 5], [2 of n]]", "[2 of 5]", "[2 of i64]")]
     [InlineData("let g = func [] (e: bool, a: i64)\n        if e => return (1, 2)\n        return (a, a)", "(1, 2)", "(i64, i64)")]
     [InlineData("let t = if c => [\"k\": p.x] else => [\"k\": 4000000000]", "[\"k\": 4000000000]", "Dictionary<string, i64>")]
     [InlineData("let t = if c => [p.x: \"x\"] else => [4000000000: \"y\"]", "[4000000000: \"y\"]", "Dictionary<i64, string>")]
@@ -101,11 +107,11 @@ public class LiteralExpressionTest
     {
         var c = MinimalEmissionTest.Analyze("struct P\n    public var x: i64 = 5\nfunc f(c: bool, d: bool, n: i64, p: P) -> i64\n    " + statement + "\n    return 0\n" +
             "let r = f(true, false, 1, P.init())");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x.ToString() == literal).ToArray();
         Assert.NotEmpty(nodes);
         Assert.All(nodes, x => Assert.Equal(type, TyCtxt.Name(x.TypeOf()!)));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 14.9.2 step 4, 12.3: a literal source is checked once, at its join's Type or, with none decided, at its default, so one that
@@ -116,6 +122,7 @@ public class LiteralExpressionTest
     [InlineData("let t = if c => p.b else => 1", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     [InlineData("let t = if c => (p.y, p.y) else => (p.y, 300)", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
     [InlineData("let t = if c => [p.y] else => [300]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
+    [InlineData("let t = if c => [2 of p.y] else => [2 of 300]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
     [InlineData("let t = if c => [1, 4000000000] else => [2]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
     [InlineData("let t = if c => [[1, 4000000000]] else => [[2]]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
     [InlineData("let t = if c => [1, 4000000000] else => [(return)]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
@@ -124,7 +131,7 @@ public class LiteralExpressionTest
     public void ALiteralSourceThatDoesNotFitItsJoinsTypeIsItsOwnProblem(string statement, string code, string at)
     {
         var source = "struct P\n    public var y: i8 = 1\n    public var b: bool = true\n    public var x: i64 = 5\nfunc f(c: bool, p: P)\n    " + statement +
-            "\n    _ = t\npublic func main() => ()\n";
+            "\n    _ = t@move\npublic func main() => ()\n"; // An Array join is no Copy, so the discard moves it explicitly (SPEC 3.5 row 3).
         var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (diagnostic.Code, source.Substring(diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length)));
     }
@@ -140,7 +147,7 @@ public class LiteralExpressionTest
     public void RejectsWhatLiteralFittingDoesNotAdmit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && TestDiagnostics.Of(c, "Hello.kimi").Length == 0, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete && TestDiagnostics.Of(c, "Hello.kimi").Length == 0, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

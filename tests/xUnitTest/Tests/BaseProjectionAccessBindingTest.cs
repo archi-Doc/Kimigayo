@@ -15,9 +15,9 @@ public class BaseProjectionAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"public open struct Base\n{contractAccess} contract C\n    associate Element\n{sourceAccess} struct Source\n    Self is C\n    associate C.Element is Base\npublic struct Api: Source.C.Element");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -80,7 +80,7 @@ public class BaseProjectionAccessBindingTest
         var replacement = Check("public open struct Base\npublic struct Api: Base", true).Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Bases[0];
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(api, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(KotoHelper.Replace(api, replacement, original));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingFailure.Access, api.FailureOf());
@@ -107,11 +107,11 @@ public class BaseProjectionAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
 
         return c;

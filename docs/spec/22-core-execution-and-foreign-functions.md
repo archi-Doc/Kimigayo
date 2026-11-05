@@ -388,7 +388,7 @@ The Abort contract is [§17.4.3](17-failure-handling.md#1743-termination-and-cle
 
 An Abort reports one source location, the same at every optimization level and instantiation:
 
-- a failure inside a Kimi operation (a public function, accessor or member of the Kimi Kotonoha) that user code invokes by a call or by syntax (indexing, slicing, literals), including the operation's internal code, allocations, static-storage accesses and `$abort`: the start of the invoking user expression; for a call through a function value, that call, not where the value was formed; a duplicate Dictionary literal key reports the later key expression;
+- a failure inside a Kimi operation (a public function, accessor or member of the Kimi Kotonoha) that user code invokes by a call or by syntax (indexing, slicing, literals), including the operation's internal code, allocations, static-storage accesses and `$abort`: the start of the invoking user expression; for a call through a function value, that call, not where the value was formed; for a Dictionary literal entry's insertion, its allocation and a duplicate key included, the start of that entry's key expression, so a duplicate reports the later key expression;
 - user code that a Kimi operation calls, such as `equals` or `drop`: that code's own location;
 - an implicit iteration entry or `next` call of `for`: the start of the `for` expression;
 - an arithmetic, shift or conversion check in user code: the start of the failing expression; for compound assignment and `++`/`--`, the whole update expression;

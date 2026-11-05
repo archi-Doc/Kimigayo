@@ -194,4 +194,11 @@ public enum KimiDeclarationId : byte
     ArrayRepeatingImplementation,
     ArrayCapacityImplementation,
     DictionaryStorageFindEntry,
+    ArrayInsertPosition,
+    ArrayAppendAll,
+    ArrayRemoveAll,
+    ArrayRemovePosition,
+    ArraySwapPositions,
+    ArraySwapRemove,
+    ArrayReverse,
 }

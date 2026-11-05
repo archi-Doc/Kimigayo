@@ -45,6 +45,6 @@ public class ReferenceBindingAssignmentTest
     public void SuggestedSpellingsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

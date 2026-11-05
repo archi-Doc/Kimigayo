@@ -187,7 +187,7 @@ public sealed partial class Binding
         // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and the Type context's view memos.
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
-        this.ResetCallContexts();
+        this.functionItemContexts.Clear();
         this.types.ResetViews();
     }
 
@@ -299,7 +299,7 @@ public sealed partial class Binding
         this.ResetPrerequisites();
         this.objectPayloadCauses?.Clear();
         this.ResetMatches();
-        this.argumentKinds.Clear();
+        this.argumentParts.Clear();
         this.argumentProbe = null;
         this.resultContexts.Clear();
         this.resultLocalEvidence.Clear();
@@ -415,8 +415,6 @@ public sealed partial class Binding
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
         this.PruneCandidateScopes();
-        this.cLayoutInstances.Clear();
-        this.storagePrepared = false;
         this.ValidateDefaultAliases();
         this.PrepareOriginDeclarations();
         this.BindSchemas();
@@ -427,6 +425,7 @@ public sealed partial class Binding
         this.RegisterInheritedConformances(complete: true);
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
+        this.PrepareCases();
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
@@ -443,7 +442,6 @@ public sealed partial class Binding
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
         this.ValidateInlineLayouts();
-        this.ValidateCLayoutFields();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();
         this.PrepareVirtualOverrides();
@@ -511,7 +509,7 @@ public sealed partial class Binding
         this.ValidateConformances(mode, true);
         this.ValidateConstraintUses(mode);
         this.ClearCapabilityResults();
-        this.ValidateEffectBounds();
+        this.CollectCallableEffectUses();
         this.InvalidateProjectionCertificates(mode);
         this.ValidateIterationWitnesses();
         this.ValidateExpressionProjectionInputs(mode);
@@ -523,7 +521,6 @@ public sealed partial class Binding
         }
 
         this.ValidateVirtualOverrideConditions();
-        this.ValidateVirtualEffectBounds();
         this.GuardPendingVirtualDeclarations();
     }
 
@@ -751,7 +748,9 @@ public sealed partial class Binding
                 if (candidate.ConstraintFailure is { } condition)
                 {
                     var subject = ClauseSubject(condition.Constraint) is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
-                    var conditionNote = $"{candidate.Function.Name} requires {condition.Clause}; this condition is refuted for {subject}";
+                    var requirer = ForeignClauseOwner(condition.Clause, candidate.Function) is { } owner
+                        ? $"{candidate.Function.Name}: {owner}" : candidate.Function.Name;
+                    var conditionNote = $"{requirer} requires {condition.Clause}; this condition is refuted for {subject}";
                     if (this.InheritedSelfMismatchNote(condition.Constraint) is { } inherited)
                     {
                         conditionNote += $". {inherited}";
@@ -803,10 +802,6 @@ public sealed partial class Binding
         {
             this.ReportOverrideFailure(overrideFunction, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd && issue.Node is FunctionKoto effectImplementation)
-        {
-            this.ReportVirtualEffectViolation(effectImplementation, requirement);
-        }
         else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
         {
             virtualFunction.Report(requirement, issue.Code, span: virtualFunction.DispatchModifierSpan, evidence: [this.virtualDeclarationFailures![virtualFunction]], related: [("declaration", virtualFunction, "the virtual or override declaration")]);
@@ -841,10 +836,9 @@ public sealed partial class Binding
                 related: [("contract", agreement.Left.Declaration, first), ("contract", agreement.Right.Declaration, second)],
                 note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.9.2)");
         }
-        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd &&
-            (this.ReportCallablePremiseFailure(issue.Node, requirement) || this.ReportEffectViolation(issue.Node, requirement, issue.Code)))
+        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, requirement))
         {
-            // SPEC 8.11.1: reported at the violating effect.
+            // SPEC 8.11.4: an implementation cannot add an unrequired Callable bound.
         }
         else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, requirement, issue.Code))
         {
@@ -867,7 +861,8 @@ public sealed partial class Binding
         {
             // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
         }
-        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd && this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
+        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd or DiagnosticCode.DefaultArgumentMove_Kd &&
+            this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
         {
             this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
         }
@@ -875,14 +870,9 @@ public sealed partial class Binding
         {
             this.ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
+        else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
         {
-            ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.OmittedResultNote(issue.Node));
-            this.ReportMoreCallRelations(issue.Node, requirement);
-        }
-        else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
-        {
-            ReportOriginContract(issue.Node, contract, requirement, issue.Code);
+            // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
         }
         else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
         {
@@ -908,6 +898,10 @@ public sealed partial class Binding
         {
             this.ReportWrite(issue.Node, target, requirement, issue.Code);
         }
+        else if (this.takeLayers?.TryGetValue(issue.Node, out var takeCases) == true)
+        {
+            this.ReportTake(issue.Node, takeCases, requirement, issue.Code);
+        }
         else if (this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
         {
             this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
@@ -917,12 +911,12 @@ public sealed partial class Binding
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-            var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected);
+            var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
             issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.referenceConstraints?.TryGetValue(issue.Node, out var reference) == true)
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints?.TryGetValue(issue.Node, out var reference) == true)
         {
-            this.ReportReferenceConstraint(issue.Node, reference, requirement, issue.Code);
+            this.ReportClauseConstraint(issue.Node, reference, requirement, issue.Code);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures?.TryGetValue(issue.Node, out var erasure) == true)
         {
@@ -933,6 +927,10 @@ public sealed partial class Binding
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
             this.ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.pendingJudgments?.TryGetValue(issue.Node, out var pending) == true)
+        {
+            ReportPendingJudgment(issue.Node, pending, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints?.TryGetValue(issue.Node, out var callable) == true)
         {
@@ -963,191 +961,6 @@ public sealed partial class Binding
         {
             issue.Node.Report(requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
         }
-    }
-
-    private BindingResult Check(BindingMode mode)
-    {
-        if (mode == BindingMode.Final)
-        {
-            this.formationCauses?.Clear();
-            for (var i = 0; i < this.obligations.Count; i++)
-            {
-                if (this.obligations[i].Deadline == BindingDeadline.Definition)
-                {
-                    this.FailTypeRole(this.obligations[i]);
-                }
-            }
-
-            this.SettleSpecificationLinks();
-            this.PublishNeededLimits();
-        }
-
-        var resolved = 0;
-        var unresolved = 0;
-        var invalid = 0;
-        for (var i = 0; i < this.nodes.Count; i++)
-        {
-            var node = this.nodes[i];
-            // API and constraint validation can invalidate a target or Type after call selection; a target whose declaration
-            // failed leaves the call resting on that failure (SPEC 23.1.2).
-            if (node is InvocationKoto { BoundCall: { } call })
-            {
-                if (node.BindingFailure == BindingFailure.None &&
-                    this.InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
-                {
-                    this.CompleteDependent(node, invalidTarget);
-                }
-                else
-                {
-                    this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
-                }
-            }
-            else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
-            {
-                var proof = this.CheckRuntimeTestTypeConstraints(runtimeTest, this.ConstraintScope(test));
-                this.RequireConstraint(test, proof, mode);
-                if (proof != ConstraintProof.Proven)
-                {
-                    test.BoundRuntimeTest = null;
-                }
-            }
-
-            if (mode == BindingMode.Final && node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.UnformedFieldRead(node) is { } unformed)
-            {
-                this.partPrerequisites[node] = unformed; // Derived from the Field's formation failure (IsDerived).
-            }
-
-            if (node.BindingState == BindingState.Unvisited)
-            {
-                // Skipped dependent syntax has no Type evidence, not a proof of an unsupported feature.
-                // Actual subset gates diagnose themselves; the final fallback still rejects unresolved work.
-                node.BindingState = BindingState.Unresolved;
-            }
-
-            switch (node.BindingState)
-            {
-                case BindingState.Resolved:
-                    resolved++;
-                    break;
-                case BindingState.Invalid:
-                    invalid++;
-                    break;
-                default:
-                    unresolved++;
-                    break;
-            }
-
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && this.IsDerived(node))
-            {
-                this.derivedIssues.Add(node);
-            }
-            else if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
-            {
-                var code = node.BindingFailure switch
-                {
-                    BindingFailure.InvalidTestDefinition => DiagnosticCode.InvalidTestDefinition_Kd,
-                    BindingFailure.InvalidLayoutAttribute => DiagnosticCode.InvalidLayoutAttribute_Kd,
-                    BindingFailure.ConflictingLayout => DiagnosticCode.ConflictingLayout_Kd,
-                    BindingFailure.InvalidLibraryImport => DiagnosticCode.InvalidLibraryImport_Kd,
-                    BindingFailure.MissingNativeRequirement => DiagnosticCode.MissingNativeRequirement_Kd,
-                    BindingFailure.InvalidImportSignature => DiagnosticCode.InvalidImportSignature_Kd,
-                    BindingFailure.ConflictingImportSignature => DiagnosticCode.ConflictingImportSignature_Kd,
-                    BindingFailure.ConflictingRuntimeSymbol => DiagnosticCode.ConflictingRuntimeSymbol_Kd,
-                    BindingFailure.ConflictingImportSupply => DiagnosticCode.ConflictingImportSupply_Kd,
-                    BindingFailure.UnsafeFunctionValue => DiagnosticCode.UnsafeFunctionValue_Kd,
-                    BindingFailure.UnavailableReservedImport => DiagnosticCode.UnavailableReservedImport_Kd,
-                    BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
-                    BindingFailure.InvalidCLayout => DiagnosticCode.InvalidCLayout_Kd,
-                    BindingFailure.InvalidInlineLayout => DiagnosticCode.InvalidInlineLayout_Kd,
-                    BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
-                    BindingFailure.QualificationRequired => DiagnosticCode.QualificationRequired_Kd,
-                    BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,
-                    BindingFailure.Duplicate => DiagnosticCode.DuplicateBinding_Kd,
-                    BindingFailure.DuplicateDictionaryKey => DiagnosticCode.DuplicateDictionaryKey_Kd,
-                    BindingFailure.TypeMismatch => DiagnosticCode.TypeMismatch_Kd,
-                    BindingFailure.NotCallable => DiagnosticCode.NotCallable_Kd,
-                    BindingFailure.NoApplicableCandidate => DiagnosticCode.NoApplicableOverload_Kd,
-                    BindingFailure.Cycle => DiagnosticCode.CyclicBinding_Kd,
-                    BindingFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
-                    BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
-                    BindingFailure.InvalidLiteral => DiagnosticCode.InvalidNumericLiteral_Kd,
-                    BindingFailure.Access => DiagnosticCode.InaccessibleBinding_Kd,
-                    BindingFailure.Capture => DiagnosticCode.InvalidCaptureBinding_Kd,
-                    BindingFailure.InvalidOrigin => DiagnosticCode.InvalidOriginBinding_Kd,
-                    BindingFailure.MissingOrigin => DiagnosticCode.MissingOriginBinding_Kd,
-                    BindingFailure.InvalidTypeFormation => DiagnosticCode.InvalidTypeFormation_Kd,
-                    BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
-                    BindingFailure.InvalidSelfClause => DiagnosticCode.InvalidSelfClause_Kd,
-                    BindingFailure.ClosedContractConformance => DiagnosticCode.ClosedContractConformance_Kd,
-                    BindingFailure.ArithmeticConformance => DiagnosticCode.InvalidArithmeticConformance_Kd,
-                    BindingFailure.ArithmeticSelection => DiagnosticCode.ArithmeticSelection_Kd,
-                    BindingFailure.ArithmeticDirection => DiagnosticCode.ArithmeticDirection_Kd,
-                    BindingFailure.NotIndexable => DiagnosticCode.NotIndexable_Kd,
-                    BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
-                    BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
-                    BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
-                    BindingFailure.MissingImplementation => DiagnosticCode.MissingContractImplementation_Kd,
-                    BindingFailure.IncompatibleImplementation => DiagnosticCode.IncompatibleContractImplementation_Kd,
-                    BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,
-                    BindingFailure.AssociatedInference => DiagnosticCode.AssociatedTypeInferenceFailed_Kd,
-                    BindingFailure.InvalidPattern => DiagnosticCode.InvalidPattern_Kd,
-                    BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
-                    BindingFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-                    BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
-                    BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
-                    BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
-                    BindingFailure.ParameterShapeMismatch => DiagnosticCode.ParameterShapeMismatch_Kd,
-                    BindingFailure.UnboundTypeArgument => DiagnosticCode.UnboundTypeArgument_Kd,
-                    BindingFailure.UnprovenAcquisitionCorrelation => DiagnosticCode.UnprovenAcquisitionCorrelation_Kd,
-                    BindingFailure.ConstructorSelectionChanged => DiagnosticCode.ConstructorSelectionChanged_Kd,
-                    BindingFailure.BoundMethodValue => DiagnosticCode.BoundMethodValue_Kd,
-                    BindingFailure.OriginRelation => this.OriginRelationCode(node),
-                    BindingFailure.OriginContract => DiagnosticCode.UnprovenOriginContract_Kd,
-                    BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
-                    BindingFailure.ArrayAnnotationInference => DiagnosticCode.ArrayAnnotationInference_Kd,
-                    BindingFailure.NoInit => DiagnosticCode.InvalidNoInit_Kd,
-                    BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
-                    BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
-                    BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
-                    BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
-                    BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
-                    BindingFailure.AccessorReceiverShape => DiagnosticCode.AccessorReceiverShape_Kd,
-                    BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
-                    BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
-                    BindingFailure.NonNumericOperand => DiagnosticCode.NonNumericOperand_Kd,
-                    BindingFailure.NonIntegerOperand => DiagnosticCode.NonIntegerOperand_Kd,
-                    BindingFailure.OperatorNotDefined => DiagnosticCode.OperatorNotDefined_Kd,
-                    BindingFailure.InvalidShiftCount => DiagnosticCode.InvalidShiftCount_Kd,
-                    BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
-                    BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
-                    BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
-                    BindingFailure.ProtectedPlacement => DiagnosticCode.ProtectedPlacement_Kd,
-                    BindingFailure.VirtualDeclaration => DiagnosticCode.InvalidVirtualDeclaration_Kd,
-                    BindingFailure.MissingOverrideTarget => DiagnosticCode.MissingOverrideTarget_Kd,
-                    BindingFailure.AmbiguousOverrideTarget => DiagnosticCode.AmbiguousOverrideTarget_Kd,
-                    BindingFailure.OverrideContractMismatch => DiagnosticCode.OverrideContractMismatch_Kd,
-                    BindingFailure.DuplicateOverride => DiagnosticCode.DuplicateOverride_Kd,
-                    BindingFailure.UnprovenOverrideCondition => DiagnosticCode.UnprovenOverrideCondition_Kd,
-                    BindingFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
-                    BindingFailure.BaseCall => DiagnosticCode.InvalidBaseCall_Kd,
-                    BindingFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
-                    _ => DiagnosticCode.Unsupported_Kd,
-                };
-                if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
-                {
-                    code = DiagnosticCode.InvalidTry_Kd;
-                }
-
-                this.issues.Add(new(node, code) { Failure = node.BindingFailure });
-                if (this.formationCauses?.TryGetValue(node, out var causes) == true && (causes & TypeRoleCause.Role) != 0)
-                {
-                    // SPEC 23.1.2: a target role that is not proven beside a Language cause of the same occurrence is its own record.
-                    this.issues.Add(new(node, DiagnosticCode.UnprovenConstraint_Kd) { Failure = BindingFailure.UnprovenConstraint });
-                }
-            }
-        }
-
-        return new(mode, resolved, unresolved, invalid + this.PublishSites());
     }
 
     private BindingScope GetScope(object key, BindingScope? parent, Koto? owner = null)
@@ -1457,6 +1270,8 @@ public sealed partial class Binding
                 {
                     arithmetic.Active = false;
                 }
+
+                ClearIdentityPremise(binary);
             }
 
             if (node is UnaryKoto { ArithmeticStorage: { } unaryArithmetic })

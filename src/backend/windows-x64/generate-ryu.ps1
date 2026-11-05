@@ -71,6 +71,6 @@ foreach ($width in @(32, 64)) {
     }
 }
 foreach ($declaration in $declarations) { [void]$result.Append($declaration).Append("`n") }
-$outputPath = Join-Path $repo 'src/Kimi/Compiler/Emission/Utf8FloatRyu.ll.in'
+$outputPath = Join-Path $repo 'src/Kimi/Compiler/Backend/Utf8FloatRyu.ll.in'
 [IO.File]::WriteAllText($outputPath, $result.ToString())
 Write-Host "Generated $outputPath"

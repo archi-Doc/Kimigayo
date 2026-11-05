@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable SA1402 // The formatting row is this concern's request vocabulary.
+#pragma warning disable SA1402 // The formatting row and the interpolation estimate are this concern's vocabulary.
 
 using System.Runtime.InteropServices;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -14,24 +14,92 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record FormattingHelperRow(CompilerFunctionKind Kind, FunctionAbi Abi, HelperNeeds Needs);
 
+/// <summary>The legacy runtime's estimate of an owning interpolation's private buffer (SPEC 22.10.5; the old utf8-formatting §5.1 and §6.1;
+/// DECISIONS R3-10): its literal bytes plus each value's maximum encoded bytes (<see cref="LegacyRuntimeHelpers.FormatBound"/>), an
+/// unbounded value counted 0 and making the estimate unbounded, a sum past the maximum object size discarding it. The one rule MIR code
+/// generation reads over an interpolation step's operands.</summary>
+/// <param name="Total">The sum, -1 once discarded.</param>
+/// <param name="Bounded">Whether every value added is bounded.</param>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal readonly record struct FormatEstimate(long Total, bool Bounded)
+{
+    /// <summary>Gets the estimate of no bytes and no value.</summary>
+    internal static FormatEstimate Empty => new(0, Bounded: true);
+
+    /// <summary>Gets the capacity of the private heap buffer: the sum when bounded, else 0 (a buffer that starts unallocated).</summary>
+    internal long Capacity => this.Unbounded ? 0 : this.Total;
+
+    /// <summary>Gets the adapter's hint: the sum, 0 once discarded.</summary>
+    internal long Hint => this.Total < 0 ? 0 : this.Total;
+
+    /// <summary>Gets a value indicating whether the estimate bounds no buffer: a value is unbounded or the sum was discarded.</summary>
+    internal bool Unbounded => !this.Bounded || this.Total < 0;
+
+    /// <summary>Adds a literal's bytes or a value's maximum (-1 for an unbounded value).</summary>
+    /// <param name="amount">The bytes, or -1.</param>
+    /// <returns>The estimate with the amount added.</returns>
+    internal FormatEstimate Add(long amount)
+    {
+        var bytes = Math.Max(0, amount);
+        return new(this.Total < 0 || this.Total > long.MaxValue - bytes ? -1 : this.Total + bytes, this.Bounded && amount >= 0);
+    }
+
+    /// <summary>Gets whether the buffer is placed on the stack: an interpolation passed directly to <c>Console.writeLine</c>, bounded and
+    /// within <see cref="LegacyRuntimeHelpers.FormatStackLimit"/>.</summary>
+    /// <param name="direct">Whether the interpolation is the one argument of <c>Console.writeLine</c>.</param>
+    /// <returns>Whether it is formatted on the stack.</returns>
+    internal bool Stack(bool direct) => direct && this.Bounded && this.Total is >= 0 and <= LegacyRuntimeHelpers.FormatStackLimit;
+}
+
 /// <summary>SPEC 22.7, 22.9, 22.10: the UTF-8 buffer, writer, formatting and floating-point runtime and the wrappers over user
 /// formatting witnesses (Windows x64 profile).</summary>
-internal sealed partial class LegacyRuntimeHelpers
+internal static partial class LegacyRuntimeHelpers
 {
+    /// <summary>The windows-x64 limit of an owning interpolation's stack buffer, its literal bytes and value maxima included: a direct,
+    /// bounded interpolation within it is formatted on the stack, after substitution as before (the old utf8-formatting §6.1; STATUS); any
+    /// other uses the heap buffer.</summary>
+    internal const int FormatStackLimit = 1024;
+
+    /// <summary>The runtime's hint of an internal adapter (<c>__kimi_format_hint</c>, SPEC 22.10.5): the bytes its later writes may still
+    /// reserve, which a growth adds.</summary>
+    internal static readonly FunctionAbi FormatHint = new("__kimi_format_hint", "void", [new("ptr", "writer"), new("i64", "hint")]);
+
+    /// <summary>The runtime's end of an owning interpolation (<c>__kimi_format_finish</c>, SPEC 22.10.3): the adapter's recorded failure
+    /// Aborts with <c>KIMI_E_FORMAT</c>, a pending literal is flushed, and the buffer's bytes become the result string.</summary>
+    internal static readonly FunctionAbi FormatFinish = new(
+        "__kimi_format_finish",
+        "void",
+        [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
+
+    /// <summary>The end of an owning interpolation on the stack (<c>__kimi_format_stack_finish</c>): <see cref="FormatFinish"/>'s, the string
+    /// marked static, since its bytes are the frame's.</summary>
+    internal static readonly FunctionAbi FormatStackFinish = new("__kimi_format_stack_finish", "void", FormatFinish.Parameters);
+
+    /// <summary>The runtime's test of an adapter (SPEC 22.10.1), true while it has recorded no failure, which a user formatter's write
+    /// wrapper calls before and after the witness (MIR code generation; DECISIONS R5-M130).</summary>
+    internal static readonly FunctionAbi FormatHealthy = new("__kimi_format_healthy", "i1", [new("ptr", "writer", LogicalIndex: 0)]);
+
+    /// <summary>The runtime's check of an internal adapter after a write (<c>__kimi_format_check</c>, SPEC 22.10.3): a recorded failure
+    /// Aborts with <c>KIMI_E_FORMAT</c> at the interpolation's location.</summary>
+    internal static readonly FunctionAbi FormatCheck =
+        new("__kimi_format_check", "void", [new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
+
+    /// <summary>The runtime's record of an adapter's failure into a write's result (SPEC 22.10.1): BufferFull, recorded once.</summary>
+    internal static readonly FunctionAbi WriterFail =
+        Slotted("__kimi_writer_fail", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0)]);
+
     // One row per formatting compiler function, indexed from TextFixed; a new kind adds a row.
     private static readonly FormattingHelperRow[] FormattingRows = CreateFormattingRows();
 
-    // The runtime templates with each row's routine definition spliced in once; read after the rows.
-    private static readonly string FormattingRuntime = ReadFormattingRuntime();
+    // The maximum encoded bytes of a value by its formatting kind (FormatKind's numbering), the runtime's own __kimi_format_bounds, which
+    // __kimi_format_capacity reads (FunctionCodegenTest's FormatBoundsAreTheRuntimesTable ties them): kind 0 is no value, and a string or a
+    // view (16, 17) is unbounded.
+    private static readonly int[] FormatBounds = [0, 4, 3, 6, 5, 11, 10, 20, 20, 40, 39, 17, 24, 4, 5, 2];
 
-    // The writer adapter's write wrapper of each user formatting witness, and the conversions over them, in request order.
-    private readonly List<(FunctionAbi Wrapper, FunctionAbi Implementation)> formattingWrites = new();
-
-    private readonly List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> formattingConversions = new();
-
-    /// <summary>Gets or sets a value indicating whether the module holds the formatting runtime: a formatting row's request
-    /// needs it, and the old lowering requests it for its direct calls of formatting routines and for interpolation.</summary>
-    internal bool NeedsFormattingRuntime { get; set; }
+    /// <summary>Gets the runtime's write of an owning interpolation's literal text (<c>__kimi_format_literal</c>, SPEC 22.10.5): WriterWrite's
+    /// row ABI under its own name; the text's size is checked at once and its static bytes kept at the adapter until its next reservation
+    /// or its end. Initialized after the rows it reads.</summary>
+    internal static FunctionAbi FormatLiteral { get; } = FormattingRow(CompilerFunctionKind.WriterWrite)!.Abi.Named("__kimi_format_literal");
 
     /// <summary>Gets the row of a formatting compiler function; a formatting kind without a row is a broken contract.</summary>
     /// <param name="kind">The compiler function.</param>
@@ -47,51 +115,98 @@ internal sealed partial class LegacyRuntimeHelpers
         return FormattingRows[index] is { } row && row.Kind == kind ? row : throw new InvalidOperationException("A formatting compiler function has no row.");
     }
 
-    /// <summary>Registers the writer adapter's write wrapper over a user formatting witness (SPEC 22.10.1): it is written in
-    /// request order, and the needs of WriterWrite's row join the module's. The planner requests each wrapper once.</summary>
-    /// <param name="wrapper">The wrapper's ABI.</param>
-    /// <param name="implementation">The witness's compiled format.</param>
-    internal void RequestFormattingWrite(FunctionAbi wrapper, FunctionAbi implementation)
+    /// <summary>Gets the formatting runtime's kind of a built-in formattable Type (SPEC 22.10.2), the number its built-in routines take as
+    /// their kind Context and switch on (<c>__kimi_format_builtin</c>), the legacy runtime's own numbering, which R8 removes with it: an
+    /// integer's by its width and signedness, then f32, f64, char, bool, Unit, string and Utf8Slice. The one table code generation reads.</summary>
+    /// <param name="type">A closed Type.</param>
+    /// <returns>Its kind, or -1 for a Type without built-in formatting (a user or library formatter's).</returns>
+    internal static int FormatKind(BoundType type)
     {
-        this.JoinNeeds(FormattingRow(CompilerFunctionKind.WriterWrite)!.Needs);
-        this.formattingWrites.Add((wrapper, implementation));
-    }
-
-    /// <summary>Registers a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a write wrapper (SPEC 22.9.2): it is
-    /// written in request order, and the needs of its kind's row join the module's. The planner requests each conversion once;
-    /// any other kind is a broken contract.</summary>
-    /// <param name="kind">TextToString, which formats into a heap buffer, or TextTryFormat, into the caller's array.</param>
-    /// <param name="wrapper">The conversion's ABI.</param>
-    /// <param name="write">The write wrapper it calls.</param>
-    internal void RequestFormattingConversion(CompilerFunctionKind kind, FunctionAbi wrapper, FunctionAbi write)
-    {
-        var fixedBuffer = kind switch
+        var width = ScalarTypes.Width(type);
+        if (width != 0)
         {
-            CompilerFunctionKind.TextTryFormat => true,
-            CompilerFunctionKind.TextToString => false,
-            _ => throw new InvalidOperationException("A formatting conversion kind has no writer."),
+            return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (ScalarTypes.Signed(type) ? 1 : 2);
+        }
+
+        return type switch
+        {
+            _ when ReferenceEquals(type, BoundType.F32) => 11,
+            _ when ReferenceEquals(type, BoundType.F64) => 12,
+            _ when ReferenceEquals(type, BoundType.Char) => 13,
+            _ when ReferenceEquals(type, BoundType.Boolean) => 14,
+            _ when ReferenceEquals(type, BoundType.Unit) => 15,
+            _ when ReferenceEquals(type, BoundType.String) => 16,
+            _ when type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice => 17,
+            _ => -1,
         };
-        this.JoinNeeds(FormattingRow(kind)!.Needs);
-        this.formattingConversions.Add((wrapper, write, fixedBuffer));
     }
 
-    /// <summary>Writes the formatting runtime when the module needs it, then each requested write wrapper and conversion.</summary>
-    /// <param name="output">The module text.</param>
-    internal void WriteFormatting(TextWriter output)
+    /// <summary>Gets the maximum encoded bytes of a value of a Type that SPEC 22.10.5 bounds (the old utf8-formatting §5.1): a primitive
+    /// integer's by its width and signedness, a wrapping integer's as its argument's, f32 17, f64 24, char 4, bool 5 and Unit 2.</summary>
+    /// <param name="type">A closed Type, or null.</param>
+    /// <returns>Its bound, or -1 for an unbounded Type: a string, a view, a user or library formatter's.</returns>
+    internal static int FormatBound(BoundType? type)
+        => type is not null && FormatKind(type) is var kind and > 0 && kind < FormatBounds.Length ? FormatBounds[kind] : -1;
+
+    /// <summary>Gets the formatting runtime's writer kind of a <c>Text.writer</c> destination Type (SPEC 22.9.2, 22.9.4), the number
+    /// <c>__kimi_text_writer</c> takes as its kind Context and <c>__kimi_writer_reserve</c> switches on, the legacy runtime's own numbering,
+    /// which R8 removes with it: a FixedBuffer 0 and a HeapBuffer 1, whose buffers the runtime reserves itself, and any other destination 2,
+    /// whose <c>reserve</c> witness the runtime calls through the adapter's dispatch word. The one table code generation reads.</summary>
+    /// <param name="destination">The closed destination Type.</param>
+    /// <returns>Its writer kind.</returns>
+    internal static int WriterKind(BoundType destination) => destination.Symbol?.LibraryDeclaration switch
     {
-        if (this.NeedsFormattingRuntime)
-        {
-            output.Write(FormattingRuntime);
-        }
+        KimiDeclarationId.FixedBuffer => 0,
+        KimiDeclarationId.HeapBuffer => 1,
+        _ => 2,
+    };
 
-        foreach (var (wrapper, implementation) in this.formattingWrites)
-        {
-            WriteFormattingWrite(output, wrapper, implementation);
-        }
+    /// <summary>Writes the formatting runtime: the templates with each row's routine defined once.</summary>
+    /// <param name="output">The module text.</param>
+    internal static void WriteFormattingRuntime(TextWriter output) => output.Write(Texts.FormattingRuntime);
 
-        foreach (var (wrapper, write, fixedBuffer) in this.formattingConversions)
+    /// <summary>Writes a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a user formatter's write wrapper (SPEC 22.9.2):
+    /// toString formats through a heap buffer and Aborts on BufferFull at its call's location; tryFormat formats into the caller's array and
+    /// returns its bytes or BufferFull: MIR code generation's wrappers (the old planner's text).</summary>
+    /// <param name="output">The module text.</param>
+    /// <param name="wrapper">The conversion's ABI, its row's routine less the kind Context: the result slot, the value, tryFormat's
+    /// destination and capacity, and the location.</param>
+    /// <param name="write">The write wrapper it calls: the result slot, the adapter and the value.</param>
+    /// <param name="fixedBuffer">Whether it is tryFormat's, into the caller's array.</param>
+    internal static void WriteFormattingConversion(TextWriter output, FunctionAbi wrapper, FunctionAbi write, bool fixedBuffer)
+    {
+        output.Write(wrapper.GetDefinition(exported: false));
+        output.Write("entry:\n  %buffer = alloca [32 x i8], align 8\n  %writer = alloca [64 x i8], align 8\n  %result = alloca i32, align 4\n");
+        output.Write(fixedBuffer
+            ? "  call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 %capacity)\n"
+            : "  call void @__kimi_text_heap(ptr %buffer, i64 0, ptr %location, i64 %location_length)\n");
+        output.Write("  call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 ");
+        output.Write(fixedBuffer ? "0" : "1");
+        output.Write(", ptr null)\n  call void @");
+        output.Write(write.Name);
+        output.Write("""
+            (ptr %result, ptr %writer, ptr %value)
+              %tag = load i32, ptr %result, align 4
+              %ok = icmp eq i32 %tag, 0
+              br i1 %ok, label %success, label %failure
+            success:
+
+            """);
+        output.Write(fixedBuffer
+            ? "  store i32 0, ptr %ret, align 4\n  %payload = getelementptr i8, ptr %ret, i64 8\n  call void @__kimi_buffer_bytes(ptr %payload, ptr %buffer)\n"
+            : "  call void @__kimi_format_take_string(ptr %ret, ptr %buffer)\n");
+        output.Write("  ret void\nfailure:\n");
+        if (fixedBuffer)
         {
-            WriteFormattingConversion(output, wrapper, write, fixedBuffer);
+            output.Write("  store i32 1, ptr %ret, align 4\n  ret void\n}\n");
+        }
+        else
+        {
+            output.Write("  call void @__kimi_abort(i32 ");
+            WriteNumber(output, AbortReasons.Format);
+            output.Write(", ptr %location, i64 %location_length, i64 ");
+            WriteNumber(output, RuntimeAbi.NoOsError);
+            output.Write(")\n  unreachable\n}\n");
         }
     }
 
@@ -109,7 +224,8 @@ internal sealed partial class LegacyRuntimeHelpers
         var location = RuntimeAbi.Location;
         var length = RuntimeAbi.LocationLength;
         var amount = new AbiParameter("i64", "amount", LogicalIndex: 1);
-        var capacity = new AbiParameter("i64", "capacity", AbiParameterKind.Context);
+        // A capacity Context is the length of the fixed array its logical index's pointer parameter receives (SPEC 22.9.2's N).
+        var capacity = new AbiParameter("i64", "capacity", AbiParameterKind.Context, 0);
         Add(CompilerFunctionKind.TextFixed, Slotted("__kimi_text_fixed", [ret, reference, capacity]), Runtime);
         Add(CompilerFunctionKind.TextHeap, Slotted("__kimi_text_heap", [ret, new("i64", "capacity", LogicalIndex: 0), location, length]), Runtime);
         Add(
@@ -128,7 +244,9 @@ internal sealed partial class LegacyRuntimeHelpers
         Add(CompilerFunctionKind.TextToString, Slotted("__kimi_text_to_string", [ret, value, builtin, location, length]), Runtime);
         Add(
             CompilerFunctionKind.TextTryFormat,
-            Slotted("__kimi_text_try_format", [ret, value, new("ptr", "destination", LogicalIndex: 1), capacity, builtin, location, length]),
+            Slotted(
+                "__kimi_text_try_format",
+                [ret, value, new("ptr", "destination", LogicalIndex: 1), capacity with { LogicalIndex = 1 }, builtin, location, length]),
             Runtime);
         Add(CompilerFunctionKind.TextRelease, new("__kimi_text_release", "void", [reference, location, length]), Runtime);
         Add(CompilerFunctionKind.TextUtf8, Slotted("__kimi_text_utf8", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)]), Runtime);
@@ -167,17 +285,17 @@ internal sealed partial class LegacyRuntimeHelpers
         void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextFixed] = new(kind, abi, needs);
     }
 
-    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, expanded by LlvmModuleText's checked splice:
-    // each routine's definition at its marker, from the first row of its symbol.
+    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, joined once and expanded by LlvmModuleText's
+    // checked one-scan expansion: each routine's definition at its marker, from the first row of its symbol.
     private static string ReadFormattingRuntime()
     {
-        string? text = null;
-        foreach (var name in new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" })
+        var names = new[] { "Utf8BufferRuntime", "Utf8FormatRuntime", "Utf8FloatRuntime", "Utf8FloatRyu" };
+        var parts = new string[names.Length];
+        for (var i = 0; i < names.Length; i++)
         {
-            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission." + name + ".ll.in")!;
+            using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Backend." + names[i] + ".ll.in")!;
             using var reader = new StreamReader(resource);
-            var part = reader.ReadToEnd();
-            text = text is null ? part : text + "\n" + part;
+            parts[i] = reader.ReadToEnd();
         }
 
         var symbols = new HashSet<string>(StringComparer.Ordinal);
@@ -190,75 +308,12 @@ internal sealed partial class LegacyRuntimeHelpers
             }
         }
 
-        return ExpandRuntime(text!, CollectionsMarshal.AsSpan(definitions));
+        return ExpandRuntime(string.Join('\n', parts), CollectionsMarshal.AsSpan(definitions));
     }
 
-    // SPEC 22.10.1: a write that the adapter's recorded failure blocks, and whose returned or nested failure it records.
-    private static void WriteFormattingWrite(TextWriter output, FunctionAbi wrapper, FunctionAbi implementation)
+    private static partial class Texts
     {
-        output.Write(wrapper.GetDefinition(exported: false));
-        output.Write("""
-            entry:
-              %failed = getelementptr i8, ptr %self, i64 56
-              %before = load i8, ptr %failed
-              %blocked = icmp ne i8 %before, 0
-              br i1 %blocked, label %error, label %format
-            format:
-              call void @
-            """);
-        output.Write(implementation.Name);
-        output.Write("""
-            (ptr %ret, ptr %value, ptr %self)
-              %tag = load i32, ptr %ret
-              %after = load i8, ptr %failed
-              %returned_error = icmp ne i32 %tag, 0
-              %nested_error = icmp ne i8 %after, 0
-              %any_error = or i1 %returned_error, %nested_error
-              br i1 %any_error, label %error, label %done
-            error:
-              call void @__kimi_writer_fail(ptr %ret, ptr %self)
-              br label %done
-            done:
-              ret void
-            }
-
-            """);
-    }
-
-    // SPEC 22.9.2: toString formats through a heap buffer and Aborts on BufferFull; tryFormat formats into the caller's array and
-    // returns its bytes or BufferFull.
-    private static void WriteFormattingConversion(TextWriter output, FunctionAbi wrapper, FunctionAbi write, bool fixedBuffer)
-    {
-        output.Write(wrapper.GetDefinition(exported: false));
-        output.Write("entry:\n  %buffer = alloca [32 x i8], align 8\n  %writer = alloca [64 x i8], align 8\n  %result = alloca i32, align 4\n");
-        output.Write(fixedBuffer
-            ? "  call void @__kimi_text_fixed(ptr %buffer, ptr %destination, i64 %capacity)\n"
-            : "  call void @__kimi_text_heap(ptr %buffer, i64 0, ptr %location, i64 %location_length)\n");
-        output.Write("  call void @__kimi_text_writer(ptr %writer, ptr %buffer, i64 ");
-        output.Write(fixedBuffer ? "0" : "1");
-        output.Write(", ptr null)\n  call void @");
-        output.Write(write.Name);
-        output.Write("""
-            (ptr %result, ptr %writer, ptr %value)
-              %tag = load i32, ptr %result, align 4
-              %ok = icmp eq i32 %tag, 0
-              br i1 %ok, label %success, label %failure
-            success:
-
-            """);
-        output.Write(fixedBuffer
-            ? "  store i32 0, ptr %ret, align 4\n  %payload = getelementptr i8, ptr %ret, i64 8\n  call void @__kimi_buffer_bytes(ptr %payload, ptr %buffer)\n"
-            : "  call void @__kimi_format_take_string(ptr %ret, ptr %buffer)\n");
-        output.Write("  ret void\nfailure:\n");
-        if (fixedBuffer)
-        {
-            output.Write("  store i32 1, ptr %ret, align 4\n  ret void\n}\n");
-        }
-        else
-        {
-            output.Write("  call void @__kimi_abort(i32 ");
-            WriteNumber(output, AbortReasons.Format);
-            output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
-        }
+        // The runtime templates with each row's routine definition spliced in once.
+        internal static readonly string FormattingRuntime = ReadFormattingRuntime();
     }
 }

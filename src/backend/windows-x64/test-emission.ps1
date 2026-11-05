@@ -131,7 +131,8 @@ for ($mode = 0; $mode -le 30; $mode++) {
             $value = if ($heap) { "%memory" } else { "@__kimi_text" }
             $kind = if ($heap) { 1 } else { 0 }
             $acquire = if ($heap) { "  %memory = call ptr @__kimi_alloc(i64 $length, ptr @test_location, i64 13)`n" } else { '' }
-            "$acquire  %slot = alloca %kimi.string, align 8`n  %handle = insertvalue %kimi.string { ptr null, i64 $length, i8 $kind }, ptr $value, 0`n  store %kimi.string %handle, ptr %slot, align 8`n  call void @__kimi_write_line(ptr %slot, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable"
+            # writeLine borrows its string (SPEC 22.7, RuntimeAbi.WriteLine); the caller destroys it, as generated code does.
+            "$acquire  %slot = alloca %kimi.string, align 8`n  %handle = insertvalue %kimi.string { ptr null, i64 $length, i8 $kind }, ptr $value, 0`n  store %kimi.string %handle, ptr %slot, align 8`n  call void @__kimi_write_line(ptr %slot, ptr @test_location, i64 13)`n  call void @__kimi_destroy_string(ptr %slot, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable"
         }
     }
     $faultIr += "`ndefine void @test_entry_$mode() noreturn #0 {`nentry:`n  store i32 $mode, ptr @test_mode, align 4`n  call void @test_layout(i64 ptrtoint (ptr getelementptr (%kimi.string, ptr null, i64 1) to i64), i64 ptrtoint (ptr getelementptr ({ i8, %kimi.string }, ptr null, i32 0, i32 1) to i64), i64 ptrtoint (ptr getelementptr (%kimi.string, ptr null, i32 0, i32 1) to i64), i64 ptrtoint (ptr getelementptr (%kimi.string, ptr null, i32 0, i32 2) to i64))`n$body`n}`n"

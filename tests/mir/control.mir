@@ -5,16 +5,16 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn select @4
-  _0: i32 return @4
-  _1: bool arg flag @4
-  _2: i32 arg n @4
+  _0: i32 return @7
+  _1: bool arg flag @5
+  _2: i32 arg n @6
   _3: i32 var a @9 s1
   _4: bool temp @12 s1
   _5: bool temp @17 s1
   _6: () temp @22 s1
   _7: bool temp @23 s1
   _8: i32 temp @26 s5
-  _9: i32 temp @4
+  _9: i32 temp (Result) @4
   _10: i32 var b @27 s1
   _11: bool temp @31 s1
   _12: () temp @33 s6
@@ -74,8 +74,8 @@ fn select @4
   bb9:
       return @4
   bb10:
-      _0 = move _9 @25 s5
-      goto bb9 @25 s5
+      _0 = move _9 @4
+      goto bb9 @4
   bb11:
       StorageDead(_3) @9 s1
       goto bb10 @4
@@ -116,8 +116,8 @@ fn select @4
       _12 = const () @33 s6
       goto bb19 @33 s6
   bb22:
-      _10 = move _14 @38 s7
-      goto bb16 @38 s7
+      _10 = move _14 @30 s1
+      goto bb16 @30 s1
   bb23:
       StorageDead(_12) @33 s6
       goto bb22 @4
@@ -146,8 +146,8 @@ fn select @4
       StorageDead(_3) @9 s1
       unreachable @8
 fn iterate @48
-  _0: i32 return @48
-  _1: i32 arg n @48
+  _0: i32 return @50
+  _1: i32 arg n @49
   _2: i32 var mut total @52 s1
   _3: () temp @56 s1
   _4: () temp @58 s1
@@ -169,7 +169,7 @@ fn iterate @48
   _20: i32 temp @95 s6
   _21: i32 temp @92 s1
   _22: i32 temp @97 s1
-  _23: i32 temp @48
+  _23: i32 temp (Result) @48
   s1: lexical in s0 @51
   s2: lexical in s1 @58
   s3: lexical in s2 @67
@@ -271,8 +271,8 @@ fn iterate @48
       _13 = const () @79 s3
       goto bb17 @79 s3
   bb20:
-      _3 = move _15 @84 s5
-      goto bb3 @84 s5
+      _3 = move _15 @57 s1
+      goto bb3 @57 s1
   bb21:
       StorageDead(_4) @58 s1
       goto bb20 @48
@@ -305,8 +305,8 @@ fn iterate @48
     * _22 = copy _18 @97 s1
       goto bb40 check bb41 @96 s1
   bb31:
-      _18 = move _21 @94 s6
-      goto bb30 @94 s6
+      _18 = move _21 @92 s1
+      goto bb30 @92 s1
   bb32:
       StorageDead(_19) @93 s1
       goto bb31 @48
@@ -323,8 +323,8 @@ fn iterate @48
   bb36:
       return @48
   bb37:
-      _0 = move _23 @96 s1
-      goto bb36 @96 s1
+      _0 = move _23 @48
+      goto bb36 @48
   bb38:
       StorageDead(_18) @90 s1
       StorageDead(_2) @52 s1
@@ -341,9 +341,9 @@ fn iterate @48
       StorageDead(_2) @52 s1
       unreachable @51
 fn statements @98
-  _0: i32 return @98
-  _1: bool arg flag @98
-  _2: string arg text @98
+  _0: i32 return @101
+  _1: bool arg flag @99
+  _2: string arg text @100
   _3: i32 var d @103 s1
   _4: () temp @108 s2
   _5: bool temp @109 s2
@@ -352,7 +352,7 @@ fn statements @98
   _8: Never temp @117 s1
   _9: i32 var y @118 s4
   _10: i32 temp @122 s4
-  _11: i32 temp @98
+  _11: i32 temp (Result) @98
   _12: () temp @123 s1
   _13: [2 of i32] var mut buffer @125 s5
   _14: () temp @131 s5
@@ -387,8 +387,8 @@ fn statements @98
       _4 = const () @108 s2
       goto bb2 @108 s2
   bb5:
-      _3 = move _6 @111 s3
-      goto bb1 @111 s3
+      _3 = move _6 @106 s1
+      goto bb1 @106 s1
   bb6:
       StorageDead(_4) @108 s2
       goto bb5 @98
@@ -431,10 +431,10 @@ fn statements @98
   bb13:
       return @98
   bb14:
-      _0 = move _11 @121 s4
-      goto bb13 @121 s4
+      _0 = move _11 @98
+      goto bb13 @98
   bb15:
-      drop _2 -> bb16 [flag f0] [clear f0] @98
+      drop _2 -> bb16 [flag f0] [clear f0] @100
   bb16:
       goto bb14 @98
   bb17:
@@ -471,11 +471,11 @@ fn statements @98
   bb26:
       StorageDead(_17) @141 s1
       StorageDead(_3) @103 s1
-      drop _2 -> bb27 @98
+      drop _2 -> bb27 @100
   bb27:
       unreachable @102
 fn spin @142
-  _0: i32 return @142
+  _0: i32 return @143
   _1: Never temp @145 s1
   _2: () temp @146 s1
   _3: i32 var x @147 s2
@@ -505,10 +505,10 @@ fn spin @142
   bb6:
       unreachable @144
 fn short @152
-  _0: bool return @152
-  _1: bool arg flag @152
+  _0: bool return @154
+  _1: bool arg flag @153
   _2: bool temp @156
-  _3: bool temp @152
+  _3: bool temp (Result) @152
   bb0:
       StorageLive(_2) @156
     * _2 = copy _1 @156
@@ -524,8 +524,8 @@ fn short @152
   bb4:
       return @152
   bb5:
-      _0 = move _3 @158
-      goto bb4 @158
+      _0 = move _3 @152
+      goto bb4 @152
   bb6:
       StorageDead(_2) @156
       goto bb5 @152
@@ -536,13 +536,13 @@ fn short @152
       unreachable check bb3 @157
 fn deadTail @160
   _0: () return @160
-  _1: bool arg c @160
+  _1: bool arg c @161
   _2: i32 var mut x @163 s1
   _3: Never temp @166 s1
   _4: bool temp @167 s1
   _5: () temp @169 s2
   _6: i32 temp @170 s2
-  _7: () temp @160
+  _7: () temp (Result) @160
   _8: () temp @174 s3
   _9: i32 temp @175 s3
   _10: () temp @178 s1
@@ -588,8 +588,8 @@ fn deadTail @160
   bb4:
       return @160
   bb5:
-      _0 = move _7 @172 s2
-      goto bb4 @172 s2
+      _0 = move _7 @160
+      goto bb4 @160
   bb6:
       StorageDead(_2) @163 s1
       goto bb5 @160

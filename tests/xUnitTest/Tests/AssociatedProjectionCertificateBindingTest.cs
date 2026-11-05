@@ -34,7 +34,7 @@ public class AssociatedProjectionCertificateBindingTest
     public void ValidNestedDefinitionsPreserveCertificates(int form)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(form).Replace("Source.Origin.Item", "([2 of Source.Origin.Item], i32)", StringComparison.Ordinal));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.All(Definition(c).Paths, path => Assert.True(path.IsVerified));
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -95,7 +95,7 @@ public class AssociatedProjectionCertificateBindingTest
     public void SelfProjectionPreservesAcyclicAssociatedEvidence()
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item\n    associate Other\nstruct S\n    Self is C\n    associate C.Item is i32\n    associate C.Other is Self.C.Item");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
     }
 

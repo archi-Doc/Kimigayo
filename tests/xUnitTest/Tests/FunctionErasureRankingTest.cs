@@ -78,20 +78,20 @@ public class FunctionErasureRankingTest(ITestOutputHelper output)
         const string Source = Concrete + Common + "let action: (i32) -> i32 = func [] (x) => x\nlet result = apply(action@move)\n" +
             "func erased(action: (i32) -> i32) -> i32 => action(1)\nfunc erased(action: (i32) -> i32, extra: i32 = 0) -> i32 => 0\nlet other = erased(func [] (x) => x)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     private void AssertAmbiguous(string source, bool unboundBody)
     {
         var path = Path.GetFullPath("function-erasure-ranking.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);

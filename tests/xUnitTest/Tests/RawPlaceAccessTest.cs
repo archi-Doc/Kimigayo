@@ -51,14 +51,15 @@ public class RawPlaceAccessTest
     }
 
     [Theory]
-    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return *pointer\n", false)]
-    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\n", true)]
-    [InlineData("func take(pointer: raw/i32) -> i32\n    unsafe => return *pointer\n", true)]
-    public void ACopyUnprovenTakeNeedsMove(string function, bool valid)
+    // The bare Take of a Copy-unproven raw Place is Binding's TransferRequired_Kd (SPEC 3.5, 5.2.3; R6-check H1, DECISIONS BU-84).
+    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return *pointer\n", "TransferRequired_Kd *pointer")]
+    [InlineData("func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\n", "")]
+    [InlineData("func take(pointer: raw/i32) -> i32\n    unsafe => return *pointer\n", "")]
+    public void ACopyUnprovenTakeNeedsMove(string function, string records)
     {
         var c = MinimalEmissionTest.Analyze(function + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Analysis.IsVerified);
+        Assert.Equal(records, string.Join("|", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -93,8 +94,8 @@ public class RawPlaceAccessTest
     public void ARawPlaceBorrowFitsItsDestination(string function)
     {
         var c = MinimalEmissionTest.Analyze(Resource + function + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // A returned borrow takes the declared result's Origin, in concrete and generic functions.
@@ -145,26 +146,29 @@ public class RawPlaceAccessTest
     public void AnUnreturnedRawPlaceBorrowCarriesItsAnchor()
     {
         var c = MinimalEmissionTest.Analyze(Resource + "func run(pointer: raw/Resource) -> i32\n    unsafe\n        let item = (*pointer)@uniq\n        return item.value\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var borrow = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(static x => x.ConversionOf().Kind == ConversionBinding.Borrow);
         Assert.Equal(OriginKind.Anchor, borrow.TypeOf()!.Origin!.Kind);
         Assert.Same(borrow, borrow.TypeOf()!.Origin!.Binder);
     }
 
     // SPEC 5.2.2: accesses through the result, Reborrows from it and their children are checked under the anchor, like those of
-    // a borrowed parameter's referent (PLAN G45).
+    // a borrowed parameter's referent (PLAN G45). The record is A5's (R6-check H5; H3b T49, class 3): it relates the borrow that created
+    // the Loan and the later use of the value retaining it, as A5 publishes them, not the holder's declaration, and has no Note.
     [Theory]
-    [InlineData("let shared = item@follow@ref\n        item.value = 3\n        return shared.value\n", "let shared")]
-    [InlineData("let inner = item@follow@uniq\n        let seen = item.value\n        inner.value = 4\n        return seen\n", "let inner")]
-    [InlineData("let view = View.init(item@follow@ref)\n        item.value = 5\n        return view.item.value\n", "let view")]
-    public void TheAnchorChecksLoansDerivedFromTheBorrow(string body, string holder)
+    [InlineData("let shared = item@follow@ref\n        item.value = 3\n        return shared.value\n", "item@follow@ref", "shared.value")]
+    [InlineData("let inner = item@follow@uniq\n        let seen = item.value\n        inner.value = 4\n        return seen\n", "item@follow@uniq", "inner.value = 4")]
+    [InlineData("let view = View.init(item@follow@ref)\n        item.value = 5\n        return view.item.value\n", "item@follow@ref", "view.item.value")]
+    public void TheAnchorChecksLoansDerivedFromTheBorrow(string body, string borrow, string use)
     {
         var source = Resource + View + "func run(pointer: raw/Resource) -> i32\n    unsafe\n        let item = (*pointer)@uniq\n        " + body + "public func main() => ()\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
         Assert.Equal(source.IndexOf("item.value", StringComparison.Ordinal), error.Span!.Value.Start);
-        var retained = Assert.Single(error.Related!);
-        Assert.Equal(source.IndexOf(holder, StringComparison.Ordinal), retained.Span!.Value.Start);
+        Assert.Equal(
+            [("borrow", borrow, "borrow that created the loan"), ("loan", use, "later use of the value retaining the conflicting loan")],
+            error.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+        Assert.Null(error.Note);
     }
 
     [Theory]
@@ -222,12 +226,25 @@ public class RawPlaceAccessTest
                 "func f(a: ref/i32, p: raw/(Q during a))\n    unsafe => (*p).r@follow = 1"));
 
     // SPEC 5.7, 13.5.5 (U2): a `during self` read or a typed path through a pair follow admitting a non-borrow case is a located
-    // Unsupported_Kd; one admitting only borrows states its slot (NoRawOriginDeniesAnAccess). The default pipeline's old analysis reads
-    // no Field through a pair layer, raw or not: its located Unsupported_Kd, which an access error no longer hides.
+    // Unsupported_Kd; one admitting only borrows states its slot (NoRawOriginDeniesAnAccess, APairFollowWriteAdmittingOnlyBorrowsIsAccepted).
     [Theory]
-    [InlineData("func f<s/T>(x: s/B)\n    s is ref or uniq\n    unsafe => *x.data = 1", "Unsupported_Kd: data")]
     [InlineData("func f<s/T>(x: s/B) -> raw/i32\n    s is value or ref\n    return x.data", "Unsupported_Kd: x.data")]
     [InlineData("func f<s/T>(x: s/T) -> raw/T\n    s is value or valueborrow\n    return x@follow@raw", "Unsupported_Kd: x@follow@raw")]
     public void APairFollowReadIsUnsupportedWhereStated(string declarations, string record)
         => Assert.Equal([record], RawPointerSyntaxTest.Records(Lenses + declarations));
+
+    // A `during self` Field written through a pair follow admitting only borrows. The old analysis read no Field through a pair layer
+    // (its located Unsupported_Kd at `data`); that went with the MIR deciding acceptance (R6-check H5; H3b T15, 1a, the owner
+    // 2026-11-03): check accepts the program with no record, and a Library build whose main reaches every function generates f's
+    // instance for each case.
+    [Fact]
+    public void APairFollowWriteAdmittingOnlyBorrowsIsAccepted()
+    {
+        const string Declarations = Lenses + "func f<s/T>(x: s/B)\n    s is ref or uniq\n    unsafe => *x.data = 1";
+        Assert.Empty(RawPointerSyntaxTest.Records(Declarations));
+        const string Main = "\nfunc g(y: uniq/B) => f<uniq/i32 during y>(y)\nfunc h(y: ref/B) => f<ref/i32 during y>(y)\npublic func main() -> ()\n" +
+            "    var b = B.init()\n    g(b@uniq)\n    h(b@ref)\n" +
+            "    var n: i32 = 1\n    let lens = Lens<i32>.init(n@ref, null)\n    let ulens = ULens<i32>.init(n@uniq, null)\n";
+        Assert.Equal(2, MinimalEmissionTest.GeneratedBodies(Declarations + Main, OutputKind.Library, accepted: true).Count(static x => x == "f"));
+    }
 }

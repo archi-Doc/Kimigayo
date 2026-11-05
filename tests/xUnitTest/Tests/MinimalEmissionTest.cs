@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -17,42 +18,6 @@ public class MinimalEmissionTest
     // Supported floating arithmetic retained in the original execution-boundary inputs.
     internal const string FloatExpression = "1.0 + 2.0";
 
-    [Fact]
-    public void PhysicalModuleStorageHasNoTransitiveSemanticReferences()
-    {
-        var visited = new HashSet<Type>();
-        var pending = new Stack<Type>();
-        pending.Push(typeof(EmissionModule));
-        while (pending.TryPop(out var type))
-        {
-            if (!visited.Add(type) || type.IsEnum)
-            {
-                continue;
-            }
-
-            Assert.False(typeof(Kimi.Compiler.Parsing.Koto).IsAssignableFrom(type), type.FullName);
-            Assert.False(typeof(Delegate).IsAssignableFrom(type), type.FullName);
-            Assert.False(type.Name.StartsWith("Bound", StringComparison.Ordinal) || type == typeof(Binding) || type == typeof(Compilation) || type == typeof(OwnershipBody), type.FullName);
-            if (type.HasElementType)
-            {
-                pending.Push(type.GetElementType()!);
-            }
-
-            foreach (var argument in type.GenericTypeArguments)
-            {
-                pending.Push(argument);
-            }
-
-            if (type.Assembly == typeof(EmissionModule).Assembly)
-            {
-                foreach (var field in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
-                {
-                    pending.Push(field.FieldType);
-                }
-            }
-        }
-    }
-
     [Theory]
     [InlineData("::Kimi.Console.writeLine(\"Hello, world!\")")]
     [InlineData("Console.writeLine(\"\")")]
@@ -62,17 +27,18 @@ public class MinimalEmissionTest
     public void EmitsCheckedLiteralCall(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.True(c.WriteIr(writer, out error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var ir = writer.ToString();
         Assert.Contains("%kimi.string = type { ptr, i64, i8 }", ir);
         Assert.Contains("define void @__kimi_start() noreturn #0", ir);
-        Assert.Contains("call void @__kimi_write_line(ptr noundef nonnull align 8 dereferenceable(24) %p", ir);
-        Assert.Contains("call void @__kimi_destroy_string(ptr %p", ir);
+        var module = GeneratedIr.Parse(ir);
+        Assert.Contains(module.Startup.Instructions, x => x.Callee == module.Function("__kimi_write_line") &&
+            x.Shape.StartsWith("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ", StringComparison.Ordinal));
+        Assert.Contains(module.Functions.SelectMany(static x => x.Instructions), x => x.Callee == module.Function("__kimi_destroy_string"));
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
-        Assert.DoesNotContain("byval", ir);
-        Assert.DoesNotContain("sret", ir);
+        Assert.Equal("internal void (ptr noundef nonnull align 8 dereferenceable(24), ptr, i64)", module.Function("__kimi_write_line").Signature);
     }
 
     [Theory]
@@ -98,13 +64,13 @@ public class MinimalEmissionTest
     public void RebindingInvalidatesEmissionUntilAnalysisRunsAgain()
     {
         var c = Analyze("Console.writeLine(\"a\")");
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
         c.Bind();
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Analyze();
-        Assert.True(c.Validate(out error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
     }
 
     [Theory]
@@ -115,7 +81,7 @@ public class MinimalEmissionTest
     public void AppendingSourceInvalidatesFinalAnalysisBeforeEmission(bool directContext, bool valid)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
         var source = new SourceDocument("Added.kimi", valid ? "func added() -> i32 => 7" : "func added() -> i32 => missing");
         if (directContext)
         {
@@ -127,7 +93,7 @@ public class MinimalEmissionTest
         }
 
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.Startup.IsComplete);
@@ -137,7 +103,7 @@ public class MinimalEmissionTest
         Assert.Equal(valid, c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.Equal(valid, c.Validate(out error));
+        Assert.Equal(valid, c.Generate(TextWriter.Null));
         if (valid)
         {
             var added = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "added");
@@ -151,7 +117,7 @@ public class MinimalEmissionTest
     public void ReloadingSourceInvalidatesFinalAnalysisEvenForAnEmptySnapshot(bool empty)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        Assert.True(c.Validate(out _));
+        Assert.True(c.Generate(TextWriter.Null));
         var snapshot = empty ? Compilation.CreateForTest().Kotonoha : c.Kotonoha;
         var restored = c.Kotonoha;
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(snapshot), ref restored);
@@ -159,14 +125,14 @@ public class MinimalEmissionTest
         Assert.Same(c.Kotonoha, restored);
         restored.OnDeserialized(c);
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Analysis.IsVerified);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.Equal(!empty, c.Validate(out _));
+        Assert.Equal(!empty, c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -190,7 +156,7 @@ public class MinimalEmissionTest
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
     }
 
@@ -208,9 +174,9 @@ public class MinimalEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Diagnostics.InvalidateSyntax(c.Kotonoha);
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
     }
 
     [Fact]
@@ -223,7 +189,7 @@ public class MinimalEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
     }
 
     [Fact]
@@ -233,7 +199,7 @@ public class MinimalEmissionTest
         var path = Path.Combine("日本", "file.kimi");
         var c = Analyze("\n::Kimi.Console.writeLine(\"x\")", path);
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.True(c.WriteIr(writer, out var error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         const string Expected = "\\u{65E5}\\u{672C}/file.kimi:2:1";
         var escaped = string.Concat(Encoding.ASCII.GetBytes(Expected).Select(x => $"\\{x:X2}"));
         Assert.Contains($"@__kimi_location = private unnamed_addr constant [{Expected.Length} x i8] c\"{escaped}\"", writer.ToString());
@@ -245,11 +211,11 @@ public class MinimalEmissionTest
     public void WarmValidationDoesNotAllocate()
     {
         var c = Analyze("Console.writeLine(\"a\")");
-        Assert.True(c.Validate(out var error), Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), Describe(c));
 
         // The helper retires the thread's allocation context before measuring (see AllocationMeasurement).
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Validate(out _));
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null));
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -260,7 +226,7 @@ public class MinimalEmissionTest
     {
         var c = Analyze("Console.writeLine(\"a\")");
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _));
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null));
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -319,55 +285,85 @@ public class MinimalEmissionTest
         {
             var c = Analyze(source, path);
             using var writer = new StreamWriter(Path.Combine(directory, name + ".ll"), false, new UTF8Encoding(false));
-            Assert.True(c.WriteIr(writer, out var error), Describe(c, error));
+            Assert.True(c.Generate(writer), Describe(c));
         }
     }
 
-    // A program analyzed for an Application, by the process's code generator unless one is named.
-    internal static Compilation Analyze(string source, string path = "Hello.kimi", CompilerCodegen? codegen = null)
+    // A program analyzed for `output`, an Application unless the caller names another.
+    internal static Compilation Analyze(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
-        c.Codegen = codegen ?? c.Codegen;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        c.Binding.CheckStartup(output);
         c.Analyze();
         return c;
     }
 
+    // The evidence of a verdict through the published pipeline (SPEC 23.2.2): the program analyzed for `output`, then reported and generated
+    // as a build runs them, has the verdict `accepted`. An accepted program has no analysis problem and is generated, with a generated body
+    // for each function it declares other than a Contract's requirement and for its top-level statements (null), of which it has at least
+    // one; a requirement has no body (SPEC 8.4.1: no implementations; 8.6.1; a written one is a syntax error). A Library generates every root
+    // (K11); an Application generates what its startup reaches, so its source is top-level statements that reach every declared function
+    // (not an explicit `main`). A rejected program is not generated. The result is the declaration names of the generated bodies.
+    internal static string?[] GeneratedBodies(string source, OutputKind output, bool accepted)
+    {
+        var c = Analyze(source, output: output);
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        var generated = c.Generate(TextWriter.Null);
+        Assert.True(c.Accepts == accepted && generated == accepted && (!accepted || c.Problems.Count == 0), Describe(c));
+        if (!generated)
+        {
+            return [];
+        }
+
+        var set = c.Instances!;
+        var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body && set.IsGenerated(x))
+            .Select(x => set.Items[x].Key.Body.Def.Decl).ToArray();
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => !x.IsRequirement).ToArray();
+        Assert.NotEmpty(functions);
+        Assert.All(functions, f => Assert.Contains(bodies, x => x?.Declaration == (f == c.Kotonoha.GeneratedFunction ? null : f)));
+        return [.. bodies.Select(static x => x?.Name)];
+    }
+
     // SPEC 8.15.3, 23.1.1: a valid program past a generation resource limit is refused with GenerationResourceLimit_Kd and no output, checked
-    // and then generated as a build runs them. MIR code generation reports the checked set's limit at check (K13b); the old generator's
-    // failure text is checked on a compilation pinned to it until G2 (DECISIONS R5-M85).
-    internal static void AssertGenerationResourceLimit(string source, string legacyFailure)
+    // and then generated as a build runs them: check reports the checked set's limit at its location (K13b), on every pipeline and under
+    // either code generator (DECISIONS R5-M156), and generation adds nothing.
+    internal static void AssertGenerationResourceLimit(string source, string at)
     {
         var c = Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, Describe(c, null));
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.Equal("GenerationResourceLimit_Kd " + at, Problems(c));
         c.ReportAnalysis();
         using var output = new StringWriter();
         Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(("GenerationResourceLimit_Kd", DiagnosticSeverity.Error), (error.Code, error.Severity));
-
-        var old = Analyze(source, codegen: CompilerCodegen.Legacy);
-        Assert.False(old.WriteIr(TextWriter.Null, out var failure));
-        Assert.True(old.Emission.FailureIsResourceLimit, failure);
-        Assert.Contains(legacyFailure, failure, StringComparison.Ordinal);
     }
 
-    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and,
-    // under mir, the problems with their Op. It only reads, since a message argument is evaluated whether or not the assertion fails.
-    internal static string Describe(Compilation c, string? error)
-        => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) +
-            (c.Pipeline == CompilerPipeline.Mir ? "; " + string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) : string.Empty);
+    // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the MIR's rows in the
+    // publisher's order, which check publishes on every pipeline (DECISIONS R5-M185).
+    internal static string Problems(Compilation c)
+        => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 
-    // SPEC 8.6: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
-    // for the destructions the implementation's bodies actually perform (their planned cleanups).
+    // The failure message of an analysis or generation assertion: the results, Binding's issues (failure, code and location), the
+    // analysis rows with their Op (DECISIONS R5-M185), and the generation records of the Emission partition (Compilation.Generate's). It
+    // only reads, since a message argument is evaluated whether or not the assertion fails.
+    internal static string Describe(Compilation c)
+        => $"Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
+            string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Failure} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
+            string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; Emission=" +
+            string.Join(", ", c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics
+                .Select(static x => $"{x.Code} {x.Span}"));
+
+    // SPEC 8.6: an effect bound rejects its conformance with A4's IncompatibleContractImplementation_Kd at the obligation subject, for the
+    // Loans, the calls and the destructions the implementation's bodies perform (their planned cleanups): B-del deleted Binding's effect
+    // checks (DECISIONS R5-M185). Binding keeps the code for a bounded Callable premise that a requirement does not declare (SPEC 8.11.4).
     internal static void AssertEffectBoundRejected(Compilation c)
         => Assert.True(
             c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),
-            Describe(c, null));
+            Describe(c));
 }

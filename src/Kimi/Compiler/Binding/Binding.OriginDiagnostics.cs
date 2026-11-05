@@ -1,5 +1,20 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Origin failure explanations (SPEC 5.7, 10.6, 15.2.3, 15.3.2, 15.4.3, 23.1): the parts of an Origin failure's record beyond the
+// typed facts its check records.
+// - Responsibility: the records of a per-call slot (ReportPerCallSlot), an undeclared storage Origin name
+//   (ReportUndeclaredStorageOrigin, StorageOriginType, TypeNameSpan), an absent slot (RecordAbsentSlot, ReportAbsentSlot) and an
+//   invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); an Origin relation record's end displays
+//   (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end (BorrowSource, LocalBorrow), which the
+//   records of Binding.Diagnostics.cs show and relate.
+// - Inputs: the failing node and the facts its check recorded (absentSlotProjections, invalidStaticOriginSlots, phantomRawOrigins,
+//   PerCallSlotFact), the result contexts, the bound syntax.
+// - Outputs: the records with their Notes, evidence and related locations; the Borrow node.
+// - Invariants: a fact is recorded where its check fails (RecordAbsentSlot); everything else runs only while a failure's record is
+//   formed.
+// - Prohibitions: no inference, proof or judgment re-run to explain a failure; no failure decided here.
+
+using System.Text;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -138,6 +153,219 @@ public sealed partial class Binding
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
+    // The first Borrow in a value whose Origin supplies `supplier`, which the record names and relates (BorrowSource).
+    private static Koto? LocalBorrow(Koto value, BoundOrigin supplier)
+    {
+        var finder = new LocalBorrowFinder(supplier);
+        finder.Visit(value);
+        return finder.Found;
+    }
+
+    // Whether a Borrow whose Origin is `borrowed` supplies a record's end that the failing check recorded as `supplier`, before the
+    // receiver resolution (OriginRelationFact.Supplier): one holds the other, by identity; BorrowSource's one comparison (R4-M133).
+    private static bool Supplies(BoundOrigin borrowed, BoundOrigin supplier) => OriginIncludes(borrowed, supplier) || OriginIncludes(supplier, borrowed);
+
+    // The Borrow that supplies a record's end, by the atom `supplier` the failing check recorded for it: the value itself, the Borrow
+    // initializing the local it names, or the first Borrow inside the value or its root local's initializer, explicit or a call's
+    // implicit Borrow of an argument. For a meet, it is the Borrow of its first body-local operand, which the meet's display shows (SPEC
+    // 23.1). A local region's source is found through the bound that brought it in, by that bound's parent as written.
+    private static Koto? BorrowSource(Koto value, BoundOrigin supplier)
+    {
+        var unwrapped = KotoHelper.UnwrapParentheses(value);
+        if (unwrapped.BoundType?.Origin is { } region && IsLocalRegion(region) &&
+            value.CodeContext.Compilation.Binding.LocalRegionSourceUse(region, supplier) is { } bound && !ReferenceEquals(bound.Value, value))
+        {
+            return BorrowSource(bound.Value, bound.Parent);
+        }
+
+        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrowValue)
+        {
+            // SPEC 23.1: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
+            // failing Origin is not the Borrow's own: it is found through the borrowed Place.
+            if (borrowValue.BoundType?.Origin is not { } own || Supplies(own, supplier))
+            {
+                return unwrapped;
+            }
+        }
+
+        if (supplier.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < supplier.Operands.Count; i++)
+            {
+                if (supplier.Operands[i].Kind is OriginKind.Projection or OriginKind.Anchor && BorrowSource(value, supplier.Operands[i]) is { } operand)
+                {
+                    return operand;
+                }
+            }
+
+            return null;
+        }
+
+        if (supplier.Kind == OriginKind.Projection &&
+            unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } assigned } } } &&
+            KotoHelper.UnwrapParentheses(assigned) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } held } source &&
+            Supplies(held, supplier))
+        {
+            return source;
+        }
+
+        // A value that contains the Borrow, such as a call or Tuple over it, names that Borrow; so does the initializer of the local
+        // whose Place the value reads or moves, such as `h0@move` or `h0.item` after `let h0 = H.init(a@ref)`.
+        if (supplier.Kind is not (OriginKind.Projection or OriginKind.Anchor))
+        {
+            return null;
+        }
+
+        return LocalBorrow(value, supplier) ?? (RootLocal(unwrapped) is { InitializerKoto: { } rootValue } ? LocalBorrow(rootValue, supplier) : null);
+
+        static VariableKoto? RootLocal(Koto value)
+        {
+            for (var depth = 0; depth < 64; depth++)
+            {
+                switch (value)
+                {
+                    case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Borrow } transfer:
+                        value = KotoHelper.UnwrapParentheses(transfer.Left);
+                        continue;
+                    case MemberAccessKoto access:
+                        value = KotoHelper.UnwrapParentheses(access.Left);
+                        continue;
+                    case IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto local } }:
+                        return local;
+                    default:
+                        return null;
+                }
+            }
+
+            return null;
+        }
+    }
+
+    // SPEC 15.2.1: the omitted slot `slot` of a function parameter's Type, written directly or under one borrow layer, is the projection
+    // `p.slot`, whether a named function's input or an anonymous function's body inference variable (SPEC 15.3.4); any other omitted
+    // slot has no name.
+    private static string? SlotProjection(Koto occurrence, int slot)
+    {
+        var function = occurrence.Parent;
+        while (function is not null and not FunctionKoto)
+        {
+            function = function.Parent;
+        }
+
+        if (function is not FunctionKoto owner || occurrence.BoundType?.Symbol?.Schema?.Origins is not { } slots || (uint)slot >= (uint)slots.Count)
+        {
+            return null;
+        }
+
+        foreach (var parameter in owner.Parameters)
+        {
+            if (ReferenceEquals(parameter.Type, occurrence) || (parameter.Type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
+            {
+                return parameter.InternalName + "." + slots[slot].Name;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 23.1: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot (a
+    // parameter's projection, SlotProjection) or a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin;
+    // the Type occurrence of an omitted slot.
+    private static DiagnosticOrigin OriginDisplay(BoundOrigin origin, Koto? value, bool typeLevel = false)
+    {
+        switch (origin.Kind)
+        {
+            case OriginKind.Static:
+                return new("expression", "static");
+            case OriginKind.Intersection:
+                // A body-local operand shows the Borrow that supplies it, never the text of its binder.
+                var parts = new string[origin.Operands.Count];
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    var supplied = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } &&
+                        OriginIncludes(borrowed, origin.Operands[i]) ? value : null;
+                    parts[i] = OriginDisplay(origin.Operands[i], supplied, typeLevel).Text;
+                }
+
+                return new("expression", "(" + string.Join(" and ", parts) + ")");
+            case OriginKind.Input or OriginKind.Inference when OmittedAt(origin) is { } occurrence:
+                return SlotProjection(occurrence, origin.Kind == OriginKind.Input ? origin.TargetSlot : origin.Slot) is { } projection
+                    ? new("expression", projection) : new("omitted", occurrence.ToString());
+            case OriginKind.Input when origin.Binder is { } binder && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder):
+                return new("expression", InputName(binder, origin.InputIndex));
+            case OriginKind.Parameter when origin.Occurrence is GenericParameterKoto declaration:
+                return new("omitted", declaration.ToString()); // SPEC 8.1.1, 23.1: the outer Origin `o` of a pair binder.
+            case OriginKind.Parameter:
+                return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
+            case OriginKind.Inference when origin.Binder is VariableKoto local:
+                return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
+            case OriginKind.Holder:
+                return new("expression", "self"); // SPEC 5.7: `during self`.
+            case OriginKind.Projection when origin.Binder is FunctionKoto { IsAnonymous: true } &&
+                (origin.Slot == CallResultSlot || (origin.Slot == ClosureValueSlot && value is null)): // ρ, unless a Borrow supplies it.
+                return new("closure", origin.Slot == CallResultSlot ? "call result" : "call receiver");
+            case OriginKind.Projection or OriginKind.Anchor:
+                // The Borrow that supplies it by its text, explicit or an implicit Borrow's argument; without one, the Place: a local or a
+                // parameter by name, a constructor's or destructor's receiver (and its helper borrow) as self, and a temporary by its text.
+                var text = value is not null ? KotoHelper.UnwrapParentheses(value).ToString()
+                    : origin.Slot is HelperSlot or ReceiverSlot ? "self"
+                    : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName
+                    : origin.Binder is FunctionKoto function && origin.Slot >= 0 && origin.Slot < function.Parameters.Count ? function.Parameters[origin.Slot].InternalName
+                    : origin.Binder!.ToString(); // OriginAtom gives every Projection and Anchor its binder.
+                return new("borrow", text);
+            default:
+                return new("omitted", origin.Occurrence?.ToString() ?? origin.Name);
+        }
+    }
+
+    // Whether `atom` is `whole` or one of the operands of its meet, at any depth.
+    private static bool OriginIncludes(BoundOrigin whole, BoundOrigin atom)
+    {
+        if (ReferenceEquals(whole, atom))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < whole.Operands.Count; i++)
+        {
+            if (OriginIncludes(whole.Operands[i], atom))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-44): the Semantics cases a slot's check recorded (Binding.FailingCase) where its requirement is `failing`,
+    // as ` in the Semantics case s = owner`: per binder, its Semantics joined by `or`; binders joined by `, ` where every binder must give
+    // the class (`none`, the weakest: a product) and listed by `; ` where one suffices (`uniq`, the strongest: a union); empty for none, a
+    // failure in every case.
+    private static string CaseText(LoanRequirement failing, PairCase[] cases)
+    {
+        var union = failing == LoanRequirement.Uniq;
+        var text = new StringBuilder();
+        var several = false;
+        for (var i = 0; i < cases.Length; i++)
+        {
+            if (i > 0 && ReferenceEquals(cases[i].Target, cases[i - 1].Target))
+            {
+                text.Append(" or ");
+                several = true;
+            }
+            else
+            {
+                var separator = union ? "; " : ", ";
+                text.Append(i == 0 ? string.Empty : separator).Append(BinderName(cases[i].Target)).Append(" = ");
+                several |= union && i > 0;
+            }
+
+            text.Append(cases[i].Semantics.ToText());
+        }
+
+        return cases.Length == 0 ? string.Empty : (several ? " in the Semantics cases " : " in the Semantics case ") + text;
+    }
+
     // SPEC 15.4.3, 15.6.1: a result fitting or Origin failure whose omitted result Origin defaulted to static because the only
     // matching borrow sits inside an Option input explains that boundary in the Note. Run only while publishing failures.
     private string? OmittedResultNote(Koto node)
@@ -188,7 +416,7 @@ public sealed partial class Binding
 
         foreach (var parameter in function.Parameters)
         {
-            if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && ContainsOrigin(input, actual.Origin))
+            if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && this.MentionsOrigin(input, actual.Origin))
             {
                 return true;
             }
@@ -239,24 +467,34 @@ public sealed partial class Binding
         => (this.absentSlotProjections ??= new(ReferenceEqualityComparer.Instance))[projection] = type;
 
     // SPEC 15.2.3: a static Origin bound to a slot that requires uniq (ValidateOriginRequirements); SPEC 5.7: a Phantom slot a raw layer
-    // states (InvalidRawOrigin); each with that slot related.
+    // states (InvalidRawOrigin); each with that slot related and, for a conditional slot, the Semantics cases its check recorded
+    // (CaseText; SPEC 23.1.2, DECISIONS BU-44).
     private bool ReportInvalidOriginSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var slot) == true)
+        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var invalid) == true)
         {
-            node.Report(requirement, code, evidence: [$"static cannot supply uniq for Origin slot {slot!.Name}"], note: $"Origin slot {slot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "requires uniq")]);
+            var slot = invalid.Slot;
+            var found = CaseText(invalid.Failing, invalid.Cases);
+            node.Report(
+                requirement,
+                code,
+                evidence: [$"static cannot supply uniq for Origin slot {slot.Name}{found}"],
+                note: $"Origin slot {slot.Name} requires uniq{found} and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)",
+                relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "requires uniq")]);
             return true;
         }
 
         if (this.phantomRawOrigins?.TryGetValue(node, out var phantom) == true)
         {
-            var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps; add a Loan Field over {phantom!.Name}";
+            var slot = phantom.Slot;
+            var found = CaseText(phantom.Failing, phantom.Cases);
+            var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps{found}; add a Loan Field over {slot.Name}";
             node.Report(
                 requirement,
                 code,
-                evidence: [$"Origin slot {phantom.Name} is Phantom"],
+                evidence: [$"Origin slot {slot.Name} is Phantom{found}"],
                 note: note + " (SPEC 5.7, 15.3.5)",
-                relatedSpans: [("Origin slot", phantom.Origin.Binder!, phantom.Span, "Phantom")]);
+                relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "Phantom")]);
             return true;
         }
 
@@ -285,5 +523,42 @@ public sealed partial class Binding
             : null;
         node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], relatedSpans: related);
         return true;
+    }
+
+    // The first Borrow in a value whose Origin supplies an atom (LocalBorrow), in source order: an explicit Borrow, or a call's implicit
+    // Borrow of an argument (SPEC 15.6.1: `take(local)`), found as that argument. A call's plan is read as this pass recorded it, also at
+    // a value its own record failed afterwards (a pending relation's record is at its value, R4-M133), where BoundCall reads none.
+    private sealed class LocalBorrowFinder(BoundOrigin supplier) : KotoVisitor
+    {
+        internal Koto? Found { get; private set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Found is not null)
+            {
+                return;
+            }
+
+            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } && Supplies(borrowed, supplier))
+            {
+                this.Found = node;
+                return;
+            }
+
+            if (node is InvocationKoto { CallStorage: { } call })
+            {
+                foreach (var operation in call.ArgumentOperations)
+                {
+                    if (operation is { Kind: ArgumentOperationKind.Borrow, Source: { } argument, AdaptedType.Origin: { } implicitOrigin } &&
+                        Supplies(implicitOrigin, supplier))
+                    {
+                        this.Found = argument;
+                        return;
+                    }
+                }
+            }
+
+            node.VisitChildren(this);
+        }
     }
 }

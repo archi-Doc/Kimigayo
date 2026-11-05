@@ -11,10 +11,17 @@ public sealed partial class Binding
     // The slot of a Contract ArithmeticContracts.Supports admits in builtinArithmetic: the right-hand Contracts, then Negatable.
     private static int ArithmeticSlot(KimiDeclarationId id) => id == KimiDeclarationId.Negatable ? 5 : id - KimiDeclarationId.Addable;
 
+    // SPEC 8.7, 8.6.1, 8.2.3: a builtin `Self is C<Self>`; the required reference's argument is Self when the two are one Type in
+    // `scope` (SameConformanceType), as a projection naming it is (`i32 is Addable<U.(HasItem).Item>` with SrcI for U).
     private bool BuiltinArithmeticConformance(BoundType self, BindingSymbol contract, BindingScope scope)
     {
-        if (ArithmeticContracts.Identity(contract) is not { } id || ArithmeticContracts.IsLeft(id) ||
-            (id != KimiDeclarationId.Negatable && (contract.Type is not { Components: [var counterpart] } || !ReferenceEquals(counterpart, self))))
+        if (ArithmeticContracts.Identity(contract) is not { } id || ArithmeticContracts.IsLeft(id))
+        {
+            return false;
+        }
+
+        if (id != KimiDeclarationId.Negatable &&
+            (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, self, scope)))
         {
             return false;
         }

@@ -91,7 +91,6 @@ public class IntegerRangeTest
         { "ClosedEnds", ClosedEnds, "ok\n" },
         { "ResolvedCursor", ResolvedCursor, "ok\n" },
         { "Iteration", Iteration, "ok\n" },
-        { "Resolved", Resolved, "ok\n" },
         { "Slicing", Slicing, "Reversed refused.\nNegative refused.\nClosed end refused.\nTry negative refused.\nTry reversed refused.\nok\n" },
         { "Generic", Generic, "Window refused.\nok\n" },
     };
@@ -100,6 +99,21 @@ public class IntegerRangeTest
     [MemberData(nameof(Fixtures))]
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("IntegerRange" + name, source, stdout);
+
+    // SPEC 15.6.4 (R4-M170): Resolved is valid, but since G264 (S) S2 A5 errs twice at count's `for` (the lent item's composed erased
+    // destruction stores next()'s Loan into the iterator, a self-row), and generation refuses it; the old analysis accepted and ran it to
+    // "ok\n". H5's (e) list, row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and moves
+    // the row back to Executes.
+    [Fact]
+    public void AResolvedRangeThroughAGenericIterableIsRefusedPendingG416()
+    {
+        var c = MinimalEmissionTest.Analyze(Resolved);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var loop = new SyntaxLocation("for _ in items\n        n += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
 
     [Fact]
     public void ReversedIterationAbortsWhenItStarts()
@@ -184,7 +198,7 @@ public class IntegerRangeTest
     public void RejectsWhatTheRangeRulesDoNotAdmit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 4.6.2: each literal-only boundary takes the S or E of the expected range, else the integer Type of the other
@@ -202,7 +216,7 @@ public class IntegerRangeTest
     public void LiteralBoundariesTakeTheirTypeByRule(string source, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var r = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
         Assert.Equal(expected, Render(r.NameKoto.TypeOf()!));
 

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -13,7 +12,7 @@ internal sealed partial class MirBuilder
     // SPEC 15.1.3: a fixed-array element at a literal position in range (its PlaceShape): at the position the index's own plan row keeps
     // (Folded); the position evaluates nothing.
     private MirPlace ConstElement(IndexKoto index, bool input)
-        => this.body.Project(this.Place(index.Left, input), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(index).Folded!.Value);
+        => this.Selected(this.Place(index.Left, input), index.Left, MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(index).Folded!.Value, index);
 
     // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
     // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n). SPEC 4.7.4: the receiver is located once, before the index: a handle the
@@ -24,6 +23,12 @@ internal sealed partial class MirBuilder
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
+        if (this.Identical(sequence, index.Left, index))
+        {
+            this.Evaluate(index.Right);
+            return this.Unidentified(sequence, index);
+        }
+
         sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
         var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
         var key = ExpansionPlan.Of(index)?.First;
@@ -54,17 +59,28 @@ internal sealed partial class MirBuilder
         return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
     }
 
+    // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a ^x applied directly, Op Range, as Boundary
+    // reads it: its offset) or a key, built for its own code and records, while nothing reads the parameter's Place.
+    private void Evaluate(Koto? node)
+    {
+        if (node is not null)
+        {
+            _ = this.Operand(HirTables.Op(node) == HirOp.Range && node is FromEndIndexKoto { Operand: var offset } ? offset : node, expected: null);
+        }
+    }
+
     // SPEC 4.7.4, 12.2: a selection's receiver whose value it reads, a Slice handle or a raw pointer, secured where it is located (before an
     // index or a boundary that builds code), so that the selection reads the value it located; another receiver is its storage.
     private MirPlace Handle(MirPlace sequence, Koto node) => MirTypes.SelectsByValue(this.body.TypeOf(sequence))
         ? this.Secure(MirOperand.Copy(sequence), node).Place : sequence;
 
-    // SPEC 4.6.1, 4.7.1, 22.5.2 (DECISIONS R5-M84): a position as the isize a selection reads, its value compared mathematically: the value
-    // where isize holds it, else -1 (Unresolved), which the selection's one bounds check rejects at the selection; it has no check of its
-    // own. A Type whose range lies within isize's (Within: i8 to i32 and u8 to u32 on a 64-bit target) converts proven; another is first
-    // compared with isize's extremes in its own Type, the minimum only where it is signed. A Type parameter's range is its instance's, which
-    // no rule here decides (Unsupported). The local is located at its selection, whose subject A1 reports an access through its Index under
-    // (DECISIONS R4-M56).
+    // SPEC 4.6.1, 4.7.1, 22.5.2 (DECISIONS R5-M84, R5-M154): a position as the isize a selection reads, its value compared mathematically:
+    // the value where isize holds it, else -1 (Unresolved), which the selection's one bounds check rejects at the selection; it has no check
+    // of its own. A Type whose range lies within isize's (Within: i8 to i64 and u8 to u32 on a 64-bit target) converts proven; another is
+    // first compared with isize's extremes in its own Type, the minimum only where it is signed. A Type parameter's range is its instance's:
+    // it is compared with 0 in its own Type, a negative value being -1, which every selection rejects as it rejects any negative position
+    // (SPEC 4.6.3), and then, by a Proven Cast to u128, which holds every nonnegative value of every PrimitiveInteger Type, with isize's
+    // maximum there. The local is located at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
     private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
         var type = this.TypeOf(position) ?? BoundType.ISize;
@@ -75,26 +91,21 @@ internal sealed partial class MirBuilder
             return local;
         }
 
-        if (this.Width(type, out var signed) == 0)
-        {
-            // The value is built already: located there, the Opaque in its place names its root, not the position's syntax (R5-M63).
-            var mark = this.located.Count;
-            if (position.Kind != MirOperandKind.Const)
-            {
-                this.located.Add((node, position.Place));
-            }
-
-            this.Unsupported(node, local);
-            CollectionsMarshal.SetCount(this.located, mark);
-            return local;
-        }
-
         var outside = this.Within(type, BoundType.ISize) ? -1 : this.body.AddBlock();
         if (outside >= 0)
         {
             var value = position.Kind == MirOperandKind.Move ? MirOperand.Copy(position.Place) : position;
             var test = this.Temp(BoundType.Boolean, node);
             var extreme = Int128.One << (compilation.PointerWidth - 1);
+            if (this.Width(type, out var signed) == 0)
+            {
+                this.Compare(test, MirBinaryOp.Le, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type))), value, outside, node);
+                (type, signed) = (BoundType.Primitives["u128"], false);
+                var wide = this.Temp(type, node);
+                this.Set(wide, MirRvalue.Cast(MirCastKind.Integer, this.body.AddOperand(value), type) with { Proven = true }, node);
+                value = MirOperand.Copy(wide);
+            }
+
             if (signed)
             {
                 this.Compare(test, MirBinaryOp.Le, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type, -extreme))), value, outside, node);
@@ -134,6 +145,16 @@ internal sealed partial class MirBuilder
     {
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
         var sequence = this.Place(index.Left);
+        if (this.Identical(sequence, index.Left, index))
+        {
+            this.Evaluate(range is null ? index.Right : range.Start);
+            this.Evaluate(range?.End);
+            this.roots.Clear();
+            this.roots.Add(sequence.Root);
+            this.Unsupported(index, destination, index);
+            return;
+        }
+
         var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
         sequence = later ? this.Handle(sequence, index.Left) : sequence;
         var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);
@@ -239,9 +260,9 @@ internal sealed partial class MirBuilder
     private MirPlace Resolve(CallPlan key, IndexKoto index, MirPlace sequence)
     {
         var length = this.Length(sequence, index);
-        var result = this.Temp(key.ReturnType, index);
+        var result = this.Hold(key.ReturnType, index);
         this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(index)!.Value.Evaluated].Source, MirOperand.Copy(length));
-        return result;
+        return this.Made(result);
     }
 
     // A located sequence's length, a part of its selection made before its boundaries or key.

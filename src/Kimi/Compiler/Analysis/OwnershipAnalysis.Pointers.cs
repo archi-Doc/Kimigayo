@@ -11,8 +11,7 @@ public sealed partial class OwnershipAnalysis
     {
         var type = this.Resolve(source.BoundType, this.Active);
         // SPEC 5.2, 21.3.1: a generic read acquires CopyOrMove without inventing a Loan.
-        // The closed ownership plan must still prove a supported pointee representation.
-        if (abstractRead && this.instance is null && type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
+        if (abstractRead && type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
         {
             return true;
         }
@@ -86,12 +85,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (use == PlaceUseKind.Consume && acquisition is null && !copy)
-        {
-            // SPEC 3.5, 5.2.3: a raw Place, like every Place, never Moves by bare acquisition; (*p)@move takes its value.
-            this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
-        }
-
+        // SPEC 3.5, 5.2.3: a raw Place, like every Place, never Moves by bare acquisition; the bare move is Binding's record (R6-check
+        // H1, DECISIONS BU-84).
         var pointer = this.PointerAddress(source);
         return pointer < 0 ? -1 : this.LoadPointer(source, pointer);
     }
@@ -301,14 +296,9 @@ public sealed partial class OwnershipAnalysis
         var stored = this.Resolve(element, this.Active);
         if (acquisition == AcquisitionKind.Move || stored is null || !this.SupportsCopySnapshot(stored, call))
         {
-            if (acquisition is null && element is not null && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
-            {
-                var source = call.Parent is IndexKoto index && ReferenceEquals(this.compilation.Binding.IndexerCall(index, false), call) ? (Koto)index : call;
-                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
-                // Keep checking the call and its typed result after this rejected acquisition, as for a bare local.
-                // Dropping the result would invent an uninitialized return and hide independent argument/Loan errors.
-            }
-            else
+            // A rejected bare acquisition, which Binding judges (R6-check H1, DECISIONS BU-84), keeps checking the call and its typed
+            // result, as for a bare local.
+            if (acquisition is not null || element is null || this.compilation.Binding.ProveCopy(element, call) == ConstraintProof.Proven)
             {
                 this.Unsupported(call);
                 return -1;

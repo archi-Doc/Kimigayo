@@ -125,10 +125,12 @@ internal static class InheritanceLifecycleMeasurements
         return c;
     }
 
+    // Check and generation through their entries: generation is MIR code generation, which needs the program Analyze keeps (DECISIONS
+    // R5-M94, R5-M162).
     private static void Pipeline(Compilation c)
     {
         if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete ||
-            !c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            !c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
         {
             throw new InvalidOperationException("Every inheritance snapshot must bind, verify and emit.");
         }
@@ -136,11 +138,11 @@ internal static class InheritanceLifecycleMeasurements
 
     private static object Storage(Compilation c) => new
     {
-        places = c.Ownership.Bodies.Sum(static body => body.Places.Count),
-        operations = c.Ownership.Bodies.Sum(static body => body.Operations.Count),
-        borrowTableBytes = c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes),
-        regionPayloadBytes = c.Ownership.Bodies.Sum(static body => body.LocalRegionStorageBytes),
-        regionIndexCapacity = c.Ownership.Bodies.Sum(static body => body.LocalRegionIndexCapacity),
+        places = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.Places.Count),
+        operations = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.Operations.Count),
+        borrowTableBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.BorrowStorageBytes),
+        regionPayloadBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionStorageBytes),
+        regionIndexCapacity = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionIndexCapacity),
     };
 
     private static string Hash(string source) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source)));

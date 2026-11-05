@@ -217,8 +217,8 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         foreach (var source in new[] { Join, Build })
         {
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
 
         ScalarEmissionTest.EmitFixture("StringJoinInterpolation", Join, "Hello, world\nstart!\nHello, \n");

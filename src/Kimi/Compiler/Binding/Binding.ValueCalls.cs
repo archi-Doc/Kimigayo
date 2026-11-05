@@ -1,5 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Value calls (SPEC 7.7, 8.10, 15.6.4, 15.8.2; DECISIONS R4-M148, R4-M152): a call of a callable value, a Function value or a Closure.
+// - Responsibility: the callee's acquisition by its receiver mode (AcquireValueCallee), each argument bound and adapted
+//   (AcquireValueCallArguments), the per-call inputs solved and substituted, and the result (ValueCallResult). P9: a Closure's result
+//   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage) and its call result atom the call's Unbound atom,
+//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a Closure value
+//   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
+//   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
+//   Unsupported_Kd; R1's condition is the old analysis's gate fact.
+// - Inputs: the call, the callee's call signature (TryCallable; a Closure Type's definition, BoundClosure.Of) and its receiver mode.
+//   Outputs: the call's plan (CallPlan.SetValue) and its result Type, or a failure at the call.
+// - Invariants: a bound call's result names no input or reserved atom of its callee's binder (otherwise the call is Unsupported_Kd);
+//   the images are this call's alone.
+// - Prohibitions: no judgment of the callee's body; no second copy of the substitution (Binding.Storage's SubstituteStoredOrigins).
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -7,6 +21,16 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly BorrowAnnotationVisitor borrowAnnotationVisitor = new();
+
+    // The atoms of Closures a value call's result names (CallAtomsOf).
+    [Flags]
+    private enum CallAtoms : byte
+    {
+        None = 0,
+        Receiver = 1,
+        Result = 2,
+        Foreign = 4,
+    }
 
     // The unimplemented acquisition of an object callee's payload, as its reason (SPEC 7.3): a temporary handle, a handle reached through
     // a reference or an element, or an Exclusive call of a payload not proven Sealed.
@@ -103,156 +127,123 @@ public sealed partial class Binding
         return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
     }
 
-    // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
-    // which the callee's body was checked against.
-    private static bool FixedInBody(BoundType type, Koto use)
+    // One node's atom (CallAtomsOf); a meet node is none, its operands being nodes of their own.
+    private static CallAtoms CallAtomOf(BoundOrigin node, FunctionKoto closure, Koto call)
     {
-        if (!FixedOrigin(type.Origin, use))
+        if (node.Kind is not (OriginKind.Projection or OriginKind.Input or OriginKind.Parameter) ||
+            node.Binder is not FunctionKoto { IsAnonymous: true } binder)
         {
-            return false;
+            return CallAtoms.None;
         }
 
-        for (var i = 0; i < type.OriginArguments.Count; i++)
+        if (!ReferenceEquals(binder, closure))
         {
-            if (!FixedOrigin(type.OriginArguments[i], use))
-            {
-                return false;
-            }
+            return IsWithin(call, binder) ? CallAtoms.None : CallAtoms.Foreign;
         }
 
-        for (var i = 0; i < type.Components.Count; i++)
+        return node.Kind != OriginKind.Projection ? CallAtoms.None : node.Slot switch
         {
-            if (!FixedInBody(type.Components[i], use))
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        static bool FixedOrigin(BoundOrigin? origin, Koto use)
-        {
-            if (origin is null || origin.Kind == OriginKind.Static)
-            {
-                return true;
-            }
-
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    if (!FixedOrigin(origin.Operands[i], use))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            return FixedInBodyOrigin(origin, use);
-        }
+            ClosureValueSlot => CallAtoms.Receiver,
+            CallResultSlot => CallAtoms.Result,
+            _ => CallAtoms.None,
+        };
     }
 
-    // Whether a result still names a per-call input or a universal Origin of `binder`.
-    private static bool HasUnsubstitutedInput(BoundType type, Koto binder)
+    // Whether a result still names a per-call input or a universal Origin of `binder`: a test of its Origin summary's Nodes, which
+    // raw layers' Origins are not (Binding.OriginSummaries).
+    private bool HasUnsubstitutedInput(BoundType type, Koto binder)
     {
-        if (InputAtom(type.Origin, binder))
+        var nodes = this.SummaryOf(type).Nodes;
+        for (var i = 0; i < nodes.Length; i++)
         {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (InputAtom(type.OriginArguments[i], binder))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasUnsubstitutedInput(type.Components[i], binder))
+            if (nodes[i].Kind is OriginKind.Input or OriginKind.Parameter && ReferenceEquals(nodes[i].Binder, binder))
             {
                 return true;
             }
         }
 
         return false;
-
-        static bool InputAtom(BoundOrigin? origin, Koto binder)
-        {
-            if (origin is null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (InputAtom(origin.Operands[i], binder))
-                {
-                    return true;
-                }
-            }
-
-            return origin.Kind is OriginKind.Input or OriginKind.Parameter && ReferenceEquals(origin.Binder, binder);
-        }
     }
 
-    // Whether a result names an environment binding of the closure `function` (SPEC 15.8.2).
-    private static bool HasEnvironmentOrigin(BoundType type, Koto function)
+    // Whether a result names an environment binding of the closure `function` or its call receiver Origin ρ, so it depends on the
+    // receiver (SPEC 15.8.2, 7.7.4; DECISIONS R4-M126 P12): a test of its Origin summary's Nodes.
+    private bool HasEnvironmentOrigin(BoundType type, Koto function)
     {
-        if (EnvironmentAtom(type.Origin, function))
+        var nodes = this.SummaryOf(type).Nodes;
+        for (var i = 0; i < nodes.Length; i++)
         {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (EnvironmentAtom(type.OriginArguments[i], function))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasEnvironmentOrigin(type.Components[i], function))
+            if (ReferenceEquals(nodes[i].Binder, function) && ReceiverAtom(nodes[i]))
             {
                 return true;
             }
         }
 
         return false;
-
-        static bool EnvironmentAtom(BoundOrigin? origin, Koto function)
-        {
-            if (origin is null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (EnvironmentAtom(origin.Operands[i], function))
-                {
-                    return true;
-                }
-            }
-
-            return origin.Kind == OriginKind.Projection && ReferenceEquals(origin.Binder, function) && origin.Slot <= EnvironmentSlot(0) && origin.Slot != ClosureValueSlot;
-        }
     }
 
-    // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
-    private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
-        => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
-            (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
+    // The atoms of Closures a value call's result names in its Origin positions, raw layers included (SPEC 15.8.2, 5.7; DECISIONS R4-M152,
+    // R4-M159): its callee Closure's call receiver ρ and call result, each of which the call substitutes, and F1's located limit, an atom
+    // of another Closure that does not enclose the call, which no image reached: a Closure value returned from its maker's call reads that
+    // call's images through its Type's Origin arguments (ClosureSignature), so only a value that reached the call without passing its
+    // maker's call can still name one (the owner's 「2c-5 F1: (c')」). The atoms of its Origin summary's Nodes and RawNodes
+    // (Binding.OriginSummaries), a meet's operands each a node.
+    private CallAtoms CallAtomsOf(BoundType type, FunctionKoto closure, Koto call)
+    {
+        var summary = this.SummaryOf(type);
+        var atoms = CallAtoms.None;
+        for (var i = 0; i < summary.Nodes.Length; i++)
+        {
+            atoms |= CallAtomOf(summary.Nodes[i], closure, call);
+        }
+
+        for (var i = 0; i < summary.RawNodes.Length; i++)
+        {
+            atoms |= CallAtomOf(summary.RawNodes[i], closure, call);
+        }
+
+        return atoms;
+    }
+
+    // SPEC 7.7.3, 15.8.2 (DECISIONS R4-M152): the Origin of a Closure call's receiver acquisition, which a result naming ρ takes: the
+    // acquisition AcquireValueCallee publishes (a payload's borrow, TryPayloadReceiver; a stored exclusive callee's Reborrow, BU-27);
+    // through any other reference callee its referent's (ReferentOrigin: `ref/F`, and a Shared Closure read through `uniq/F`); any
+    // owned callee's Borrow (PlaceOrigin), for the Closure literal itself its own temporary, which is ρ's atom in its evaluating body.
+    private BoundOrigin ReceiverImage(InvocationKoto call, FunctionKoto closure, in BoundArgumentOperation acquisition)
+    {
+        if (acquisition.AdaptedType?.Origin is { } adapted)
+        {
+            return adapted;
+        }
+
+        var callee = call.Method.BoundType!;
+        if (callee.Kind == BoundTypeKind.Semantics && this.ReferentOrigin(call.Method, callee) is { } referent)
+        {
+            return referent;
+        }
+
+        return this.PlaceOrigin(call.Method);
+    }
+
+    // SPEC 8.10, 15.8.2: the Closure Type a callable value's calls read, the one TryCallable reads its signature from and a value call
+    // declares (R4-M159): the value without its acquisition layer, else its normalized Callable contract Type; null for any other callable.
+    private BoundType? CallableClosure(BoundType type, BindingScope scope)
+    {
+        var owner = CallableCore(type)!;
+        if (BoundClosure.Of(owner) is not null)
+        {
+            return owner;
+        }
+
+        var normalized = owner.Kind == BoundTypeKind.Function || this.FunctionItemSignature(owner) is not null
+            ? owner : this.CallableContractType(owner, scope);
+        return ReferenceEquals(normalized, owner) ? null : this.CallableClosure(normalized, scope);
+    }
 
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
     // SPEC 8.10, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
-    // (`several`); with them there is no single signature S.
+    // (`several`); with them there is no single signature S. A Closure Type's signature and receiver are its definition's
+    // (BoundClosure.Of), whatever its literal's creation outcome (DECISIONS R5-M63, R4-M152).
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
     {
         several = false;
@@ -271,10 +262,10 @@ public sealed partial class Binding
             return true;
         }
 
-        if (owner.Kind == BoundTypeKind.Closure && owner.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
+        if (this.CallableClosure(owner, scope) is { } closureType)
         {
-            signature = this.ClosureSignature(owner)!;
-            receiver = closure.Receiver;
+            signature = this.ClosureSignature(closureType)!;
+            receiver = BoundClosure.Of(closureType)!.Receiver;
             return true;
         }
 
@@ -455,22 +446,9 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        // Fresh input Origins and fixed shared capture results retain their complete call contracts. A result over the
-        // per-call inputs alone takes the arguments' Origins, as an ordinary call's does (SPEC 15.6.4). A per-call input is one
-        // bound by the callee's own binder; an input or result written over a fixed Origin of the calling body is fitted as written.
-        // A result over the closure's environment depends on the call receiver (SPEC 15.8.2), which needs region inference.
+        // A per-call input is one bound by the callee's own binder; an input written over a fixed Origin of the calling body is fitted
+        // as written.
         var ownBinder = CalleeBinder(call.Method.BoundType, signature);
-        var inputBinder = (Koto?)null;
-        var dependent = false;
-        if (ownBinder is not null && HasUnsubstitutedOrigin(signature.Components[1], ownBinder))
-        {
-            inputBinder = ownBinder;
-        }
-        else if (!PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(signature.Components[1], call.Method, call))
-        {
-            dependent = true;
-        }
-
         var operations = this.argumentOperationScratch.Rent(count + 1);
         operations[count] = default; // Common call-relation helpers reserve the last slot for a receiver.
         var instantiated = this.RentTypes(count);
@@ -482,42 +460,15 @@ public sealed partial class Binding
         Array.Clear(origins, 0, originCount);
         try
         {
-            for (var i = 0; i < count; i++)
+            if (!this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count)))
             {
-                if (call.GetArgumentLabel(i) is not null)
-                {
-                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
-                }
-
-                var source = call.ArgumentNodes[i];
-                var parameter = parameters.Components[i];
-                var literal = IsUnfittedLiteral(source);
-                var actual = this.BindNode(source, scope, literal ? LiteralInputType(parameter) : parameter);
-                if (actual is null || source.BindingState != BindingState.Resolved)
-                {
-                    return Complete(call, null);
-                }
-
-                actual = this.ArgumentType(source, actual);
-                this.acquisitionFailure = null;
-                if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind))
-                {
-                    // SPEC 15.1.5: name the missing spelling when a bare Place was the obstacle, as an ordinary call does.
-                    return this.acquisitionFailure is { } acquisition
-                        ? this.FailAcquisition(call, acquisition.Kind, acquisition.Place, acquisition.Object, true)
-                        : this.Fail(call, BindingFailure.NoApplicableCandidate);
-                }
-
-                // ArgumentType includes the already selected expected adaptation. Retain the original syntax
-                // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
-                operations[i] = new(source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i, AdaptedType: adapted);
-                instantiated[i] = adapted;
+                return null;
             }
 
             // Collect the complete parameter structure, including nested slots, through the ordinary call solver.
             // Scratch inputs hold acquired Types until substitution commits the one selected call's contract.
             var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
-            if (ownBinder is not null && HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
+            if (ownBinder is not null && this.HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
             {
                 if (conditioned is not null)
                 {
@@ -533,45 +484,47 @@ public sealed partial class Binding
                     this.SubstituteStoredOrigins(parameters.Components[i], ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
                 // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
                 if (!this.FailStaticBorrow(operations[i].Source!, operations[i].Kind, parameter.Semantics) &&
-                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!))
+                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!, out var failure))
                 {
-                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    // SPEC 15.6.1, 23.1.2: a fit whose structure holds, or a Closure's or Function Item's erasure, is the argument's own record
+                    // (RecordMismatch; an erasure's failed condition is recorded where it is judged, ErasesToFunction), and the call rests on it.
+                    var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
+                    if (failure.Kind == ComparisonFailureKind.Shape && !erasure)
+                    {
+                        return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    }
+
+                    _ = erasure && this.ErasesToFunction(operations[i].Source!, instantiated[i], parameter);
+                    this.RecordMismatch(operations[i].Source!, operations[i].Source!, instantiated[i], parameter, failure);
+                    return this.CompleteDependent(call, operations[i].Source!);
                 }
 
                 instantiated[i] = parameter;
                 operations[i] = operations[i] with { ParameterType = parameter };
             }
 
-            if (ownBinder is not null)
+            // SPEC 15.6.1, 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds, also
+            // where no input is per-call: a written input's well-formedness is its signature's premise, proven at each call (R4-M137).
+            this.callRelationScratch.Clear();
+            for (var i = 0; i < count; i++)
             {
-                // SPEC 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds.
-                this.callRelationScratch.Clear();
-                for (var i = 0; i < count; i++)
+                if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
                 {
-                    this.RequireInputPremises(operations[i]);
+                    this.RequireInputPremises(at, parameter, adapted, this.PartContribution(at));
                 }
-
-                if (conditioned is not null)
-                {
-                    this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
-                }
-
-                this.PublishCallRelations();
             }
 
-            var result = signature.Components[1];
-            if (dependent || (inputBinder is not null && HasEnvironmentOrigin(result, inputBinder)))
+            if (conditioned is not null)
             {
-                return this.Fail(call, BindingFailure.Unsupported);
+                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
             }
 
-            if (inputBinder is not null)
+            this.PublishCallRelations();
+            var result = this.ValueCallResult(
+                call, signature, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount), receiverOperation);
+            if (result is null)
             {
-                result = this.SubstituteStoredOrigins(result, inputBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
-                if (HasUnsubstitutedInput(result, inputBinder))
-                {
-                    return this.Fail(call, BindingFailure.Unsupported);
-                }
+                return null;
             }
 
             if (conditioned is not null)
@@ -580,7 +533,9 @@ public sealed partial class Binding
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
-            var declaredSignature = signature;
+            // A Closure callee declares its definition's signature, the world retention reads (R4-M159).
+            var declaredSignature = this.CallableClosure(call.Method.BoundType!, scope) is { } closureType
+                ? this.ClosureDefinitionSignature(closureType)! : signature;
             signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
             return Complete(call, result);
@@ -592,5 +547,96 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
             this.originScratch.Return(argumentOrigins, clearArray: true);
         }
+    }
+
+    // SPEC 15.6.4, 15.1.5: each argument of a value call, bound against its parameter and adapted to it: its operation and the Type it
+    // acquires, which the call's substitution then instantiates; false when one fails, which fails or leaves unresolved the call.
+    private bool AcquireValueCallArguments(
+        InvocationKoto call, BindingScope scope, BoundType parameters, Span<BoundArgumentOperation> operations, Span<BoundType> instantiated)
+    {
+        for (var i = 0; i < instantiated.Length; i++)
+        {
+            if (call.GetArgumentLabel(i) is not null)
+            {
+                this.Fail(call, BindingFailure.NoApplicableCandidate);
+                return false;
+            }
+
+            var source = call.ArgumentNodes[i];
+            var parameter = parameters.Components[i];
+            var literal = IsUnfittedLiteral(source);
+            var actual = this.CompleteValueCallPart(source, parameter, scope);
+            if (actual is null || source.BindingState != BindingState.Resolved)
+            {
+                Complete(call, null);
+                return false;
+            }
+
+            actual = this.ArgumentType(source, actual);
+            this.acquisitionFailure = null;
+            if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind))
+            {
+                // SPEC 15.1.5: name the missing spelling when a bare Place was the obstacle, as an ordinary call does.
+                if (this.acquisitionFailure is { } acquisition)
+                {
+                    this.FailAcquisition(call, acquisition.Kind, acquisition.Place, acquisition.Object, unresolved: true);
+                }
+                else
+                {
+                    this.Fail(call, BindingFailure.NoApplicableCandidate);
+                }
+
+                return false;
+            }
+
+            // ArgumentType includes the already selected expected adaptation. Retain the original syntax
+            // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
+            operations[i] = new(
+                source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i, AdaptedType: adapted);
+            instantiated[i] = adapted;
+        }
+
+        return true;
+    }
+
+    // SPEC 15.6.4, 15.8.2 (DECISIONS R4-M152): a value call's result. Fresh input Origins and fixed shared capture results retain their
+    // complete call contracts; a result over the per-call inputs takes the arguments' Origins, as an ordinary call's does; one written
+    // over a fixed Origin of the calling body stays as written. A Closure's result naming its call receiver ρ takes the receiver
+    // acquisition's Origin and its call result atom the call's Unbound atom, each image built only where the result names its atom;
+    // one naming another Closure's atom is F1's located limit. R1's condition (`dependent`, or a per-call result naming the receiver)
+    // is the old analysis's gate fact (Binding.ValueCallGate), written on the call's plan.
+    private BoundType? ValueCallResult(
+        InvocationKoto call,
+        BoundType signature,
+        Koto? ownBinder,
+        ReadOnlySpan<BoundOrigin> origins,
+        ReadOnlySpan<BoundOrigin> inputs,
+        in BoundArgumentOperation acquisition)
+    {
+        var result = signature.Components[1];
+        var inputBinder = ownBinder is not null && this.HasUnsubstitutedOrigin(result, ownBinder) ? ownBinder : null;
+        var dependent = inputBinder is null
+            ? !PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(result, call.Method, call)
+            : this.HasEnvironmentOrigin(result, inputBinder);
+        var closure = ownBinder is FunctionKoto { IsAnonymous: true, ClosureDefinition: not null } binder ? binder : null;
+        var atoms = closure is null ? CallAtoms.None : this.CallAtomsOf(result, closure, call);
+        if ((atoms & CallAtoms.Foreign) != 0)
+        {
+            return this.Fail(call, BindingFailure.Unsupported); // F1's located limit (DECISIONS R4-M152): the owner's (c').
+        }
+
+        if (inputBinder is not null || atoms != CallAtoms.None)
+        {
+            var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, closure!, acquisition) : null;
+            var unbound = (atoms & CallAtoms.Result) != 0 ? this.OriginAtom(call, OriginKind.Unbound, 0) : null;
+            result = this.SubstituteStoredOrigins(result, ownBinder!, origins, new(inputs, image, unbound));
+            if (inputBinder is not null && this.HasUnsubstitutedInput(result, inputBinder))
+            {
+                return this.Fail(call, BindingFailure.Unsupported);
+            }
+        }
+
+        this.RecordReceiverDependence(call, dependent);
+        return result;
     }
 }

@@ -1,0 +1,4 @@
+struct Holder {a}
+    public let item: uniq/i32 during a
+func makeUniq() -> Holder during static => $abort("unused")
+let bad: Holder during static = makeUniq()

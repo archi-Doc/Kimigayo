@@ -20,12 +20,15 @@ namespace Kimi.Compiler.Backend;
 // under one switch on its tag over the Cases holding such a part (an Open enum's tag is defined: Case payload paths exist only in an owned
 // match Subject, initialized before arm selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a
 // row in one counted loop (Loop, Fill's loop), so the text does not grow with the length. Each level reads its own glue item's targets.
-// A common Function value's calls its table's drop entry, when present (FunctionCodegen.Erasures). The other rows are their units' (C6b,
-// C8d, C8e), one located Unsupported_Kd, a glue function's at its item's site; a Type of a kind no glue has, or a target missing or left
-// over, is a broken contract, InternalInvariant_Kd there.
+// A common Function value's calls its table's drop entry, when present, on a copy of its word in an entry slot (FunctionCodegen.Erasures),
+// and an owning handle's releases its object (FunctionCodegen.Objects' Release), each only in its glue function, since no move path opens
+// either. A collection's rows (also only
+// in its glue function): an Array's and a Dictionary's call their glue item's Drop helper with the glue's parameters (FunctionCodegen.Arrays,
+// FunctionCodegen.Dictionaries; DECISIONS R5-M121, R5-M124); a Type of a kind no glue has, or a target missing or left over, is a broken
+// contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
-    private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters a1 and a2.
+    private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters location and length.
     private readonly List<DropPart> parts = []; // DropGlue.Parts' scratch.
     private int glue; // The glue item whose level is being written, and its targets read.
     private int glued;
@@ -56,11 +59,23 @@ internal sealed partial class FunctionCodegen
             case DropGlueRow.Parts:
                 this.DestroyParts(glue, type, row, address, site);
                 return;
-            case DropGlueRow.Function:
+            case DropGlueRow.Function when row < 0:
                 this.DestroyErased(type, address, site);
                 return;
-            case DropGlueRow.Handle or DropGlueRow.Collection:
-                this.Report(DiagnosticCode.Unsupported_Kd, default); // C6b, C8d and C8e write these rows.
+            case DropGlueRow.Handle when row < 0:
+                this.Release(glue, type, address, site);
+                return;
+            case DropGlueRow.Function or DropGlueRow.Handle:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A Function value or a handle has no part a move path opens.
+                return;
+            case DropGlueRow.Array when row < 0:
+                this.ArrayGlue(glue, address, site);
+                return;
+            case DropGlueRow.Dictionary when row < 0:
+                this.DictionaryGlue(glue, address, site);
+                return;
+            case DropGlueRow.Array or DropGlueRow.Dictionary:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A collection has no part a move path opens.
                 return;
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A glue item's Type is of a kind MirTypes.MayNeedDrop admits.
@@ -102,7 +117,9 @@ internal sealed partial class FunctionCodegen
     // a part that may need a drop; any other tag destroys nothing.
     private void Cases(BoundType type, ValueLowering record, int start, int row, Value address, Site site)
     {
-        var (parts, output, id) = (this.parts, this.output, this.next++);
+        var parts = this.parts;
+        var output = this.output;
+        var id = this.next++;
         var tag = this.LoadAt(address, Layout.Tag.Layout);
         output.Write("  switch i32 ");
         this.WriteValue(tag);
@@ -190,15 +207,20 @@ internal sealed partial class FunctionCodegen
                 BoundTypeKind.Closure => MirAggregateKind.Closure,
                 _ => MirAggregateKind.Adt,
             };
-            var (offset, _) = this.Component(kind, type, record, part.Ordinal, part.Index);
+            if (this.Component(kind, type, record, part.Ordinal, part.Index) is not { } component)
+            {
+                return; // A broken contract, recorded.
+            }
+
             var (parent, child) = this.Governing(type, part, row);
-            this.DestroyByRow(parent, child, target, address, offset, site);
+            this.DestroyByRow(parent, child, target, address, component.Offset, site);
         }
     }
 
     // SPEC 16.3.2: a fixed array's elements by decreasing index under a row: an element with a row (its ConstIndex child) by it
     // (DestroyByRow), each run of elements without one under the row's own bit in the one counted loop (Loop), whose k-th pass destroys the
-    // run's element at its last element's offset less the pass's; under no row, one run of every element. Nothing for no element.
+    // run's element at its last element's offset (ElementOffset) less the pass's; under no row, one run of every element. Nothing for no
+    // element.
     private void Elements(BoundType type, int target, int row, Value address, Site site)
     {
         if (type.Length == 0 || this.Laid(type.Components[0]) is not { } element)
@@ -206,7 +228,6 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var stride = element.Layout.Stride;
         for (long last = type.Length - 1, end; last >= 0; last = end - 1)
         {
             var child = this.Highest(row, last);
@@ -214,13 +235,13 @@ internal sealed partial class FunctionCodegen
             if (end < last)
             {
                 var guard = this.Test(this.Own(row));
-                this.Loop(last - end, element, new Destroyed(target, address, last * stride, site));
+                this.Loop(last - end, element, new Destroyed(target, address, ElementOffset(element, last), site));
                 this.Join(guard);
             }
 
             if (child >= 0)
             {
-                this.DestroyByRow(row, child, target, address, end * stride, site);
+                this.DestroyByRow(row, child, target, address, ElementOffset(element, end), site);
             }
         }
     }

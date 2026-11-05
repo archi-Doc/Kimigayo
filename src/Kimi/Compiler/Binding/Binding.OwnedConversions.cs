@@ -4,122 +4,177 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Owns the failure of a common Function conversion whose subject is not proven Owned (SPEC 7.7.4, 15.2.3), a Constraint failure: an
-// Error rests on its cause (SPEC 23.1.2), else the record explains the first member of the subject's OwnedOrigins through which a
-// non-static Origin enters (an OwnedConversionFact).
-// Input: the converted Closure or Function Item, the required Function Type, the use. Output: the use failed, or false when the
-// conversion's Owned proof holds or the signature does not match. Must not change the Owned proof or select a conversion.
+// Owns the failure of a common Function conversion whose subject is not proven Owned (SPEC 7.7.4, 15.2.3), a Constraint failure: one
+// on a failed part (an Error's cause, or the failed operand context of a subject no work judged) is derived from it (SPEC 23.1.2,
+// DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (an
+// OwnedConversionFact), chosen where the erasure decides (OwnedMember).
+// Input: the erasure's Owned proof with its rest (the capability engine's parts that are not Proven, R4-M161); the erasure's outcome for
+// the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
+// Output: the explaining member; the use failed, or false when the erasure failed another part; a derived use, settled in Binding.Check's
+// Final prologue (SettleDerivedUses). Must not prove Owned again or select a conversion.
 public sealed partial class Binding
 {
-    // SPEC 15.2.3, 7.7.4: the explaining member is a capture of a closure with a Shared receiver, or a bound Type argument of an Item,
-    // whose signature matches structurally. The first Refuted member (a body-local Origin) wins, else the first Unknown one.
+    // The uses FailDerived failed in this pass, each with its held cause's candidates at failure, its first and the rest (none for an
+    // operand context, recorded at once), and a re-entry's site, settled in Binding.Check's Final prologue (DECISIONS BU-76; removed
+    // once the erasure's Owned failure is decided after the prologue).
+    private List<(Koto Use, Koto? First, ICheckCause? Next, ICheckCause? ReentrySite)>? derivedUses;
+
+    // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction); a recorded mismatch of a
+    // Closure or Item against a Function Type always follows its erasure, so a missing outcome is a broken contract. An Owned failure that
+    // no work judged returned on its subject's failed operand context (RequestCapability). The member is a capture of a closure or a bound
+    // Type argument of an Item.
     private bool FailOwnedConversion(BoundType implementation, BoundType required, Koto at, Koto use)
     {
-        BoundType? signature;
-        FunctionKoto? closure = null;
-        IReadOnlyList<BoundCapture>? captures = null;
-        if (implementation.Kind == BoundTypeKind.FunctionItem)
+        if (this.ErasureOf(implementation, required) is not { } erasure)
         {
-            signature = this.FunctionItemSignature(implementation);
-        }
-        else if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Receiver: SemanticsKind.Ref, Signature: not null } plan } declaration })
-        {
-            signature = this.ClosureSignature(implementation);
-            closure = declaration;
-            captures = plan.Captures;
-        }
-        else
-        {
-            return false;
-        }
-
-        if (signature is null || !ReferenceTypes.StorageMatches(required, signature))
-        {
-            return false;
-        }
-
-        this.failedCause = null;
-        var proof = this.ProveOwned(implementation, use);
-        if (proof == ConstraintProof.Proven)
-        {
-            return false;
-        }
-
-        if (proof == ConstraintProof.Error && this.TakeFailedCause() is { } cause)
-        {
-            this.CompleteDependent(use, cause);
+            this.Fail(use, BindingFailure.Internal);
             return true;
         }
 
-        OwnedConversionFact? unknown = null;
-        var count = captures?.Count ?? implementation.Components.Count;
-        for (var i = 0; i < count; i++)
-        {
-            var member = captures is null ? implementation.Components[i]
-                : implementation.Components.Count == captures.Count ? implementation.Components[i] : captures[i].Environment.Type;
-            if (member is null || this.ProveOwned(member, use) == ConstraintProof.Proven)
-            {
-                continue;
-            }
-
-            var origin = this.FirstUnownedOrigin(member, use, 0);
-            var name = captures is null ? $"{Ordinal(i + 1)} Type argument" : captures[i].Environment.Name;
-
-            // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
-            var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
-                KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
-            var local = origin is not null && BodyLocalIn(origin, this.formingBody);
-            var fact = new OwnedConversionFact(at, implementation, name, member, origin, closure is null ? null : CaptureEntryOf(closure, name), closure, borrow, local);
-            if (fact.Refuted)
-            {
-                unknown = fact;
-                break;
-            }
-
-            unknown ??= fact;
-        }
-
-        if (unknown is not { } failure)
+        if (erasure.Part != ErasurePart.Owned)
         {
             return false;
         }
 
-        this.FailExplained(ref this.ownedConversions, use, failure.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, failure);
+        if (erasure.Owned.Cause is { } held)
+        {
+            held.Rest(); // SPEC 23.1.2: the failure is derived from the cause the erasure held.
+            this.FailDerived(use, held);
+            return true;
+        }
+
+        if (erasure.Owned.Member == -2)
+        {
+            this.FailDerived(use, this.InvalidOperandContext(implementation));
+            return true;
+        }
+
+        if (erasure.Owned is not { Member: >= 0 and var i, Origin: var origin } owned)
+        {
+            return false; // No part failed: the failure rests on no member (the Type mismatch keeps its Note).
+        }
+
+        var closure = implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
+        var captures = BoundClosure.Of(implementation)?.Captures;
+        var member = implementation.Components[i]; // A Closure's environment Type is built from its captures (Storage).
+        var name = captures is null ? $"{Ordinal(i + 1)} Type argument" : captures[i].Environment.Name;
+
+        // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
+        var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
+            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
+        var entry = closure is null ? null : CaptureEntryOf(closure, name);
+        var fact = new OwnedConversionFact(at, implementation, name, member!, origin, entry, closure, borrow, owned.Refuted);
+        this.FailExplained(ref this.ownedConversions, use, fact.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, fact);
         return true;
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
-    // The first Origin in a Type's OwnedOrigins, in the order of SPEC 15.2.3, that is not proven static; a common Function Type
-    // contributes no per-call Origin (SPEC 15.2.3).
-    private BoundOrigin? FirstUnownedOrigin(BoundType type, Koto use, int depth)
+    // SPEC 23.1.2 (DECISIONS BU-75, BU-76): a conversion whose own check failed because a part it judged failed is a derived failure, with
+    // no record: the part is its prerequisite, and IsDerived's row (InvalidConstraint whose part is Invalid) classifies it. A held cause's
+    // use is listed and rests on its first candidate that failed by Binding.Check's Final prologue (SettleDerivedUses), since a held
+    // cause's node fails only there (a Type node at the Definition deadline, a hop's clause at its binding's formation, a limit's Use when
+    // the prologue fails it), after the erasure ran in body binding. The candidates are read at failure: a summary re-solved in a later
+    // epoch may hold another cause by then.
+    private void FailDerived(Koto use, ICheckCause held)
     {
-        if (depth > 32)
+        (this.derivedUses ??= []).Add((use, held.Use, held.Next, held.ReentrySite));
+        this.Fail(use, BindingFailure.InvalidConstraint);
+    }
+
+    // An Owned failure no work judged rests on its subject's failed operand context, Invalid by construction (InvalidOperandContext),
+    // listed with no held cause; a subject without one is a broken contract (InternalInvariant_Kd) at once.
+    private void FailDerived(Koto use, Koto? part)
+    {
+        if (part is not null)
         {
-            return null;
+            this.AddPendingPrerequisite(use, part);
+            (this.derivedUses ??= []).Add((use, null, null, null));
         }
 
-        if (OwnedOrigin(type) is { } origin && !this.ProvesOriginOutlives(origin, BoundOrigin.Static, use))
-        {
-            return origin;
-        }
+        this.Fail(use, part is not null ? BindingFailure.InvalidConstraint : BindingFailure.Internal);
+    }
 
-        for (var i = 0; i < type.Components.Count && type.Kind != BoundTypeKind.Function; i++)
+    // DECISIONS BU-76: after every producer's node has failed (Binding.Check's Final prologue, after FailNeededSites), a listed use with no
+    // recorded part rests on its held cause's first candidate that failed (a part another site recorded first is kept, BU-61); a use
+    // whose part is not Invalid is a broken contract (BU-75), whose InternalInvariant_Kd replaces the use's own InvalidConstraint, which
+    // Fail keeps as a node's first failure, except a re-entry none of whose clauses failed: the depth test is no proof of growth, so the
+    // use rests on its site, failed here as FailNeededSites fails one (BU-22; removal condition: PLAN G369, an exact re-entry test). A
+    // site is a stored Type, which no other use's candidates name unless already Invalid. A resolution's candidates are the hops
+    // ContractTypes published, outermost first; a specification with no conformance path adds no hop and forwards its subject's.
+    private void SettleDerivedUses()
+    {
+        for (var i = 0; this.derivedUses is { } uses && i < uses.Count; i++)
         {
-            if (this.FirstUnownedOrigin(type.Components[i], use, depth + 1) is { } inner)
+            var (use, candidate, next, site) = uses[i];
+            while (candidate is not null && !this.partPrerequisites.ContainsKey(use))
             {
-                return inner;
+                if (candidate.BindingState == BindingState.Invalid)
+                {
+                    this.partPrerequisites.Add(use, candidate);
+                }
+
+                candidate = next?.Use;
+                next = next?.Next;
+            }
+
+            if (site is not null && !this.partPrerequisites.ContainsKey(use))
+            {
+                this.Fail(site.Use, BindingFailure.Unsupported);
+                this.partPrerequisites.Add(use, site.Use);
+            }
+
+            if (!(this.partPrerequisites.TryGetValue(use, out var part) && part.BindingState == BindingState.Invalid))
+            {
+                use.BindingFailure = BindingFailure.Internal;
             }
         }
+    }
 
-        for (var i = 0; i < type.OriginArguments.Count; i++)
+    // SPEC 7.7.4, 15.2.3: the erasure's one Owned proof (ErasesToFunction), of its subject (ErasureSubject), the channel cleared before it;
+    // an Error's cause is held for the conversion's record (FailOwnedConversion), never rested here, and a failure names its member
+    // (OwnedMember).
+    private ConstraintProof ProveErasedOwned(BoundType actual, Koto node, out OwnedFact owned)
+    {
+        this.failedCause = null;
+        var proof = this.ProveOwned(this.ErasureSubject(actual), node, out var rest);
+        owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(proof == ConstraintProof.Error ? this.HoldCause() : null, rest);
+        return proof;
+    }
+
+    // SPEC 7.7.4 (DECISIONS BU-73): an erasure's subject, its callable's complete environment: a Closure's captures as one Tuple, whose
+    // members are the captures' indices (its call signature is the required Function Type's, never a part of the proof), a Function Item
+    // itself.
+    private BoundType ErasureSubject(BoundType callable)
+        => callable.Kind == BoundTypeKind.Closure ? this.types.Tuple((BoundType[])callable.Components) : callable;
+
+    // SPEC 15.2.3, 15.6.1 (BU's n6): the member an Owned failure names, from the parts the engine found not Proven: each member in member
+    // order with the Origin of its first part; the first whose Origin is Refuted in the forming body (a body-local borrow) wins, else the
+    // first. -1 when no part failed; -2 when no work judged the subject.
+    private OwnedFact OwnedMember(ICheckCause? cause, in OwnedRest rest)
+    {
+        var first = new OwnedFact(cause, rest.Judged ? -1 : -2, null, false);
+        var refuted = first;
+        var parts = rest.Parts;
+        for (var p = 0; parts is not null && p < parts.Count; p++)
         {
-            if (type.OriginArguments[i] is { } argument && !this.ProvesOriginOutlives(argument, BoundOrigin.Static, use))
+            var (member, origin) = parts[p];
+            var earlier = false;
+            for (var q = 0; q < p && !earlier; q++)
             {
-                return argument;
+                earlier = parts[q].Member == member;
             }
+
+            if (earlier)
+            {
+                continue; // A member is explained by its first part.
+            }
+
+            var fact = new OwnedFact(cause, member, origin, origin is not null && BodyLocalIn(origin, this.formingBody));
+            first = first.Member < 0 || member < first.Member ? fact : first;
+            refuted = fact.Refuted && (refuted.Member < 0 || member < refuted.Member) ? fact : refuted;
         }
 
-        return null;
+        return refuted.Member >= 0 ? refuted : first;
     }
 }

@@ -90,7 +90,7 @@ public class DictionaryCostTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var bytes = AllocationMeasurement.Measure(() =>
         {
             if (stage == "Pipeline")
@@ -101,7 +101,7 @@ public class DictionaryCostTest
                 }
 
                 c.Binding.CheckStartup(OutputKind.Application);
-                if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+                if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
                 {
                     throw new InvalidOperationException("Dictionary compilation failed.");
                 }
@@ -113,8 +113,8 @@ public class DictionaryCostTest
             {
                 "Binding" => c.Bind().IsComplete,
                 "Ownership" => c.Analyze().IsVerified,
-                "Validation" => c.Validate(out _),
-                _ => c.WriteIr(TextWriter.Null, out _),
+                "Validation" => c.Generate(TextWriter.Null),
+                _ => c.Generate(TextWriter.Null),
             };
             if (!valid)
             {

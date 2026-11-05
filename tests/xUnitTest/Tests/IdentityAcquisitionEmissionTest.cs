@@ -51,10 +51,10 @@ public class IdentityAcquisitionEmissionTest
     public void IdentityRetainsOrdinaryOwnershipErrors(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -69,7 +69,7 @@ public class IdentityAcquisitionEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TransferRequired_Kd);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -86,56 +86,24 @@ public class IdentityAcquisitionEmissionTest
     public void BoundariesAndEvaluationOrderExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("IdentityAcquisition" + name, source, "ok\n");
 
-    [Theory]
-    [InlineData("binding")]
-    [InlineData("target")]
-    [InlineData("place")]
-    public void CorruptIdentityPlansAreRejectedAndRebindingRestoresThem(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let value = \"value\"\nlet taken = value@move");
-        Assert.True(c.Validate(out var error), error);
-        var identities = c.Ownership.Bodies[0].Identities!;
-        var identity = Assert.Single(identities);
-        if (defect == "binding")
-        {
-            identity.Source.SetConversion(ConversionBinding.Literal);
-        }
-        else if (defect == "target")
-        {
-            identity.Source.Right.SetType(BoundType.Boolean);
-        }
-        else
-        {
-            identities[0] = identity with { Place = -1 };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
-    }
-
     [Fact]
     public void RebindingAndReloadPreserveIdentityAcquisition()
     {
         var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@move\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@move@(string, i32)))");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         using var rebound = new StringWriter();
-        Assert.True(c.WriteIr(rebound, out error), error);
+        Assert.True(c.Generate(rebound), MinimalEmissionTest.Describe(c));
         Assert.Equal(original.ToString(), rebound.ToString());
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.WriteIr(writer, out error), error);
+        Assert.True(restored.Generate(writer), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("IdentityAcquisitionReload", writer.ToString(), "ok\n");
     }
@@ -146,10 +114,10 @@ public class IdentityAcquisitionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@move\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@move@(string, i32)))");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Identity acquisition analysis or writing failed.");
             }

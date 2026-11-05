@@ -6,10 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // A candidate's solution from its call's evaluation: the call's slot arrays, scope, Self and explicit Type arguments.
-    private SlotSolution Solution(in CallEvaluation evaluation, FunctionKoto function, BoundType? declaringType)
+    // The solution of the call's `candidate`-th candidate from its evaluation: the call's slot arrays, scope, Self, explicit Type
+    // arguments and the candidate's root rows.
+    private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
         => new()
         {
+            Rows = evaluation.Rows.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
             Binding = this,
             Call = evaluation.Call,
             Binder = function,
@@ -48,7 +50,8 @@ public sealed partial class Binding
 
     // The SPEC 10.8 solve state of one candidate or one Case construction (DECISIONS BU-2): its Type, length and Origin slots and its
     // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's
-    // inferred Type is checked fixed (ValidateFixedConstruction) and the Origin inference its evidence begins. The binder (a function or
+    // inferred Type is checked fixed (ValidateFixedConstruction), the Origin inference its evidence begins, and a candidate's
+    // root rows, what each argument's position contributes to its call (F1, Rows; DECISIONS R4-M164). The binder (a function or
     // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Invariant: a Case
     // construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk, the defaults, the
     // waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.
@@ -67,6 +70,11 @@ public sealed partial class Binding
         internal BoundOrigin[] Inputs;
         internal bool FixedConstruction;
         internal OriginInference? OriginInference;
+
+        // F1 (R4-M164): each argument's root row for this candidate's call (Contribute; Binding.ArgumentKinds.Rows.cs), a slice of the
+        // call's pooled CallEvaluation.Rows (one per argument of each candidate; none for a call without arguments), which lives until
+        // the call's selected candidate is judged (JudgeSelectedCall).
+        internal Span<PositionRow> Rows;
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
@@ -105,11 +113,11 @@ public sealed partial class Binding
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
                 var open = new OpenWaitingSlots(ref unsolved, this);
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
-                    TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, this.SlotOwner, open);
+                    this.Binding.TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, this.SlotOwner, open);
                 }
 
                 return !unsolved.IsEmpty &&
@@ -179,7 +187,7 @@ public sealed partial class Binding
             var function = this.Function;
             var constructor = function.IsConstructor;
             var arguments = constructor ? this.Types.AsSpan(0, CallSlotCount(function)) : slots;
-            var outer = binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
+            binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var proof = binding.CheckConstraints(
                 function.TypeConstraints,
                 function,
@@ -214,7 +222,18 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.SlotProof(slots, i, unbound), true);
             }
 
-            return binding.EndProof(outer, CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true));
+            proof = CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
+            var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
+            var clause = binding.ProofClause(proof); // G351a: at the trial's verdict.
+            proof = binding.EndProof(proof);
+            if (fact is not null)
+            {
+                fact.Epoch = binding.frameEpoch; // The candidate trial's frame, whose consumer explains it (CallableOriginFailure).
+            }
+
+            binding.trialUnknown = fact;
+            binding.trialClause = clause is { } trial ? trial with { Epoch = binding.frameEpoch } : null;
+            return proof;
         }
 
         // SPEC 10.7, 10.8, 15.3.6: a callable value at a common Function Type that fits only once its per-call input is instantiated at
@@ -224,7 +243,7 @@ public sealed partial class Binding
             var binding = this.Binding;
             var node = KotoHelper.UnwrapParentheses(argument);
             operation = default;
-            if (!IsWaitingFunctionReference(node) && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
+            if (binding.KindOf(node) != PartKind.Reference && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -248,7 +267,7 @@ public sealed partial class Binding
         // Whether the callable value converts to the common Function Type: a function group by one of its functions (SPEC 7.7.4).
         private readonly bool FitsCallable(Koto node, BoundType type)
             => node.BoundType is { } actual
-                ? this.Binding.ErasureSignatureFits(actual, type, node) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+                ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
 
         // Whether the call infers a construction's Type from its arguments (SPEC 10.8.1), and its target.
         private readonly bool InfersConstruction(out Koto? target)
@@ -285,7 +304,8 @@ public sealed partial class Binding
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
                 var source = this.Call.ArgumentNodes[i];
-                if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot || source.BoundType is null ||
+                if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
+                    source.BoundType is null ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     binding.CallMemberPattern(requiredSignature, this.Binder, this.DeclaringType) is not { } memberSignature ||
                     this.Type(binding.ContractType(memberSignature, this.Scope, this.Self)) is not { } required ||

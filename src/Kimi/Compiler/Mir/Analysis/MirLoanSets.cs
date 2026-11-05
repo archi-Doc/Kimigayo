@@ -1,34 +1,46 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns interned immutable Loan sets: Add, Union, Remove, Range; the only Loan-set form in Mir (design A3 §6.1; DECISIONS R4-M53).
+// Owns interned immutable Loan sets: Add (an element or an ascending run), Union (of two or of any number), Remove, Range; the only Loan-set
+// form in Mir (design A3 §6.1; DECISIONS R4-M53).
 // Input: the elements, the Loan and marker ids A5 numbers. Output: each set as a node id, 0 the empty set; Add, Union and Remove (a \ b) of
-// sets and the set of a Range of consecutive elements as node ids, Contains, Count and a set's elements in ascending order; Bytes, the
-// element bytes of the nodes made (A3 §6.2's ν), and Scanned, the elements its operations read and wrote, which A5's work counts.
+// sets, a set with an ascending run added (interned in one pass, R4-M132, G263) and the set of a Range of consecutive elements as node
+// ids, Contains, Count and a set's elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν), and Scanned, the
+// elements its operations read and wrote, which A5's work counts.
 // Invariants: a node's elements are a strictly ascending run in one pooled array, and nodes are interned by their elements, so two sets are
-// equal exactly when their ids are; a node never changes once made. Each operation is memoized by its operands, so repeating it costs one
-// lookup. Storage is pooled: Clear empties it per body view and keeps its capacity, so a warm run of a sized workload allocates nothing.
+// equal exactly when their ids are; a node never changes once made. Each operation but a run's Add and the n-ary Union is memoized by its
+// operands, so repeating it costs one lookup; a run's Add makes no node of the run itself, and the n-ary Union reads each element once and
+// sorts the marker words it sets, never the range between its least and greatest element (their callers memoize them). Storage is
+// pooled: Clear empties it per body view in proportion to the view's entries (MirTable, DECISIONS R4-M146) and keeps its capacity, so a
+// warm run of a sized workload allocates nothing.
 // Must not number or interpret elements, read MIR, or keep a set in another form.
 
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
 /// <summary>Interned immutable Loan sets (design A3 §6.1, DECISIONS R4-M53): a set is a node id, 0 the empty set, and equal sets have one
-/// id, so a set is stored and compared as an int; <see cref="Add"/>, <see cref="Union"/>, <see cref="Remove"/> and <see cref="Range"/> are
-/// memoized.</summary>
+/// id, so a set is stored and compared as an int; <see cref="Add(int, int)"/>, <see cref="Union(int, int)"/>, <see cref="Remove"/> and
+/// <see cref="Range"/> are memoized.</summary>
 internal sealed class MirLoanSets
 {
-    private readonly Dictionary<int, int> nodes; // Each node by its elements: an interned run maps to its own id.
-    private readonly Dictionary<(int Set, int Element), int> adds = new();
-    private readonly Dictionary<(int A, int B), int> unions = new(); // Keyed with A < B.
-    private readonly Dictionary<(int Set, int Removed), int> removes = new();
-    private readonly Dictionary<(int First, int Count), int> ranges = new();
+    private readonly MirTable<int> nodes; // Each node by its elements: an interned run maps to its own id.
+    private readonly MirTable<(int Set, int Element)> adds = new();
+    private readonly MirTable<(int A, int B)> unions = new(); // Keyed with A < B.
+    private readonly MirTable<(int Set, int Removed)> removes = new();
+    private readonly MirTable<(int First, int Count)> ranges = new();
     private int[] elements = []; // The runs of the nodes, in node order.
     private int[] starts = [0, 0]; // Each node's first element, then the end of the last node's run and of a candidate's.
+    private ulong[] marker = []; // The n-ary Union's bit per element, clear between its calls.
+    private int[] touched = []; // The marker words an n-ary Union set, in the order it set them.
     private int created = 1; // The nodes made; node 0 is the empty set.
 
     /// <summary>Initializes a new instance of the <see cref="MirLoanSets"/> class, holding the empty set.</summary>
-    internal MirLoanSets() => this.nodes = new(new Runs(this)) { [0] = 0 };
+    internal MirLoanSets()
+    {
+        this.nodes = new(new Runs(this));
+        this.nodes.Add(0, 0);
+    }
 
     /// <summary>Gets the element bytes of the nodes made since the last <see cref="Clear"/>, A3 §6.2's ν.</summary>
     internal long Bytes { get; private set; }
@@ -37,10 +49,10 @@ internal sealed class MirLoanSets
     /// smaller operand and the run it copies, and a Range's run.</summary>
     internal long Scanned { get; private set; }
 
-    /// <summary>Removes every set but the empty one, keeping the storage.</summary>
+    /// <summary>Removes every set but the empty one, keeping the storage, in proportion to the view's entries (MirTable).</summary>
     internal void Clear()
     {
-        this.nodes.Clear();
+        this.nodes.Clear(); // Before the runs are dropped: a node is found by its run.
         this.adds.Clear();
         this.unions.Clear();
         this.removes.Clear();
@@ -85,6 +97,13 @@ internal sealed class MirLoanSets
         return added;
     }
 
+    /// <summary>Gets a set with the elements of a strictly ascending run added, interned in one pass: one merge and one node, none of the
+    /// run itself (G263); unmemoized, its caller memoizes it.</summary>
+    /// <param name="set">The set.</param>
+    /// <param name="run">The elements, strictly ascending.</param>
+    /// <returns>The set and the run's elements.</returns>
+    internal int Add(int set, ReadOnlySpan<int> run) => run.IsEmpty ? set : this.Merge(set, run);
+
     /// <summary>Gets the union of two sets.</summary>
     /// <param name="a">A set.</param>
     /// <param name="b">Another set.</param>
@@ -109,6 +128,66 @@ internal sealed class MirLoanSets
         }
 
         return union;
+    }
+
+    /// <summary>Gets the union of any number of sets in one pass (R4-M138): each element is set once in a reused bit marker, whose words
+    /// set are listed as they are first set, then sorted and read back in ascending order, each cleared; one or no distinct set is
+    /// returned as it is. Its work is the elements read, the words touched times their logarithm and the set made, never the range between
+    /// the least element and the greatest.</summary>
+    /// <param name="parts">The sets.</param>
+    /// <returns>The elements of any.</returns>
+    internal int Union(ReadOnlySpan<int> parts)
+    {
+        var (first, distinct, total, high) = (0, false, 0, -1);
+        foreach (var part in parts)
+        {
+            if (part != 0)
+            {
+                distinct |= first != 0 && part != first;
+                first = first == 0 ? part : first;
+                var run = this.Elements(part);
+                (total, high) = (total + run.Length, Math.Max(high, run[^1]));
+            }
+        }
+
+        if (!distinct)
+        {
+            return first;
+        }
+
+        MirDataflow.Grow(ref this.marker, (high >> 6) + 1);
+        MirDataflow.Grow(ref this.touched, total);
+        var words = 0;
+        foreach (var part in parts)
+        {
+            foreach (var element in this.Elements(part))
+            {
+                ref var word = ref this.marker[element >> 6];
+                if (word == 0)
+                {
+                    this.touched[words++] = element >> 6;
+                }
+
+                word |= 1UL << element;
+            }
+        }
+
+        var listed = this.touched.AsSpan(0, words);
+        listed.Sort();
+        var merged = this.Candidate(total);
+        var length = 0;
+        foreach (var index in listed)
+        {
+            for (var bits = this.marker[index]; bits != 0; bits &= bits - 1)
+            {
+                merged[length++] = (index << 6) | BitOperations.TrailingZeroCount(bits);
+            }
+
+            this.marker[index] = 0;
+        }
+
+        this.Scanned += total + (words * (BitOperations.Log2((uint)words) + 1)) + length;
+        return this.Intern(length);
     }
 
     /// <summary>Gets a set without the elements of another, a \ b: the Loans a point ends, removed from each holder's set. It scans the
@@ -239,7 +318,7 @@ internal sealed class MirLoanSets
     {
         MirDataflow.Grow(ref this.starts, this.created + 2);
         this.starts[this.created + 1] = this.starts[this.created] + length;
-        ref var node = ref CollectionsMarshal.GetValueRefOrAddDefault(this.nodes, this.created, out var exists);
+        ref var node = ref this.nodes.Entry(this.created, out var exists);
         if (!exists)
         {
             node = this.created++;

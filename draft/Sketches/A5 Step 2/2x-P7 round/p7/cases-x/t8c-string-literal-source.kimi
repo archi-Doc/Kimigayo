@@ -1,0 +1,4 @@
+public func main()
+    let n: i32 = 1
+    let c = func [n] () => (n, "text")
+    let v = c()

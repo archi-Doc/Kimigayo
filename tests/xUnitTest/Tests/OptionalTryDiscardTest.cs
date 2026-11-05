@@ -156,7 +156,7 @@ public partial class OptionalTryDiscardTest
             Assert.True(c.Bind().IsComplete, Describe(c));
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified, Describe(c));
-            Assert.True(c.Validate(out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
     }
 
@@ -243,7 +243,6 @@ public partial class OptionalTryDiscardTest
         var c = MinimalEmissionTest.Analyze("func save() -> Result<(), i32> => .Ok(())\nfunc run() -> Result<(), i32> => try save()");
         c.Binding.CheckBound();
         c.Binding.ReportDiagnostics();
-        c.AnalyzeControlFlow().ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Code == "TryPayloadMismatch_Kd" && d.Explanation.Contains("without try", StringComparison.Ordinal));
     }
 
@@ -331,6 +330,6 @@ public partial class OptionalTryDiscardTest
     }
 
     private static string Describe(Compilation c)
-        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.FailureOf() + ":" + x.Node)) +
+        => MinimalEmissionTest.Describe(c) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.FailureOf() + ":" + x.Node)) +
             "\n" + string.Join("\n", TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message));
 }

@@ -97,55 +97,18 @@ public class DivisionEmissionTest
     public void LiteralDivisorsOmitTheirChecks()
     {
         var ir = ScalarEmissionTest.EmitFixture("DivisionLiteralDivisors", "var x: i32 = 7\nvar u: u32 = 7\nvar w: Wrapping<i32> = -2147483648\nlet a = x / 2\nlet b = x % 3\nlet c = u / 4\nlet d = u % 5\nlet e = x / -1\nlet f = x % -1\nlet g = w / -1\nlet h = w % -1\nx /= -2\nif a == 3 and b == 1 and c == 1 and d == 2 and e == -7 and f == 0 and g == -2147483648 and h == 0 and x == -3 => Console.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.DoesNotContain("select", body);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(body, @"%minimum\d+ = icmp eq i32 "));
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = sub i32 0, ").Count);
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = srem i32 [^,]+, 1\n").Count);
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = sdiv i32 ").Count);
-        Assert.DoesNotMatch(@"sdiv i32 [^,]+, -1\n", body);
-        Assert.Contains(" = udiv i32 ", body);
-        Assert.Contains(" = urem i32 ", body);
-    }
-
-    [Fact]
-    public void ChecksHaveOneSuccessLabelAndDivisionIsOnlyInThatBlock()
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 21\nvar d = 2\nlet y = if true => x / d else => x % d\nx /= y");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var function = module.GetFunction(0);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        var ir = writer.ToString();
-        var divisions = function.Instructions.Where(x => x.Check is ArithmeticCheckKind.Division or ArithmeticCheckKind.DivisionZero).ToArray();
-        Assert.Equal(3, divisions.Length);
-        Assert.Equal(2, divisions.Count(x => x.Check == ArithmeticCheckKind.Division));
-        foreach (var instruction in divisions)
-        {
-            Assert.True(instruction.Constant >= 0);
-            var quotient = instruction.Check == ArithmeticCheckKind.Division;
-            Assert.Equal(quotient ? "sdiv" : "srem", instruction.ScalarOperator);
-            Assert.Contains($"br i1 {(quotient ? "%invalid" : "%zero")}{instruction.Operation}, label %abort{instruction.Operation}, label %b{instruction.Place}\n", ir);
-            // The instruction lies in the success block, after the -1 substitution of a dynamic remainder divisor (SPEC 13.3.1).
-            var block = ir.IndexOf($"b{instruction.Place}:\n", StringComparison.Ordinal);
-            var division = ir.IndexOf($"\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", block, StringComparison.Ordinal);
-            var next = ir.IndexOf("\nb", block + 1, StringComparison.Ordinal);
-            Assert.True(block >= 0 && division > block && (next < 0 || next > division));
-            Assert.Contains(quotient ? $"call void @__kimi_abort(i32 %v{instruction.Place}," : $"call void @__kimi_abort(i32 {AbortReasons.IntegerDivisionZero},", ir);
-        }
-
-        var phi = Assert.Single(function.Instructions, x => x.Opcode == EmissionOpcode.Phi);
-        var inputs = function.GetOperands(phi);
-        for (var i = 0; i < inputs.Length; i += 2)
-        {
-            var producer = inputs[i].Value;
-            Assert.Equal(Assert.Single(divisions, x => x.Operation == producer).Place, inputs[i + 1].Value);
-        }
-
-        Assert.All(function.Slots, x => Assert.Equal(OwnershipPlaceKind.Local, c.Ownership.Bodies[0].Places[x.Place].Kind));
-        Assert.DoesNotContain(" exact ", ir);
-        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
+        var module = GeneratedIr.Parse(ir);
+        var abort = module.Function("__kimi_abort");
+        var body = module.Startup;
+        Assert.DoesNotContain(body.Instructions, static x => x.Opcode == "select");
+        var check = Assert.Single(body.Blocks, x => x.Successors.Any(s => s.Instructions.Any(i => i.Callee == abort))).Terminator;
+        Assert.Equal("icmp eq i32 %, -2147483648", check.Operands[0].Shape);
+        Assert.Equal(2, body.Instructions.Count(static x => x.Shape.StartsWith("sub i32 0, ", StringComparison.Ordinal)));
+        Assert.Equal(2, body.Instructions.Count(static x => x.Shape == "srem i32 %, 1"));
+        Assert.Equal(2, body.Instructions.Count(static x => x.Shape.StartsWith("sdiv i32 ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(body.Instructions, static x => x.Shape == "sdiv i32 %, -1");
+        Assert.Contains(body.Instructions, static x => x.Shape.StartsWith("udiv i32 ", StringComparison.Ordinal));
+        Assert.Contains(body.Instructions, static x => x.Shape.StartsWith("urem i32 ", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -157,30 +120,6 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MismatchedDivisionPlansFailBeforeWriting(bool wrongKind)
-    {
-        var c = MinimalEmissionTest.Analyze("let b = true\nvar x = 7\nlet y = x / 2");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Operator == KotoKind.Slash);
-        if (wrongKind)
-        {
-            body.Values[id] = body.Values[id] with { Kind = OwnershipValueKind.Unary, Count = 1 };
-        }
-        else
-        {
-            var boolean = Enumerable.Range(0, body.Values.Count).First(i => body.Values[i].Kind == OwnershipValueKind.Constant && body.Places[body.Operations[i].Place].Type == BoundType.Boolean);
-            body.ValueOperands[body.Values[id].Start + 1] = boolean;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 
     [Fact]
@@ -270,12 +209,12 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Snapshot);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.Equal(0, bytes);
         Assert.True(success);

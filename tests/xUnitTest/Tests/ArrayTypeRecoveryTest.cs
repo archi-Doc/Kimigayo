@@ -34,7 +34,7 @@ public class ArrayTypeRecoveryTest(ITestOutputHelper output)
         Assert.Equal([code, "TypeMismatch_Kd"], errors.Select(static x => x.Code));
         Assert.Equal(new SourceSpan(source.IndexOf(marked, "let Width = 2\nlet Height = 3\nlet n: ".Length, StringComparison.Ordinal), marked.Length), errors[0].Span);
         Assert.Contains(errors[0].Reason!, x => x.Kind == DiagnosticValueKind.Requirement && x.Value == requirement);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         Assert.Equal(4, c.Kotonoha.GeneratedFunction!.Body!.Items.Count);
         c.Bind();

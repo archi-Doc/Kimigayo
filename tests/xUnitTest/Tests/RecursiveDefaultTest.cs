@@ -94,7 +94,7 @@ public class RecursiveDefaultTest
 
     [Fact]
     public void GrowingDefaultSubstitutionsAreResourceDiagnosed()
-        => MinimalEmissionTest.AssertGenerationResourceLimit("func grow<T>(n: i32, result: i32 = if n == 0 => 0 else => grow<[1 of T]>(n - 1)) -> i32 => result\n_ = grow<i32>(2)", "closed substitutions");
+        => MinimalEmissionTest.AssertGenerationResourceLimit("func grow<T>(n: i32, result: i32 = if n == 0 => 0 else => grow<[1 of T]>(n - 1)) -> i32 => result\n_ = grow<i32>(2)", "grow<[1 of T]>(n - 1)");
 
     [Fact]
     public void RecursiveAbortDoesNotUnwindPreparedInputsOrDefaultDefers()
@@ -118,9 +118,8 @@ public class RecursiveDefaultTest
     public void UnboundedRuntimeRecursionHasFiniteGeneration()
     {
         var c = MinimalEmissionTest.Analyze("func f(value: i32 = f()) -> i32 => value\nif false => f()");
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("@__kimi_default0", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("@__kimi_default1", ir, StringComparison.Ordinal);
+        var evaluator = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Single("internal i32 ()"); // The default's one evaluator.
+        Assert.NotEmpty(evaluator.Blocks);
     }
 
     [Collection<AllocationIsolationCollection>]
@@ -131,16 +130,16 @@ public class RecursiveDefaultTest
         public void RecursiveEvaluatorPlansReuseStorage()
         {
             var c = MinimalEmissionTest.Analyze(Generic + "require f(3, 7) == 7 and f(4, true) else => $abort(\"reuse\")");
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
             var restored = CompilationTestHelper.Reload(c);
             Assert.True(restored.Bind().IsComplete);
             restored.Binding.CheckStartup(OutputKind.Application);
             Assert.True(restored.Analyze().IsVerified);
-            Assert.True(restored.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
+            Assert.True(restored.Generate(TextWriter.Null), MinimalEmissionTest.Describe(restored));
         }
     }
 }

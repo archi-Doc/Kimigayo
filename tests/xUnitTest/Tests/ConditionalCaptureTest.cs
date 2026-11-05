@@ -20,12 +20,12 @@ public sealed class ConditionalCaptureTest
     {
         var source = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var h = func [value] () -> ()\n        _ = value@follow\n    h()\n    h()\n" + Main;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var closure = Closure(c);
         var capture = Assert.Single(closure.Captures);
         Assert.Equal(CaptureAcquisition.Bare, capture.Environment.CaptureAcquisition);
         Assert.Equal(SemanticsKind.Ref, closure.Receiver); // Reading through the capture is Shared in every case.
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -46,9 +46,9 @@ public sealed class ConditionalCaptureTest
     {
         const string Body = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    {0} h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n" + Main;
         var c = MinimalEmissionTest.Analyze(Body.Replace("{0}", "var", StringComparison.Ordinal));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(SemanticsKind.Uniq, Closure(c).Receiver);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
 
         var errors = DiagnosticCorpus.Check(Body.Replace("{0}", "let", StringComparison.Ordinal)).Diagnostics;
         Assert.NotEmpty(errors);

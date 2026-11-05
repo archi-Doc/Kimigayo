@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -73,7 +74,7 @@ public sealed class MirAnalysisTest
         struct Nest<T>
             public var value: T
             public var next: Option<rc/Nest<(T, T)>> = .None
-            public init(value: T) => self.value = value
+            public init(value: T) => self.value = value@move
         contract Store
             func keep(self: uniq/Self, value: i32) -> i32
                 effect confined
@@ -107,20 +108,31 @@ public sealed class MirAnalysisTest
 
         """;
 
+    // A destructor's environment effect, which A4 composes from the planned cleanups, and group H's discard, open for more members.
+    private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
+        "    public func discard<T>(item: T) => ()\n";
+
     private static readonly DiagnosticRequirement Moved = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
     private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
+    private static readonly MirProblem Conflict = new(
+        DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 1), 0, 0b01);
 
     // R4-M3a, R4-M71: a problem of a code, subject and body added again ORs its views into the first; another code, subject or body is its
-    // own problem, so the views of one body's cases are never ORed into another's.
+    // own problem, so the views of one body's cases are never ORed into another's. Add returns the problem's index, the first's on a merge
+    // (R4-M132).
     [Fact]
     public void ARepeatedProblemMergesItsViews()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10));
+        int[] indices =
+        [
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10)),
+        ];
+        Assert.Equal([0, 1, 2, 3, 0], indices);
         Assert.Equal(
             [
                 new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b11), new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01),
@@ -131,15 +143,46 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, report.All.Length);
     }
 
+    // R6-check H3-1 (R4 review B1): a construction or collection record is a ControlFlow problem of every view whose body is its class, once
+    // per class, code and subject, so a construction and a collection record at one subject stay two, as today's two lists keep them, and
+    // neither merges with a NoBody problem there (an A4 limit); a class's rows are MirProgram.Records', and Clear resets them with the bodies.
+    [Fact]
+    public void ARecordIsAProblemOfItsClass()
+    {
+        var program = new MirProgram();
+        var site = new SourceRef(0, 5);
+        program.Report(site);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1));
+        program.Report(site);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        Assert.Equal(
+            [
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Collection, ulong.MaxValue),
+                new MirProblem(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1),
+            ],
+            program.Problems.All.ToArray());
+        Assert.Equal([true, true, false], program.Problems.All.ToArray().Select(static x => x.IsRecord));
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Construction));
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Collection));
+        program.Clear();
+        Assert.Equal(0, program.Problems.All.Length);
+    }
+
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
-    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees.
+    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]
     public void AMergeNamesOneRequirement()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100));
+        int[] indices =
+        [
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10)),
+            report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100)),
+        ];
+        Assert.Equal([0, -1, -1], indices);
         Assert.Equal(
             [
                 new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01),
@@ -149,24 +192,261 @@ public sealed class MirAnalysisTest
     }
 
     // R4-M69 (SPEC 7.2.3, 23.1.1): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's
-    // check and is dropped; a limit record, which a copy records without that fact, stays, as does the template's own problem.
+    // check and is dropped (Add returns -1); a limit record, which a copy records without that fact, stays, as does the template's own
+    // problem.
     [Fact]
     public void AnInlinedProblemIsDropped()
     {
         var report = new MirReport();
         var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0, 0b10);
         var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
-        report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]);
-        report.Add(limit);
-        report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]);
+        int[] indices =
+        [
+            report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]),
+            report.Add(limit),
+            report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]),
+        ];
+        Assert.Equal([-1, 0, 1], indices);
         Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
         Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
     }
 
+    // DECISIONS R4-M132 (rule W; R4-M96 per report, DIAGNOSTICS §4.3): a merged problem is derived exactly when every report of it is, its
+    // Cause facts (their tail) the union of the reports' causes: a derived problem meeting a direct report becomes direct and stays so, two
+    // derived reports keep their causes once each, the first's span moved after another problem's facts, so the other problem keeps its own.
+    // The causes name problems in All (H3-2 N2).
+    [Fact]
+    public void AMergeIsDerivedOnlyWhenEveryReportIs()
+    {
+        var (loan, other) = (Conflict with { Subject = new(0, 5) }, Conflict with { Subject = new(0, 6) });
+        var (anchor, first, second) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Cause, new(0, 1), 0), new MirFact(
+            MirFactKind.Cause, new(0, 2), 1));
+        var report = new MirReport();
+        Assert.Equal([0, 1, 2, 3, 2, 2, 2], new[]
+        {
+            report.Add(Conflict), report.Add(Conflict with { Subject = new(0, 2) }), report.Add(loan, [anchor, first]), report.Add(other, [anchor]),
+            report.Add(loan with { Views = 0b10 }, [anchor, second]), report.Add(loan, [anchor, first, second]), report.Add(loan, [anchor, second]),
+        });
+        Assert.Equal([anchor, first, second], report.Facts(2).ToArray());
+        Assert.Equal([anchor], report.Facts(3).ToArray());
+        Assert.Equal(0b11UL, report.All[2].Views);
+        Assert.Equal(2, report.Add(loan, [anchor]));
+        Assert.Equal([anchor], report.Facts(2).ToArray());
+        Assert.Equal(2, report.Add(loan, [anchor, first]));
+        Assert.Equal([anchor], report.Facts(2).ToArray());
+    }
+
+    // R6-check H3-2 (R4-M11; R4-M71's r05): Merged has one merged problem per code, subject, Reason and class, in the order of its first
+    // member, so one subject's problems in two bodies (two constructors) are one, whose members, indices in All, name their bodies and
+    // views; another code or subject is its own; an Add or a Clear after a read recomputes it.
+    [Fact]
+    public void AMergedProblemMergesItsBodies()
+    {
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 1, 0b01));
+        Assert.Equal(
+            [
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), default, null, 0),
+                new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), default, null, 0),
+                new MirReport.MergedProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), default, null, 0),
+            ],
+            report.Merged.ToArray());
+        Assert.Equal([0, 2], report.Members(0).ToArray());
+        Assert.Equal([1], report.Members(1).ToArray());
+        Assert.Equal([(0, 0b01UL), (1, 0b100UL)], report.Members(0).ToArray().Select(i => (report.All[i].Body, report.All[i].Views)));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 2, 0b10));
+        Assert.Equal([3, 4], report.Members(2).ToArray());
+        report.Clear();
+        Assert.Equal(0, report.Merged.Length);
+    }
+
+    // R6-check H3-2 (H3-1's F2, R4 review B1): the class keeps a record class's rows apart from the other class's and from the analyses'
+    // problems, so a construction record, an A5 limit and a collection record at one code and subject are three merged problems.
+    [Fact]
+    public void AMergedRecordKeepsItsClass()
+    {
+        var (program, site, limit) = (new MirProgram(), new SourceRef(0, 5), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
+        program.Report(site);
+        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, limit, site, 0, 0b01));
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        Assert.Equal(
+            [
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, default, MirRecordClass.Construction, 0),
+                new(DiagnosticCode.Unsupported_Kd, limit, site, default, null, 0),
+                new MirReport.MergedProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, default, MirRecordClass.Collection, 0),
+            ],
+            program.Problems.Merged.ToArray());
+    }
+
+    // R6-check H3-2 (R4's correction, Q-R4-1): A4 (NoBody) and A5 (a body) both record Unsupported_Kd and OwnershipDepthLimit_Kd under one
+    // requirement each, so at one subject each code is one merged problem of the analyses with both members.
+    [Fact]
+    public void ANoBodyProblemMergesWithABodysProblem()
+    {
+        var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
+        var depth = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01));
+        report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), 0, 0b10));
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b10));
+        report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), MirProblem.NoBody, 0b01));
+        Assert.Equal(
+            [
+                new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), default, null, 0),
+                new MirReport.MergedProblem(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), default, null, 0),
+            ],
+            report.Merged.ToArray());
+        Assert.Equal([0, 2], report.Members(0).ToArray());
+        Assert.Equal([1, 3], report.Members(1).ToArray());
+    }
+
+    // R6-check H3-2 (Q-R4-4): a merged problem's Ordinal is its Reason's position among the merged problems of its code, subject and class,
+    // in the order of their first members: two relations at one subject are 0 and 1, whichever body records them, and another subject is 0;
+    // a construction record and an A5 limit at one code and subject are 0 each, of their classes.
+    [Fact]
+    public void AMergedProblemsOrdinalCountsItsReasons()
+    {
+        var (program, equality) = (new MirProgram(), new MirReason(null, null, true));
+        var relation = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
+        var limit = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 5), 0, 0b01, equality));
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 5), 1, 0b01));
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 6), 0, 0b01));
+        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, new(0, 5), 1, 0b10, equality));
+        program.Report(new(0, 5));
+        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01));
+        Assert.Equal(
+            [(equality, 0), (default, 1), (default, 0), (default, 0), (default, 0)],
+            program.Problems.Merged.ToArray().Select(static x => (x.Reason, x.Ordinal)));
+        Assert.Equal([0, 3], program.Problems.Members(0).ToArray());
+    }
+
+    // R6-check H3-2 (R4-M132's rule over the members): a merged problem's facts are its first member's but their Cause tail, then its
+    // members' causes when every member is derived (unioned across bodies); one direct member makes it direct.
+    [Fact]
+    public void AMergedProblemIsDerivedOnlyWhenEveryMemberIs()
+    {
+        var (anchor, other) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Anchor, new(0, 3)));
+        var report = new MirReport();
+        report.Add(Conflict);
+        report.Add(Conflict with { Subject = new(0, 2) });
+        report.Add(Conflict with { Subject = new(0, 5) }, [anchor, new(MirFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [other, new(MirFactKind.Cause, new(0, 2), 1)]);
+        report.Add(Conflict with { Subject = new(0, 6) }, [anchor, new(MirFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 6), Body = 1 }, [other]);
+        Assert.Equal(4, report.Merged.Length);
+        Assert.Equal([anchor, new(MirFactKind.Cause, new(0, 1), 0), new(MirFactKind.Cause, new(0, 2), 1)], report.MergedFacts(2).ToArray());
+        Assert.Equal([anchor], report.MergedFacts(3).ToArray());
+    }
+
+    // R6-check H3-2 (N2): in Merged's facts a Cause's Value is the index in Merged of its problem's merged problem, a total remap of All's
+    // indices: a cause in body 1 merged with one in body 0 is named by their one merged problem; 2g-1's Binding cause (-1) stays.
+    [Fact]
+    public void AMergedCauseNamesItsMergedProblem()
+    {
+        var report = new MirReport();
+        report.Add(Conflict);
+        report.Add(Conflict with { Subject = new(0, 9) });
+        report.Add(Conflict with { Body = 1 });
+        report.Add(Conflict with { Subject = new(0, 5) }, [new(MirFactKind.Cause, new(0, 1), 2), new(MirFactKind.Cause, new(0, 7), -1)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(MirFactKind.Cause, new(0, 9), 1)]);
+        Assert.Equal(
+            [new(MirFactKind.Cause, new(0, 1), 0), new(MirFactKind.Cause, new(0, 7), -1), new MirFact(MirFactKind.Cause, new(0, 9), 1)],
+            report.MergedFacts(2).ToArray());
+    }
+
+    // R6-check H3-2 (N2): the remap comes before the union, so two members naming problems of one merged problem give one cause.
+    [Fact]
+    public void AMergedProblemNamesEachCauseOnce()
+    {
+        var report = new MirReport();
+        report.Add(Conflict);
+        report.Add(Conflict with { Body = 1 });
+        report.Add(Conflict with { Subject = new(0, 5) }, [new(MirFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(MirFactKind.Cause, new(0, 1), 1)]);
+        Assert.Equal([1, 1], new[] { report.Facts(2).Length, report.Facts(3).Length });
+        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+    }
+
+    // R6-check H3-2 (R4's U1b note n2): members of one merged problem that cause one another, A4's (NoBody) and A5's Unsupported_Kd at one
+    // subject, name no other problem: the remapped self-cause is dropped, their other causes kept.
+    [Fact]
+    public void AMergedProblemNeverCausesItself()
+    {
+        var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
+        report.Add(Conflict);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(MirFactKind.Cause, new(0, 1), 0)]);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(MirFactKind.Cause, new(0, 5), 1)]);
+        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+    }
+
+    // R6-check H3-2 (N2, as R5-M23's disagreement): a Cause fact whose Value is neither -1 nor an index in All names no problem, a recording
+    // rule's defect: the problem is not added, one InternalInvariant_Kd under Ownership.Internal is at its subject instead, and Add returns
+    // -1; a Binding cause (-1) and an index in All are kept.
+    [Fact]
+    public void AddRejectsACauseNamingNoProblem()
+    {
+        var moved = new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01);
+        var report = new MirReport();
+        Assert.Equal([0, -1, -1, 2, 2], new[]
+        {
+            report.Add(moved), report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), 1)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), -2)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), -1)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), 0)]),
+        });
+        Assert.Equal(
+            [
+                moved, new(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), new(0, 6), 0, 0b01),
+                moved with { Subject = new(0, 6) },
+            ],
+            report.All.ToArray());
+    }
+
+    // R6-check H3-2 (§2): members of one merged problem naming two requirements (two bodies' recording rules) add one more merged problem,
+    // InternalInvariant_Kd under Ownership.Internal at the subject, without members (a read cannot call Add); where an analysis
+    // InternalInvariant_Kd lies at the subject, it is that problem, which names Ownership.Internal too.
+    [Fact]
+    public void AMergedDisagreementIsItsOwnProblem()
+    {
+        var (report, defect) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Internal));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 1, 0b01));
+        report.Add(new(DiagnosticCode.InternalInvariant_Kd, defect, new(0, 6), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 6), 1, 0b01));
+        Assert.Equal(
+            [
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), default, null, 0),
+                new(DiagnosticCode.InternalInvariant_Kd, defect, new(0, 5), default, null, 0),
+                new(DiagnosticCode.InternalInvariant_Kd, defect, new(0, 6), default, null, 0),
+                new MirReport.MergedProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), default, null, 0),
+            ],
+            report.Merged.ToArray());
+        Assert.Equal([[0, 1], [], [2], [3, 4]], Enumerable.Range(0, 4).Select(x => report.Members(x).ToArray()));
+    }
+
+    // R6-check H3-2 (Q-R4-2): every analysis InternalInvariant_Kd names Ownership.Internal (MirReport's defects and Merged's disagreement
+    // record, A5's broken contracts, the C1-F4 view's findings), so the disagreement record never disagrees again: each site of the code
+    // in the analyses states that requirement before it in its block, and a new site joins this list after review.
+    [Fact]
+    public void EveryAnalysisInternalInvariantNamesOwnershipInternal()
+    {
+        var code = new Regex(@"DiagnosticCode\.InternalInvariant_Kd");
+        var pinned = new Regex(@"OwnershipRequirement\.Internal\)[^}]*?DiagnosticCode\.InternalInvariant_Kd");
+        Assert.Equal(
+            ["MirBorrows.Reports.cs 1 1", "MirOrigins.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
+            Directory.EnumerateFiles(Path.Combine(Repository.Root, "src/Kimi/Compiler/Mir/Analysis"), "*.cs")
+                .Select(x => (Name: Path.GetFileName(x), Text: File.ReadAllText(x))).Where(x => code.IsMatch(x.Text))
+                .Select(x => $"{x.Name} {code.Count(x.Text)} {pinned.Count(x.Text)}").Order(StringComparer.Ordinal));
+    }
+
     // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
     // p11 and A1's and A2's in another keep the template's one view, though a caller of two views and another caller call both; a limit
-    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate, one problem in the template and
-    // one with the two-view copy's views (R4-M71).
+    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate (the depth limit, R4-M153), one
+    // problem in the template and one with the two-view copy's views (R4-M71).
     [Fact]
     public void ADefaultsProblemsAreItsTemplates()
     {
@@ -197,7 +477,7 @@ public sealed class MirAnalysisTest
             struct Nest<T>
                 public var value: T
                 public var next: Option<rc/Nest<(T, T)>> = .None
-                public init(value: T) => self.value = value
+                public init(value: T) => self.value = value@move
             func h(n: i32, y: i32 = label w: do
                 var z = 1
                 let nest = Nest<ref/i32>.init(value: z@ref)
@@ -219,9 +499,9 @@ public sealed class MirAnalysisTest
         Assert.Equal(
             [
                 "ComparisonLoanConflict_Kd a = 2 1", "MovedPlace_Kd s 1", "MovedPlace_Kd var box = Box.init(make()) 1",
-                "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 1", "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 3",
+                "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: z@ref) 1", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: z@ref) 3",
             ],
-            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+            c.BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}").Order(StringComparer.Ordinal));
     }
 
@@ -252,7 +532,7 @@ public sealed class MirAnalysisTest
                     s is ref or uniq
                     self.t = t
                 public init(t: s/T, n: i32)
-                    self.t = t
+                    self.t = t@move
 
             """);
         Assert.Empty(c.Binding.Issues);
@@ -270,9 +550,10 @@ public sealed class MirAnalysisTest
 
     // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
     // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
-    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its
-    // limit (a destruction past the walk's bound) and its effect rule, which the driver gives A4's keys (R4-M92). The storage limits need
-    // large bodies: A5ChecksTheViewsA1Completed has A1's.
+    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its depth limit, and A5's Loan conflicts and
+    // its depth limit (a destruction past the walk's bound; R4-M153) and its effect rule, which the driver gives A4's keys (R4-M92). The
+    // storage limits need large bodies: A5ChecksTheViewsA1Completed has A1's. A parameter's record is at its Type occurrence
+    // (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsRequirement()
     {
@@ -283,18 +564,21 @@ public sealed class MirAnalysisTest
                 "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init()",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
+                "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a>",
+                "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store",
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
                 "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
-                "Ownership.Unsupported Unsupported_Kd Self is Store", "Ownership.Unsupported Unsupported_Kd func deep(n: Nest<ref/i32 during a>)",
                 "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
             ],
-            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+            c.BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}").Order(StringComparer.Ordinal));
     }
 
     // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
-    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its limit) none, since they lie at Binding's rows.
+    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its depth limit) none, since they lie at Binding's
+    // rows.
+    // A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsBody()
     {
@@ -305,12 +589,13 @@ public sealed class MirAnalysisTest
                 "ComparisonLoanConflict_Kd tally = Tally.init() effect", "ComparisonLoanConflict_Kd x = 2 conflict",
                 "IncompatibleContractImplementation_Kd Self is Sink -",
                 "MovedPlace_Kd r moved",
-                "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
+                "MovedPlace_Kd var box = Box.init(make()) layer", "OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep",
+                "OwnershipDepthLimit_Kd Self is Store -",
+                "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
-                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Self is Store -",
-                "Unsupported_Kd func deep(n: Nest<ref/i32 during a>) deep",
+                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
             ],
-            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
     }
@@ -328,10 +613,60 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
     }
 
+    // SPEC 23.1.2, DECISIONS R5-M183 (the owner's (a), replacing "a program with validator findings is not analyzed"): a body with a
+    // validator finding (broken) is skipped by steps 1, 2 and 4 and every other body is analyzed: the other bodies' A1, A3 and A5
+    // problems stay and broken's own are not made; a caller of broken under a confined obligation (Quiet's override) composes it as
+    // Derived (MirEffects.Views), so only Other's own failure is reported; broken owing confined itself (put) makes no record, keep's does.
+    // The rows that need a live static Loan (a Derived site, the initialization proof) are MirBorrowsTest's ...Rooted twin (P42).
+    // Fail-before: the findings emptied the problems.
+    [Theory]
+    [InlineData(
+        "struct Resource\n    var name: string\n    public init(name: string) => self.name = name@move\nfunc consume(r: Resource) => ()\n" +
+        "func inspect(value: ref/i32) => ()\nfunc moved(r: Resource)\n    consume(r@move)\n    consume(r@move)\nfunc falls(flag: bool)\n" +
+        "    require flag else => ()\nfunc conflict()\n    var x = 1\n    let r = x@ref\n    x = 2\n    inspect(r)\nfunc broken(r: Resource, flag: bool)\n" +
+        "    consume(r@move)\n    consume(r@move)\n    require flag else => ()\n    var y = 1\n    let s = y@ref\n    y = 2\n    inspect(s)\n",
+        "broken",
+        "ComparisonLoanConflict_Kd x = 2 conflict|MovedPlace_Kd r moved|RequireFallthrough_Kd () falls")]
+    [InlineData(
+        Loud + "    public func broken() -> i32\n        H.discard(Loud.init())\n        return 0\nopen struct Base\n" +
+        "    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Quiet : Base\n" +
+        "    override func read(self: objref/Self) -> i32 => H.broken()\nstruct Other : Base\n    override func read(self: objref/Self) -> i32\n" +
+        "        H.discard(Loud.init())\n        return 1\n",
+        "broken",
+        "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -")]
+    [InlineData(
+        Loud + "contract Sink\n    func put(self: uniq/Self, value: i32) -> i32\n        effect confined\nstruct S\n    Self is Sink\n" +
+        "    public func put(self: uniq/Self, value: i32) -> i32\n        H.discard(Loud.init())\n        return value\ncontract Store\n" +
+        "    func keep(self: uniq/Self, value: i32) -> i32\n        effect confined\nstruct T\n    Self is Store\n" +
+        "    public func keep(self: uniq/Self, value: i32) -> i32\n        H.discard(Loud.init())\n        return value\n",
+        "put",
+        "IncompatibleContractImplementation_Kd Self is Store -")]
+    public void ABodyWithAFindingLeavesOtherBodiesProblems(string source, string name, string expected)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var analyzed = c.BuildMir();
+        Assert.Empty(analyzed.Findings);
+        var views = analyzed.Bodies.ToArray().Select(x => analyzed.Drops.ViewsOf(x.Ordinal)).ToArray();
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+        var broken = program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name);
+        program.Findings.Add(new(MirViolation.Callee, broken.Source)); // As MirValidator gives a finding and the body's verdict.
+        broken.HasFinding = true;
+        new MirAnalysis(c.Types).Run(program, 1);
+        Assert.Equal(
+            expected.Split('|'),
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Order(StringComparer.Ordinal));
+        views[broken.Ordinal] = 0; // MirDrops.Exclude: an empty entry, every other body's unshifted.
+        Assert.Equal(views, program.Bodies.ToArray().Select(x => program.Drops.ViewsOf(x.Ordinal)));
+    }
+
     // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
     // every view of a body, two for a pair-generic one, so a Loan conflict is a problem of the version, and none of a body whose A1 arena
     // exceeds the limit (N locals live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena
-    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it.
+    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it; each
+    // limit names its arena (G213, R4-M132).
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
@@ -341,8 +676,8 @@ public sealed class MirAnalysisTest
         foreach (var (size, views, line, expected) in new[]
         {
             (64, 1, Scalars, "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2"),
-            (13_500, 0, Scalars, Limit),
-            (2_000, 1, References, Limit),
+            (13_500, 0, Scalars, Limit + " Initialization over"),
+            (2_000, 1, References, Limit + " Loans over"),
         })
         {
             var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
@@ -357,13 +692,91 @@ public sealed class MirAnalysisTest
 
             var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
             var program = c.BuildMir();
-            Assert.Equal([expected], program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
+            Assert.Equal([expected], program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i))
+                .Where(static x => x.Problem.Subject.Module == 0)
+                .Select(x => $"{x.Problem.Requirement} {x.Problem.Code} {c.SyntaxOf(x.Problem.Subject).ToString().Split('\n')[0].Trim()}" +
+                    (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty)));
             Assert.Equal(
                 [("f", (long)views), ("inspect", 1L), ("pair", 2L)],
                 program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect" or "pair")
                     .Select(x => (x.Key.Decl!.Name, program.Drops.ViewsOf(x.Ordinal))).Order());
         }
+    }
+
+    // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
+    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem its index names, of its code at its subject, or for
+    // an inline default copy's (-1) its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
+    // (Requirements), a default copy (MirDropTest.Indices) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
+    [Fact]
+    public void AMarkedBodyHasAnError()
+    {
+        var arena = "func f(flag: bool) -> i32\n" + string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    var v{n} = {n}\n")) +
+            string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    if flag => v{n} = 1\n")) + "    return 0\n";
+        var marks = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var source in new[] { Requirements, MirDropTest.Indices, arena })
+        {
+            var program = MirBuildTest.Compile(source).BuildMir();
+            var problems = program.Problems.All.ToArray();
+            foreach (var body in program.Bodies.ToArray())
+            {
+                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at, var index))
+                {
+                    var subject = body.Subject(at);
+                    var kept = index >= 0 ? (problems[index].Code, problems[index].Subject, problems[index].Body) == (code, subject, body.Ordinal)
+                        : Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
+                    var error = DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error;
+                    Assert.True(kept && error, $"{body.Key.Kind} {code} #{index}");
+                    marks.Add($"{body.Key.Kind} {code} {(index >= 0 ? "own" : "copy")}");
+                }
+            }
+        }
+
+        Assert.Equal(
+            [
+                "DefaultTemplate MovedPlace_Kd own", "Fn MovedPlace_Kd copy", "Fn MovedPlace_Kd own", "Fn OwnershipStorageLimit_Kd own",
+                "Fn ReassignedLet_Kd own", "Fn StaticMovePathRequired_Kd own", "Fn UninitializedPlace_Kd own",
+            ],
+            marks);
+    }
+
+    // G308 S3 (V16): the analyses (A1-A6) of the program of P_n's equality (MirBuildTest.Dag) at n = 16 and 20 have no problem. Fails before
+    // G308: the comparison's body builds its 2^n leaves, whose arena exceeds A1's, OwnershipStorageLimit_Kd at n = 16.
+    [Fact]
+    public void ADagComparisonHasNoAnalysisProblem()
+    {
+        foreach (var n in new[] { 16, 20 })
+        {
+            var c = MirBuildTest.Compile(MirBuildTest.Dag(n, MirBuildTest.DagOperator));
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Equal([], program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i)).Where(static x => x.Problem.Subject.Module == 0)
+                .Select(x => $"n = {n}: {x.Problem.Requirement} {x.Problem.Code} {Line(c, x.Problem.Subject)}" +
+                    (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty)));
+        }
+    }
+
+    // DECISIONS R5-M168: at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, so this is the library's A3 and A5 check, on
+    // each target, at full strength through the driver check uses with the library as a root module: a library construction record,
+    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit and the C1-F4 view's findings
+    // included. It reuses the compilation's TyCtxt, so MirOrigins.Findings adds again every finding TyCtxt collected, the first run's
+    // pass-walk findings included (none today): a pass-walk finding shows both in the program's records and here. Every unit changing A3 or
+    // A5 runs it.
+    [Theory]
+    [InlineData(WindowsProfile.Target)]
+    public void TheLibraryHasNoAnalysisProblem(string target)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
+        Assert.True(c.Bind().IsComplete);
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+        var library = c.SourceModules.Length;
+        Assert.Contains(program.Bodies.ToArray(), x => x.Source.Module == library);
+        new MirAnalysis(c.Types).Run(program, library + 1);
+        Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
+            .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
+            .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
+                $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Bodies[x.Body].Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
     }
 
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
@@ -382,6 +795,46 @@ public sealed class MirAnalysisTest
             }
         }));
         Assert.Equal(64 - 16, report.All.Length);
+    }
+
+    // R6-check H3-2: a warm version's Merged allocates nothing: computed once, on its first read, in the storage an earlier version left,
+    // its derived problems' causes remapped and merged.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmMergedViewAllocatesNothing()
+    {
+        var report = new MirReport();
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            report.Clear();
+            for (var i = 0; i < 64; i++)
+            {
+                ReadOnlySpan<MirFact> cause = [new(MirFactKind.Cause, new(0, i % 24), i - 1)];
+                _ = i % 2 == 0 ? report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 24) + 1), i / 24, 0b01))
+                    : report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 24) + 1), i / 24, 0b01), cause);
+            }
+
+            _ = report.Merged;
+            _ = report.MergedFacts(1);
+        }));
+        Assert.Equal((64, 24), (report.All.Length, report.Merged.Length));
+        Assert.Equal([0, 24, 48], report.Members(0).ToArray());
+        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+    }
+
+    // DIAGNOSTICS 4.3, DECISIONS R5-M186: A3's problem at a falling failure body has one Cause fact of Value -1 (a Binding cause) per site
+    // its row names, so MirReport's rule derives it; a failure body written in source keeps a direct problem. Fail-before: no fact.
+    [Theory]
+    [MemberData(nameof(MirBuildTest.GuessedFailureBodies), MemberType = typeof(MirBuildTest))]
+    public void AFallthroughRestsOnItsGuessedSites(string source, string sites)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var problems = c.BuildMir().Problems;
+        var index = Assert.Single(
+            Enumerable.Range(0, problems.All.Length), i => problems.All[i] is { Code: DiagnosticCode.RequireFallthrough_Kd, Subject.Module: 0 });
+        var facts = problems.Facts(index).ToArray();
+        Assert.All(facts, static x => Assert.Equal((MirFactKind.Cause, -1L), (x.Kind, x.Value)));
+        Assert.Equal(sites, MirBuildTest.Sites(c, problems.All[index].Subject, facts.Select(static x => x.Site)));
     }
 
     // V16: A3 on a body it judged before allocates nothing: its walk and the report keep their storage.
@@ -405,13 +858,15 @@ public sealed class MirAnalysisTest
     [Fact]
     public void RequireEndsScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var (sizes, work, compilations, programs) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirProgram[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+        {
+            var c = compilations[i] = MirBuildTest.Compile(RequireEnds(sizes[i]));
+            return () => programs[i] = c.BuildMir();
+        });
         for (var i = 0; i < sizes.Length; i++)
         {
-            var c = MirBuildTest.Compile(RequireEnds(sizes[i]));
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var program = c.BuildMir();
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            var (c, program) = (compilations[i], programs[i]);
             work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
             var problems = program.Problems.All.ToArray();
             Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, ulong.MaxValue), (x.Code, x.Views)));

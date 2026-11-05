@@ -49,9 +49,9 @@ public class OwnedPathBorrowTest
     public void RejectsOverlappingOwnedPathBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -59,6 +59,6 @@ public class OwnedPathBorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Pair + "let pair = Pair.init()\nlet a = pair.left@uniq\na.value += 1");
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

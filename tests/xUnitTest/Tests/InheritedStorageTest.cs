@@ -55,21 +55,24 @@ public class InheritedStorageTest
     }
 
     // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
-    // a Non-Copy Move, each one Language record at the access.
+    // a Non-Copy Move, each one Language record at the access. Since the MIR decides acceptance (R6-check H5), a rejected read
+    // while a Field is uninitialized also has A1's `mir` record at the access (PLAN G105): published directly until A6's 2g-1
+    // (DECISIONS R5-M184; H3b T51, class 4).
     [Theory]
-    [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x")]
+    [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x", nameof(DiagnosticCode.UninitializedPlace_Kd))]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32 = 0\n    public init()\n        self.x = 3\n", "self.x")]
-    [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "self.b")]
+    [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "self.b", nameof(DiagnosticCode.UninitializedPlace_Kd))]
     [InlineData("struct S\n    public computed b: i32\n        get() -> i32 => 5\n        set(value: i32) -> () => ()\n    public init()\n        self.b = 1\n", "self.b")]
-    [InlineData("struct S\n    var a: i32\n    public var b: i32 = 0\n        get() -> i32 => storage\n    public init()\n        self.a = self.b\n", "self.b")]
+    [InlineData("struct S\n    var a: i32\n    public var b: i32 = 0\n        get() -> i32 => storage\n    public init()\n        self.a = self.b\n", "self.b", nameof(DiagnosticCode.UninitializedPlace_Kd))]
     [InlineData("struct S\n    public var b: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public init()\n        self.b += 1\n", "self.b")]
     [InlineData("struct R\n    public var n: i32 = 0\n    drop => ()\nstruct S\n    var r: R\n    public init(r: R)\n        self.r = r@move\n        let moved = self.r@move\n", "self.r@move")]
     [InlineData("struct R\n    public var n: i32 = 0\n    drop => ()\nstruct H\n    public var r: R = R.init()\nstruct S\n    var h: H\n    public init(h: H)\n        self.h = h@move\n        let moved = self.h.r@move\n", "self.h.r@move")]
-    public void TheConstructionReceiverForbidsInheritedComputedAndMovingAccess(string declarations, string at)
+    public void TheConstructionReceiverForbidsInheritedComputedAndMovingAccess(string declarations, string at, params string[] mir)
     {
         var source = declarations + "public func main() => ()\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+        var start = source.LastIndexOf(at, StringComparison.Ordinal);
+        (string, int, int)[] expected = [(nameof(DiagnosticCode.InvalidAssignment_Kd), start, at.Length), .. mir.Select(code => (code, start, at.Length))];
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
     }
 
     // SPEC 6.3.4, 15.1.5: a constructor's writable Fields are lent exclusively, but no analysis models those Loans yet ("Field borrows end
@@ -108,7 +111,7 @@ public class InheritedStorageTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    var n: i32\n    public init(x: i32)\n        self.n = x\n        let a = self.n@ref\n" +
             "        let b = x@ref\n        _ = a\n        _ = b\n    drop\n        let c = self.n@ref\n        _ = c\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var borrows = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>()
             .Select(static x => (Text: x.ToString(), Origin: x.TypeOf()!.Origin!)).ToArray();
         var receiver = borrows.Where(static x => x.Text == "self.n@ref").Select(static x => x.Origin).ToArray();

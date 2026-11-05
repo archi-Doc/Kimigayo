@@ -4,7 +4,8 @@
 // definition's premises prove to conform to a recursive Contract, by which A4 widens a parameter-dependent effect (MirEffects.AddAtom).
 // Input: a definition (null: a module's top-level statements) and an interned Type, after Bind.
 // Output: RecursiveBase. The pass's recursive Contract declarations behind it are found on the first query that reaches a projection and
-// kept for the pass (stamped with Binding's pass version), so they are immutable after Bind; nothing runs inside Bind.
+// kept for the pass (stamped with Binding's pass version), so they are immutable after Bind; nothing runs inside Bind but the inline-layout
+// summaries' own judgment (Binding.RecursiveInStorage, DECISIONS BU-65), which runs Binding.IsRecursive uncached and never fills this memo.
 // Invariants: a Contract C is recursive when the premise supply of `T is C` (SPEC 8.3.2: AddContractPremises, C's Self as T), expanded
 // through each supplied conformance of T or of a projection of T, supplies an available conformance of a projection of T to C's
 // declaration with any Type arguments or to a refinement of it. Each declaration is expanded once at T and once at a projection of T, so

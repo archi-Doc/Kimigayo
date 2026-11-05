@@ -26,6 +26,20 @@ public partial class Compilation
     /// <summary>The only language version currently implemented by this compiler.</summary>
     public const string CurrentLanguageVersion = "0.0.2";
 
+    // The built-in Conditions (SPEC 19.2.1; os and arch by the triple's IMPL 20.2.1 families), one row per name: Prepare builds them
+    // from the target and the Debug setting, and checks each compile-time setting against their names, which no target changes.
+    private static readonly (string Name, Func<TargetTriple, IrTarget, bool, BasicValue> Value)[] Conditions =
+    [
+        ("os", static (triple, _, _) => new(triple.OsFamily)),
+        ("arch", static (triple, _, _) => new(triple.ArchFamily)),
+        ("windows", static (triple, _, _) => new(triple.OsFamily == "windows")),
+        ("linux", static (triple, _, _) => new(triple.OsFamily == "linux")),
+        ("macos", static (triple, _, _) => new(triple.OsFamily == "macos")),
+        ("pointerWidth", static (_, target, _) => new(target.PointerWidth)),
+        ("debug", static (_, _, debug) => new(debug)),
+        ("release", static (_, _, debug) => new(!debug)),
+    ];
+
     /// <summary>Gets the version and deterministic module identity of this compiler build.</summary>
     public static string CompilerVersion { get; } =
         $"{CompilerRelease.Version} ({typeof(Compilation).Module.ModuleVersionId:D})";
@@ -109,24 +123,22 @@ public partial class Compilation
     /// <summary>Gets this compilation's compiler-owned Kimi requirement identities.</summary>
     public KimiLibrary Library => this.Binding.Library;
 
-    private OwnershipAnalysis? ownership;
+    private OwnershipAnalysis? ownership; // The old analysis, reached only through AnalyzeLegacyOwnership (R6-check H5 D3).
 
-    /// <summary>Gets reusable ownership CFG analysis. Verification is separate from executable emission.</summary>
-    public OwnershipAnalysis Ownership => this.ownership ??= new(this);
-
-    /// <summary>Gets the reusable, checked LLVM emitter for the implemented execution subset.</summary>
-    public LlvmEmitter Emission => field ??= new(this);
+    /// <summary>Gets the process's current directory, captured once before the root module is created: the base of a project
+    /// without a directory (<see cref="Kotonoha.Base"/>), so a later change of the process's directory renames nothing.</summary>
+    internal string CurrentDirectory { get; } = Directory.GetCurrentDirectory();
 
     internal Testing.TestCatalog Tests => field ??= new();
 
     private SourceLocationTable? locations;
 
-    /// <summary>Gets the runtime location texts of this compilation's syntax (SPEC 22.5.1), which both generators read.</summary>
+    /// <summary>Gets the runtime location texts of this compilation's syntax (SPEC 22.5.1), which code generation reads.</summary>
     internal SourceLocationTable Locations => this.locations ??= new(this);
 
     private Layout? layout;
 
-    /// <summary>Gets the storage layout of this compilation's closed Types (IMPL 21.1), which both generators read.</summary>
+    /// <summary>Gets the storage layout of this compilation's closed Types (IMPL 21.1), which the collector and code generation read.</summary>
     internal Layout Layout => this.layout ??= new();
 
     /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>
@@ -188,7 +200,7 @@ public partial class Compilation
     /// </summary>
     /// <param name="target">The target triple text.</param>
     /// <returns>
-    /// <see langword="true"/> when the language version, settings, pointer width, and LLVM data layout are supported;
+    /// <see langword="true"/> when the language version and settings are supported and the target has an IR target (a pointer width);
     /// otherwise, <see langword="false"/> and the target state is reset to invalid.
     /// </returns>
     /// <remarks>
@@ -209,31 +221,46 @@ public partial class Compilation
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
-        if (DependencyConfiguration.Validate(this.Project.ProjectFile) is { } dependencyFailure)
+        // SPEC 23.1.2: each failure is its own record. The configuration, the graph, the language version, the target and each
+        // compile-time setting (checked against the fixed Condition names) are independent; an unsupported target leaves out its Conditions.
+        var invalid = DependencyConfiguration.Validate(this.Project.ProjectFile);
+        for (var i = 0; i < invalid.Count; i++)
         {
-            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: dependencyFailure);
-            return false;
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: invalid[i]);
         }
 
-        if (this.Project.ProjectFile.Dependencies.Count != 0 && this.dependencyGraph is null)
+        var failed = invalid.Count != 0;
+        if (!failed && this.Project.ProjectFile.Dependencies.Count != 0 && this.dependencyGraph is null)
         {
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnresolvedDependencyGraph_Kd, this.Project.FilePath);
-            return false;
+            failed = true;
         }
 
         var languageVersion = this.Project.ProjectFile.LangVersion ?? this.Project.SolutionLanguageVersion ?? CurrentLanguageVersion;
         if (languageVersion != CurrentLanguageVersion)
         {
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnsupportedLanguageVersion_Kd, this.Project.FilePath, languageVersion, CurrentLanguageVersion);
-            return false;
+            failed = true;
+        }
+
+        List<(string Name, BasicValue Value)>? settings = null;
+        foreach (var (name, setting) in this.Project.ProjectFile.CompileTimeSettings)
+        {
+            if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
+                IsCondition(name) || setting is null || !setting.TryGetValue(out var value))
+            {
+                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
+                failed = true;
+                continue;
+            }
+
+            (settings ??= []).Add((name, value));
         }
 
         var targetTriple = TargetTriple.Parse(target);
         var irTarget = IrTarget.Create(targetTriple);
 
-        if (targetTriple.Arch == Architecture.Unknown ||
-            irTarget.PointerWidth == 0 ||
-            irTarget.DataLayout.Length == 0)
+        if (irTarget.PointerWidth == 0)
         {
             this.TargetTriple = TargetTriple.Invalid;
             this.IrTarget = IrTarget.Invalid;
@@ -242,34 +269,21 @@ public partial class Compilation
         }
 
         // Rebuild target-dependent conditional compilation variables.
-        var os = targetTriple.Os switch
-        {
-            OsType.Win32 => "windows",
-            OsType.MacOSX => "macos",
-            _ => targetTriple.Os.ToString().ToLowerInvariant(),
-        };
         var debug = this.Project.KimiOptions.Debug;
-        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal)
+        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal);
+        foreach (var (name, value) in Conditions)
         {
-            ["os"] = new(os),
-            ["arch"] = new(targetTriple.Arch.ToString().ToLowerInvariant()),
-            ["windows"] = new(os == "windows"),
-            ["linux"] = new(os == "linux"),
-            ["macos"] = new(os == "macos"),
-            ["pointerWidth"] = new(irTarget.PointerWidth),
-            ["debug"] = new(debug),
-            ["release"] = new(!debug),
-        };
-        foreach (var (name, setting) in this.Project.ProjectFile.CompileTimeSettings)
-        {
-            if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
-                variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
-            {
-                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
-                return false;
-            }
+            variables.Add(name, value(targetTriple, irTarget, debug));
+        }
 
-            variables.Add(name, value);
+        for (var i = 0; i < (settings?.Count ?? 0); i++)
+        {
+            variables.Add(settings![i].Name, settings[i].Value);
+        }
+
+        if (failed)
+        {
+            return false;
         }
 
         this.TargetTriple = targetTriple;
@@ -326,6 +340,10 @@ public partial class Compilation
         this.InvalidateOwnership();
         this.locations?.Clear();
         this.layout?.Clear();
+        foreach (var module in this.SourceModules)
+        {
+            module.ForgetNames();
+        }
     }
 
     /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and
@@ -355,5 +373,18 @@ public partial class Compilation
     {
         var variables = this.moduleVariables?.GetValueOrDefault(koto.CodeContext.Kotonoha) ?? this.Variables;
         return variables.TryGetValue(koto.IdentifierName, out basicValue);
+    }
+
+    private static bool IsCondition(string name)
+    {
+        foreach (var (condition, _) in Conditions)
+        {
+            if (condition == name)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

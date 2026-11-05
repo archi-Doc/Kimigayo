@@ -52,9 +52,10 @@ public class InheritedAccessorEmissionTest
     public void CompoundUpdatesReadThroughAProjectedGetter(string name, string body, string stdout)
         => ScalarEmissionTest.EmitFixture("InheritedAccessorUpdate" + name, Leveled + body, stdout);
 
+    // The update's placement activation meets the live shared borrow `r` (the MIR's record, H5).
     [Fact]
     public void ACompoundUpdateKeepsTheReceiverExclusive()
-        => Assert.Equal("ComparisonLoanConflict_Kd", Assert.Single(DiagnosticCorpus.Check(Leveled + "var x = Leaf.init()\nlet r = x@ref\nx.level += 1\n_ = r").Diagnostics).Code);
+        => Assert.Equal("PlacementActivationConflict_Kd", Assert.Single(DiagnosticCorpus.Check(Leveled + "var x = Leaf.init()\nlet r = x@ref\nx.level += 1\n_ = r").Diagnostics).Code);
 
     [Theory]
     [InlineData("var x = Leaf.init()\nlet r = x.view\nx.item = 0\n_ = r")]
@@ -109,12 +110,12 @@ public class InheritedAccessorEmissionTest
     public void SharedGetterPlansAreReused(string value)
     {
         var c = MinimalEmissionTest.Analyze(Source + "let x = " + value + "\n_ = x.number\nlet r = x.view\n_ = r");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

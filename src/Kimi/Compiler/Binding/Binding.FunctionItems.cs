@@ -8,7 +8,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, CallPlan> functionItemContexts = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, ReferenceConstraintFailure>? referenceConstraints;
 
     private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
 
@@ -16,19 +15,30 @@ public sealed partial class Binding
     internal static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
         => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
 
+    // The Item layout (SPEC 7.3, 10.5; FunctionItemType and BindRequirementItem form it): an Item's first Components are its function's own
+    // Type arguments, one per generic slot that is no length slot, in slot order, and a generic member's declaring Type follows them
+    // (ItemDeclaringType); a requirement Item's are its Self and Contract reference only, since it is formed only for a requirement without
+    // generic slots (a generic one's is Unsupported_Kd), so it holds no slot's argument. The Component holding the argument of the Type or
+    // pair slot `slot`; at the slot count, the number of own Type arguments.
+    internal static int ItemComponent(FunctionKoto function, int slot)
+    {
+        var component = 0;
+        for (var i = 0; i < slot; i++)
+        {
+            component += function.GenericArguments[i] is LengthParameterKoto ? 0 : 1;
+        }
+
+        return component;
+    }
+
     // An Item's own Type arguments in its function's generic-slot order (a length slot's entry is null), its first Components.
     internal static void CopyItemArguments(BoundType item, FunctionKoto function, BoundType?[] arguments)
     {
-        var component = 0;
         for (var i = 0; i < function.GenericArguments.Count; i++)
         {
-            arguments[i] = function.GenericArguments[i] is LengthParameterKoto ? null : item.Components[component++];
+            arguments[i] = function.GenericArguments[i] is LengthParameterKoto ? null : item.Components[ItemComponent(function, i)];
         }
     }
-
-    // Generation-only context of an already selected declaration. An override never becomes a public Item.
-    internal CallPlan? ImplementationContext(FunctionKoto function, BoundType declaring)
-        => this.FunctionItemContext(this.FunctionItemType(function.BoundSymbol!, [], declaring));
 
     // A declaration and its bound generic arguments are the complete identity of its zero-sized Item. Its signature is a
     // call contract, not stored environment data; in particular, per-call input Origins do not make the Item borrow anything.
@@ -66,11 +76,11 @@ public sealed partial class Binding
         }
     }
 
-    // The call context of an Item: generation requires closed arguments, while public effect checks also inspect
-    // symbolic contracts. One context per Item Type lets repeated preparation reuse both operands and substitutions.
-    internal CallPlan? FunctionItemContext(BoundType type, bool requireClosed = true)
+    // The call context of an Item, whose arguments may be symbolic: public effect checks inspect symbolic contracts. One context per
+    // Item Type lets repeated preparation reuse both operands and substitutions.
+    internal CallPlan? FunctionItemContext(BoundType type)
     {
-        if (type.Kind != BoundTypeKind.FunctionItem || (requireClosed && type.ContainsParameter) ||
+        if (type.Kind != BoundTypeKind.FunctionItem ||
             type.Symbol is not { Type: { } result, Declaration: FunctionKoto function })
         {
             return null;
@@ -107,7 +117,7 @@ public sealed partial class Binding
         {
             CopyItemArguments(type, function, own);
             // Compiler entries and virtual Items consume already-acquired logical parameters. Their public
-            // contract operands serve generation and effect checks without inventing a source invocation.
+            // contract operands serve effect checks without inventing a source invocation.
             var operations = type.Symbol.CompilerFunction == CompilerFunctionKind.None && !function.IsVirtual ? [] : new BoundArgumentOperation[function.Parameters.Count];
             for (var i = 0; i < operations.Length; i++)
             {
@@ -125,12 +135,6 @@ public sealed partial class Binding
         this.functionItemContexts.Add(type, created);
         return created;
     }
-
-    private static bool IsWaitingFunctionReference(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is not FunctionKoto and { BoundType: null, BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function };
-
-    private static bool IsWaitingCallable(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true, BoundType: null } || IsWaitingFunctionReference(node);
 
     // A specialization supplies the selected Item's implementation, never an additional overload candidate.
     private static BindingSymbol? ReferenceCandidate(BindingSymbol? candidate)
@@ -151,16 +155,7 @@ public sealed partial class Binding
     private static bool ContainerBound(BindingSymbol symbol, BoundType? declaringType)
         => declaringType is not null && ReferenceEquals(declaringType.Symbol, symbol.Scope.Owner.BoundSymbol);
 
-    private static int ItemTypeArgumentCount(FunctionKoto function)
-    {
-        var count = 0;
-        for (var i = 0; i < function.GenericArguments.Count; i++)
-        {
-            count += function.GenericArguments[i] is LengthParameterKoto ? 0 : 1;
-        }
-
-        return count;
-    }
+    private static int ItemTypeArgumentCount(FunctionKoto function) => ItemComponent(function, function.GenericArguments.Count);
 
     private static bool ReferenceSlotsComplete(FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths)
     {
@@ -287,10 +282,10 @@ public sealed partial class Binding
 
         var container = this.ReferenceContainer(use, symbol);
         this.failedCause = null;
-        var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container, failureUse: use);
+        var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container);
         if (proof != ConstraintProof.Proven)
         {
-            this.RequireConstraint(use, proof, this.capabilityMode);
+            this.RequireClauses(use, proof, this.capabilityMode);
             return null;
         }
 
@@ -406,10 +401,10 @@ public sealed partial class Binding
 
             var container = this.ReferenceContainer(use, selected);
             this.failedCause = null;
-            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths, use);
+            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths);
             if (proof != ConstraintProof.Proven)
             {
-                this.RequireConstraint(use, proof, this.capabilityMode);
+                this.RequireClauses(use, proof, this.capabilityMode);
                 return null;
             }
 
@@ -517,33 +512,5 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(components, clearArray: true);
         }
-    }
-
-    private void RecordReferenceConstraint(Koto use, IsKoto clause, BoundConstraint constraint, ConstraintProof proof)
-    {
-        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
-        {
-            var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
-            // A refuted clause, then the first Unknown one, is the reported cause.
-            if (!failures.TryGetValue(use, out var previous) || (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Refuted))
-            {
-                failures[use] = new(clause, constraint, proof);
-            }
-        }
-    }
-
-    private void ReportReferenceConstraint(Koto use, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var call = fact.Declaration is not null;
-        var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
-        var subject = ClauseSubject(fact.Constraint) is { } type ? DiagnosticTypeName(type) : null;
-        var clause = fact.Clause.ToString();
-        var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
-        use.Report(
-            requirement,
-            code,
-            evidence: subject is null ? null : [subject, member, clause],
-            note: $"{(call ? "Call" : "Function Item")} {member} requires {clause}; this condition {outcome}" + (subject is null ? " under the supplied bindings" : $" for {subject}"),
-            related: [("constraint", fact.Clause, call ? "required by the called declaration" : "required by the referenced declaration")]);
     }
 }

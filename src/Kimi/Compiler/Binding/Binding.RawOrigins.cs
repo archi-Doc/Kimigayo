@@ -8,21 +8,27 @@ namespace Kimi.Compiler;
 // storage a pointer reaches and where a call may store through it; it grants no access and decides no access error (the owner,
 // 2026-10-22: no access through a raw pointer is a compile-time error; condition 3 bounds it at run time).
 // - Responsibility: the written raw Origin in every position, the atom its name binds (WrittenRawOrigin), judged once after the last
-//   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a Phantom slot, also through a written projection; an
-//   atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its Origin's kind; StoredStep,
-//   a Field's or Case payload's layer; SignatureStep, a signature's layer) and the borrows its Origin belongs to (RawMembers), which
-//   retention and A5 read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
+//   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a slot Phantom in a case its Type selects, also through
+//   a written projection; an atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its
+//   Origin's kind; DeclaredStep over StoredLayer, a Field's or Case payload's layer in the instance's kept part, in the cases that
+//   instance selects, which StoredStep, StoredMembers and the hold walk read; SignatureStep, a
+//   signature's layer), which retention and A5 read, and the borrows its Origin belongs to (RawMembers), which retention and
+//   InvalidRawOrigin read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
 //   (CallRetention.Limit), never a silent stop; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
 //   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
 //   layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)); the borrows keeping a declared slot (Keepers, D15);
-//   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): an instance's stored Types (Instance, design-final §15) and,
-//   as the D5 exception (the owner's Q-O3, DECISIONS BU-24), the old analysis's view at its Type intake, removed with it at R6-check.
+//   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): AdtDef's view of an instance's stored Types (Instance,
+//   design-final §15; its kept parts keep them, DECISIONS BU-41) and, as the D5 exception (the owner's Q-O3, DECISIONS BU-24), the old
+//   analysis's view at its Type intake, removed with it at R6-check.
 // - Inputs: bound Types; a declaration's schema and keepers after the requirement fixed point; a signature's input Types; PathOrigin.
 // - Outputs: raw Origins, steps, member borrows, relation verdicts and the OriginRelation failure facts of the allowlist.
-// - Invariants: Holder only in declared Field and payload Types, which every read replaces, never in an instance's stored Types;
-//   Unstated only in relations and their records, never in a Type, so no premise, obligation or row names Holder or Unstated
-//   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and
-//   only retention and the TyCtxt views read one, after Binding's last pass.
+// - Invariants: Holder only in declared Field and payload Types, which every read replaces, and in an instance's kept parts, whose
+//   readers read a raw layer by its step only (TyCtxt.StoredParts, DECISIONS BU-41), never in AdtDef's stored Types; Unstated in
+//   relations and their records and, marking a layer its declaration writes without `during`, on raw layers of an instance's kept parts
+//   (Binding.WithUnstatedOrigins, the one producer, DECISIONS BU-46), whose readers read it by its step and TyCtxt.RawStated, never in
+//   any other Type (MirValidator's Local row checks a MIR local's), so no premise, obligation or row names Holder or Unstated
+//   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only
+//   retention and the TyCtxt views read one, after Binding's last pass.
 // - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (RawStep and its readers); .Written.cs (the written
 //   forms and their judgment); .Holder.cs (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers).
 // - Prohibitions: no region, Loan or retention facts beyond the member borrows, no Place walk of its own (PathOrigin is PlaceAuthority's),
@@ -37,33 +43,12 @@ public sealed partial class Binding
     internal bool ClaimFits(ConversionKoto claim, BoundOrigin claimed)
         => this.ProvesOriginOutlives(claim.Left.BoundType?.RawOrigin ?? BoundOrigin.Unstated, claimed, claim);
 
-    // A Type with every raw layer's Origin dropped: an instance's stored Types (Instance; design-final §15), and the D5 exception (the
-    // owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old analysis and Emission compare Types by reference, so they read each Type
-    // through this view at their Type intake (OwnershipAnalysis.Place, OwnershipBody.Resolve); removed with them at R6-check.
+    // A Type with every raw layer's Origin dropped: AdtDef's view of an instance's stored Types (Instance; design-final §15; DECISIONS
+    // BU-41), and the D5 exception (the owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old analysis compares Types by reference, so it
+    // reads each Type through this view at its Type intake (OwnershipAnalysis.Place, OwnershipBody.Resolve); removed with it at
+    // R6-check. A part's result depends on the part alone, so each distinct part is erased once per call (DECISIONS BU-19, BU-58).
     internal BoundType? WithoutRawOrigins(BoundType? type)
-    {
-        if (type is null || !type.CarriesRawOrigin)
-        {
-            return type;
-        }
-
-        var components = this.RentTypes(type.Components.Count);
-        try
-        {
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                components[i] = this.WithoutRawOrigins(type.Components[i])!;
-            }
-
-            var parts = components.AsSpan(0, type.Components.Count);
-            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
-                ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
-        }
-        finally
-        {
-            this.typeScratch.Return(components, clearArray: true);
-        }
-    }
+        => type is null || !type.CarriesRawOrigin ? type : this.ErasedParts(type, this.rewrittenParts.Begin(this.storageVersion));
 
     // SPEC 15.2.3, 5.7: a layer's member of OwnedOrigins: its Origin, or its raw Origin other than `self`.
     private static BoundOrigin? OwnedOrigin(BoundType type) => type.Origin ?? (type.RawOrigin is { Kind: not OriginKind.Holder } raw ? raw : null);
@@ -101,6 +86,44 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // A component's result (WithoutRawOrigins), each distinct one carrying a raw Origin, so with components, erased once per query.
+    private BoundType ErasedPart(BoundType part, uint query)
+    {
+        if (!part.CarriesRawOrigin)
+        {
+            return part;
+        }
+
+        if (!this.rewrittenParts.TryGet(part, query, out var result))
+        {
+            result = this.ErasedParts(part, query);
+            this.rewrittenParts.Set(part, query, result);
+        }
+
+        return result!;
+    }
+
+    // A part carrying a raw Origin, its components erased first (WithoutRawOrigins).
+    private BoundType ErasedParts(BoundType type, uint query)
+    {
+        var components = this.RentTypes(type.Components.Count);
+        try
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                components[i] = this.ErasedPart(type.Components[i], query);
+            }
+
+            var parts = components.AsSpan(0, type.Components.Count);
+            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
+                ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
     }
 
     // SPEC 5.6, 5.7 (D14): the raw Origin the argument of a callee's Within parameter (KimiLibraryCatalog.Within) states before its fit to

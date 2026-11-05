@@ -62,11 +62,11 @@ public class OwnedStoredReferenceTest
     public void StoredReferenceArgumentsRespectLiveChildren(string body, bool? activation)
     {
         var c = MinimalEmissionTest.Analyze(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
+        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
             (activation is null || x.Activation == activation));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 15.6.7: the slot borrow and the loaded reference of a reserved stored-reference argument are reserved with it, so
@@ -90,12 +90,12 @@ public class OwnedStoredReferenceTest
             "func run(value: uniq/i32 during a)\n    var items = [(value@move, 7)]\n    for item in items@move\n        change3(item.0, " +
             (write ? "poke" : "inspect") + "(item.0))\nvar value = 42\nrun(value@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(!write, c.Analysis.IsVerified);
         if (write)
         {
             // Both preparations reserve the same stored referent; report their overlap at the second lending point.
-            var issue = Assert.Single(c.Ownership.Issues);
+            var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
             Assert.Equal(DiagnosticCode.CallReservationConflict_Kd, issue.Code);
             Assert.Equal("item.0", issue.Source.ToString());
             Assert.Equal("poke(item.0)", issue.Input?.Call.ToString());
@@ -112,10 +112,10 @@ public class OwnedStoredReferenceTest
     {
         const string helpers = "func twice(target: uniq/i32, other: uniq/i32) => target@follow = 1\nfunc take(t: (uniq/i32 during a, i32)) -> i32 => 1\nfunc poke(t: uniq/i32) -> i32\n    t@follow = 3\n    return 1\n";
         var c = MinimalEmissionTest.Analyze(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation == activation);
-        Assert.False(c.Validate(out _));
+        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation == activation);
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 15.6.2: a borrow of a part reaches only that part's referent; a Scalar part does not depend on the reference
@@ -128,57 +128,50 @@ public class OwnedStoredReferenceTest
     public void DisjointPartsKeepTheirOwnDependencies(string name, string source)
         => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceDisjoint" + name, source, string.Empty);
 
-    // Expects the old location: under SPEC 15.6.2 (A5 S1, P3) the conflict is at `item@ref`, a shared Borrow of a prefix
-    // of the live exclusive child's path; the default pipeline keeps the old rule until R6-check.
+    // SPEC 15.6.2 (A5 S1, P3): the conflict is at `item@ref`, a shared Borrow of a prefix of the live exclusive child's path.
     [Fact]
-    [Trait("OldRule", "S1")]
     public void ABorrowThatReachesTheReferenceStillConflicts()
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@uniq, 5)\nlet child = item.0@follow@uniq\nlet whole = item@ref\nlet read: i32 = whole.0@follow\nchild@follow = 1");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "whole.0");
-        Assert.False(c.Validate(out _));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("item@ref")));
     }
 
+    // The record is the MIR's (H5), at the write through the parent.
     [Theory]
-    [InlineData("var items = [(value@move, 7)]\n    for item in items@move\n        let child = item.0@follow@uniq\n        item.0@follow = 5\n        child@follow = 1", "item.0")]
-    [InlineData("let first = (value@follow@uniq, 1)\n    value@follow = 5\n    first.0@follow = 99", "value")]
+    [InlineData("var items = [(value@move, 7)]\n    for item in items@move\n        let child = item.0@follow@uniq\n        item.0@follow = 5\n        child@follow = 1", "item.0@follow = 5")]
+    [InlineData("let first = (value@follow@uniq, 1)\n    value@follow = 5\n    first.0@follow = 99", "value@follow = 5")]
     public void ChildrenOfTheItemStillSuspendItsParent(string body, string conflict)
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    " + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // The `slot.0` row expects the old location: under SPEC 15.6.2 (A5 S1, P3) the conflict is at `item@ref`; the default
-    // pipeline keeps the old rule until R6-check.
+    // In the `slot` row the conflict is at `item@ref` (SPEC 15.6.2, A5 S1, P3).
     [Theory]
-    [Trait("OldRule", "S1")]
-    [InlineData("let child = item.0@follow@uniq\nitem.0@follow = 5\nchild@follow = 1", "item.0")]
-    [InlineData("let child = item.0@follow@ref\nitem.0@follow = 5\nrequire child == 42 else => $abort(\"child\")", "item.0")]
-    [InlineData("let child = item.0@follow@uniq\nlet copy = item.0@follow\nchild@follow = 1", "item.0")]
-    [InlineData("let child = item.0@follow@uniq\nlet slot = item@ref\nlet read: i32 = slot.0@follow\nchild@follow = 1", "slot.0")]
+    [InlineData("let child = item.0@follow@uniq\nitem.0@follow = 5\nchild@follow = 1", "item.0@follow = 5")]
+    [InlineData("let child = item.0@follow@ref\nitem.0@follow = 5\nrequire child == 42 else => $abort(\"child\")", "item.0@follow = 5")]
+    [InlineData("let child = item.0@follow@uniq\nlet copy = item.0@follow\nchild@follow = 1", "copy = item.0@follow", "item.0@follow")]
+    [InlineData("let child = item.0@follow@uniq\nlet slot = item@ref\nlet read: i32 = slot.0@follow\nchild@follow = 1", "item@ref")]
     [InlineData("value = 5\nitem.0@follow = 99", "value = 5")]
-    public void ConflictingAccessThroughTheParentRejects(string body, string conflict)
+    public void ConflictingAccessThroughTheParentRejects(string body, string mir, string? subject = null)
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nvar item = (value@uniq, 7)\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Analysis.IsVerified);
-        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
-        Assert.False(c.Validate(out _));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(mir, subject)));
     }
 
+    // The MIR's MovedPlace_Kd is at the write through the moved root (H5).
     [Fact]
     public void AMovedRootNoLongerLends()
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@uniq, 7)\nlet moved = item@move\nitem.0@follow = 99");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd && c.SyntaxOf(x.Subject).ToString() == "item.0");
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd && c.SyntaxOf(x.Subject).ToString() == "item.0@follow = 99");
     }
 
     [Fact]
@@ -189,7 +182,7 @@ public class OwnedStoredReferenceTest
         c.ReportAnalysis();
         var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), error.Code);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 3.4, 13.5.5: a referent selected through a reference to a stored exclusive reference (`uniq/uniq/i32`,
@@ -208,22 +201,17 @@ public class OwnedStoredReferenceTest
         ScalarEmissionTest.EmitFixture("OwnedStoredReferenceLayered" + name, Read + "var value = 1\n" + body, string.Empty);
     }
 
-    // The `view` row expects the old location: under SPEC 15.6.3 (A5 S1) the conflict is at `t.0@uniq`, an exclusive
-    // Borrow of the base of the live child `view`; the default pipeline keeps the old rule until R6-check.
+    // In the `view` row the conflict is at `t.0@uniq`, an exclusive Borrow of the base of the live child `view` (SPEC 15.6.3, A5 S1).
     [Theory]
-    [Trait("OldRule", "S1")]
-    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nr@follow@follow = 5\nrequire inner == 1 else => $abort(\"inner\")", "r@follow")]
-    [InlineData("var t = (value@uniq, 2)\nlet view = t.0@follow@ref\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire view == 1 else => $abort(\"view\")", "r@follow")]
-    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nlet other = r@follow@follow@uniq\nother@follow = 2\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow")]
-    [InlineData("var p = value@uniq\nlet q = p@uniq\nlet peek = q@follow@follow@ref\nq@follow@follow = 3\nrequire peek == 1 else => $abort(\"peek\")", "q@follow")]
-    public void ConflictsThroughBothLayersReject(string body, string conflict)
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nr@follow@follow = 5\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow = 5")]
+    [InlineData("var t = (value@uniq, 2)\nlet view = t.0@follow@ref\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire view == 1 else => $abort(\"view\")", "t.0@uniq")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nlet other = r@follow@follow@uniq\nother@follow = 2\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow@uniq")]
+    [InlineData("var p = value@uniq\nlet q = p@uniq\nlet peek = q@follow@follow@ref\nq@follow@follow = 3\nrequire peek == 1 else => $abort(\"peek\")", "q@follow@follow = 3")]
+    public void ConflictsThroughBothLayersReject(string body, string mir)
     {
         var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Analysis.IsVerified);
-        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Equal(conflict, c.SyntaxOf(c.Problems.First(static x => x.Code.IsLoanConflict()).Subject).ToString());
-        Assert.False(c.Validate(out _));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new(mir)));
     }
 
     // SPEC 3.3.2: a shared borrow of a slot holding an exclusive reference (`ref/uniq/i32`) has only shared access to the
@@ -236,19 +224,20 @@ public class OwnedStoredReferenceTest
     public void SharedBorrowsOfAnExclusiveReferenceSlotCoexist(string name, string body)
         => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceSharedSlot" + name, "var value = 1\n" + body, string.Empty);
 
+    // The MIR's record (H5): at the write or the exclusive Reborrow, at a read of `value` its operand.
     [Theory]
     [InlineData("let p = value@uniq\nlet r = p@ref\nvalue = 5\nrequire r == 1 else => $abort(\"read\")", "value = 5")]
-    [InlineData("let p = value@uniq\nlet r = p@ref\np@follow = 5\nrequire r == 1 else => $abort(\"read\")", "p")]
-    [InlineData("let p = value@uniq\nlet r = p@ref\nlet w = p@follow@uniq\nw@follow = 3\nrequire r == 1 else => $abort(\"read\")", "p")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\np@follow = 5\nrequire r == 1 else => $abort(\"read\")", "p@follow = 5")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nlet w = p@follow@uniq\nw@follow = 3\nrequire r == 1 else => $abort(\"read\")", "p@follow@uniq")]
     [InlineData("let p = value@uniq\nlet r = p@ref\nlet x: i32 = value\nrequire r == 1 else => $abort(\"read\")", "value")]
-    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@ref\nt.0@follow = 7\nrequire r == 1 else => $abort(\"read\")", "t.0")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@ref\nt.0@follow = 7\nrequire r == 1 else => $abort(\"read\")", "t.0@follow = 7")]
     public void ASharedSlotBorrowStillFreezesItsReference(string body, string conflict)
     {
         var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Equal(conflict, c.SyntaxOf(c.Problems.First(static x => x.Code.IsLoanConflict()).Subject).ToString());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -259,7 +248,7 @@ public class OwnedStoredReferenceTest
         c.ReportAnalysis();
         var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), error.Code);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

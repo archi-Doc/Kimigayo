@@ -12,13 +12,13 @@ public class OriginRedesignTest
     [Theory]
     [InlineData("struct V<T> {source}\n    struct Inner\n        let value: ref/T during source")]
     [InlineData("func identity<T>(x: ref/T during s) -> ref/T during s => x")]
-    [InlineData("func identity(x: V<i32>) -> V<i32>{r}\n    origin r.source == x.source\n    return x")]
+    [InlineData("func identity(x: V<i32>) -> V<i32>{r}\n    origin r.source == x.source\n    return x@move")]
     [InlineData("struct W {s}\n    let value: V<i32>{v}\n        origin v.source == s")]
-    [InlineData("func identity(x: V<i32>{v}) -> V<i32>{r}\n    origin r.source == v.source\n    return x")]
+    [InlineData("func identity(x: V<i32>{v}) -> V<i32>{r}\n    origin r.source == v.source\n    return x@move")]
     [InlineData("var pending: V<i32>{p}\n    origin p.source == static")]
-    [InlineData("func identity(x: V<i32>) -> V<i32>{r}\n    origin r.source == x.source\n    let value: V<i32> = x\n    return value")]
+    [InlineData("func identity(x: V<i32>) -> V<i32>{r}\n    origin r.source == x.source\n    let value: V<i32> = x@move\n    return value@move")]
     [InlineData("func identity(x: ref/V<i32>) -> ref/i32 during x.source => x.value")]
-    [InlineData("func identity(x: V<i32>{v}) -> V<i32>{r}\n    origin v.source == r.source\n    return x")]
+    [InlineData("func identity(x: V<i32>{v}) -> V<i32>{r}\n    origin v.source == r.source\n    return x@move")]
     [InlineData("func shorten(x: V<i32>) -> V<i32>{r}\n    origin x.source outlives r.source\n    return x@move\nfunc use(x: V<i32>)\n    let y = shorten(x@move)")]
     [InlineData("func shorten(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    origin a outlives b\n    return x")]
     [InlineData("func same(x: V<i32>, y: V<i32>)\n    origin x.source == y.source\n    ()\nfunc use(x: V<i32>, y: V<i32>) => same(x@move, y@move)")]
@@ -151,7 +151,7 @@ public class OriginRedesignTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(valid == c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.Equal(valid, c.Validate(out _));
+        Assert.Equal(valid, c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -161,7 +161,7 @@ public class OriginRedesignTest
         var c = MinimalEmissionTest.Analyze("struct Cell\n    public var value: i32 = 0\n" +
             "func update(x: uniq/Cell during a, y: uniq/Cell during b)\n    origin a == b\n    x.value = 1\n    y.value = 2\n" +
             "var first = Cell.init()\nvar second = Cell.init()\nupdate(first@uniq, second@uniq)");
-        Assert.True(c.Validate(out _));
+        Assert.True(c.Generate(TextWriter.Null));
         var bindingBytes = AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -171,7 +171,7 @@ public class OriginRedesignTest
         });
         c.Binding.CheckStartup(OutputKind.Application);
         var ownershipBytes = AllocationMeasurement.Measure(() => c.Analyze());
-        var emissionBytes = AllocationMeasurement.Measure(() => c.WriteIr(TextWriter.Null, out _));
+        var emissionBytes = AllocationMeasurement.Measure(() => c.Generate(TextWriter.Null));
         // Binding retains a bounded 288 bytes per measured warm pass.
         Assert.True(
             bindingBytes <= AllocationMeasurement.MeasuredOperations * 288 && ownershipBytes == 0 && emissionBytes == 0,

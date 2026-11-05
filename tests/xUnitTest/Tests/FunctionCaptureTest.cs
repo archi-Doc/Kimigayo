@@ -32,7 +32,8 @@ public class FunctionCaptureTest(ITestOutputHelper output)
             let outer: () -> i32 = func [inner@move] () => inner() + 1
             require outer() == 8 and outer() == 8 else => $abort("nested")
             """;
-        NativeAllocationAudit.WriteFixture("FunctionCaptureNested", Source, 3, 3, 44, "drop\n");
+        // The object and outer's 16-byte environment; inner's erased 8-byte one is inline (IMPL 21.1.3; DECISIONS R5-M104).
+        NativeAllocationAudit.WriteFixture("FunctionCaptureNested", Source, 2, 2, 36, "drop\n");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -51,7 +52,8 @@ public class FunctionCaptureTest(ITestOutputHelper output)
             require outer() == 9 and outer() == 9 else => $abort("replacement")
             Console.writeLine("done")
             """;
-        NativeAllocationAudit.WriteFixture("FunctionCaptureReplacement", Source, 2, 2, 28, "drop\ndone\n");
+        // The object; inner's erased 8-byte environment is inline (IMPL 21.1.3; DECISIONS R5-M104).
+        NativeAllocationAudit.WriteFixture("FunctionCaptureReplacement", Source, 1, 1, 20, "drop\ndone\n");
     }
 
     [Theory]
@@ -63,7 +65,7 @@ public class FunctionCaptureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("let inner: () -> i32 = func () => 7\n" + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -71,9 +73,9 @@ public class FunctionCaptureTest(ITestOutputHelper output)
     public void WarmNestedFunctionEmissionAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let inner: () -> i32 = func () => 7\nlet outer: () -> i32 = func [inner@move] () => inner() + 1\nrequire outer() == 8 else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

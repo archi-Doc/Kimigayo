@@ -2,7 +2,6 @@
 
 using System.Text;
 using System.Text.RegularExpressions;
-using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Xunit;
 
@@ -75,98 +74,8 @@ public class StringEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
-    }
-
-    [Fact]
-    public void ReplacementOrdersDestructionThenMoveThenFlag()
-    {
-        var c = MinimalEmissionTest.Analyze(Conditional);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        var index = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.DestroyStringIfLive);
-        Assert.True(index >= 0);
-        Assert.Equal(EmissionOpcode.MoveString, function.Instructions[index + 1].Opcode);
-        Assert.Equal(EmissionOpcode.StoreLiveFlag, function.Instructions[index + 2].Opcode);
-        Assert.Equal(1, function.Instructions[index + 2].Constant);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        var ir = writer.ToString();
-        var id = function.Instructions[index].Operation;
-        var destroy = ir.IndexOf($"destroy{id}:\n", StringComparison.Ordinal);
-        var store = ir.IndexOf($"store ptr %strValue{id}_0", StringComparison.Ordinal);
-        var flag = ir.IndexOf("store i8 1, ptr %liveSlot", store, StringComparison.Ordinal);
-        Assert.True(destroy >= 0 && destroy < store && store < flag);
-    }
-
-    [Fact]
-    public void MissingOrDuplicateFlagUpdateIsRejected()
-    {
-        var c = MinimalEmissionTest.Analyze(Conditional);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var function = module.GetFunction(0);
-        var scratch = new int[body.Places.Count + body.Operations.Count];
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        for (var index = 0; index < function.Instructions.Count; index++)
-        {
-            var instruction = function.Instructions[index];
-            if (instruction.Opcode != EmissionOpcode.StoreLiveFlag)
-            {
-                continue;
-            }
-
-            function.Instructions.RemoveAt(index);
-            Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-            function.Instructions.Insert(index, instruction);
-            function.Instructions.Insert(index, instruction);
-            Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-            function.Instructions.RemoveAt(index);
-            function.Instructions[index] = instruction with { Constant = 1 - instruction.Constant };
-            Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-            function.Instructions[index] = instruction;
-            Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        }
-    }
-
-    [Fact]
-    public void SelfAssignmentKeepsBothMovesAndNoOldValueDestruction()
-    {
-        var c = MinimalEmissionTest.Analyze("var text = \"self\"\ntext = text@move\nConsole.writeLine(text)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        Assert.Equal(3, function.Instructions.Count(x => x.Opcode == EmissionOpcode.MoveString)); // writeLine borrows; it no longer moves.
-        Assert.Equal(1, function.Instructions.Count(x => x.Callee == RuntimeAbi.DestroyString)); // Only the scope-end cleanup; the old value is never destroyed.
-        Assert.Empty(function.LiveFlags);
-    }
-
-    [Theory]
-    [InlineData("temporary")]
-    [InlineData("action")]
-    [InlineData("input")]
-    public void InvalidStringPlansFailBeforeWritingAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var text = \"old\"\ntext = \"new\"\nConsole.writeLine(text)");
-        var body = c.Ownership.Bodies[0];
-        if (defect == "input")
-        {
-            var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write && x.Input >= 0 && ReferenceEquals(body.Places[x.Place].Type, BoundType.String));
-            body.OperationStorage[write] = body.OperationStorage[write] with { Input = -1 };
-        }
-        else
-        {
-            var index = body.CleanupStepStorage.FindIndex(x => ReferenceEquals(body.Places[x.Place].Type, BoundType.String) &&
-                (defect == "temporary" ? body.Places[x.Place].Kind == OwnershipPlaceKind.Temporary : body.IsReachable(x.Operation) && x.Action == CleanupAction.Destroy));
-            Assert.True(index >= 0);
-            body.CleanupStepStorage[index] = body.CleanupStepStorage[index] with { Action = defect == "temporary" ? CleanupAction.Conditional : CleanupAction.Skip };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     // A right-hand side that never completes writes nothing (its MIR: tests/mir/updates.kimi `noncompletingWrite`).
@@ -174,7 +83,7 @@ public class StringEmissionTest
     public void NoncompletingRhsHasNoStringWrite()
     {
         var c = MinimalEmissionTest.Analyze("loop\n    var text = \"old\"\n    text = (exit)");
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // A defer that never completes leaves the string's destruction and the delivery to the checks (their MIR: tests/mir/scopes.kimi
@@ -183,10 +92,6 @@ public class StringEmissionTest
     public void DivergentDeferPreventsStringDestructionAndDelivery()
     {
         const string Source = "var text = \"held\"\ndefer => loop => ()";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(0);
-        Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
         var ir = ScalarEmissionTest.EmitFixture("StringDivergentDefer", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
@@ -200,7 +105,7 @@ public class StringEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, allocated);
@@ -218,8 +123,8 @@ public class StringEmissionTest
     }
 
     // Audits the destructions of the module's string constants (count, and optionally order, per text). A constant is found by its bytes
-    // among the definitions of the audited text itself, which either generator writes through LlvmConstantPool, so the audit holds for
-    // both; a text the module defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.
+    // among the definitions of the audited text itself, which code generation writes through LlvmConstantPool; a text the module
+    // defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.
     internal static void WriteAuditedFixture(string name, string ir, string stdout, string destructions, int exit = 0, string? stderr = null, int[]? order = null)
     {
         var constants = new Dictionary<string, string>(StringComparer.Ordinal);

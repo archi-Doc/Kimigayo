@@ -1,0 +1,41 @@
+// SPEC session probes for the transfer rule: removals, inserts and the SPEC examples' shapes.
+func removeRaw2()
+    var a: Array<raw/u8> = [null, null]
+    let x = a.remove(0)
+    a.append(null)
+    usep(x)
+func swapRemoveRaw()
+    var a: Array<raw/u8> = [null, null]
+    let x = a.swapRemove(0)
+    a.append(null)
+    usep(x)
+func insertOrReplaceRaw()
+    var d: Dictionary<i32, raw/u8> = [:]
+    let old = d.insertOrReplace(1, null)
+    d.clear()
+    inspect(old)
+func fillBad()
+    var x: i32 = 1
+    var y: i32 = 2
+    var s: raw/i32 = null
+    fillK(x@ref, y@ref, s@uniq)
+    y = 3
+    usep(s)
+func fillK(r: ref/i32, k: ref/i32, slot: uniq/(raw/i32))
+    if k@follow > 0 => slot@follow = r@follow@raw
+func appendTupBad2()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    let q = w@raw@raw/u8
+    var a: Array<(raw/u8, i32)> = []
+    a.append((q, 1))
+    y = 5
+    usep(a[0].0)
+func swapRawBad()
+    var y: i32 = 1
+    var w: ref/i32 = y@ref
+    var x: raw/u8 = w@raw@raw/u8
+    var z: raw/u8 = null
+    Kimi.Intrinsics.swap(x@uniq, z@uniq)
+    y = 5
+    usep(z)

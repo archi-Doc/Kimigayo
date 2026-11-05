@@ -132,7 +132,7 @@ consume(tasks@move)
 | A bare Place, including a standard projection of a temporary ([§3.4](03-types-and-values.md#34-places-and-storage)) | A shared borrow of the Place; when the Place stores `ref/T` or `uniq/T`, a Reborrow of that reference in its own mode, bounded to Shared by any shared layer on the path |
 | Any other expression (`E@ref`, `E@uniq`, `E@move`, `E@copy`, a temporary, ...) | The value it produces |
 
-The **Subject mode** is the access the Subject Place grants past its safe-reference layers: Shared (`ref`, `objref`), Exclusive (`uniq`, `objuniq`) or ByValue (owned). For a qualifying pair layer it is the weakest mode of the admitted cases ([§13.5.5](13-operators-and-assignment.md#1355-follow)), never ByValue; any other pair layer, such as one admitting Object Semantics, is no safe-reference layer, so a Binding takes its slot by value. A shared layer anywhere on the path bounds the mode to Shared. The mode never depends on `var`, Copy capability, conformances or the body. An explicit borrow applies to the written slot, so `values@uniq` on `let values: uniq/Array<T>` is an error; write `values` or `values@follow@uniq`. `for` selects its iteration entry from the mode ([§14.6.2](14-control-flow.md#1462-iteration-protocol)); Patterns select Places as in [§14.8.1](14-control-flow.md#1481-patterns).
+The **Subject mode** is the access the Subject Place grants past its safe-reference layers: Shared (`ref`, `objref`), Exclusive (`uniq`, `objuniq`) or ByValue (owned). For a qualifying pair layer it is the weakest mode of the admitted cases ([§13.5.5](13-operators-and-assignment.md#1355-follow)), never ByValue; any other pair layer, such as one admitting Object Semantics, is no safe-reference layer, so a Binding takes its slot by value. A shared layer anywhere on the path bounds the mode to Shared. In a Closure body, a Subject mode is decided with no Call Receiver layer on a path from an environment binding ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)). The mode never depends on `var`, Copy capability, conformances or the body. An explicit borrow applies to the written slot, so `values@uniq` on `let values: uniq/Array<T>` is an error; write `values` or `values@follow@uniq`. `for` selects its iteration entry from the mode ([§14.6.2](14-control-flow.md#1462-iteration-protocol)); Patterns select Places as in [§14.8.1](14-control-flow.md#1481-patterns).
 
 - The Subject Place is initialized before arm selection. A Property with a custom, computed or required `get` is read once, and the Subject Place is that Temporary Place, with the restriction of [§11.5](11-properties.md#115-getter-results).
 - Exclusive mode, also past a pair layer, grants exclusive access only where the lending point can be exclusively acquired ([§15.1.5](#1515-access-operations-and-acquisition)); a binding or `for` entry that needs exclusive access elsewhere is an error, never a shared binding.
@@ -297,12 +297,16 @@ In a named callable signature, an unbound simple name in a borrow annotation int
 - A new Origin or set name cannot hide a visible Origin, set, parameter or local; duplicates are errors, but mutually invisible Field-local names may repeat. Resolution does not depend on declaration order.
 - A named nested function's signature may name visible Origins of enclosing functions. Such a name is a fixed Origin of the nested function, not a new universal one, and captures nothing at run time; a function value of the nested function depends on those Origins like any value whose Type names them.
 
-**Nested signatures.** Function Types, Callable and anonymous functions introduce no named Origins: they keep per-call direct-input quantification and their own result elision ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)), and their set names belong to the enclosing declaration. Each nested aggregate input slot is fixed by a complete Type or an outer Origin expression, except that in a local's initialized Type and an anonymous function's parameters an omitted one, or an omitted Origin of a nested borrow layer, is a body inference variable, fixed once ([§15.3.6](#1536-origin-inference)). Inner per-call Origins cannot escape their binder.
+**Nested signatures.** Function Types, Callable and anonymous functions introduce no named Origins: they keep per-call direct-input quantification and their own result elision ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)), and their set names belong to the enclosing declaration. Each nested aggregate input slot is fixed by a complete Type or an outer Origin expression, except that in a local's initialized Type and an anonymous function's parameters an omitted one, or an omitted Origin of a nested borrow layer, is a body inference variable, fixed once ([§15.3.6](#1536-origin-inference)). Inner per-call Origins cannot escape their binder. A nested signature's result Type, written or inferred, is a Type of the declaration that contains it: it must be well-formed where it occurs, under that declaration's premises and the nested signature's own well-formed inputs, for every choice of its per-call Origins. Its well-formedness is never a premise of the containing body. A relation that it needs among the enclosing Origins is declared with an `origin` clause; a relation of a per-call Origin must follow from the nested signature's inputs.
 
 ```kimi
 func useView<T>(x: View<T>, callback: (View<T>{c}) -> ())
     origin c.source == x.source   // Fixed by the outer call.
     callback(x@move)
+
+func narrow(q: ref/i32, r: ref/i32, make: () -> Option<ref/(ref/i32 during q) during r>) -> ref/i32 during r
+    origin q outlives r           // Required: make's result needs q outlives r (Error without it).
+    return q                      // Valid by the clause, never by make's Type.
 
 func use(source: uniq/i32, bound: ref/i32) -> i32
     origin source outlives bound
@@ -316,11 +320,11 @@ func use(source: uniq/i32, bound: ref/i32) -> i32
 
 **Variance.** A safe borrow is covariant in its outer Origin, and a raw layer in its Origin ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). `uniq`, `obj`, `objuniq` and `raw` are invariant in their target; every other Semantics is covariant in its target, because `ref`, `objref`, `rc` and `arc` grant no mutation ([§15.6.2](#1562-place-overlap-and-conflicts)). In declaration variance a pair layer counts as covariant; in a generic body its target is invariant when an invariant Semantics is admitted. Function parameters reverse polarity. A Type derives its variance from its storage; there are no variance annotations.
 
-**Loan requirements.** Each slot has a requirement `none < ref < uniq`, from its shared or exclusive uses; nested uses propagate the stronger. A raw layer's Origin is no use; a `during self` pointee counts as stored content of its Type ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). It names the caller-side Loan to keep and grants nothing. Equal or shortened Origins never merge Loans or create exclusive access.
+**Loan requirements.** Each slot has a requirement `none < ref < uniq`, from its shared or exclusive uses; nested uses propagate the stronger. A conditional slot ([§8.1.2](08-generics-constraints-and-contracts.md#812-pair-reconstruction-and-origin-annotations)) is a use only in the admitted borrow cases of its binder, shared in the `ref` and `objref` cases and exclusive in the `uniq` and `objuniq` cases, so a slot's requirement and Phantom status are judged per admitted Semantics case of the declaration's pair binders; an instance has those of the case its arguments select ([§8.15.2](08-generics-constraints-and-contracts.md#8152-semantics-cases)). A raw layer's Origin is no use; a `during self` pointee counts as stored content of its Type ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). It names the caller-side Loan to keep and grants nothing. Equal or shortened Origins never merge Loans or create exclusive access.
 
-**Fixed points.** Variance, Loan requirements, OwnedOrigins and `Transferable` are computed once per declaration, in terms of its own Type parameters and slots, never by expanding instantiations. Each is the least fixed point from the bottom value (unused, `none`, empty set, no exclusion), so recursive Types, including non-regular ones such as a Field `rc/Nest<(T, T)>?`, terminate.
+**Fixed points.** Variance, Loan requirements, OwnedOrigins and `Transferable` are computed once per declaration (Loan requirements and Phantom status once per admitted Semantics case of its pair binders), in terms of its own Type parameters and slots, never by expanding instantiations. Each is the least fixed point from the bottom value (unused, `none`, empty set, no exclusion), so recursive Types, including non-regular ones such as a Field `rc/Nest<(T, T)>?`, terminate.
 
-**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access; its requirement is `none`, and it is invariant.
+**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access; its requirement is `none`, and it is invariant. Variance stays one per declaration: a slot is invariant as Phantom only when it is Phantom in every admitted case.
 
 **`Kimi.Loan<T>`** is a zero-sized compiler-managed struct that expresses a dependency without storage. `T` must be a borrow Type with outer `ref`, `uniq`, `objref` or `objuniq`. A `Loan<T>` Field counts as storing a `T` for all slot properties; it is Copy when `T` is, has no address and grants no access. `Loan<T>.init(value: T)` is safe and keeps the borrow's dependency; destroying it ends only its own responsibility, and the Loan stays live while the values that carry it are used ([§15.6](#156-borrow-checking)). `Slice<T>` ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), `UniqSlice<T>` (invariant, [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice)) and `Array<T>` ([§4.5](04-arrays-indexing-and-slices.md#45-array-ownership)) take slot properties from their own rules; `Weak<S>` counts as storing an `S` ([§3.2.2](03-types-and-values.md#322-weak-references)).
 
@@ -333,6 +337,15 @@ struct Node<T> {a}
     let value: ref/T during a
     let next: Option<rc/Node<T>{n}>
         origin n.a == a                 // Recursion adds nothing; a is covariant.
+```
+
+```kimi
+struct Holder<s/T> {a}
+    s is owner or uniq
+    let item: s/T during a          // a is uniq in the uniq case, none and Phantom in the owner case.
+
+func cached(h: Holder<i32> during static) => ()                   // Valid: the owner case stores no reference.
+// func lent(h: Holder<uniq/i32 during r> during static) => ()   // Error: a is uniq in the uniq case (§15.2.3).
 ```
 
 ### 15.3.6. Origin inference
@@ -388,6 +401,7 @@ After aliases, grouping and redundant owner prefixes are normalized, an omitted 
 | Function result | [§15.4.3](#1543-result-defaults); an omitted whole result Type is Unit |
 | Local with an initializer | Inferred ([§15.4.4](#1544-locals-and-independent-type-expressions)) |
 | Local without an initializer, Field, payload | Must be complete from explicit information |
+| Type in a Constraint, outside a Function Type | Must be complete from explicit information |
 | Static storage | Requires `Owned` and [§11.8](11-properties.md#118-static-storage); shared layers and `none`/`ref` slots default to `static`; `uniq` is an error |
 | Accessor or specialization | The inherited contract first; getter results use the getter receiver |
 | Adaptation Target, test or cast target | From the operand ([§13.5.1](13-operators-and-assignment.md#1351-forms-and-adaptation-targets), [§13.6.5](13-operators-and-assignment.md#1365-checked-casts-and-target-completion)) |
@@ -452,7 +466,7 @@ A **program point** is a position immediately before or after an operation. A st
 - The values that carry a Loan are the borrow itself, its Copies, references derived from it, and every aggregate, Closure or storage that holds one of these. After a call, its results and the writable storage its public contract lets it write carry the Loans of the arguments they may retain ([§15.6.4](#1564-calls)).
 - **Addresses.** A raw pointer formed by `P@raw` **addresses** the holder at the root of `P` when `P`'s path dereferences no borrow and no raw pointer; otherwise it carries what a Borrow of `P` would carry ([§15.6.3](#1563-reborrowing-and-region-splitting), and past a raw pointer [§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places)), without the Loan that Borrow would form. A raw pointer read from a raw Field that states `self` reaches what `@raw` of the Field's storage reaches ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)). An address is carried as a Loan is, by Copies, displacements, conversions between raw pointer Types and every value or holder that holds one, but it is no Loan: it conflicts with nothing and grants no authority ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)).
 - **Holders** are locals, parameters and temporaries. A holder carries the Loans of the values stored in every part of it. A value read, Copied or Moved from a part carries every Loan the holder carries, and so does a Borrow through a reference stored in a part, as its parent Loans ([§15.6.3](#1563-reborrowing-and-region-splitting)); a destruction of a part that may observe a Loan ([§15.6.6](#1566-destruction-lifetime-checking)) uses the whole holder. A holder that is completely replaced, by `=` to the whole holder or by the start or end of its storage, no longer carries the Loans of its old value. Writing or Moving a part ends none of them, and a written value's Loans are added to the holder. Storage the body does not own (next item) follows the holder as Loans do: a value derives from a reference that reaches such storage when the value is a Copy or Reborrow of one, a value a call may retain from one, a read of a borrowed argument included ([§15.6.4](#1564-calls)), or a value read from a part of a holder that holds one, directly or through a reference to that holder.
-- A write through a reference, a non-path index or a dynamic container adds the written value's Loans to every holder it may reach and ends none. A call writes the storage its contract lets it write the same way, so `replace`, `exchange` and `swap` ([§15.7](#157-whole-value-updates)) completely replace no holder; `replace` ends Loans only as [§15.6.3](#1563-reborrowing-and-region-splitting) states. A reference reaches the holders named by those Loans it carries whose access paths have no dereference ([§15.6.2](#1562-place-overlap-and-conflicts)), its own and those of the references it was Reborrowed through, and the holders it addresses. It also reaches **storage the body does not own** when it comes from a parameter or capture, from static storage, or from a part of a call result that its contract ties to no argument, or derives from such a reference (above); a raw pointer that reaches no holder by these rules, such as a `Raw.allocate` result, reaches only such storage. A value stored there may be used after every point. A read through a reference carries the Loans of what it reaches. A compound assignment, increment or decrement writes its destination through its reservation ([§13.7.2](13-operators-and-assignment.md#1372-compound-assignment)), so it ends none of the Loans the destination carried.
+- A write through a reference, a non-path index or a dynamic container adds the written value's Loans to every holder it may reach and ends none. A call writes the storage its contract lets it write the same way, so `replace`, `exchange` and `swap` ([§15.7](#157-whole-value-updates)) completely replace no holder; `replace` ends Loans only as [§15.6.3](#1563-reborrowing-and-region-splitting) states. A reference reaches the holders named by those Loans it carries whose access paths have no dereference ([§15.6.2](#1562-place-overlap-and-conflicts)), its own and those of the references it was Reborrowed through, and the holders it addresses. It also reaches **storage the body does not own** when it comes from a parameter or capture, from static storage, from a part of a call result that its contract ties to no argument, or from a raw layer without an Origin that a call writes, in its result or in storage ([§15.6.4](#1564-calls)), or derives from such a reference (above); a raw pointer that reaches no holder by these rules, such as a `Raw.allocate` result, reaches only such storage. A value stored there may be used after every point. A read through a reference carries the Loans of what it reaches. A compound assignment, increment or decrement writes its destination through its reservation ([§13.7.2](13-operators-and-assignment.md#1372-compound-assignment)), so it ends none of the Loans the destination carried.
 - A Loan is **live** at a point P when a value that carries it may be used after P, including an observation by its destruction ([§15.6.6](#1566-destruction-lifetime-checking)). A value is also used wherever a value that carries a Loan on a Place overlapping the first value's holder, or an address of that holder, is used. An operation at P is checked against the Loans carried before P by the values used after P, other than those P replaces, and by the values P stores into a holder used after P or into storage the body does not own. These values decide, never a Loan's identity: a Borrow is not checked against the Loan it forms, which no value carries before it, but it is checked against an earlier execution of its own site that such a value carries. The activation of a reservation ([§15.6.7](#1567-call-reservations)) is checked against the values live into its call other than its own argument.
 - Liveness is a may-analysis: after a join a Loan is live if it is live on any incoming path, and loops use the least fixed point.
 - Origin regions and `outlives` relations only check that lifetimes are compatible; they never keep a Loan live.
@@ -482,7 +496,7 @@ inspect(slot)
 
 **Liveness.** If a value whose Type contains Origin `o` may be used after P, then P belongs to `region(o)`. A raw layer's Origin is exempt: it constrains no region ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)).
 
-**Well-formedness.** For every safe borrow layer `B/V during o`, where `B` is `ref`, `uniq`, `objref` or `objuniq`, or a pair binder in its admitted borrow cases, every Origin in OwnedOrigins(V) ([§15.2.3](#1523-static-and-owned)) must outlive `o`. For an object borrow, `V` is the View Target with its Type and Origin arguments. The rule is judged per admitted Semantics case: a pair layer's outer Origin is part of OwnedOrigins only in the cases of its binder that have one ([§15.6.5](#1565-judging-origin-relations)). Every written or inferred Type must be well-formed. A definition may assume that the Types of its signature (parameters, receiver, result and `Self`) are well-formed; each call proves this for the instantiated Types ([§15.6.4](#1564-calls)).
+**Well-formedness.** For every safe borrow layer `B/V during o`, where `B` is `ref`, `uniq`, `objref` or `objuniq`, or a pair binder in its admitted borrow cases, every Origin in OwnedOrigins(V) ([§15.2.3](#1523-static-and-owned)) must outlive `o`. For an object borrow, `V` is the View Target with its Type and Origin arguments. The rule is judged per admitted Semantics case: a pair layer's outer Origin is part of OwnedOrigins only in the cases of its binder that have one ([§15.6.5](#1565-judging-origin-relations)). Every written or inferred Type must be well-formed. A definition may assume that the Types of its signature (parameters, receiver, result and `Self`) are well-formed, except a nested signature inside them: its inputs are premises of that signature, proven at each of its calls, and its result is judged where it occurs ([§15.3.4](#1534-names-scope-and-quantification)); each call proves this for the instantiated Types ([§15.6.4](#1564-calls)).
 
 **Origin relations.** A fit of a value to a destination Type ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)) has a structural part, normalized Type identity with Origins treated as equal ([§3.8](03-types-and-values.md#38-type-relations-and-operations)); only its failure is a Type mismatch, and then no Origin relation forms. Once it holds, each Origin position yields a relation by its variance: `outlives` at covariant and contravariant positions, `==` at invariant ones. Declared relations, relations substituted at a call and well-formedness are Origin relations too; the static-storage rule of [§11.8](11-properties.md#118-static-storage) is a fit to `static`. Applicability ([§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability)) and expected-result filtering ([§10.3](10-overload-resolution-and-inference.md#103-expected-results)) use only structural parts; Origin relations are judged after selection ([§15.6.5](#1565-judging-origin-relations)) and never change it. When equalities make a call's fresh Origin equal to several fixed Origins, those must be equal.
 
@@ -592,7 +606,98 @@ A call is checked as follows:
 4. collects its dependencies; a result that names a borrowed input's Origin, including a Closure's call receiver ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)), also depends on every Origin in OwnedOrigins of that input's referent Type;
 5. creates the caller-side Loans, which stay live while the values that carry them are used.
 
-A `uniq` requirement creates an exclusive Loan, and an exclusive Loan stays exclusive while a result depends on it; Origin equalities neither create nor release Loans. Protection begins when a Borrow is formed, in evaluation order (eligible exclusive borrows start as reservations, [§15.6.7](#1567-call-reservations)), and lasts through the whole call, including callee cleanup. Which results and writable storage, including storage reached through a Closure's captures, may retain an argument is determined by the instantiated public contract, for direct and indirect calls alike; an unproven absence of retention never permits access. Retention is decided per argument, never per Origin: a result or storage that may retain an Origin inside a borrowed argument's referent Type, including a Closure's call receiver, carries every Loan that a read through the argument carries ([§15.6](#156-borrow-checking)), whichever of those Origins it names; one that may retain any other Origin of an argument carries the argument's Loans, and those of such a read too when the argument is a borrow. A raw pointer argument is retained as a borrowed one, its pointee as the referent: a result or storage that may retain an Origin inside its pointee Type carries what a read through it carries. The argument's own value, its Loans and the holders it addresses, is retained only by a result or storage that can hold a value of its Type, or by a result the call forms within the argument's storage ([§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places), [§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)). A pointer is never part of its own pointee: storage a call writes through a raw argument never retains that argument's own value. A raw layer retains as [§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins) states: with an Origin, as the borrow that Origin belongs to would, without a Loan; without one, a parameter's raw layer admits what its pointee Type admits, and a raw layer in a result Type, outside a nominal Type's Fields, may retain every argument, a raw one with what a read through it carries, and reaches storage the body does not own. A call writes through no raw layer that it reaches past a shared layer ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)).
+A `uniq` requirement creates an exclusive Loan, and an exclusive Loan stays exclusive while a result depends on it; Origin equalities neither create nor release Loans. Protection begins when a Borrow is formed, in evaluation order (eligible exclusive borrows start as reservations, [§15.6.7](#1567-call-reservations)), and lasts through the whole call, including callee cleanup. Which results and writable storage, including storage reached through a Closure's captures, may retain an argument is determined by the instantiated public contract, for direct and indirect calls alike; an unproven absence of retention never permits access. A destruction retains as a call of each `drop` it runs, whose `self` is a `uniq/Self` receiver referring to the destroyed part ([§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)), and a callee that destroys a by-value input or the elements of its receiver includes that cleanup in its own contract, as it does its effects ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)); for an operation of [§4.6](04-arrays-indexing-and-slices.md#46-positions-and-ranges) to [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections), that cleanup is the destruction its row lists, composed at the call, never a library body's own ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)). Retention is decided per argument, never per Origin: a result or storage that may retain an Origin inside a borrowed argument's referent Type, including a Closure's call receiver, carries every Loan that a read through the argument carries ([§15.6](#156-borrow-checking)), whichever of those Origins it names; one that may retain any other Origin of an argument carries the argument's Loans where it can hold a value of its Type, of a part it holds by value, or a borrow formed through it, and those of such a read too when the argument is a borrow. A raw pointer argument is retained as a borrowed one, its pointee as the referent: a result or storage that may retain an Origin inside its pointee Type carries what a read through it carries. A raw layer that an argument holds by value through no shared layer, a Tuple element, an Option payload, a Field or a Type argument included, is retained as a raw pointer argument is. The argument's own value, its Loans and the holders it addresses, is retained only by a result or storage that can hold a value of its Type, of a part it holds by value, or a borrow formed through it ([§15.6.3](#1563-reborrowing-and-region-splitting)), by a result the call forms within the argument's storage ([§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places), [§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)), or by a raw layer without an Origin, below. Storage of an abstract Type can hold such a value only where the premises make it one, or where a callable the instantiated contract hands the callee's body (a Callable bound, a requirement of a Contract premise, or a callable value an input holds) may retain the argument there by this section applied to that callable's signature, through its result or its writes. Conversely, a value of an abstract Type ([§8.2.3](08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises)), also as a handle's payload, reaches what a reference that carries its holder's Loans and addresses reaches ([§15.6](#156-borrow-checking)), a payload's holder being that of the handle it is reached through. Of what it reaches, a call or destruction through it writes, by provenance:
+
+1. the holders its exclusive Loans and addresses name, and what is reached on from them by reads through no shared layer ([§15.6](#156-borrow-checking)), never a holder that only a shared Loan names;
+2. storage the body does not own that it reaches from a parameter or a capture, or by a read through an exclusive borrow, since its binding may hold an exclusive reference with Origins of its own ([§8.1.1](08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters), [§8.15.1](08-generics-constraints-and-contracts.md#8151-universal-verification));
+3. static storage, a Place root like a local's ([§15.6](#156-borrow-checking)), through an exclusive Loan on it or an address;
+4. storage the body does not own that it reaches through a raw pointer it derives from through no shared layer: a raw layer without an Origin, such as a raw pointer that reaches no holder by the rules of [§15.6](#156-borrow-checking) (a `Raw.allocate` result, a pointer from an integer), also as a Tuple element, an Option payload, a Field or a Type argument of an input;
+5. storage the body does not own that it reaches from a part of a call result that its contract ties to no argument.
+
+What it reaches only through a shared Loan or a shared borrow, or derives by a read through one, an address or raw pointer read past a shared layer included, it reaches for reads only ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions), condition 3). A raw layer that the abstract Type's binding may hold and the abstract Type does not show adds no reach of its own, storage the body does not own included, since an access through such a layer beyond this reach is the declaring code's responsibility ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)); a safe reference the binding holds is no such layer, and the routes above apply to it. A raw layer that a Type shows, in a Field, a Case payload or an element of a part that holds the abstract one included, is read by this section and [§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins).
+
+A pointer is never part of its own pointee: storage a call writes through a raw argument never retains that argument's own value. A raw layer retains as [§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins) states: with an Origin, as the borrow that Origin belongs to would, without a Loan; without one, a parameter's raw layer ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)) admits what its pointee Type admits, and a raw layer that the call may write, in its result, a nominal Type's Fields included, or in storage it writes through an argument, may retain every argument with what any chain of reads through it carries, but not the own value (its Loans and the holders it addresses) of the argument through which the call writes it, and reaches storage the body does not own. A chain of reads goes through a raw or borrowed layer anywhere in the argument's value (a Tuple element, an Option payload, a Field or a Type argument included), then through one in the value read, and so on. A raw layer behind a borrow in the result, a Slice's or UniqSlice's elements included, is lent, not written: it retains only the raw arguments, with what any chain of reads through them carries, as a result the call forms within their storage does, and reaches no storage the body does not own. A published operation that transfers values is an Iterator's `next` ([§22.2.3](22-core-execution-and-foreign-functions.md#2223-iterator-independence)), `exchange` or `swap` ([§15.7](#157-whole-value-updates)), or an operation of [§4.6](04-arrays-indexing-and-slices.md#46-positions-and-ranges) to [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections); at a raw layer without an Origin it retains a borrowed argument (not a raw pointer argument), a Slice or UniqSlice included, only by what a chain of reads through it carries, never by its own value; there, `exchange`'s result, the old contents, retains only what a chain of reads through its target carries. In the element storage it writes, an operation of [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections) retains at a raw layer without an Origin, of its arguments other than the receiver, only its added and replacing inputs, and a removed element in its result keeps the stored Types' full dependencies ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)). A call writes through no raw layer that it reaches past a shared layer ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)).
+
+A destruction whose `drop` stores through a raw layer retains as that call would:
+
+```kimi
+func usep(p: raw/u8) => ()
+
+struct Writer
+    public var p: raw/(raw/u8)
+    public var q: raw/u8
+    public init(q: raw/u8)
+        self.p = null
+        self.q = q
+    drop
+        unsafe => *self.p = self.q          // Retains as drop(self: uniq/Writer) would.
+
+func reset(y: uniq/i32)
+    let w = y@follow@ref
+    var slot: raw/u8 = null
+    var x = Writer.init(q: w@raw@raw/u8)    // x.q addresses w, which carries a Loan on y's referent.
+    x.p = slot@raw
+    x = Writer.init(q: null)                // The old x's drop may store q in slot or storage the body does not own.
+    // y@follow = 5                         // Error: the Loan w carries stays live, since that storage may retain q.
+    usep(slot)
+```
+
+A value of an abstract Type writes only by the routes above, never through a shared Loan, and its calls and destruction store within that reach ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)):
+
+```kimi
+func count<S>(items: S) -> i32
+    S is Iterable
+    var n: i32 = 0
+    for _ in items                  // Valid: the Iterator's Loan on items is shared, so next and its destruction write only its own holder.
+        n += 1
+    return n
+```
+
+```kimi
+// consume<T>(x: T) destroys x.
+contract MakeS
+    func make(p: raw/(raw/u8)) -> Self
+    func setQ(self: uniq/Self, q: raw/u8)
+
+func later<T>(y: uniq/i32)
+    T is MakeS
+    let w = y@follow@ref
+    var slot: raw/u8 = null
+    var x = T.make(p: slot@raw)     // x carries slot's address; make stores no Loan in slot.
+    x.setQ(q: w@raw@raw/u8)         // setQ may store q, which addresses w, in slot: x reaches slot.
+    consume(x@move)                 // x's destruction may store its content in slot too.
+    // y@follow = 5                 // Error: slot may retain w's address, and w carries y's Loan; slot is used below.
+    usep(slot)
+
+func laterAlloc<T>(y: uniq/i32)
+    T is MakeS
+    let w = y@follow@ref
+    let m = Raw.allocate<raw/u8>(1) // m reaches only storage the body does not own.
+    var x = T.make(p: m)            // x derives from the raw pointer m through no shared layer.
+    x.setQ(q: w@raw@raw/u8)         // setQ may store q in m's storage.
+    consume(x@move)
+    // y@follow = 6                 // Error: a value stored in storage the body does not own may be used after every point.
+    unsafe => Raw.release(m)
+```
+
+Writes go on past the holders a value's addresses name by reads through no shared layer (item 1). A store that a binding makes in a holder that item 1 reaches while another Loan on it lives is its raw access under [§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions) (condition 4), as in a concrete method, not an error of the call; what the call may store there is retained:
+
+```kimi
+contract MakeP
+    func make(p: raw/(raw/(raw/u8))) -> Self
+    func setQ(self: uniq/Self, q: raw/u8)
+
+func chain<T>(y: uniq/i32)
+    T is MakeP
+    let w = y@follow@ref
+    var slot: raw/u8 = null
+    var pp: raw/(raw/u8) = slot@raw     // pp addresses slot.
+    var x = T.make(p: pp@raw)           // x addresses pp.
+    x.setQ(q: w@raw@raw/u8)             // setQ may store q in slot, reached on from pp by a read.
+    consume(x@move)
+    // y@follow = 5                     // Error: slot may retain w's address, reached on from pp; slot is used below.
+    usep(slot)
+```
 
 **Effect summaries.** A callable's **effect summary** lists the static Fields ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) whose storage it may access with its reads, borrows, writes, replacements, destructions and first-access initializations. It includes the effects of its callees, of every implementation in its closed explicit-specialization set ([§12.7.2](12-expressions.md#1272-implementation-families)), and of defaults, accessors, lazy initialization and cleanup. It is computed once per declaration, in terms of its own Type parameters, as the least fixed point over recursive calls. Its **parameter-dependent effects** are those it keeps in terms of a Type parameter or an associated-Type projection: destructions of such a Type not proven Copy ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)), the user-code effects of published operations on such a Type ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)) and calls through Callable inputs. When a summary would keep one on a projection one of whose bases (its base, that base's base, and so on) the premises of the summary's declaration prove to conform to a recursive Contract ([§8.3.3](08-generics-constraints-and-contracts.md#833-recursion-and-finality)), it has unknown environment effects instead. The other parameter-dependent effects have a bounded projection depth, so the fixed point is finite. Calls through Callable inputs are recorded once per input and receiver mode and composed with the actual arguments at each use. Conformance effect bounds are checked against the completed summaries ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)).
 
@@ -656,9 +761,9 @@ func visitCopies<U>(node: U)
 
 A body must work for every caller of its universally quantified signature. An Origin relation is judged Proven, Refuted or Unknown ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)). Origins are of three kinds:
 
-- A **fixed Origin** is fixed by the body's contract: a universal Origin, a parameter or receiver Origin, a projection of one, or `static`. In a Closure body, the Origins of its captures, of its call receiver and of a whole result inferred from the body ([§15.8.2](#1582-closure-dependencies)) are fixed too. A fixed Origin contains every point of the body.
+- A **fixed Origin** is fixed by the body's contract: a universal Origin, a parameter or receiver Origin, a projection of one, or `static`. A fixed Origin contains every point of the body.
 - A **finite Origin** belongs to a Borrow with an upper bound; each such Borrow has its own.
-  - A **body-local Origin** belongs to a Borrow anchored in a local, parameter or temporary root of the body, or in the receiver of a constructor or `drop` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)), reached by Field, element or owning-layer projections, never through a borrow or raw pointer; its bound is the body. Implicit Borrows and capture-entry Borrows ([§7.7.2](07-functions-and-callable-values.md#772-captures)) are included. A Closure's environment bindings are Fields of its call receiver, so borrowing them through a borrowed receiver is not body-local; in a Consuming call it is.
+  - A **body-local Origin** belongs to a Borrow anchored in a local, parameter or temporary root of the body, or in the receiver of a constructor or `drop` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)), reached by Field, element or owning-layer projections, never through a borrow or raw pointer; its bound is the body. Implicit Borrows and capture-entry Borrows ([§7.7.2](07-functions-and-callable-values.md#772-captures)) are included. A Closure's environment bindings are Fields of its call receiver's referent ([§15.8.2](#1582-closure-dependencies)), so borrowing them through a borrowed receiver is not body-local; in a Consuming call it is.
   - A Borrow of mutable static storage, including an inline part, is bounded by the body too: a relation that carries it to a fixed Origin, such as returning it or storing it through a parameter or a capture, is Refuted ([§15.6.4](#1564-calls)).
 - An **inferred region** is any other local Origin, such as a slot of an unannotated local's Type. A Borrow of a raw Place ([§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places)) has no upper bound of its own (through a pointer that states an Origin it is contained in that Origin, [§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)), so its Origin is not finite; it is an inferred region. So is the Origin of a Borrow reached through a borrow: it has no bound of its own, and its containment in the borrows it is reached through follows [§15.6.3](#1563-reborrowing-and-region-splitting).
 
@@ -669,6 +774,8 @@ Every relation the body checks is judged, including unreachable result sources (
 - **Unknown:** a chain between fixed Origins that the solver cannot derive.
 
 With pair binders, the well-formedness premises are those of each Semantics case's Types ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)); a pair layer's outer-Origin slot exists only in cases that have an outer Origin ([§8.1.1](08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)), and a relation is Proven only from premises that hold in every case that requires it. A use beyond a local Place's lifetime is a Loan conflict at its destruction or Move ([§15.6.6](#1566-destruction-lifetime-checking)), never an Origin relation failure; returning a borrow of a local or temporary is the Refuted relation at the returned value.
+
+A Loan conflict on the Loan of a Borrow whose finite Origin Refuted chains carry to fixed Origins is caused only by the Refuted relations of those chains ([§23.1.2](23-compiler-services.md#2312-reporting)) when every value that carries the Loan and may be used after the access is the result or storage the body does not own and received the Loan only as the borrow or a Copy or Reborrow of it ([§15.6](#156-borrow-checking)), stored into a part with a fixed Origin; a call's result, or storage the call writes, that may retain such a value as an argument counts as a Copy of it ([§15.6.4](#1564-calls)), and a read through a reference to a whole value counts as a Copy of that value.
 
 ```kimi
 func bad(x: ref/i32) -> ref/i32 during x
@@ -683,6 +790,19 @@ func f(x: ref/i32, y: ref/i32) -> ref/i32 during y
 func pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c
     s is owner or ref
     return x              // Error: a outlives c holds only in the ref case.
+```
+
+```kimi
+func store(target: uniq/(ref/i32 during a))
+    var local: i32 = 1
+    target@follow = local@ref   // Error: the borrow of local cannot outlive a.
+    local = 2                   // Error: caused only by that relation, since only target.* keeps the Loan.
+
+func keep(x: ref/i32) -> ref/i32 during x
+    var value: i32 = 1
+    let r = value@ref
+    value = 2                   // Error: independent of the relation below, since r keeps the Loan and is used after.
+    return r                    // Error: the borrow of value cannot outlive x.
 ```
 
 ### 15.6.6. Destruction lifetime checking
@@ -805,6 +925,8 @@ Erasing a concrete payload behind a base or runtime-Contract view requires its c
 
 A Closure keeps every captured value's Origin and Loan dependencies, not merely the lifetime of its creation Block. Moving in an owned value without borrowed contents borrows nothing, and an entry that borrows an outer slot ([§7.7.2](07-functions-and-callable-values.md#772-captures)) keeps its Loan on that slot.
 
+A Closure body is checked against its call receiver ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)) as an instance function's body is against its receiver: its environment bindings are Fields of the receiver's referent, so its result Origins, containment ([§15.6.3](#1563-reborrowing-and-region-splitting)) and retention ([§15.6.4](#1564-calls)) follow the receiver rules. Each environment binding's permissions stay those of [§7.7.2](07-functions-and-callable-values.md#772-captures), and retention into the environment follows them, since no Closure body can replace its environment: an Exclusive call may retain an argument in its `var` bindings and in the referents of its captured exclusive references. The table restates the receiver rules for each source of a result:
+
 | Result source | Contract |
 | --- | --- |
 | Borrow of environment-owned data | Depends on the call receiver borrow |
@@ -813,9 +935,9 @@ A Closure keeps every captured value's Origin and Loan dependencies, not merely 
 | Reference moved out by a Consuming call | Transfers its Origin and capability |
 | Borrowed argument | Follows the parameter's Origin contract |
 
-When the result Type is omitted, each Origin in the inferred result is a per-call Origin of the internal call contract, outlived by every source of the returned values per the table. Several returned values give the meet of their sources at covariant positions and require equal Origins at invariant positions. Any other source, such as a Borrow of call-local storage or of an environment consumed by the call, is an error. The Origin of a whole result inferred from the body is a fixed Origin outside the body; each result source is judged against it, so returning a body-local borrow is an error at the returned value, not a Loan conflict at the storage's destruction.
+When the result Type is omitted, each Origin in the inferred result is a per-call Origin of the internal call contract, outlived by every source of the returned values by the receiver rules. Several returned values give the meet of their sources at covariant positions and require equal Origins at invariant positions. The Origin of a whole result inferred from the body is a fixed Origin outside the body; each result source is judged against it, so a source whose Origin is body-local, such as a Borrow of call-local storage or of an environment consumed by the call, is Refuted at the returned value, not a Loan conflict at the storage's destruction ([§15.6.5](#1565-judging-origin-relations)), while a source of Origin `static`, such as a Borrow of an immutable static Field, outlives it.
 
-An annotated result, or a fixed expected call signature ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)), uses ordinary result elision: no Origin expression names the hidden receiver, and annotation names resolve among the parameters and enclosing scopes, never to environment bindings. Common Function Types and Callable Constraints never return results that depend on the hidden receiver ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)).
+An annotated result, or a fixed expected call signature ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)), uses ordinary result elision ([§15.4.3](#1543-result-defaults)) without the hidden receiver, which no Origin expression names; annotation names resolve among the parameters and enclosing scopes, never to environment bindings. The receiver stays hidden because common Function Types and Callable Constraints never return results that depend on it ([§3.2.1](03-types-and-values.md#321-callable-value-types), [§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)).
 
 ```kimi
 let text = makeText()
@@ -827,6 +949,37 @@ inspectText(view)
 let other = makeText()
 let invalid = func [other@move] () -> ref/string => other@ref
 // Error: the annotated result defaults to static, not the environment borrow.
+```
+
+Retention into the environment follows the binding's permissions:
+
+```kimi
+func update(z: uniq/i32, x: ref/i32, out: uniq/i32)
+    origin z outlives x
+    let first: ref/i32 during x = x
+    var copyOut = func [first, out] (value: ref/i32 during x) => out@follow = value@follow + first@follow
+    copyOut(z@follow@ref)   // An Exclusive call; first is a let binding and out's referent an i32, so neither keeps value.
+    z@follow = 42           // Valid.
+    copyOut(x)
+
+    var last: ref/i32 during x = x
+    var remember = func [var last] (value: ref/i32 during x) => last = value
+    remember(z@follow@ref)  // last may keep value.
+    // z@follow = 43        // Error: remember is used below.
+    remember(x)
+```
+
+A bare entry naming an enclosing local Reborrows it with that local's Origin ([§7.7.2](07-functions-and-callable-values.md#772-captures)):
+
+```kimi
+var x: i32 = 1
+let u = x@uniq
+let t = makeText()
+let take = func [u, t@move] () -> uniq/i32 during u
+    consumeText(t@move)     // A Consuming call.
+    return u                // Valid: the binding has u's Origin, and a Reborrow through it may be returned (§15.6.3).
+let a = take@move()
+a@follow = 3
 ```
 
 ### 15.8.3. Escape and retention

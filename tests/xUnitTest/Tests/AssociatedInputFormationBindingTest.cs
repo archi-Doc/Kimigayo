@@ -32,7 +32,7 @@ public class AssociatedInputFormationBindingTest
     public void ValidNormalizedDefinitionsStillCertify(string definition)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + definition);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -57,7 +57,7 @@ public class AssociatedInputFormationBindingTest
     public void DependentProjectionInputsUsePathEvidence(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\n" + declarations);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.All(Definition(c).Paths, path => Assert.True(path.IsVerified));
     }
 

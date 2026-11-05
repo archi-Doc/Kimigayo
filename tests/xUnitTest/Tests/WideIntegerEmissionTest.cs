@@ -108,7 +108,7 @@ public class WideIntegerEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Unsupported);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -121,36 +121,7 @@ public class WideIntegerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"let x: {type} = {value}");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
-    }
-
-    [Theory]
-    [InlineData("i128")]
-    [InlineData("u128")]
-    public void CorruptHighConstantBitsAreRejected(string type)
-    {
-        var c = MinimalEmissionTest.Analyze($"let x: {type} = 1");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant);
-        body.Values[id] = body.Values[id] with { Constant = ((Int128)1 << 64) + 1 };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
-    }
-
-    [Fact]
-    public void CorruptParameterHighBitsCannotAliasAValidIndex()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(x: i128) -> i128 => x\nf(1)");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Parameter);
-        Assert.True(id >= 0);
-        body.Values[id] = body.Values[id] with { Constant = (Int128)1 << 64 };
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -158,28 +129,15 @@ public class WideIntegerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"let x: u128 = {UnsignedMax}\nlet y: i128 = {Min}\nif x >> 127 == 1 and y >> 127 == -1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var roundTrip = new StringWriter();
-        Assert.True(restored.WriteIr(roundTrip, out error), error);
+        Assert.True(restored.Generate(roundTrip), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), roundTrip.ToString());
         ScalarEmissionTest.WriteFixture("WideRoundTrip", roundTrip.ToString(), "ok\n");
-    }
-
-    [Fact]
-    public void CorruptWideDivisionCannotBypassProfileValidation()
-    {
-        var c = MinimalEmissionTest.Analyze("var x: i128 = 1\nlet y = x + 1");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Binary);
-        body.Values[id] = body.Values[id] with { Operator = KotoKind.Slash };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -188,10 +146,10 @@ public class WideIntegerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func f(x: u128) -> u128 => x * 1\nvar x: u128 = {UnsignedMax}\nlet y = if true => f(x) else => 0\nlet z = y@i128");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Wide integer analysis or emission failed.");
             }

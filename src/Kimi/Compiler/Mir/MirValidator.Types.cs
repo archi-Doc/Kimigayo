@@ -7,13 +7,16 @@ namespace Kimi.Compiler.Mir;
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
 // - Responsibility: the Types values flow between agree (Agree, Agrees: MirTypes.Agree, modulo Origins, or as the body's premises
 //   make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
-//   Adapts); every Semantics case view resolves each Adapt (Views); and the temps whose Type the tier reads as unknown (Unknown).
-// - Inputs: an rvalue whose arity holds, with its destination's Type; operands and their Places; the body's case views (MirCases).
-// - Outputs: Type and Operation findings; the Adapts whose Places and token are in range, for Views; the unknown mask Unknown gives the
-//   checker (a flag per local).
+//   Adapts); every Semantics case view resolves each Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule
+//   1's (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
+// - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
+//   and their Places; the body's case views (MirCases).
+// - Outputs: Type, Operation and SharedPath findings; the case sites for Views (caseSites: the Adapts whose Places and token are in range
+//   and the PairAcquire Uses whose Place is); the unknown mask Unknown gives the checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
 //   every Type.
-// - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures'.
+// - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures', but
+//   an intrinsic row's, which MirValidator.Calls reads through TypeOf (testRecordValue's Scalar).
 internal sealed partial class MirValidator
 {
     private bool[] unknown = [];
@@ -67,23 +70,45 @@ internal sealed partial class MirValidator
 
     private partial struct Checker
     {
-        // SPEC 8.14, 8.15: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), and a borrow or an address takes
-        // a Place of its reference's referent Type there; one finding per Adapt, at the first view that breaks either.
+        // SPEC 8.14, 8.15: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), a borrow or an address takes a
+        // Place of its reference's referent Type there, and an exclusive borrow passes no shared layer under the view's cases (W1 rule 1,
+        // MirValidator.SharedPaths); a PairAcquire's Place, where the view makes it Reborrow (MirCases.Reborrows; SPEC 3.5's rows, the owner
+        // case's target included, DECISIONS R5-M139's (b2) line), passes none either; one finding per Adapt or PairAcquire, at the first
+        // view that breaks one of them.
         internal void Views(MirCases cases)
         {
             var views = MirCases.Count(body);
-            foreach (var (adapt, source) in adapts)
+            foreach (var (site, source) in caseSites)
             {
                 this.at = source;
                 for (var view = 0L; view < views; view++)
                 {
-                    cases.Select(body, view);
-                    var resolved = cases.Adapt(adapt, out var operation);
+                    var assignment = cases.Select(body, view);
+                    if (site.Kind == MirRvalueKind.Use)
+                    {
+                        ref readonly var acquire = ref body.Operands[site.Start];
+                        if (cases.Reborrows(acquire) && this.IsSharedPath(acquire.Place, assignment))
+                        {
+                            this.Report(MirViolation.SharedPath);
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    var resolved = cases.Adapt(site, out var operation);
                     var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
                         ? cases.Type(stored) : null;
                     if (operation == ConversionBinding.None || (borrowed is not null && !this.Agrees(resolved.Type!.Components[0], borrowed)))
                     {
                         this.Report(MirViolation.Operation);
+                        break;
+                    }
+
+                    if (resolved is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.Uniq or (byte)MirRefKind.TwoPhaseUniq } &&
+                        this.IsSharedPath(resolved.Place, assignment))
+                    {
+                        this.Report(MirViolation.SharedPath);
                         break;
                     }
                 }
@@ -137,24 +162,10 @@ internal sealed partial class MirValidator
             }
         }
 
-        // The Type of an aggregate's operand, as the Place it initializes projects it: a Tuple's element, a Closure's capture, a struct's base
-        // then its own Fields, a Case's payload, a fixed array's or a Fill's element.
-        private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
-        {
-            MirAggregateKind.FixedArray or MirAggregateKind.Fill => rvalue.Type!.Components[0],
-            MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
-                body.ProjectedType(
-                    rvalue.Type,
-                    MirProjectionKind.Downcast,
-                    rvalue.Arg),
-                MirProjectionKind.Field,
-                index),
-            MirAggregateKind.Adt when AdtDef.Base(rvalue.Type!) is { } parent => index == 0 ? parent : body.ProjectedType(
-                rvalue.Type,
-                MirProjectionKind.Field,
-                index - 1),
-            _ => body.ProjectedType(rvalue.Type, MirProjectionKind.Field, index),
-        };
+        // The Type of an aggregate's operand, as its shape (Shape) gives it: its element, or the base, then the Fields of its parts.
+        private readonly BoundType? Component(in AggregateShape shape, int index) => shape.Element ?? (shape.Base is null
+            ? body.ProjectedType(shape.Parts, MirProjectionKind.Field, index)
+            : index == 0 ? shape.Base : body.ProjectedType(shape.Parts, MirProjectionKind.Field, index - 1));
 
         // SPEC 8.14: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
         // into its target Type. A Place or a constant out of range is the walk's finding.
@@ -209,13 +220,22 @@ internal sealed partial class MirValidator
                 this.Agree(second, first); // Binding's source Type, the token, is the operand's.
                 if (second is not null && this.IsValid(operands[0].Place) && this.IsValid(rvalue.Place))
                 {
-                    adapts.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
+                    caseSites.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
                 }
             }
-
-            for (var i = 0; rvalue.Kind == MirRvalueKind.Aggregate && i < operands.Length; i++)
+            else if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0 } && operands[0] is { Kind: MirOperandKind.PairAcquire } acquire &&
+                this.IsValid(acquire.Place))
             {
-                this.Agree(this.Component(rvalue, i), this.TypeOf(operands[i]));
+                caseSites.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
+            }
+
+            if (rvalue.Kind == MirRvalueKind.Aggregate)
+            {
+                var shape = Shape(rvalue); // Its Count is the operands' (Rvalue's Arity).
+                for (var i = 0; i < operands.Length; i++)
+                {
+                    this.Agree(this.Component(shape, i), this.TypeOf(operands[i]));
+                }
             }
         }
     }

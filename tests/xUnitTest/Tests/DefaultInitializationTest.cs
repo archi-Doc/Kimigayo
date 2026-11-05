@@ -51,7 +51,7 @@ public class DefaultInitializationTest
         c.ReportAnalysis();
         var issue = c.Problems.First(x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
         Assert.Contains(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.UninitializedPlace_Kd) && x.Span == c.SyntaxOf(issue.Subject).Span);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
 #if DEBUG
@@ -75,20 +75,22 @@ public class DefaultInitializationTest
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.Equal(!invalid, c.Analyze().IsVerified);
-            Assert.Equal(!invalid, c.Validate(out _));
+            Assert.Equal(!invalid, c.Generate(TextWriter.Null));
             if (invalid)
             {
-                Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+                // SPEC 14.10.3: `n` is read after its initializer never completes. Since the MIR decides acceptance (R6-check H5), the record
+                // is A1's UninitializedPlace_Kd at the read, where the old analysis had a located Unsupported_Kd at `n` (H3b T48, class 3).
+                Assert.Equal("UninitializedPlace_Kd n + 1", MinimalEmissionTest.Problems(c));
             }
 
             var allocated = AllocationMeasurement.Measure(() => c.Analyze());
             Assert.Equal(0, allocated);
             Assert.Equal(!invalid, c.Analysis.IsVerified);
             c.Bind();
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.Equal(!invalid, c.Analyze().IsVerified);
-            Assert.Equal(!invalid, c.Validate(out _));
+            Assert.Equal(!invalid, c.Generate(TextWriter.Null));
         }
     }
 }

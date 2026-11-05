@@ -16,7 +16,8 @@ public sealed partial class MirBuildTest
     // Plan 5.6.1, SPEC 8.14, 8.15, 13.5.5: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
     // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
     // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a
-    // PairAcquire Reborrows in the uniq case and Copies in the others.
+    // PairAcquire Reborrows in the uniq case and Copies in the others; an owner case acquires its target by SPEC 3.5's rows (R6-check
+    // (b2)): `uniq/i32` Reborrows, and a nested pair layer by its own case.
     [Fact]
     public void ViewsResolvePairLayersAndAcquisitions()
     {
@@ -63,6 +64,12 @@ public sealed partial class MirBuildTest
                 "Fn peek 1 [Uniq]: ",
                 "Fn caller 0 [Owner]: acquire _1 copy, @b0 itself: T",
                 "Fn caller 1 [Uniq]: acquire _1 reborrow, @b0 *uniq/T: T",
+                "Fn exclusive 0 [Owner]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn exclusive 1 [Uniq]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn nested 0 [Owner, Owner]: acquire _1 copy, acquire _2 copy",
+                "Fn nested 1 [Owner, Uniq]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn nested 2 [Uniq, Owner]: acquire _1 reborrow, acquire _2 reborrow",
+                "Fn nested 3 [Uniq, Uniq]: acquire _1 reborrow, acquire _2 reborrow",
             ],
             lines);
     }
@@ -79,7 +86,7 @@ public sealed partial class MirBuildTest
         var c = Compile(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "adaptations.kimi")));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var cases = new MirCases(c.Types);
         var lines = new List<string>();
         foreach (var body in program.Bodies)
@@ -138,7 +145,7 @@ public sealed partial class MirBuildTest
         var rejected = Compile("func wrong<s/T>() -> s/i64\n    s is object\n    return 1@s/i64\n");
         var built = rejected.BuildMir();
         Assert.Empty(built.Findings);
-        Assert.Empty(built.Records);
+        Assert.Empty(built.Records(MirRecordClass.Construction));
         var wrong = built.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "wrong");
         Assert.True(wrong.HasOpaque);
         Assert.DoesNotContain(wrong.Statements.ToArray(), static x => x.Rvalue.Kind == MirRvalueKind.Adapt);
@@ -175,7 +182,7 @@ public sealed partial class MirBuildTest
             Assert.Equal(count == 6 ? [] : new[] { DiagnosticCode.OwnershipCaseLimit_Kd }, c.Binding.Issues.Select(static x => x.Code));
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
-            Assert.Empty(program.Records);
+            Assert.Empty(program.Records(MirRecordClass.Construction));
             var parts = program.Bodies.ToArray().Where(static x => x.Source.Module == 0 && (x.Key.Decl?.Name == "f" || x.Key.Kind == MirBodyKind.Closure)).ToArray();
             var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
             Assert.Equal(count == 7, program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "g" && x.Key.Kind == MirBodyKind.DefaultTemplate).HasOpaque);
@@ -234,6 +241,27 @@ public sealed partial class MirBuildTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.True(x.Key.Decl is null || x.Key.Decl.Name == "main", x.Key.ToString()));
+    }
+
+    // SPEC 8.15 (DECISIONS R4-M139, R5's conditions): a call selects the view of its binder's case, the Semantics of the binder's whole
+    // Type in the call's instance, read as every reader reads one (TyCtxt.ReadableInstance). Over storage Binding rejected (Bad's Field) the case
+    // is the instance's, which no rejected part changes, so the view is the one its repair selects: one view, deterministic (before, every
+    // admitted view). In a complete compilation no instance is Rejected (TyCtxtTest's ARejectedVerdictIsReadableOnlyBesideABindingFailure).
+    [Theory]
+    [InlineData("b@move", 1UL)]
+    [InlineData("b@ref", 2UL)]
+    public void ACallOverRejectedStorageSelectsItsRepairsView(string argument, ulong view)
+    {
+        foreach (var field in new[] { "Missing", "i32" })
+        {
+            var c = Compile($"struct Bad\n    public var m: {field} = 0\n    public init() => ()\ngroup H\n    public func keep<s/T>(item: s/T)\n" +
+                $"        s is owner or ref\n        ()\nfunc g()\n    let b = Bad.init()\n    H.keep({argument})\n");
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var call = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "g").Blocks.ToArray().Select(static x => x.Terminator)
+                .Single(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name == "keep");
+            Assert.Equal(view, new MirCases(c.Types).Views(program.Callee(call.Callee)!, call.Callee.Subst));
+        }
     }
 
     // What a location's PairAcquire operands and PairLayer steps are under the selected view, each step with its selected Place's case Type.

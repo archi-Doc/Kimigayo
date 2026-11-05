@@ -100,17 +100,20 @@ public class BuiltinArithmeticContractTest
         ScalarEmissionTest.EmitFixture("BuiltinArithmeticWidth" + integer, program.ToString(), string.Empty);
     }
 
+    // IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): a 128-bit division through Dividable conforms, but the backend does not generate it: the
+    // shim's operation is the checked set's record, so check rejects the program (K13a), also when only an unused function reaches the
+    // instance, on every pipeline (DECISIONS R5-M156).
     [Theory]
-    [InlineData("i128")]
-    [InlineData("Wrapping<u128>")]
-    public void NativeDivisionBoundaryDoesNotRemoveLanguageConformance(string type)
+    [InlineData("let value: i128 = 6\nlet result = quotient(value, 2)")]
+    [InlineData("let value: Wrapping<u128> = 6\nlet result = quotient(value, 2)")]
+    [InlineData("func unused(a: ref/i128, b: ref/i128) -> i128 => quotient(a, b)\nlet result = 1")]
+    public void NativeDivisionBoundaryDoesNotRemoveLanguageConformance(string uses)
     {
-        var declarations = Source[..Source.IndexOf("require sum", StringComparison.Ordinal)];
-        var c = MinimalEmissionTest.Analyze(declarations + "let value: " + type + " = 6\nlet result = quotient(value, 2)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Contains("128-bit division", failure, StringComparison.Ordinal);
+        var source = Source[..Source.IndexOf("require sum", StringComparison.Ordinal)] + uses;
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal("Unsupported_Kd left.divided(right)", MinimalEmissionTest.Problems(c)); // The shim's requesting call.
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -137,12 +140,12 @@ public class BuiltinArithmeticContractTest
     public void WarmNumericWitnessesReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

@@ -46,7 +46,7 @@ public class GenericCaptureLifecycleTest
     {
         var c = MinimalEmissionTest.Analyze(Take + "let input: Option<string> = .Some(\"owned\")\nlet result = take(input@move)\nlet values = take([1: \"value\"])");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

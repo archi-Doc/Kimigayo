@@ -67,16 +67,16 @@ public class SemanticsDefaultTest
         public void DefaultCasePlansReuseStorage()
         {
             var c = MinimalEmissionTest.Analyze(Read + Run);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
             var restored = CompilationTestHelper.Reload(c);
             Assert.True(restored.Bind().IsComplete);
             restored.Binding.CheckStartup(OutputKind.Application);
             Assert.True(restored.Analyze().IsVerified);
-            Assert.True(restored.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
+            Assert.True(restored.Generate(TextWriter.Null), MinimalEmissionTest.Describe(restored));
         }
     }
 }

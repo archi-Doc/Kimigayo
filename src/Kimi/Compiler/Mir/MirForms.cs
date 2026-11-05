@@ -112,7 +112,8 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
 
 /// <summary>What a Call calls: a Fn, Requirement or Virtual callee's function under its Subst (a Fn one's default template, plan 5.6.2, as
 /// its index plus 1 in <see cref="Arg"/>; a Virtual one's slot by the slot's function; a Requirement's dispatching Contract reference in
-/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>, its
+/// <see cref="Contract"/>, null for its requirement's own Contract; a Requirement's <see cref="ComparisonMode"/> in <see cref="Arg"/>, 0 but
+/// for a tuple operator's call, DECISIONS R5-M166) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>, its
 /// <see cref="Symbol"/> the library declaration of the compiler function it serves, under its Subst, whose parameters its first operands
 /// pass (those the builder adds follow them, MirDescriptors), or null for one without a library declaration, whose result holds no Loan
 /// (A3 E14, DECISIONS R4-M63); a Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken
@@ -199,7 +200,11 @@ internal readonly record struct MirLocal(
 internal readonly record struct MirScope(int Outer, MirScopeKind Kind, SourceRef Source);
 
 /// <summary>A constant; interned, so equal constants share one id.</summary>
-internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int128 Bits = default, object? Value = null);
+internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int128 Bits = default, object? Value = null)
+{
+    /// <summary>Gets a Location constant's site, the SourceRef its bits hold as <c>Module &lt;&lt; 32 | Id</c>.</summary>
+    internal SourceRef Site => new((ushort)(this.Bits >> 32), (int)(this.Bits & uint.MaxValue));
+}
 
 /// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,
 /// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects
@@ -219,5 +224,6 @@ internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count
 
 /// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
 /// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure
-/// body.</summary>
-internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject);
+/// body; the nodes Binding guessed its completion rests on (Binding.GuessedCompletionNodes), <see cref="Count"/> entries of
+/// <see cref="MirBody.GuessedSites"/> from <see cref="Start"/> (DECISIONS R5-M186).</summary>
+internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject, int Start, int Count);

@@ -55,6 +55,24 @@ public sealed partial class DiagnosticOwnerTest
         Assert.Equal(["ProjectPreparationFailed_Kd", "IndentationLevelMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code).Order(StringComparer.Ordinal).Reverse());
     }
 
+    // PLAN G175: the owner keys sources by document, so two snapshots of one path are two sources and the path cannot tell which one a
+    // record names. Reading the text by path fails explicitly instead of returning an earlier snapshot's text or failing out of range;
+    // a test that holds two snapshots names the one it reads.
+    [Theory]
+    [InlineData("let a = 1\n")]
+    [InlineData("abc")]
+    public void ReadingTextByAPathWithTwoSnapshotsFailsExplicitly(string earlier)
+    {
+        var c = Compilation.CreateForTest();
+        c.Diagnostics.AddInput(new SourceDocument("main.kimi", earlier), c.Kotonoha);
+        var later = new SourceDocument("main.kimi", "let value = 1\n");
+        c.Kotonoha.DiagnosticCollection.Add(new(4, 5), DiagnosticCode.IndentationLevelMismatch_Kd, sourceDocument: later);
+
+        var failure = Assert.Throws<InvalidOperationException>(() => TestDiagnostics.Of(c));
+        Assert.StartsWith("Two snapshots of 'main.kimi' are registered", failure.Message, StringComparison.Ordinal);
+        Assert.Equal("value", Assert.Single(TestDiagnostics.Of(c, later)).Text);
+    }
+
     [Fact]
     public void ALongLineIsClippedAroundItsUnderline()
     {
@@ -185,8 +203,8 @@ public sealed partial class DiagnosticOwnerTest
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("main.kimi", "consume(resource)\n");
         var target = owner.GetOrAddCollection("main.kimi").For(document);
-        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipRequirement.TransferRequired));
-        target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs:
+        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Binding(BindingFailure.TransferRequired));
+        target.Report(DiagnosticPartition.Binding, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs:
             [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
         var result = owner.Finalize();
 

@@ -61,32 +61,14 @@ public class VirtualDispatchTest
         ScalarEmissionTest.EmitFixture("VirtualDispatchAbi", Source, string.Empty);
     }
 
-    [Fact]
-    public void DirectDispatchUsesIndexedCallsWithoutAnItemAdapter()
-    {
-        var source = Hierarchy + "let c = C.init(3)@obj\nrequire c.nested() == 136 else => $abort(\"dispatch\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        var descriptor = Assert.Single(module.Objects);
-        Assert.Equal(3, descriptor.VirtualSlots.Length);
-        var calls = Enumerable.Range(0, module.FunctionCount).SelectMany(i => module.GetFunction(i).Instructions).Where(x => x.Opcode == EmissionOpcode.VirtualCall).ToArray();
-        Assert.NotEmpty(calls);
-        Assert.All(calls, call =>
-        {
-            Assert.InRange(call.Constant, 0, 2);
-            Assert.Equal("ptr", call.Callee!.Parameters[call.Place].Type);
-        });
-        Assert.DoesNotContain(Enumerable.Range(0, module.FunctionCount), i => module.GetFunction(i).Abi.Name.StartsWith("__kimi_virtual_item", StringComparison.Ordinal));
-    }
-
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmTableAndDispatchGenerationReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze(Hierarchy + "let c = C.init(3)@obj\nlet f: (objref/A, i32) -> i32 = C.value\nrequire f(c@objref/A, 2) == 35 else => $abort(\"erased\")");
-        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -101,10 +83,10 @@ public class VirtualDispatchTest
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
         var replacement = ParseTestHelper.Detach(changed.ExpressionBody!, new CodeBlockKoto(original.CodeContext));
         Assert.True(KotoHelper.Replace(original, original.ExpressionBody!, replacement));
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.WriteFixture("VirtualDispatchAfterEdit", CompilationTestHelper.WriteIr(c), "9\n", 0);
     }
 }

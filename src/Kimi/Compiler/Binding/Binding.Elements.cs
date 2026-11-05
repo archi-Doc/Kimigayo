@@ -31,9 +31,9 @@ public sealed partial class Binding
                     return this.CompleteDependent(source, source.Right); // The key's own failure explains the lookup.
                 }
 
-                if (!this.CheckTypeUse(actual, key, source.Right))
+                if (!this.CheckTypeUse(actual, key, source.Right, out var failure))
                 {
-                    return this.FailMismatch(source, source.Right, actual, key);
+                    return this.FailMismatch(source, source.Right, actual, key, failure);
                 }
 
                 return this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexedDictionary)
@@ -117,7 +117,9 @@ public sealed partial class Binding
             }
         }
 
-        if (ReferenceEquals(receiver, BoundType.Never) || ReferenceEquals(source.Right.BoundType, BoundType.Never))
+        // SPEC 3.1.3, 4.7.1: an element access is no Never form, so a diverging key leaves the element its Type, as an Array's; only a
+        // Never receiver, which has no elements, gives none (DECISIONS R5-M159).
+        if (ReferenceEquals(receiver, BoundType.Never))
         {
             return Complete(source, BoundType.Never);
         }

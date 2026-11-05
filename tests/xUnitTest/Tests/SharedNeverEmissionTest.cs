@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -20,13 +19,6 @@ public class SharedNeverEmissionTest
     public void DivergesWithoutAResultOrNormalReturn()
     {
         const string Source = "func spin<T>(value: ref/T) -> Never\n    loop => continue\nlet v = true\nspin(v)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        Assert.True(module.IsComplete);
-        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
-        Assert.True(instance.Abi.NoReturn);
-        Assert.False(instance.Abi.ResultSlot);
-        Assert.DoesNotContain(instance.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
         ScalarEmissionTest.EmitFixture("SharedNeverDivergence", Source, string.Empty, observationMilliseconds: 300);
     }
 }

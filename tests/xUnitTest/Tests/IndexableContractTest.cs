@@ -77,7 +77,7 @@ public class IndexableContractTest
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
@@ -89,7 +89,7 @@ public class IndexableContractTest
     public void APartBelowAStoredSharedReferenceKeepsItsOrigin(string receiver)
     {
         var c = MinimalEmissionTest.Analyze(Stored + $"func f(entries: {receiver}/Dictionary<i32, ref/Point during a>) -> ref/Inner during a\n    return entries[1].inner@ref");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -99,7 +99,7 @@ public class IndexableContractTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
@@ -171,12 +171,12 @@ public class IndexableContractTest
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var success = true;
             var binding = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             var ownership = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified);
-            var generation = AllocationMeasurement.Measure(() => success &= c.WriteIr(TextWriter.Null, out _));
+            var generation = AllocationMeasurement.Measure(() => success &= c.Generate(TextWriter.Null));
             Assert.True(success);
             return (binding, ownership, generation);
         }
@@ -252,6 +252,31 @@ public class IndexableContractTest
         Assert.StartsWith(note, record.Note);
     }
 
+    // SPEC 4.7.1, 8.6.1 (PLAN G290): among several Key conformances, the Note names the UniqIndexable conformance the check selected by
+    // the key, also one whose argument is a projection over the parameter or the parameter, as the closed twin does (before: on dev
+    // AmbiguousBinding_Kd for both, then a false "has no UniqIndexable conformance for this key").
+    [Theory]
+    [InlineData("    S is HasItem\n", "Option<S.(HasItem).Item>", "M<SrcI>", "Option<i32>")]
+    [InlineData("", "Option<S>", "M<string>", "Option<string>")]
+    [InlineData("", "Option<i32>", "M<string>", "Option<i32>")]
+    public void AKeyedUpdateWithoutIndexUniqNamesTheSelectedConformance(string premise, string key, string instance, string local)
+    {
+        var result = DiagnosticCorpus.Check(
+            "contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\nstruct Name\n    Self is Copy\n" +
+            $"    public let id: isize\n    public init(id: isize) => self.id = id\nstruct M<S>\n{premise}    Self is Indexable<{key}>\n" +
+            $"    Self is UniqIndexable<Name>\n    associate Indexable<{key}>.Element is i32\n    associate Indexable<Name>.Element is i64\n" +
+            "    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n" +
+            $"    public func index(self, key: ref/{key}) -> ref/i32 during self => self.small@ref\n" +
+            "    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/Name) -> uniq/i64 during self => self.large@uniq\n\n" +
+            $"    Self is UniqIndexable<{key}> when S is Copy\n" +
+            $"        public func indexUniq(self: uniq/Self, key: ref/{key}) -> uniq/i32 during self => self.small@uniq\n" +
+            $"public func main()\n    var m = {instance}.init(3, 4)\n    let k: {local} = .None\n    m[k] = 5\n");
+        var record = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), record.Code);
+        Assert.StartsWith($"{instance} conforms to UniqIndexable only under a condition that does not hold here", record.Note);
+    }
+
     // SPEC 8.5.5, 4.7.1: the reference results of index and indexUniq are evidence for Element like any function result; a written call
     // returns the reference itself, and only the index expression follows it.
     [Fact]
@@ -290,7 +315,7 @@ public class IndexableContractTest
     public void BoundContractReferencesKeepDistinctIdentities()
     {
         var c = MinimalEmissionTest.Analyze(Pair + "var pair = Pair<i32>.init(1, 2)\nrequire pair[0] == 1 else => $abort(\"x\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var uniqIndexable = c.Library.GetSymbol(KimiDeclarationId.UniqIndexable)!;
         Assert.Contains(uniqIndexable.Contract!.Ancestors, x => ReferenceEquals(x.Declaration, c.Library.GetSymbol(KimiDeclarationId.Indexable)!.Declaration) && !ReferenceEquals(x, c.Library.GetSymbol(KimiDeclarationId.Indexable)));
     }

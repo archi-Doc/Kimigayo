@@ -3,6 +3,7 @@
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -36,11 +37,12 @@ public sealed class MirCensusTest(ITestOutputHelper output)
     public void GoldensHaveNoProblems()
         => this.Census("goldens", MirDumpTest.Programs.Select(static x => (x.Data, MirDumpTest.Compile(x.Data))));
 
-    // Nor has a SPEC example variant without an Error record, as the milestones.
+    // Nor has a SPEC example variant without an Error record on MIR (its MIR expectation, as VerifiedSpecExampleTest reads it), as the
+    // milestones.
     [Fact]
     public void AcceptedSpecVariantsHaveNoProblems()
         => this.Census("spec", DiagnosticCorpus.SpecCases.SelectMany(static x => x.Variants.Select((y, i) => (Name: $"{x.Name}/{i}", Example: x, Variant: y)))
-            .Where(static x => x.Variant.Expected.Length == 0)
+            .Where(static x => (x.Variant.Mir?.Records ?? x.Variant.Expected).Length == 0)
             .Select(static x => (x.Name, VerifiedSpecExampleTest.Bind(DiagnosticCorpus.Source(x.Example, x.Variant)))));
 
     // The selected cases of the semantic snapshot corpus, bound as their snapshots are.
@@ -63,7 +65,7 @@ public sealed class MirCensusTest(ITestOutputHelper output)
             }
 
             var program = c.BuildMir();
-            foreach (var record in program.Records)
+            foreach (var record in program.Records(MirRecordClass.Construction))
             {
                 rows.Add(Row(name, complete, "B", record.Code, c.SyntaxOf(record.Subject), complete));
             }
@@ -75,6 +77,11 @@ public sealed class MirCensusTest(ITestOutputHelper output)
 
             foreach (var problem in program.Problems.All)
             {
+                if (problem.IsRecord)
+                {
+                    continue; // Its construction records are above; its collection records are no census row.
+                }
+
                 var analysis = MirDifferenceLedger.MirAnalysisOf(problem.Requirement, problem.Code) ?? "B";
                 rows.Add(Row(name, complete, analysis, problem.Code, c.SyntaxOf(problem.Subject), complete || analysis is "A5" or "B"));
             }

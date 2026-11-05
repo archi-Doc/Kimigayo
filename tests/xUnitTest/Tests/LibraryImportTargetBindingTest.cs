@@ -76,7 +76,7 @@ public class LibraryImportTargetBindingTest
         }
 
         Assert.True(type.RemoveAttribute(import));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(definition.IsVerified);
     }
 
@@ -86,7 +86,7 @@ public class LibraryImportTargetBindingTest
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value: i32) -> i32", "library");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var import = Assert.Single(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha);
         Assert.Equal(("library", "symbol", "import"), (import.Library, import.Symbol, import.Kind));
 
@@ -217,6 +217,8 @@ public class LibraryImportTargetBindingTest
     [InlineData("struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
     [InlineData("#Layout(\"C\")\nstruct S\n    public var a: bool", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
     [InlineData("struct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner", "(value: uniq/S)", DiagnosticCode.Unsupported_Kd, "uniq/S")]
+    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32\n    public var none: [0 of i32]", "(value: uniq/S)", DiagnosticCode.Unsupported_Kd, "uniq/S")]
     [InlineData("enum E\n    First\n    Second", "(value: E)", DiagnosticCode.Unsupported_Kd, "E")]
     [InlineData("struct S\n    public var a: i32", "(value: objref/S during a)", DiagnosticCode.Unsupported_Kd, "objref/S during a")]
     [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: objuniq/S during a)", DiagnosticCode.Unsupported_Kd, "objuniq/S during a")]
@@ -230,16 +232,13 @@ public class LibraryImportTargetBindingTest
         AssertImportRecord(c, code, at, code is null);
     }
 
-    // A borrow of a struct whose declaration already failed (SPEC 21.1: an open C struct, a zero-sized Field) rests on that error and
-    // adds no import record; Weak, which Binding does not support yet, has only its own record at its Type.
+    // A borrow of Weak, which Binding does not support yet, has only Weak's own record at its Type. (A borrow of a struct whose C layout is
+    // unavailable is 22.6's Unsupported_Kd above since DECISIONS R4-M134 Q8: the declaration is no error.)
     [Theory]
-    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", null, null)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32\n    public var none: [0 of i32]", "(value: uniq/S)", null, null)]
     [InlineData("struct S\n    public var a: i32", "(value: ref/Weak<rc/S>)", DiagnosticCode.Unsupported_Kd, "Weak")]
     public void AnImportRestsOnItsTypesOwnError(string declarations, string parameters, DiagnosticCode? code, string? at)
     {
         var c = AnalyzeImport(declarations + "\ngroup Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> i32", "codec");
-        Assert.Equal(code is null, CompilationTestHelper.BindingErrors(c).Any(static x => x.Code == nameof(DiagnosticCode.InvalidCLayout_Kd)));
         AssertImportRecord(c, code, at, false);
     }
 
@@ -411,6 +410,9 @@ public class LibraryImportTargetBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
     }
 
+    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (PLAN G329),
+    // so its import of a library other than kernel32 is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
+    // a missing requirement stays the Language error alone. Either way the import is no LibraryImports entry publication would link.
     [Theory]
     [InlineData(false, true, false)]
     [InlineData(true, false, true)]
@@ -431,8 +433,21 @@ public class LibraryImportTargetBindingTest
                     library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
                 }
             });
-        Assert.Equal(!missing, c.Bind().IsComplete);
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(missing, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.MissingNativeRequirement_Kd));
+        var unsupported = c.Binding.Issues.Where(x => x.Code == DiagnosticCode.Unsupported_Kd).ToArray();
+        Assert.Equal(missing ? 0 : 1, unsupported.Length);
+        Assert.All(unsupported, x => Assert.IsType<AttributeKoto>(x.Node));
+        Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Library == "codec");
+    }
+
+    // PLAN G329's twin: a dependency module's kernel32 import is linked, through the generated kernel32 import library.
+    [Fact]
+    public void ADependencyModuleImportsKernel32()
+    {
+        var c = ModuleBindingTest.Create("func main() => ()", "group Native\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func imported() -> i32");
+        Assert.True(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.LibraryImports, x => x.Symbol == "VirtualAlloc" && x.Decl.Declaration.CodeContext.Kotonoha != c.Kotonoha);
     }
 
     [Theory]

@@ -5,9 +5,9 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn largest @4
-  _0: T return @4
-  _1: ref/Array<T> arg values @4
-  _2: T arg fallback @4
+  _0: T return @17
+  _1: ref/Array<T> arg values @12
+  _2: T arg fallback @16
   _3: T var mut best @19 s1
   _4: () temp @22 s1
   _5: ArrayIterator<T> temp @22 s1
@@ -25,7 +25,7 @@ fn largest @4
   _17: T temp @32 s4
   _18: isize temp @108 s1
   _19: T temp @37 s1
-  _20: T temp @4
+  _20: T temp (Result) @4
   s1: lexical in s0 @18
   s2: lexical in s1 @22
   s3: lexical in s2 @25
@@ -121,10 +121,10 @@ fn largest @4
   bb18:
       return @4
   bb19:
-      _0 = move _20 @36 s1
-      goto bb18 @36 s1
+      _0 = move _20 @4
+      goto bb18 @4
   bb20:
-      drop _2 -> bb21 [keep] @4
+      drop _2 -> bb21 [keep] @16
   bb21:
       goto bb19 @4
   bb22:
@@ -147,19 +147,19 @@ fn largest @4
       drop _3 -> bb29 @19 s1
   bb29:
       StorageDead(_3) @19 s1
-      drop _2 -> bb30 @4
+      drop _2 -> bb30 @16
   bb30:
       unreachable @18
 fn use @38
-  _0: i64 return @38
-  _1: ref/Array<i64> arg values @38
+  _0: i64 return @43
+  _1: ref/Array<i64> arg values @39
   bb0:
     * _0 = largest<i64>(copy _1, const 0_i64) -> bb1 @44
   bb1:
       return @44
 fn wrapSome @48
-  _0: Option<T> return @48
-  _1: T arg x @48
+  _0: Option<T> return @51
+  _1: T arg x @50
   _2: T temp @58
   bb0:
       StorageLive(_2) @58
@@ -168,19 +168,19 @@ fn wrapSome @48
       drop _2 -> bb1 [elide] @58
   bb1:
       StorageDead(_2) @58
-      drop _1 -> bb2 [elide] @48
+      drop _1 -> bb2 [elide] @50
   bb2:
       return @55
 fn unwrapTry @61
-  _0: Option<T> return @61
-  _1: Option<T> arg x @61
+  _0: Option<T> return @65
+  _1: Option<T> arg x @63
   _2: T temp @70
   _3: Option<T> temp (Subject) @71
   _4: isize temp @74
   _5: T var $try.value @78 s1
   _6: isize temp @113
   _7: Option<T> temp @115 s2
-  _8: Option<T> temp @61
+  _8: Option<T> temp (Result) @61
   s1: lexical in s0 @74
   s2: lexical in s0 @113
   bb0:
@@ -193,7 +193,7 @@ fn unwrapTry @61
   bb1:
       StorageDead(_6) @113
       StorageDead(_4) @74
-      drop _3 -> bb20 [open ((_ as case 0) open (.0 elide))] @71
+      drop _3 -> bb19 [open ((_ as case 0) open (.0 elide))] @71
   bb2:
       StorageLive(_6) @113
       _6 = discriminant(_3) @113
@@ -211,47 +211,45 @@ fn unwrapTry @61
   bb6:
       StorageLive(_7) @115 s2
     * _7 = Adt case 1(): Option<T> @115 s2
-      goto bb17 check bb18 @89 s2
+      goto bb16 check bb17 @89 s2
   bb7:
       return @61
   bb8:
-      _0 = move _8 @89 s2
-      goto bb7 @89 s2
+      _0 = move _8 @61
+      goto bb7 @61
   bb9:
-      drop _1 -> bb10 [elide] @61
+      drop _1 -> bb10 [elide] @63
   bb10:
       goto bb8 @61
   bb11:
-      drop _2 -> bb12 [elide] @70
-  bb12:
       StorageDead(_2) @70
       goto bb9 @61
-  bb13:
+  bb12:
       StorageDead(_6) @113
       StorageDead(_4) @74
-      drop _3 -> bb14 [keep] @71
-  bb14:
+      drop _3 -> bb13 [keep] @71
+  bb13:
       StorageDead(_3) @71
       goto bb11 @61
+  bb14:
+      drop _7 -> bb15 [elide] @115 s2
   bb15:
-      drop _7 -> bb16 [elide] @115 s2
-  bb16:
       StorageDead(_7) @115 s2
-      goto bb13 @61
-  bb17:
+      goto bb12 @61
+  bb16:
       _8 = move _7 @89 s2
-      goto bb15 @89 s2
+      goto bb14 @89 s2
+  bb17:
+      drop _7 -> bb18 @115 s2
   bb18:
-      drop _7 -> bb19 @115 s2
-  bb19:
       StorageDead(_7) @115 s2
       unreachable check bb1 @89
-  bb20:
+  bb19:
       StorageDead(_3) @71
       _0 = Adt case 0(move _2): Option<T> @67
-      drop _2 -> bb21 [elide] @70
-  bb21:
+      drop _2 -> bb20 [elide] @70
+  bb20:
       StorageDead(_2) @70
-      drop _1 -> bb22 [elide] @61
-  bb22:
+      drop _1 -> bb21 [elide] @63
+  bb21:
       return @67

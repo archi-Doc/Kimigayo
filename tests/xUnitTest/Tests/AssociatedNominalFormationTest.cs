@@ -21,7 +21,7 @@ public class AssociatedNominalFormationTest
     public void NominalFamilyPreventsConflictingMutation()
     {
         var c = MinimalEmissionTest.Analyze(View + Family + "var value = 7\nlet view = wrap(value@ref)\nvalue = 9\nrequire view.value == 7 else => $abort(\"view\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
     }
 
@@ -34,7 +34,7 @@ public class AssociatedNominalFormationTest
     public void BorrowOfNominalTypePublishesStoredOriginConditions(string relation)
     {
         var c = MinimalEmissionTest.Analyze(View + "contract C\n    associate Item(a, b) is ref/(View during a) during b\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    $abort(\"unused\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -45,7 +45,7 @@ public class AssociatedNominalFormationTest
         const string declarations = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\ncontract C\n    associate Item(a) is Box<ref/i32 during a>\nstruct S\n    Self is C\nfunc wrap(value: ref/i32 during a) -> S.Item(a) => Box<ref/i32 during a>.init(value)\n";
         var source = declarations + "var value = 7\nlet box = wrap(value@ref)\n" + (mutate ? "value = 9\n" : string.Empty) + "require box.value == 7 else => $abort(\"box\")\nConsole.writeLine(\"box\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(!mutate, c.Analysis.IsVerified);
         if (!mutate)
         {

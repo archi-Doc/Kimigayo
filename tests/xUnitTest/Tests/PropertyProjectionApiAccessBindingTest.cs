@@ -15,11 +15,11 @@ public class PropertyProjectionApiAccessBindingTest
     public void RestrictedAccessorsCannotHideHeaderProjectionDomains(string declaration)
     {
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    {declaration}");
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var property = Property(c);
         Assert.Equal(BindingFailure.Access, property.FailureOf());
         Assert.False(property.SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -28,10 +28,10 @@ public class PropertyProjectionApiAccessBindingTest
     public void AdditionalAccessorSignaturesRetainProjectionDomains(string accessors)
     {
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public computed item: i32\n        {accessors}");
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Property(c).SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -173,7 +173,7 @@ public class PropertyProjectionApiAccessBindingTest
             : new CodeBlockKoto(replacement.CodeContext);
         ParseTestHelper.Detach(replacement, placeholder);
         Assert.True(KotoHelper.Replace(property, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(property.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));
         Assert.False(c.Bind().IsComplete);
@@ -203,7 +203,7 @@ public class PropertyProjectionApiAccessBindingTest
         {
             Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access &&
                 (accessor ? x.Node is PropertyAccessorKoto : x.Node is PropertyKoto));
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 

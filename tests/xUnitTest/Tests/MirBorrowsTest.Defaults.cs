@@ -136,23 +136,47 @@ public sealed partial class MirBorrowsTest
                     _ = rr(v@uniq, w@ref, 3)
                 """));
 
-    // r3 (R4-M93; PLAN G160, registered for X-2): a default may write through a raw pointer it reads from a slot (SPEC 5.2.1), which no
-    // row of its template call follows, so a template call whose slot's Type holds raw authority while its inputs' values hold a Loan is a
-    // located Unsupported_Kd at the call, never a Language problem (storing every input into E would make the valid `w = 5` an error,
-    // R4-M93): a raw-only slot (rawRec, which still errs at `v = 5` by the omitting call's own row, rule G's raw clause),
-    // one beside an input the default never stores (unrelated: `w = 5` is valid; in its local twin `var v = 1` is SPEC's error, v's end
-    // while the call's own row keeps v's Loan in raw storage, which may be used after every point, SPEC 15.6, as `rawStoredLocal`'s), a
-    // raw pointer in a holder that holds a Loan (hid, an unsound acceptance before) and its valid twin; inputs whose values hold no Loan
-    // give none (rawParam).
+    // SPEC 7.2.3, 5.2.1 Retained dependencies (DECISIONS R4-M116 PQ-5; R4-M93's r3 removed): a default may write through a raw pointer it
+    // reads from a slot, and those stores are part of the omitting call, which can make the call invalid only through the effects it
+    // contributes: its own rows apply them at the call to the holders the slot's value reaches, while the template call stores nothing.
+    // A raw-only slot errs at `v = 5` by the omitting call's own row (rawRec); one beside an input the default never stores is valid
+    // (unrelated), its local twin's `var v = 1` SPEC's error (v's end while the call's row keeps v's Loan in raw storage, which may be used
+    // after every point, as `rawStoredLocal`'s); a raw pointer in a holder read past a shared layer writes nothing (hid, valid by
+    // condition 3); inputs whose values hold no Loan give none (rawParam). Between a template call and its call only other defaults run,
+    // and what they read back through the pointer the call retains per argument: a later default reading back the stored Loan into the
+    // result keeps it (window1) or into a holder the pointer addresses (window2); with no later use the call is valid (window3).
     [Fact]
-    public void ARawSlotAtATemplateCallIsUnsupported()
+    public void ADefaultsRawStoresAreItsCallsOwn()
         => Assert.Equal(
-            [
-                "rawRec: putr(rp, v@ref, 3) Unsupported_Kd", "rawRec: v = 5", "unrelated: putz(rp, v, w@ref, 3) Unsupported_Kd",
-                "unrelatedLocal: putz(rp, v@ref, w@ref, 3) Unsupported_Kd", "unrelatedLocal: var v = 1", "hid: putb(box@ref, v@ref, 3) Unsupported_Kd",
-                "hidValid: putb(box@ref, v@ref, 3) Unsupported_Kd",
-            ],
+            ["window1: v = 5", "window2: v = 5", "rawRec: v = 5", "unrelatedLocal: var v = 1"],
             AllProblems(Recursive + """
+                func store(p: raw/(ref/i32 during a), x: ref/i32 during a) -> i32
+                    unsafe => Raw.initialize(p, x)
+                    return 0
+                func readBack(p: raw/(ref/i32 during a)) -> ref/i32 during a
+                    unsafe => return *p
+                func putrb(p: raw/(ref/i32 during a), x: ref/i32 during a, y: i32 = store(p, x), z: ref/i32 during a = readBack(p)) -> ref/i32 during a
+                    return z
+                func window1()
+                    var u: i32 = 0
+                    var v: i32 = 1
+                    var w: ref/i32 = u@ref
+                    let r = putrb(w@raw, v@ref)
+                    v = 5
+                    inspect(r)
+                func window2()
+                    var u: i32 = 0
+                    var v: i32 = 1
+                    var w: ref/i32 = u@ref
+                    _ = putrb(w@raw, v@ref)
+                    v = 5
+                    inspect(w)
+                func window3()
+                    var u: i32 = 0
+                    var v: i32 = 1
+                    var w: ref/i32 = u@ref
+                    _ = putrb(w@raw, v@ref)
+                    v = 5
                 func rawRec()
                     var v = 1
                     let rp: raw/(ref/i32) = Raw.allocate(1)
@@ -206,7 +230,7 @@ public sealed partial class MirBorrowsTest
         static string Calls(int n, int m) => string.Concat(Enumerable.Repeat(Expand("    _ = fN(«N:r, »3)\n", n, 0), m));
     }
 
-    // V16: template calls, r3's walk included, allocate nothing on a program version A5 checked before.
+    // V16: template calls, a raw slot's addresses included, allocate nothing on a program version A5 checked before.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ATemplateCallsWarmRunAllocatesNothing()
@@ -216,7 +240,7 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(["live: n = 4", "hid: putb(box@ref, v@ref, 3) Unsupported_Kd"], Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        Assert.Equal(["live: n = 4"], Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // R26-borrow (SPEC 7.2.3, PD15 (iv); R4-M98 D3): a default's result keeps no new Borrow or Reborrow of a preceding argument, nor does
@@ -380,25 +404,6 @@ public sealed partial class MirBorrowsTest
             program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => DefaultCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
-
-    // R4-M73 (R4-M98 D7): R26 records through the body hold, so a held template's (g1's loop inside the default) is the located
-    // Unsupported_Kd at the Borrow, beside the hold's own record.
-    [Fact]
-    public void AHeldTemplatesSlotProblemIsUnsupported()
-        => Assert.Equal(
-            ["heldT: xs.append(b) Unsupported_Kd", "heldT: var xs: Array<T> = [] Unsupported_Kd", "heldT: x Unsupported_Kd"],
-            AllProblems("""
-                func heldT<T>(a: T, b: T, x: uniq/i32 during q, y: ref/i32 during q = label w: do
-                    var xs: Array<T> = []
-                    xs.append(a)
-                    for e in xs
-                        _ = e
-                    xs.append(b)
-                    exit to w x
-                ) -> ()
-                    T is Copy
-                    return
-                """));
 
     // V16 "F9 prepared inputs" (A3 6.2; VERIFICATION has no V16 table): a default keeping a Reborrow of each of N preceding parameters in its
     // result. Its work is dense, as its twin's, a function returning the same Tuple: each Reborrow's check scans the temps live across it
@@ -608,6 +613,32 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(moved[0].Place, inspection.Rvalue.Place);
     }
 
+    // SPEC 23.1.2 (DECISIONS R4-M127, R4-M139): a default the call's substitution does not instantiate is an Opaque value at the call
+    // (MirBuildTest's ACopyTheCallDoesNotInstantiateIsAnOpaqueValue), and one over storage Binding rejected a copy (its
+    // ACopyOverRejectedStorageIsBuilt), so no validator finding hides the caller's independent records: `v = 2` stays, over storage Binding
+    // rejected and in a complete program past the storage depth, as in the twins. The depth limit at lim's and lim64's calls (the owner's
+    // 「G272: (1)」, R4-M153) is A5's own, their retention past the depth bound (CallRetention.Limit, a genuine limit); a call over storage Binding rejected
+    // keeps its other rows instead (DECISIONS BU-36, SPEC 23.1.2). Before, the copies' Type findings left both programs unanalyzed.
+    [Fact]
+    public void AnUninstantiableDefaultHidesNoRecord()
+    {
+        Assert.Equal(
+            ["dep: v = 2", "dep3: v = 2", "dep2: v = 2", "val: v = 2", "val2: v = 2"],
+            Analyzed(MirBuildTest.RejectedCopies));
+        Assert.Equal(
+            ["lim: f(b) OwnershipDepthLimit_Kd", "lim: v = 2", "lim64: f(b) OwnershipDepthLimit_Kd", "lim64: v = 2", "n30: v = 2"],
+            Analyzed(MirBuildTest.LimitCopies));
+
+        // The pipeline's own analyses (MirAnalysis), which analyze nothing in a program with a validator finding.
+        static string[] Analyzed(string source)
+        {
+            var c = MirBuildTest.Compile(source);
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            return Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]);
+        }
+    }
+
     // V16 "F9 omitting calls" (A3 6.2; VERIFICATION has no V16 table): N omitting calls in one body, each moving a slot its default inspected.
     // R-a's term is one memoized Remove per holder at each such call in every solve pass and in the replay (E8's dense term, N × holders);
     // it replaces the taint's two scope walks per pending-slot store. The shape's work is dense, as E8's ended points × holders are (2e-3
@@ -643,7 +674,7 @@ public sealed partial class MirBorrowsTest
     // its argument exclusively, touch writes counter (A4's key), peek and peekCount read it. Templates: add's default pokes counter (PLAN
     // G171; addOther and addRead the disjoint and read-only twins, Counter.add the effect form), f's omits g's (§4 row 1), f2 keeps its own
     // Loan across g's copy (row 2), g5 and add5 conflict inside themselves (r before the poke),
-    // f5 omits g5's (row 5), local3 conflicts on its own local, addg is generic, addh is held (e17's store prefix, then g5's conflict), addl's
+    // f5 omits g5's (row 5), local3 conflicts on its own local, addg is generic, addh has e17's generic loop, then g5's conflict, addl's
     // default passes A4's Limit, setd replaces a static whose old value's drop reads it (R3), gd's guard lets its candidate escape, keepd
     // copies a preceding argument (DefaultAccessTest :17's form) and effOwn's touch meets its own Loan of counter (err(effect)).
     private const string Copies = """
@@ -747,8 +778,8 @@ public sealed partial class MirBorrowsTest
     // default or a caller or a receiver's (fx), as the located Unsupported_Kd, so A5 meets none of their Loans: the caller-owned rows (G171,
     // its effect form, n1, twiceBoth, first, gen, held's omitting call) and the templates' static conflicts (f2, g5, add5, addh, effOwn, the
     // Limit addl's copy meets) are ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted's (R4-M107). Kept, with local Loans only: local3's
-    // own conflict, held's and limit's callers' own conflicts (held's no longer held, as its call rests on its written Borrow's record and
-    // inlines no copy) and a guard across a copy (guardAcross, the caller's EndBorrow); template-owned
+    // own conflict, held's and limit's callers' own conflicts (held's call rests on its written Borrow's record and inlines no copy) and a
+    // guard across a copy (guardAcross, the caller's EndBorrow); template-owned
     // and omitted in the caller with the template's record: R3 in a copy (setd) and a guard escaping inside a copy (gd). Not Binding-valid, as
     // their earlier or sibling Loan rides in a default's value (SPEC 15.6: a Borrow of mutable static storage is bounded by the body): dc20-n3,
     // -n3top, -n4, -sib, -twice, -indep, dc20-loop, -loop-nested and the review's loop rows (dc20r-loop-e, -fx, -slot, -closure,
@@ -1003,9 +1034,9 @@ public sealed partial class MirBorrowsTest
         return [.. program.Problems.Facts(problem).ToArray().Select(x => $"{x.Kind} {Line(c, x.Site)}")];
     }
 
-    // The codes of A5's Loan stratum, its template rules and its located Unsupported_Kd.
-    private static DiagnosticCode[] DefaultCodes => [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.DefaultArgumentAccess_Kd,
-        DiagnosticCode.DefaultArgumentBorrow_Kd];
+    // The codes of A5's Loan stratum, its template rules and its limit records (a located Unsupported_Kd, the depth limit).
+    private static DiagnosticCode[] DefaultCodes => [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd,
+        DiagnosticCode.DefaultArgumentAccess_Kd, DiagnosticCode.DefaultArgumentBorrow_Kd];
 
     // The Loan, default and Unsupported_Kd problems of a program's own bodies.
     private static string[] AllProblems(string source)

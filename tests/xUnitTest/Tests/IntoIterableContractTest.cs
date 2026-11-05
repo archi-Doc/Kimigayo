@@ -43,13 +43,13 @@ public class IntoIterableContractTest
     public void GenericItemUsesCompleteTypesForEveryContract()
     {
         var kimi = MinimalEmissionTest.Analyze(Drain + "struct Batch<T>\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is Drain<T>\n    let cursor: Drain<T>\n    public init(a: T) => self.cursor = Drain<T>.init(a@move)\n    public func intoIterator(self: Self) -> Drain<T> => self.cursor@move");
-        Assert.True(kimi.Binding.Result.IsComplete, MinimalEmissionTest.Describe(kimi, null));
+        Assert.True(kimi.Binding.Result.IsComplete, MinimalEmissionTest.Describe(kimi));
 
         // Ordinary Contracts use the same complete-Type binding rule as Iterator.
         var user = MinimalEmissionTest.Analyze(
             "public contract Source\n    associate Item\n    func next(self: uniq/Self) -> Option<Self.Item>\n" +
             "struct Pass<T>\n    Self is Source\n    associate Source.Item is T\n    var first: Option<T>\n    public func next(self: uniq/Self) -> Option<T> => Kimi.Intrinsics.exchange(self.first@uniq, with: .None)");
-        Assert.True(user.Binding.Result.IsComplete, MinimalEmissionTest.Describe(user, null));
+        Assert.True(user.Binding.Result.IsComplete, MinimalEmissionTest.Describe(user));
     }
 
     [Theory]

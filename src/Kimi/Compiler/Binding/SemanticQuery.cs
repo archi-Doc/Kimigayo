@@ -45,7 +45,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal BoundRuntimeTypeTest? RuntimeTestOf(IsKoto node) => node.BoundRuntimeTest;
 
-    internal BoundClosure? ClosureOf(FunctionKoto node) => node.BoundClosure;
+    internal BoundClosure? ClosureOf(FunctionKoto node) => node.ClosureAsCreated;
 
     // The kind and the folded constant are the conversion's plan row; the creation and the adaptation count only for their kind.
     internal (ConversionBinding Kind, InvocationKoto? Creation, ExplicitAdaptationPlan? Adaptation, Int128? Folded) ConversionOf(ConversionKoto node)

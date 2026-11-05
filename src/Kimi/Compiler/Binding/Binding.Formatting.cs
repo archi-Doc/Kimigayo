@@ -6,60 +6,15 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7) and TryResolveFormattingCallback's (H11).")]
+    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7).")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, string? Name), (ulong Version, CallPlan Call)> requirementCalls = new();
-    private readonly Dictionary<BoundType, CallPlan> destructionCalls = new(ReferenceEqualityComparer.Instance);
     private BindingSymbol? builtinFormat;
     private BindingSymbol? builtinEquals;
     private BindingSymbol? builtinCompare;
 
-    internal static bool HasFormattingCallback(CallPlan call)
-        => call.Target.CompilerFunction is CompilerFunctionKind.TextWriter or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat;
-
-    // The same finalized callback is consumed by effect checking and generation.
-    // Text.writer retains its reserve callback; creating the adapter does not invoke it.
-    internal bool TryResolveFormattingCallback(CallPlan site, out CallPlan? implementation)
-    {
-        implementation = null;
-        if (!HasFormattingCallback(site) || site.TypeArguments.Length != (site.Target.CompilerFunction == CompilerFunctionKind.TextTryFormat ? 2 : 1) ||
-            site.TypeArguments[0] is not { } self)
-        {
-            return false;
-        }
-
-        var writer = site.Target.CompilerFunction == CompilerFunctionKind.TextWriter;
-        if (writer ? self.Symbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.HeapBuffer : FormattingTypes.IsBuiltin(self))
-        {
-            return true;
-        }
-
-        implementation = this.RequirementImplementation(site, self, writer ? KimiDeclarationId.BufferWriter : KimiDeclarationId.Utf8Format);
-        return implementation is not null;
-    }
-
-    internal CallPlan? DestructionCall(BoundType type)
-    {
-        if (AdtDef.Destructor(type)?.BoundSymbol is not { } destructor)
-        {
-            return null;
-        }
-
-        if (!this.destructionCalls.TryGetValue(type, out var call))
-        {
-            this.destructionCalls.Add(type, call = new());
-        }
-
-        call.Set(destructor, BoundType.Unit, null, [], [], declaringType: type);
-        return call;
-    }
-
     // Compiler-created calls use the same verified witness and storage substitution as source calls.
     // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
-    [Transitional("R6", Reason = "H11 deletes it with TryResolveFormattingCallback.")]
-    internal CallPlan? RequirementImplementation(CallPlan site, BoundType self, KimiDeclarationId identity, string? name = null)
-        => this.RequirementImplementation(site.Target, self, identity, name);
-
-    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7) and TryResolveFormattingCallback's (H11).")]
+    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7).")]
     private CallPlan? RequirementImplementation(BindingSymbol site, BoundType self, KimiDeclarationId identity, string? name = null)
     {
         var key = (site, self, identity, name);

@@ -57,9 +57,9 @@ internal static class CompilationTestHelper
     internal static string WriteIr(Compilation c)
     {
         using var writer = new StringWriter();
-        if (!c.WriteIr(writer, out var error))
+        if (!c.Generate(writer))
         {
-            Assert.Fail(MinimalEmissionTest.Describe(c, error));
+            Assert.Fail(MinimalEmissionTest.Describe(c));
         }
 
         return writer.ToString();
@@ -85,5 +85,5 @@ internal static class CompilationTestHelper
 
     // The problem codes of an unproven Origin obligation: what is unproven decides the code (OwnershipIssue.Code).
     internal static bool IsUnprovenOrigin(this DiagnosticCode code)
-        => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd or DiagnosticCode.UnprovenConstraint_Kd;
+        => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd;
 }

@@ -147,6 +147,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] is "--collection-cost" or "--collection-cost-check")
+        {
+            CollectionCostMeasurements.Run(args[0] == "--collection-cost-check");
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--syntax-edits")
         {
             SyntaxEditMeasurements.Run();

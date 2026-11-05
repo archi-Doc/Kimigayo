@@ -6,39 +6,12 @@ namespace Kimi.Compiler;
 
 // The Types of locals over the local-region graph (SPEC 15.4.4): a mutable local's Type opened into region slots (LocalBorrowType), a
 // result's local regions resolved to their sources (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts
-// (HasLocalRegion, HasRegionBounds, CarrierOf, CheckLocalTypeUse).
+// (HasLocalRegion, which also counts a pending atom, HasRegionBounds, CarrierOf, CheckLocalTypeUse).
 public sealed partial class Binding
 {
-    internal static bool HasLocalRegion(BoundType type)
-    {
-        if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
-        {
-            return false;
-        }
-
-        if ((type.Origin ?? type.RawOrigin) is { } origin && HasLocalRegion(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (HasLocalRegion(type.OriginArguments[i]))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasLocalRegion(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // Whether an Origin of the Type's parts, a raw layer's included, is a local region or a pending atom; a Function or Function Item part
+    // keeps its own, so no Origin summary answers it, and each distinct part is visited once per query (DECISIONS BU-19, BU-63).
+    internal bool HasLocalRegion(BoundType type) => this.LocalRegionPart(type, this.visitedParts.Begin(this.storageVersion));
 
     // SPEC 15.6, 15.6.5: the Origin, read at a use, through which a value of a Type carries `origin`, judged without flow: one the Type
     // names (a meet operand included) or a local region with `origin` among its sources; null when the value does not carry it.
@@ -71,9 +44,11 @@ public sealed partial class Binding
     // Whether an Origin of the Type's parts has region bounds; each distinct part is visited once per query (DECISIONS BU-19).
     internal bool HasRegionBounds(BoundType type) => this.RegionBoundsPart(type, this.visitedParts.Begin(this.storageVersion));
 
+    // A pending atom (SPEC 15.6.5; DECISIONS R4-M126 §2.5) is fitted as a local region is: the fit checks the structure now and leaves
+    // its Origin positions as obligations, judged once the Closure is classified.
     private static bool HasLocalRegion(BoundOrigin origin)
     {
-        if (IsLocalRegion(origin))
+        if (IsLocalRegion(origin) || PendingAtom(origin))
         {
             return true;
         }
@@ -92,6 +67,37 @@ public sealed partial class Binding
     // An Origin of a Type read at a use, when it carries `origin` (CarrierOf).
     private BoundOrigin? RegionCarrier(BoundOrigin? expression, BoundOrigin origin, Koto use)
         => expression is not null && this.OriginAtUse(expression, use) is var read && this.RegionContains(read, origin) ? read : null;
+
+    private bool LocalRegionPart(BoundType type, uint query)
+    {
+        if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
+        {
+            return false;
+        }
+
+        if ((type.Origin ?? type.RawOrigin) is { } origin && HasLocalRegion(origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (HasLocalRegion(type.OriginArguments[i]))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && this.LocalRegionPart(type.Components[i], query))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private bool RegionBoundsPart(BoundType type, uint query)
     {
@@ -133,7 +139,7 @@ public sealed partial class Binding
         }
 
         var result = Open(type);
-        _ = this.CheckTypeUse(type, result, value);
+        _ = this.CheckTypeUse(type, result, value, out _);
         return result;
 
         BoundType Open(BoundType current)
@@ -171,7 +177,7 @@ public sealed partial class Binding
 
     private BoundType ResolveLocalResultOrigins(BoundType type)
     {
-        if (!HasLocalRegion(type))
+        if (!this.HasLocalRegion(type))
         {
             return type;
         }
@@ -239,5 +245,5 @@ public sealed partial class Binding
     }
 
     private bool CheckLocalTypeUse(BoundType actual, BoundType expected, Koto use)
-        => (HasLocalRegion(actual) || HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use);
+        => (this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use, out _);
 }

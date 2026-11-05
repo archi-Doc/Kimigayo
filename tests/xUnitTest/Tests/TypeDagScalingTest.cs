@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -12,7 +14,7 @@ namespace XunitTest;
 /// scaling row sizes its shape so that a walk that re-visits shared parts meets 2^26 or more paths (hours) while the DAG walk takes
 /// milliseconds; a regression shows as a hang, which the runner's process timeout reports, as <see cref="InferenceSlotScalingTest"/>'s
 /// does.</summary>
-public class TypeDagScalingTest
+public partial class TypeDagScalingTest
 {
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
@@ -24,12 +26,12 @@ public class TypeDagScalingTest
     public void BindingWalksAreLinearInDistinctParts(string shape, int size)
     {
         var c = MirBuildTest.Compile(Source(shape, size));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Empty(set.Records);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
         if (shape.StartsWith("chain", StringComparison.Ordinal))
         {
             Assert.Equal(size + 1, Instances(set, "f"));
@@ -44,7 +46,7 @@ public class TypeDagScalingTest
         const string Source = "func make<T>(x: T) -> ()\n    T is Copy\n    let f = func [x] () => x\n    let g = func [x] () => x\n    let p = ((f, g), (f, g))\n" +
             "    let q = (p, p)\n    let r = q.0.0.0()\n    let s = q.1.1.1()\n    return\npublic func main() -> ()\n    make(1)\n    make(true)\n    return\n";
         var c = MirBuildTest.Compile(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var environments = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(static x => x.ClosureOf()!.EnvironmentType!).ToArray();
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "make").Select(x => c.Types.SubstOf(x.CallOf()!)!).ToArray();
@@ -64,7 +66,7 @@ public class TypeDagScalingTest
 
         Assert.NotSame(closed[0], closed[1]);
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Empty(set.Records);
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
     }
 
     // DECISIONS BU-19 (R5's condition for the closing table): an edit leaves no closing answer behind, so a closure whose signature an
@@ -77,13 +79,14 @@ public class TypeDagScalingTest
         const string After = "func make<T>(x: T) -> ()\n    T is Copy\n    let f = func [x] () -> (T, T) => (x, x)\n    let r = f()\n    return\n";
         const string Main = "public func main() -> ()\n    make(1)\n    return\n";
         var c = MirBuildTest.Compile(Before + Main);
-        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+        new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
         Assert.Equal("i32", Binding.DiagnosticTypeName(Result(c)));
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "make");
         var replacement = KotoTree.Walk(ParseTestHelper.ParseSuccess(After + Main).RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "make");
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal("(i32, i32)", Binding.DiagnosticTypeName(Result(c)));
 
         // The closure's result Type in the instance make<i32>.
@@ -104,9 +107,9 @@ public class TypeDagScalingTest
         const string Source = "func f<length N>(a: [N of i32]) -> i32\n    let t = (a, a)\n    let u = (t, t)\n    return u.0.0[0]\npublic func main() -> ()\n" +
             "    let a: [3 of i32] = [1, 2, 3]\n    require f(a) == 1 else => $abort(\"x\")\n    return\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.Empty(set.Records);
+        Assert.Empty(c.BuildMir().Records(MirRecordClass.Collection));
         Assert.Equal(1, Instances(set, "f"));
     }
 
@@ -121,7 +124,7 @@ public class TypeDagScalingTest
 
     // The old analysis's walks (the owner's D5 exception): whether a cleanup observes Loans over shared struct, enum and Tuple parts,
     // generic ones too, Origin projections and Loan dependencies over shared Origin-carrying parts, the completion of shared Tuples; for
-    // the instance chains also the old Emission's instance analyses.
+    // the instance chains also their collection and code generation.
     [Theory]
     [InlineData("structs", 28)]
     [InlineData("structUses", 24)]
@@ -133,30 +136,43 @@ public class TypeDagScalingTest
     [InlineData("chainValues", 26)]
     public void OldAnalysisWalksAreLinearInDistinctParts(string shape, int size)
     {
-        var c = OldPath(Source(shape, size));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var c = Checked(Source(shape, size));
+
+        // originLets' last Tuple holds 2^28 references, 2^31 bytes, past the layout size bound: check's one record, at the local's
+        // declaration (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+        var bound = shape == "originLets" ? "GenerationResourceLimit_Kd let a27 = (a26, a26)" : string.Empty;
+        Assert.Equal(bound, MinimalEmissionTest.Problems(c));
+        Assert.Equal(bound.Length == 0, c.Analysis.IsVerified);
         if (shape.StartsWith("chain", StringComparison.Ordinal))
         {
-            Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         }
     }
 
-    // SPEC 15.6.6: a part shared at depth 0 and 60 or 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later
-    // write conflicts with the Loan the bound retains, at 60 it does not.
+    // SPEC 15.6.6: a part shared at depth 0 and 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later write
+    // meets A5's depth bound, a located OwnershipDepthLimit_Kd at `let d` (DECISIONS R4-M153), where the old analysis's bound retained the
+    // Loan and the write conflicted with it (R6-check H5; H3b T48, class 3); without the write there is none. At 70 each Tuple more than
+    // 64 levels high is also a layout depth record at check, one per erased Type (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
     [Theory]
-    [InlineData(60, false, true, "")]
-    [InlineData(60, true, true, "")]
     [InlineData(70, false, false, "")]
-    [InlineData(70, false, true, "ComparisonLoanConflict_Kd")]
-    [InlineData(70, true, true, "ComparisonLoanConflict_Kd")]
+    [InlineData(70, false, true, "OwnershipDepthLimit_Kd")]
+    [InlineData(70, true, true, "OwnershipDepthLimit_Kd")]
     public void ADeepSharedPartKeepsTheBoundsVerdict(int depth, bool shallowFirst, bool written, string code)
-    {
-        var deep = $"    let d = {Nest(depth)}\n";
-        var shallow = $"    let s = {Nest(10)}\n";
-        var source = "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code), Problems(OldPath(source)));
+        => Assert.Equal(Codes(code).Concat(Enumerable.Repeat("GenerationResourceLimit_Kd", Math.Max(0, depth - 64))), Problems(Checked(DeepShared(depth, shallowFirst, written))));
 
-        static string Nest(int levels) => new string('(', levels) + "value@ref" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
+    // H3b T31d: at 60 the later write is valid (SPEC 15.6.6, 16.3.1: a Tuple of references destroys nothing that observes), but A5's depth
+    // bound is 32 (the old analysis's was 64, Binding's storage height, BU-12), so the MIR refuses it with a located OwnershipDepthLimit_Kd
+    // at `let d` (DECISIONS R4-M153). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): U-B5 (A5's bound 32 -> 64, after
+    // PLAN G349's units) restores the acceptance and moves the rows back to ADeepSharedPartKeepsTheBoundsVerdict.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ADeepSharedPartPastTheMirsBoundIsRefusedPendingUB5(bool shallowFirst)
+    {
+        var c = Checked(DeepShared(60, shallowFirst, written: true));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.OwnershipDepthLimit_Kd, new SyntaxLocation("let d = " + DeepNest(60))));
     }
 
     // SPEC 16.3.1: the drop of a struct shared in a Tuple observes its Loans, so a later write conflicts; without a drop it does not.
@@ -169,7 +185,7 @@ public class TypeDagScalingTest
         var source = "struct Observer {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + (drop ? "    drop => ()\n" : string.Empty) +
             "var value = 42\nlet t = ((Observer.init(value@ref), Observer.init(value@ref)), (Observer.init(value@ref), Observer.init(value@ref)))\n" +
             (written ? "value = 99\n" : string.Empty) + "require value > 0 else => $abort(\"x\")\n";
-        Assert.Equal(Codes(code), Problems(OldPath(source)));
+        Assert.Equal(Codes(code), Problems(Checked(source)));
     }
 
     // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (AddType's set per Place).
@@ -185,7 +201,7 @@ public class TypeDagScalingTest
         }
 
         source.Append(written ? "    v = 2\n" : string.Empty).Append("    let z = a7\n    return\n");
-        Assert.Equal(Codes(code), Problems(OldPath(source.ToString())));
+        Assert.Equal(Codes(code), Problems(Checked(source.ToString())));
     }
 
     // SPEC 8.15: Copy proofs over shared Tuples of an associated projection hold (an interned constraint's projection walk).
@@ -203,24 +219,27 @@ public class TypeDagScalingTest
         Assert.Empty(DiagnosticCorpus.Check(source.ToString()).Diagnostics);
     }
 
-    // A ring through a handle reaches the bound, which retains the Loan; a closed instance whose Field is a projection is checked in its
-    // Place's context.
+    // A ring through a handle beside a shared borrow in a Tuple: the old analysis's bound retained the Loan, so a later write conflicted.
+    // Since the MIR decides acceptance (R6-check H5; H3b T62, 1a, the owner 2026-11-03), `t` is unused after the write and Node's
+    // destruction observes nothing (SPEC 15.6.3, 15.6.6, 16.3.3): check accepts the program with no record, and a Library build generates
+    // main.
     [Theory]
-    [InlineData(false, "")]
-    [InlineData(true, "ComparisonLoanConflict_Kd")]
-    public void ARingThroughAHandleRetainsTheLoan(bool written, string code)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ARingThroughAHandleKeepsNoLoanPastItsLastUse(bool written)
     {
         var source = "struct Node\n    public var x: i32\n    public var next: Option<rc/Node>\n    public init(x: i32)\n        self.x = x\n        self.next = .None\n" +
             "public func main() -> ()\n    var value = 42\n    let n = Node.init(x: 1)\n    let t = ((n@move, value@ref), 3)\n" + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code), Problems(OldPath(source)));
+        Assert.Contains("main", MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
     }
 
+    // A closed instance whose Field is a projection is checked in its Place's context.
     [Fact]
     public void AnInstanceWithAProjectionFieldChecks()
     {
         const string Source = "contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n    S is HasElem\n" +
             "    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\npublic func main() -> ()\n    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n    return\n";
-        Assert.Empty(Problems(OldPath(Source)));
+        Assert.Empty(Problems(Checked(Source)));
     }
 
     // A warm Analyze of a program whose Types share parts allocates nothing: the old analysis's answer tables keep their capacity.
@@ -228,10 +247,10 @@ public class TypeDagScalingTest
     [Trait("Purpose", "Allocation")]
     public void WarmAnalyzeOfSharedTypesAllocatesNothing()
     {
-        var c = OldPath(Source("structUses", 12));
+        var c = Checked(Source("structUses", 12));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // A warm rebind of a program whose Types share parts allocates nothing: the answer tables keep their capacity.
@@ -240,10 +259,10 @@ public class TypeDagScalingTest
     public void WarmBindOfSharedTypesAllocatesNothing()
     {
         var c = MirBuildTest.Compile(Source("chainValues", 16));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
     // The source of a shape: structs storing the previous struct twice (PLAN G140), with constructions, a path read, a move and a drop;
@@ -317,9 +336,18 @@ public class TypeDagScalingTest
 
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
 
-    // A checked compilation pinned to the old generator: the old analysis's rows judge its walks, and the checked set of MIR code
-    // generation would add its own resource limits on these shapes.
-    private static Compilation OldPath(string source) => MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+    // A main sharing `value@ref` at depth 0 of a Tuple 10 levels high and of one `depth` levels high, in either order, then maybe writing it.
+    private static string DeepShared(int depth, bool shallowFirst, bool written)
+    {
+        var deep = $"    let d = {DeepNest(depth)}\n";
+        var shallow = $"    let s = {DeepNest(10)}\n";
+        return "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
+    }
+
+    // A checked compilation: the old analysis's rows judge its walks, the checked set's records publish at check (DECISIONS R5-M156), and
+    // the chain shapes generate through MIR code generation, the old generator's instance analyses having left with its selection at G4
+    // (DECISIONS R5-M160).
+    private static Compilation Checked(string source) => MinimalEmissionTest.Analyze(source);
 
     // The codes of the analysis's problems: the old path's, then the MIR's records.
     private static string[] Problems(Compilation c) => [.. c.Problems.Select(static x => x.Code.ToString())];

@@ -37,14 +37,14 @@ public class ResultOnlyOriginTest
     public void EachCallHasItsOwnRegion()
     {
         var c = MinimalEmissionTest.Analyze(None + "let a = none()\nlet b = none()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "none").ToArray();
         Assert.Equal(2, calls.Length);
         var first = calls[0].TypeOf()!.Components[0].Origin!;
         var second = calls[1].TypeOf()!.Components[0].Origin!;
         Assert.Equal((OriginKind.Inference, true), (first.Kind, first.Open));
         Assert.NotSame(first, second);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 15.3.6: an expected result fixes the Origin instead, at a return or an outer argument, and a fixed chain is accepted. A clause
@@ -79,8 +79,8 @@ public class ResultOnlyOriginTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

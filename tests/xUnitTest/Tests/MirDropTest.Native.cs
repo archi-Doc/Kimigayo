@@ -7,7 +7,7 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The drop matrix (R5 C4s; SPEC 16.2-16.4, DECISIONS R4-M6a, R4-M6b; package C 3.6): programs whose values are each destroyed
-/// exactly once, run natively under the process's generators with exact allocation counts (<c>NativeAllocationAudit</c>), each fixing the
+/// exactly once, run natively with exact allocation counts (<c>NativeAllocationAudit</c>), each fixing the
 /// verdict its body's MIR holds. A row's name begins with its class, the latest verdict it exercises: Keep (with Elide, written by C4a), Flag
 /// (C4b) or Open (C4c); so under MIR code generation a row runs once its class's unit lands. They add the forms the other classes' native
 /// destruction rows (static-string audits, destructor prints) lack.</summary>

@@ -24,7 +24,7 @@ public class CollectionCaptureTest
     public void CollectionsAndEnumsAreCaptured(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("CollectionCapture" + name, source, string.Empty);
     }
 
@@ -32,7 +32,7 @@ public class CollectionCaptureTest
     public void ABorrowedArrayCannotGrowWhileTheClosureLives()
     {
         var c = MinimalEmissionTest.Analyze("var a: Array<i32> = [1, 2, 3]\nlet g = func [a@ref] () => a.length\na.append(4)\nrequire g() == 4 else => $abort(\"g\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
@@ -40,7 +40,10 @@ public class CollectionCaptureTest
     public void AnOmittedListCapturesANonCopyEnumOnlyByCopy()
     {
         var c = MinimalEmissionTest.Analyze("enum Mode\n    Fast(i32)\n    Slow\nlet m: Mode = .Fast(3)\nlet f = func () -> i32\n    match m\n        .Fast(let n) => return n\n        .Slow => return 0\nlet r = f()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        // SPEC 7.7.2 (R6-check H1, DECISIONS BU-84): the omitted list's capture of the Non-Copy `m` is Binding's TransferRequired_Kd at the
+        // Closure.
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(DiagnosticCode.TransferRequired_Kd, issue.Code);
+        Assert.StartsWith("func () -> i32", issue.Node.ToString(), StringComparison.Ordinal);
     }
 }

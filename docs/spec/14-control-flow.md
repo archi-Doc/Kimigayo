@@ -56,7 +56,7 @@ nextOperation()
 
 ### 14.2.2. Evaluation contexts and body results
 
-**Value Context** covers initializers, arguments, conditions, `match` and `for` Subjects, and operator and transfer operands. **Discard Context** covers standalone expressions and the direct expressions of indented bodies. Parentheses keep the context and expected Type. None of an expected Unit, non-use, reachability or optimization makes a Value Context a Discard Context. Discarding destroys the result at its normal lifetime; it is not a conversion to Unit, and every check still applies, including the discarded-`Result` warning ([§17.5](17-failure-handling.md#175-warnings)).
+**Value Context** covers initializers, arguments, conditions, `match` and `for` Subjects, and operator and transfer operands. **Discard Context** covers standalone expressions and the direct expressions of indented bodies. Parentheses keep the context and expected Type. None of an expected Unit, non-use, reachability or optimization makes a Value Context a Discard Context. A Place in Discard Context is acquired by bare acquisition, as at a value position ([§3.5](03-types-and-values.md#35-copy-and-move)), and the acquired value is discarded. Discarding destroys the result at its normal lifetime; it is not a conversion to Unit, and every check still applies, including the discarded-`Result` warning ([§17.5](17-failure-handling.md#175-warnings)).
 
 The direct expressions of an indented body, including the last, are discarded; **structural end arrival**, the normal completion of the body's item sequence, supplies Unit where the owner uses the body result. A single-item body follows this table; these rules are fixed before the body is checked:
 
@@ -78,6 +78,16 @@ else => 0
 loop => exit 1                   // Error: a discarded loop requires Unit exits.
 ```
 
+A discarded Place is acquired as at a value position:
+
+```kimi
+func show(count: i32, r: uniq/i32, title: string)
+    count               // A Copy, discarded (the effect-free value warning, §17.5.3).
+    r                   // Reborrows a child of r and drops it.
+    // title            // Error: a bare Non-Copy Place.
+    title@move          // Transfers title; the value is destroyed.
+```
+
 ### 14.2.3. Conditions
 
 The conditions of `if`, `else if`, `while` and `require` and match guards are `bool` expressions; there is no `if let`, `var` condition or condition Pattern. A body-bearing expression in a header expression follows the header-expression rule of [§F.4.4](appendices/F-syntax-summary.md#f44-header-expressions-and-delimiter-regions).
@@ -91,7 +101,7 @@ if guard.contains(id) => work()   // A guard created in the condition would be d
 
 ### 14.2.4. Explicit discard
 
-`_ = Expression` is a statement (not assignment, not an expression, no compound form) that completes with Unit. The operand is checked in Value Context without an expected Type, introduces no local, is acquired by bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)) or transfer, and is destroyed at statement temporary cleanup. A bare Non-Copy Place is an error unless it stores `uniq/T` or `objuniq/T`: then `_ = r` Reborrows a child and drops it, and `_ = r@move` consumes `r`. Explicit discard suppresses only the discard warnings for that result ([§17.5](17-failure-handling.md#175-warnings)); discarding a `Result` destroys its error payload and does not catch Abort.
+`_ = Expression` is a statement (not assignment, not an expression, no compound form) that completes with Unit. The operand is checked in Value Context without an expected Type, introduces no local, is acquired by bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)) or transfer, and is destroyed at statement temporary cleanup. An operand `P@move` of a raw Place, or of a Field or element of one, transfers nothing: the value is destroyed in that Place at statement temporary cleanup, before the statement's temporaries, and the Place then holds no value ([§5.2.3](05-raw-pointers-and-unsafe-memory.md#523-taking-from-raw-places)). A bare Non-Copy Place is an error unless it stores `uniq/T` or `objuniq/T`: then `_ = r` Reborrows a child and drops it, and `_ = r@move` consumes `r`. Explicit discard suppresses only the discard warnings for that result ([§17.5](17-failure-handling.md#175-warnings)); discarding a `Result` destroys its error payload and does not catch Abort.
 
 ```kimi
 _ = prepare()          // Ignore the whole Result, including Err.
@@ -326,7 +336,7 @@ Each Binding position designates a **Candidate Place**, initialized storage in t
 
 A guard is one `bool` expression and a header expression ([§F.4.4](appendices/F-syntax-summary.md#f44-header-expressions-and-delimiter-regions)); there are no `let` conditions or guard chains. If the Pattern matches, the guard runs once. Then, on either result, the candidate references, guard temporaries and new Loans are cleaned up. On `true` the body locals are initialized from the Candidate Places and the body runs; on `false` the next arm is tried with the Subject unchanged.
 
-**Candidates.** Whether a value obtained in the guard may be stored or used after it follows from the ordinary Origin and Loan checks against `g`: a value that depends on `g` cannot leave the guard, while a value read or copied out of the candidate keeps only the Origins of the stored value. Calls are judged by the callee's signature (its Origins and effect bounds), never by its body. Candidate names cannot be Moved, reassigned, exclusively borrowed or captured; a value read into an ordinary local may be captured under the ordinary rules.
+**Candidates.** Whether a value obtained in the guard may be stored or used after it follows from the ordinary Origin and Loan checks against `g`: a value that depends on `g` cannot leave the guard, while a value read or copied out of the candidate keeps only the Origins of the stored value. [§15.6.5](15-ownership-and-lifetime-analysis.md#1565-judging-origin-relations) states when a Loan conflict at guard cleanup is caused only by Refuted relations. Calls are judged by the callee's signature (its Origins and effect bounds), never by its body. Candidate names cannot be Moved, reassigned, exclusively borrowed or captured; a value read into an ordinary local may be captured under the ordinary rules.
 
 ```kimi
 // Packet.Data stores Data; Packet.Link stores ref/Data during a.
@@ -411,7 +421,7 @@ let conflict = loop
 The **Target Result Type** is found independently of source order:
 
 1. Use the declared Type, the Type fixed by [§14.2.2](#1422-evaluation-contexts-and-body-results) or a fixed outer expectation.
-2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate. Sources that differ only in safe reference layers over one Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A control-flow expression used as a call argument is classified by the Argument kinds rule of [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries).
+2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate. Neither does a Tuple, array or Dictionary literal or a fill ([§4.3.3](04-arrays-indexing-and-slices.md#433-fill-construction)) that holds a part of Type Never, also within such a literal or fill part, nor a selection, `do` or `loop` none of whose sources supplies one. When no source supplies a candidate, the common Type is formed part by part over those sources other than Never: Tuples of one length by element, arrays by element (an array literal source constructs `Array<T>` here, [§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes); fills of one length construct `[N of T]`, and a fill beside an array literal source has none, their Types differing, [§4.3.3](04-arrays-indexing-and-slices.md#433-fill-construction)), Dictionaries by key and value, and a selection, `do` or `loop` through its own sources; each part's common Type is found as this step finds one, from the parts in that position that are not Never, and a part that is Never in every source is Never. Sources that differ only in safe reference layers over one Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A control-flow expression used as a call argument is classified by the Argument kinds rule of [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries).
 3. Propagate the Type to sources checkable against it (such as `0..3` beside `0..n`); literal defaults apply as [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) states.
 4. Check every source. A call, anonymous function or empty literal that still lacks a Type needs an annotation.
 
@@ -431,6 +441,19 @@ let a = loop => continue                   // Never
 let b = loop
     continue
     exit 1                                 // i32: an unreachable source still counts.
+```
+
+```kimi
+func pick(ready: bool, large: i64) -> i64
+    let both = if ready => (large, (return 1)) else => ((return 2), large)   // (i64, i64): formed part by part.
+    return both.0
+```
+
+```kimi
+func pickFill(ready: bool, large: i64) -> i64
+    let fills = if ready => [2 of (large, (return 1))] else => [2 of ((return 2), large)]  // [2 of (i64, i64)].
+    // let mixed = if ready => [2 of (large, (return 3))] else => [3 of ((return 4), large)]   // Error: two lengths.
+    return fills[0].0
 ```
 
 ### 14.9.3. Reachability

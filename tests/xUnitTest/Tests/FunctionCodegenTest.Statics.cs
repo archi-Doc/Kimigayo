@@ -7,7 +7,7 @@ using Xunit;
 namespace XunitTest;
 
 // The statics of MIR code generation (R5 C7b; SPEC 22.4.3, 22.4.4, 22.5.1, 22.5.2; DECISIONS R5-M106): a StaticInit item's slot, state and
-// ensure function, an access's state test, the fold of a constant StaticInit, and statics natively under both generators.
+// ensure function, an access's state test, the fold of a constant StaticInit, and statics natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library's statics: first-access i32, bool and i128 ones; constant ones, legacy's folded set (a signed literal, a bool, a
@@ -22,8 +22,7 @@ public sealed partial class FunctionCodegenTest
         "func others() -> bool => Values.flag and Values.yes and Values.minus < 0 and Values.single > 0.0 and Values.tenth > 0.0 and Values.wide > 0\n";
 
     // SPEC 22.4.3 (DECISIONS R5-M106): first-access statics initialized once, in dependency order, each printing when it runs: char, f32,
-    // f64 and bool ones folded or not, one read through a generic function in a loop, and one whose initializer reads another; also under
-    // the old generator.
+    // f64 and bool ones folded or not, one read through a generic function in a loop, and one whose initializer reads another.
     public static TheoryData<string, string, string> StaticPrograms => new()
     {
         {

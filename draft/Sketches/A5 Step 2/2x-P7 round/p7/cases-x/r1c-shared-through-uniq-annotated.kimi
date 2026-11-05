@@ -1,0 +1,6 @@
+func use(p: uniq/i32) -> i32
+    let c = func [p@move] () -> ref/i32 during p => p@follow@ref
+    let a = c()
+    let m = c@move
+    return a@follow
+public func main() => ()

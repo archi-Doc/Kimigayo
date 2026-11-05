@@ -14,7 +14,6 @@ public sealed partial class OwnershipAnalysis
     private readonly List<OwnershipBody> bodyPool = new();
     private readonly List<OwnershipIssue> issues = new();
     private readonly List<FunctionKoto> libraryBodies = new();
-    private readonly HashSet<FunctionKoto> usedImports = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingSymbol> witnessTypes = new(ReferenceEqualityComparer.Instance);
     private readonly List<FunctionKoto> witnessScratch = new();
     private readonly Collector collector;
@@ -23,6 +22,10 @@ public sealed partial class OwnershipAnalysis
     private readonly List<LoopFrame> loops = new();
     private readonly List<int> arguments = new();
     private readonly HashSet<InvocationKoto> referenceCalls = new(ReferenceEqualityComparer.Instance);
+
+    // The located Unsupported_Kd at which this analysis stops (Stop, Stopped).
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private readonly List<OwnershipIssue> stops = new();
     private ControlFlowAnalysis? flow;
     private OwnershipBody body = null!;
     private bool fixedArrayWitnesses;
@@ -62,9 +65,6 @@ public sealed partial class OwnershipAnalysis
             throw new InvalidOperationException("Ownership analysis requires final Binding.");
         }
 
-        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.ControlFlow);
-        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
-
         this.Invalidate();
         this.supportedTypes.Clear();
         this.visitingTypes.Clear();
@@ -88,6 +88,12 @@ public sealed partial class OwnershipAnalysis
             return this.Result;
         }
 
+        this.GateReceiverDependentCalls(binding);
+        if (this.stops.Count != 0)
+        {
+            return this.Stopped();
+        }
+
         if (this.ReportUnprovenOriginObligations())
         {
             // An unchecked Origin obligation that is not a relation rejects the program with a diagnostic at its use, never silently.
@@ -108,8 +114,12 @@ public sealed partial class OwnershipAnalysis
             this.collector.Visit(module.RootKoto);
         }
 
-        this.AnalyzeLibraryBodies(0);
-        this.ValidateEffectBounds();
+        this.AnalyzeLibraryBodies();
+        if (this.stops.Count != 0)
+        {
+            return this.Stopped();
+        }
+
         var verified = this.flow.Issues.Count == 0 && binding.LintErrors == 0 && this.flow.PendingBinding.Count == 0 && this.issues.Count == 0;
         if (!verified)
         {
@@ -123,18 +133,10 @@ public sealed partial class OwnershipAnalysis
         return this.Result = new(verified, this.bodies.Count, this.issues.Count);
     }
 
-    public void ReportDiagnostics() => this.ReportDiagnostics(this.issues);
-
-    internal void ReportInstanceDiagnostics(OwnershipBody failed, string? context, Koto? site)
-        => this.ReportDiagnostics(failed.IssueStorage, DiagnosticRequirement.Emission, context, site);
-
-    internal bool UsesImport(FunctionKoto function) => this.usedImports.Contains(function);
-
     internal void Invalidate()
     {
         this.cleanupAnswers.Clear();
         this.completeTuples.Clear();
-        this.ClearInstances();
         this.Result = default;
         for (var i = 0; i < this.bodies.Count; i++)
         {
@@ -143,8 +145,6 @@ public sealed partial class OwnershipAnalysis
 
         this.bodies.Clear();
         this.libraryBodies.Clear();
-        this.usedImports.Clear();
-        this.templateBodies.Clear();
         this.witnessTypes.Clear();
         this.fixedArrayWitnesses = false;
         this.integerPositionWitness = false;
@@ -154,273 +154,66 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.issues.Clear();
+        this.stops.Clear();
         this.invalidDefaults.Clear();
         this.checkedDefaults.Clear();
         this.candidates.Clear();
     }
 
-    private void ReportDiagnostics(IReadOnlyList<OwnershipIssue> reportedIssues, DiagnosticRequirement? requirementOverride = null, string? instanceContext = null, Koto? instanceSite = null)
+    // SPEC 15.8.2 (DECISIONS R4-M126 §2.13, R4-M152; the owner's D5 exception, OQ-F7-1 (vi)): Binding binds a value call whose result
+    // depends on its call receiver, which this analysis cannot judge, so a program with one stops at each such call (Stop), the call's
+    // current plan deciding (F4), before any body is analyzed, as R1's Binding failure left it.
+    [Transitional("R6-check", Reason = "The old analysis's gate goes with the old analysis.")]
+    private void GateReceiverDependentCalls(Binding binding)
     {
-        // Ownership analysis runs only after complete Binding, so its checks never rest on a Binding failure. The result that a
-        // Block body leaves undelivered where it falls through rests on the fallthrough that control flow reported there.
-        var diagnostics = this.compilation.Diagnostics;
-        if (requirementOverride is null)
+        foreach (var call in binding.ReceiverDependentCalls)
         {
-            diagnostics.Invalidate(DiagnosticPartition.Ownership);
+            if (call.BoundValueCall is { ReceiverDependentResult: true })
+            {
+                this.Stop(call);
+            }
+        }
+    }
+
+    // The old analysis's one stop (the owner's D5 exceptions until R6-check, which deletes this analysis): a program with a form this
+    // analysis cannot judge gets the located Unsupported_Kd at each such form and nothing else of it is reported, as if nothing else were
+    // analyzed: R1's receiver-dependent calls (the gate above, R4-M126 (vi)) and a Place whose Type SupportsType refuses for Origin
+    // arguments its symbol does not declare (TypeSupport.UndeclaredOriginArguments: a Closure Type with its maker's images, whose Loans
+    // this analysis would misjudge), by the owner's (a) of 2026-10-31, 「すべて推奨の内容でお願いします」 (DECISIONS R4-M159). Any other
+    // refusal (a Never-holding Type) keeps its located Unsupported_Kd and the analysis goes on, so its independent records stay
+    // (SPEC 23.1.2).
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private void Stop(Koto at)
+    {
+        foreach (var stop in this.stops)
+        {
+            if (ReferenceEquals(stop.Source, at))
+            {
+                return;
+            }
         }
 
-        List<(Koto At, DiagnosticCode Code, object[] Evidence)>? chains = null;
-        for (var i = 0; i < reportedIssues.Count; i++)
+        this.stops.Add(new(at, OwnershipRequirement.Unsupported));
+    }
+
+    // The analysis result of a program that stopped: its stops' located Unsupported_Kd alone, no body verified.
+    [Transitional("R6-check", Reason = "The old analysis's stops (DECISIONS R4-M152, R4-M159) go with the old analysis.")]
+    private OwnershipResult Stopped()
+    {
+        this.issues.Clear();
+        this.issues.AddRange(this.stops);
+        for (var i = 0; i < this.bodies.Count; i++)
         {
-            var issue = reportedIssues[i];
-            var requirement = Requirement(issue);
-            if (issue.Failure == OwnershipRequirement.Unsupported)
-            {
-                // SPEC 23.1.1: a form outside the implemented subset is located only, in an instance too.
-                issue.Source.Report(requirement, issue.Code, condition: Condition(issue), span: SignatureSpan(issue.Source));
-                continue;
-            }
-
-            if (issue.Failure == OwnershipRequirement.StorageLimit)
-            {
-                var span = SignatureSpan(issue.Source) ?? issue.Source.Span;
-                issue.Source.Report(requirement, issue.Code, issue.RequiredBytes, issue.LimitBytes, note: Note(null), evidence: [issue.StorageTable], related: Locations(null), span: span, condition: Condition(issue));
-                continue;
-            }
-
-            if (issue.Failure == OwnershipRequirement.DefaultArgumentMove)
-            {
-                ReportDefaultMove(issue);
-                continue;
-            }
-
-            if (issue.Failure is OwnershipRequirement.DefaultArgumentAccess or OwnershipRequirement.DefaultArgumentBorrow)
-            {
-                var defaultCase = this.CaseFact(issue, out var singleDefaultCase);
-                issue.Source.Report(
-                    requirement,
-                    issue.Code,
-                    note: Note(CaseNote(null, defaultCase, singleDefaultCase)),
-                    evidence: CaseEvidence(issue.Code, null, defaultCase),
-                    related: Locations(this.WithCaseDeclarations(issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, defaultCase)));
-                continue;
-            }
-
-            if (issue.Capture >= 0 && issue.Source is FunctionKoto { BoundClosure: { } closure } capturing)
-            {
-                ReportCapture(issue, capturing, closure.Captures[issue.Capture].Source);
-                continue;
-            }
-
-            if (issue.Failure == OwnershipRequirement.ComparisonLoanConflict && issue.Destroyed is not null)
-            {
-                ReportDestruction(issue);
-                continue;
-            }
-
-            if (issue.Failure == OwnershipRequirement.UnprovenOrigin && issue.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } obligation)
-            {
-                // SPEC 15.6.1: a fit's relation is reported at the value that supplies the longer end; a well-formedness relation
-                // and a Type's clause substituted at a Type occurrence, a declared relation, at that occurrence.
-                var fit = Binding.IsFitObligation(obligation);
-                var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
-                var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter, obligation.Body), obligation.Clause, WellFormed: obligation.WellFormed);
-                var (evidence, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
-                if (ChainOrdinal(at, issue.Code, evidence) is { } chain)
-                {
-                    at.Report(requirement, issue.Code, note: Note(null), evidence: evidence, related: Locations(related), condition: (ushort)(Condition(issue) | (chain << 8)));
-                }
-
-                continue;
-            }
-
-            if (issue.Failure == OwnershipRequirement.EffectBound && this.compilation.Binding.ReportEffectViolation(issue.Source, requirement, issue.Code, instanceContext, instanceSite))
-            {
-                continue; // SPEC 8.11.1: a destruction the bound excludes, reported at the violating effect.
-            }
-
-            if (issue.Failure == OwnershipRequirement.CallableEffectBound && this.compilation.Binding.ReportCallableEffectViolation(issue.Source, requirement))
-            {
-                continue;
-            }
-
-            if (issue.Failure == OwnershipRequirement.VirtualEffectBound && issue.Source is FunctionKoto implementation)
-            {
-                this.compilation.Binding.ReportVirtualEffectViolation(implementation, requirement);
-                continue;
-            }
-
-            // The delivery at the normal end is the only use at the function itself apart from a constructor's field checks, whose
-            // discarded body never falls through; a return delivers at its jump.
-            if (issue.Failure == OwnershipRequirement.UninitializedUse && issue.Source is FunctionKoto function &&
-                this.compilation.Binding.FallthroughKey(function) is { } fallthrough)
-            {
-                issue.Source.ReportDerived(requirement, [fallthrough]);
-                continue;
-            }
-
-            // A use at the function itself, such as a constructor's completion, is shown at its signature, not its whole body. A bare
-            // Place that needs @move offers the transfer as a repair candidate where its path does not refute Take (SPEC 23.1.3).
-            var transfer = issue.Failure == OwnershipRequirement.TransferRequired;
-            var judgment = transfer ? Binding.TakeJudgment(issue.Source) : AcquisitionJudgment.Refuted;
-            var found = this.CaseFact(issue, out var single);
-            issue.Source.Report(
-                requirement,
-                issue.Code,
-                note: Note(CaseNote(AcquisitionNote(issue), found, single)),
-                evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
-                related: Locations(this.WithCaseDeclarations(RelatedLocations(issue), found)),
-                condition: Condition(issue),
-                span: SignatureSpan(issue.Source),
-                repairs: transfer && judgment != AcquisitionJudgment.Refuted ? Binding.TransferRepair(issue.Source, issue.Source, judgment) : null);
+            this.bodies[i].IsVerified = false;
         }
 
-        // SPEC 23.2.2: an unverified result without an Error in this or an earlier phase reports one fallback at its first
-        // incomplete subject, a control-flow obligation still pending after complete Binding. It marks a missing report.
-        if (requirementOverride is null && this.compilation.Binding.Result.IsComplete && !this.Result.IsVerified && this.flow is { } flow &&
-            !diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership) && FirstPending(flow) is { } pending)
-        {
-            pending.ReportDerived(DiagnosticRequirement.ControlFlow, [DiagnosticKey.Unresolved]);
-        }
-
-        // SPEC 7.2.3: a default may Copy a preceding Copy value or inspect it through temporary shared access; it never moves the
-        // prepared argument. A capture entry is located at the entry; no repair is offered, since the needed value is the author's.
-        void ReportDefaultMove(in OwnershipIssue issue)
-        {
-            var entries = issue.Source is FunctionKoto { Captures: { } captured } && issue.Capture >= 0 && issue.Capture < captured.Length ? captured : null;
-            var span = entries is not null ? entries[issue.Capture].Span : (SourceSpan?)null;
-            issue.Source.Report(Requirement(issue), issue.Code, note: Note(null), related: Locations(null), condition: Condition(issue), span: span);
-        }
-
-        // SPEC 7.7.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry. In a
-        // default, no entry can take a preceding argument other than by Copy (SPEC 7.2.3).
-        void ReportCapture(in OwnershipIssue issue, FunctionKoto function, BindingSymbol source)
-        {
-            var name = source.Name;
-            var omitted = function.Captures is null;
-            var prepared = omitted && DefaultParameters.InLaterDefault(function, source);
-            var note = !omitted ? null : $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow" +
-                (prepared ? ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)" : string.Empty);
-            issue.Source.Report(Requirement(issue), issue.Code, note: Note(note), related: Locations(null), condition: Condition(issue), evidence: [name]);
-        }
-
-        // SPEC 15.6.2, 15.6.6, 16.2.2: a borrowed Place destroyed while a live value keeps its Loan is reported at the destruction,
-        // relating that value and the Borrow or capture entry that created the Loan. A transfer cleans up the scopes it leaves
-        // before it delivers its result, so a secured result never carries a borrow of a destroyed local out of its scope.
-        void ReportDestruction(in OwnershipIssue issue)
-        {
-            var entries = issue.Borrow is FunctionKoto { Captures: { } captured } && (uint)issue.BorrowCapture < (uint)captured.Length ? captured : null;
-            var borrow = entries is not null ? CaptureText(entries[issue.BorrowCapture]) : issue.Borrow?.ToString();
-            var place = issue.Destroyed!.Length > 0 ? $"`{issue.Destroyed}`" : issue.DestroyedTemporary is { } temporary ? $"the temporary `{temporary}`" : "the borrowed Place";
-            var kept = borrow is null ? " is destroyed here while a live value keeps its Loan" : $" is destroyed here while a live value keeps the Loan of `{borrow}`";
-            var transfer = issue.Source is JumpKoto ? "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)" : string.Empty;
-            (string Role, Koto At, string? Label)[]? related = issue.LoanSource is not { } loan ? null
-                : entries is null && issue.Borrow is { } site ? [("loan", loan, RetainedLoanLabel), ("borrow", site, BorrowLabel)]
-                : [("loan", loan, RetainedLoanLabel)];
-            (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = entries is not null ? [("borrow", issue.Borrow!, entries[issue.BorrowCapture].Span, BorrowLabel)] : null;
-            var found = this.CaseFact(issue, out var single);
-            issue.Source.Report(
-                Requirement(issue),
-                issue.Code,
-                note: Note(CaseNote(char.ToUpperInvariant(place[0]) + place[1..] + kept + transfer, found, single)),
-                evidence: CaseEvidence(issue.Code, null, found),
-                related: Locations(this.WithCaseDeclarations(related, found)),
-                relatedSpans: spans,
-                condition: Condition(issue));
-        }
-
-        // SPEC 8.15, 23.1.2: a problem found under some Semantics cases names them in its Note.
-        static string? CaseNote(string? note, string? found, bool single)
-            => found is null ? note : (note is null ? "Found" : note + "; found") + (single ? " under the Semantics case " : " under the Semantics cases ") + found + " (SPEC 8.15)";
-
-        // The `case` fact closes the evidence alternative of the codes that carry it; a code without the alternative keeps its Note.
-        static object?[]? CaseEvidence(DiagnosticCode code, object? target, string? found)
-        {
-            var withCase = found is not null && HasCaseEvidence(code);
-            return target is null ? (withCase ? [found] : null) : withCase ? [target, found] : [target];
-        }
-
-        static string CaptureText(CaptureKoto entry)
-            => (entry.IsMutable ? "var " : string.Empty) + entry.Name + (entry.Operation is { } operation ? "@" + operation : string.Empty);
-
-        DiagnosticRequirement Requirement(in OwnershipIssue issue) => requirementOverride ?? DiagnosticRequirement.Ownership(issue.Failure);
-
-        ushort Condition(in OwnershipIssue issue) => requirementOverride is null ? (ushort)0 : (ushort)issue.Failure;
-
-        // SPEC 15.6.1 Identity: an Origin relation problem is its location, its relation's source and its longer end, and every failed
-        // chain is reported, so the chains at one location, such as the failing operands of a meet or the failing relations of one call,
-        // are several problems of one node (docs/dev/DIAGNOSTICS.md §4.3), numbered in report order; a chain reported again with the same
-        // facts keeps its number and merges. Null past the condition's range, which no source reaches.
-        int? ChainOrdinal(Koto at, DiagnosticCode code, object[] evidence)
-        {
-            chains ??= [];
-            var ordinal = 0;
-            for (var c = 0; c < chains.Count; c++)
-            {
-                if (ReferenceEquals(chains[c].At, at))
-                {
-                    if (chains[c].Code == code && chains[c].Evidence.AsSpan().SequenceEqual(evidence))
-                    {
-                        return ordinal;
-                    }
-
-                    ordinal++;
-                }
-            }
-
-            if (ordinal > byte.MaxValue)
-            {
-                return null;
-            }
-
-            chains.Add((at, code, evidence));
-            return ordinal;
-        }
-
-        string? Note(string? note) => instanceContext is null ? note : note is null ? instanceContext : note + "; " + instanceContext;
-
-        (string Role, Koto At, string? Label)[]? Locations((string Role, Koto At, string? Label)[]? related)
-        {
-            if (instanceSite is null)
-            {
-                return related;
-            }
-
-            var locations = new (string Role, Koto At, string? Label)[(related?.Length ?? 0) + 1];
-            related?.CopyTo(locations, 0);
-            locations[^1] = ("instantiation", instanceSite, "the call requesting this instance");
-            return locations;
-        }
-
-        static SourceSpan? SignatureSpan(Koto source)
-            => source is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : null;
-
-        static Koto? FirstPending(ControlFlowAnalysis flow)
-        {
-            Koto? first = null;
-            foreach (var node in flow.PendingBinding)
-            {
-                if (first is null)
-                {
-                    first = node;
-                    continue;
-                }
-
-                var path = string.CompareOrdinal(node.CodeContext.SourceDocument?.Path, first.CodeContext.SourceDocument?.Path);
-                if (path < 0 || (path == 0 && node.Span.Start < first.Span.Start))
-                {
-                    first = node;
-                }
-            }
-
-            return first;
-        }
+        return this.Result = new(false, 0, this.issues.Count);
     }
 
     // SPEC 8.15: a definition whose scope has a resolved pair binder is verified once per Semantics case; any other body once.
     private void Build(FunctionKoto function, int declarationDefault = -1)
     {
-        if (this.instance is null && this.ResolveCases(function))
+        if (this.ResolveCases(function))
         {
             this.BuildCases(function, declarationDefault);
         }
@@ -448,10 +241,6 @@ public sealed partial class OwnershipAnalysis
             this.body.ReportReservedElementWrites(completed: false);
             this.body.ReportIssue(new(function, OwnershipRequirement.StorageLimit, StorageTable: limit.Table, RequiredBytes: limit.RequiredBytes, LimitBytes: limit.LimitBytes));
             this.AppendIssues();
-            if (this.instance is not null)
-            {
-                this.InstanceStorageLimit = limit.Message;
-            }
         }
     }
 
@@ -461,11 +250,7 @@ public sealed partial class OwnershipAnalysis
         {
             // One reusable declaration scratch graph, never an executable function
             // body. Its diagnostics are retained before the next default reuses it.
-            this.body = this.instanceBody ?? this.caseBody ?? (this.defaultBody ??= new());
-        }
-        else if (this.instanceBody is { } instanceBody)
-        {
-            this.body = instanceBody; // Never listed with the checked source bodies.
+            this.body = this.caseBody ?? (this.defaultBody ??= new());
         }
         else if (this.caseBody is { } caseBody)
         {
@@ -479,11 +264,10 @@ public sealed partial class OwnershipAnalysis
             }
 
             this.body = this.bodyPool[this.bodies.Count];
-            this.templateBodies[function] = this.body;
             this.bodies.Add(this.body);
         }
 
-        this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount), this.caseBit);
+        this.body.Reset(function, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount), this.caseBit);
         this.body.DefaultParameter = declarationDefault;
         this.defaultContext = -1;
         this.locals.Clear();
@@ -495,7 +279,6 @@ public sealed partial class OwnershipAnalysis
         this.placeValues.Clear();
         this.resultHeads.Clear();
         this.resultJoins.Clear();
-        this.resultDeclarations.Clear();
         this.pendingResults.Clear();
         this.selections.Clear();
         this.candidates.Clear();
@@ -512,7 +295,7 @@ public sealed partial class OwnershipAnalysis
         this.normalExit = this.New(OwnershipOperationKind.Exit, function);
         this.abortExit = this.New(OwnershipOperationKind.Exit, function);
         this.resultPlace = this.Place(function, declarationDefault >= 0 ? function.Parameters[declarationDefault].Type.BoundType : function.BoundSymbol?.Type ?? BoundType.Unit, OwnershipPlaceKind.Result, true);
-        if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.BoundClosure is null)
+        if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.ClosureAsCreated is null)
         {
             this.Internal(function);
         }
@@ -539,15 +322,15 @@ public sealed partial class OwnershipAnalysis
             // checking neither destroys them nor applies the callee's return contract.
             var defaultValue = function.Parameters[declarationDefault].DefaultValue!;
             var reported = this.body.IssueStorage.Count;
-            var securedDefault = this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
+            this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
             this.Cleanup(0, parameterCount, defaultValue, CleanupReason.Return);
-            this.Deliver(function, securedDefault);
+            this.Deliver(function);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
             this.CompleteBody(function, declarationDefault);
             return;
         }
 
-        if (function.BoundClosure is { } closure)
+        if (function.ClosureAsCreated is { } closure)
         {
             for (var i = 0; i < closure.Captures.Count; i++)
             {
@@ -564,7 +347,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.PrepareReceiverFields(function);
-        var secured = -1;
         if (function.Body is { } block)
         {
             this.Block(block);
@@ -584,7 +366,7 @@ public sealed partial class OwnershipAnalysis
             {
                 var reported = this.body.IssueStorage.Count;
                 var value = this.Expression(expression);
-                secured = this.WriteResult(expression, this.resultPlace, value, reported);
+                this.WriteResult(expression, this.resultPlace, value, reported);
             }
         }
         else
@@ -595,7 +377,7 @@ public sealed partial class OwnershipAnalysis
         this.CheckEnvironmentMoves(function);
         this.CheckConstruction(function);
         this.Cleanup(0, 0, function, CleanupReason.Return);
-        this.Deliver(function, secured);
+        this.Deliver(function);
         this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         this.CompleteBody(function);
     }
@@ -605,7 +387,7 @@ public sealed partial class OwnershipAnalysis
     // honest.
     private void CheckEnvironmentMoves(FunctionKoto function)
     {
-        if (function.BoundClosure is not { EnvironmentType: not null, Receiver: not SemanticsKind.Owner } closure)
+        if (function.ClosureAsCreated is not { EnvironmentType: not null, Receiver: not SemanticsKind.Owner } closure)
         {
             return;
         }
@@ -671,10 +453,15 @@ public sealed partial class OwnershipAnalysis
             DefaultContext = this.defaultContext,
             CleanupObservesBorrows = this.CleanupObservesBorrows(type, source),
         });
-        this.body.IsConcrete &= !type.HasAbstractPart;
-        if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
+        var support = neverResult || type.Kind == BoundTypeKind.Parameter ? TypeSupport.Supported : this.Support(type);
+        if (invalidCopy || support != TypeSupport.Supported)
         {
             this.Unsupported(source);
+        }
+
+        if (support == TypeSupport.UndeclaredOriginArguments)
+        {
+            this.Stop(source); // The owner's (a) (DECISIONS R4-M159): the analysis stops at a Type whose Origins it cannot model.
         }
 
         return id;
@@ -705,7 +492,6 @@ public sealed partial class OwnershipAnalysis
     {
         this.body.PlaceStorage.Add(place);
         this.placeValues.Add(-1);
-        this.resultDeclarations.Add(-1);
         return place.Id;
     }
 
@@ -804,11 +590,7 @@ public sealed partial class OwnershipAnalysis
                 return this.BorrowStruct(source, stored.Type);
             }
 
-            // SPEC 3.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
-            if (stored.Acquisition != AcquisitionKind.Copy)
-            {
-                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
-            }
+            // SPEC 3.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move, Binding's record (R6-check H1, BU-84).
         }
 
         this.CheckAcquisition(place, acquisition);
@@ -927,14 +709,16 @@ public sealed partial class OwnershipAnalysis
         if (node.ErasedFunctionType is { } erased)
         {
             if (node.BoundType?.Kind == BoundTypeKind.FunctionItem && node.BoundSymbol is { Declaration: FunctionKoto item } symbol &&
-                (item.IsRequirement ? this.compilation.Binding.FunctionItemContext(node.BoundType, requireClosed: false) is null :
+                (item.IsRequirement ? this.compilation.Binding.FunctionItemContext(node.BoundType) is null :
                     (item.Body ?? item.ExpressionBody) is null && symbol.CompilerFunction == CompilerFunctionKind.None))
             {
                 this.Unsupported(node); // A requirement without a selected executable entry cannot be erased.
                 return -1;
             }
 
-            var source = this.ExpressionCore(node, PlaceUseKind.Consume, acquisition);
+            // SPEC 7.7.4 (DECISIONS BU-83): erasure acquires its source ordinarily, by its bare acquisition; a committed acquisition is
+            // the erased value's, which Argument checks against the temporary below. Removed with the old Analysis at H10b.
+            var source = this.ExpressionCore(node, PlaceUseKind.Consume, null);
             if (source < 0)
             {
                 return -1;
@@ -1052,7 +836,7 @@ public sealed partial class OwnershipAnalysis
 
         switch (node)
         {
-            case FunctionKoto { BoundClosure: { } } closure:
+            case FunctionKoto { ClosureAsCreated: { } } closure:
                 return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);
@@ -1186,9 +970,9 @@ public sealed partial class OwnershipAnalysis
                 if (use == PlaceUseKind.Consume && this.FollowsReference(conversion) && this.Resolve(conversion.BoundType, this.Active) is { } referent &&
                     this.compilation.Binding.ProveCopy(referent, conversion) != ConstraintProof.Proven)
                 {
-                    // SPEC 3.5: a selected referent is a Place, never moved by bare acquisition, and a reference offers no Take.
-                    // The reference is still read and the value modeled, so the result is delivered and later uses are checked.
-                    this.body.ReportIssue(new(conversion, OwnershipRequirement.TransferRequired));
+                    // SPEC 3.5: a selected referent is a Place, never moved by bare acquisition, which Binding judges (R6-check H1,
+                    // DECISIONS BU-84). The reference is still read and the value modeled, so the result is delivered and later uses
+                    // are checked.
                     return this.StoredReference(conversion) < 0 ? -1 : this.Temporary(conversion);
                 }
 
@@ -1531,10 +1315,6 @@ public sealed partial class OwnershipAnalysis
         if (plan.Target.Declaration is FunctionKoto libraryBody && plan.Target.CompilerFunction == CompilerFunctionKind.None)
         {
             this.CollectLibraryBody(libraryBody);
-            if (Parser.HasLibraryImport(libraryBody.AttributeChain))
-            {
-                this.usedImports.Add(libraryBody);
-            }
         }
 
         for (var i = 0; i < plan.TypeArguments.Length; i++)
@@ -1550,12 +1330,9 @@ public sealed partial class OwnershipAnalysis
         var mark = this.arguments.Count;
         var loanDepth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
-        var borrows = false;
         if (plan.Receiver is { } receiver)
         {
-            var prepared = this.PrepareCallArgument(call, receiver, plan.ReceiverOperation);
-            borrows |= this.HasCallInspection(prepared);
-            this.arguments.Add(prepared);
+            this.arguments.Add(this.PrepareCallArgument(call, receiver, plan.ReceiverOperation));
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -1566,7 +1343,6 @@ public sealed partial class OwnershipAnalysis
                 : accessor is not null && argument.ParameterIndex == 0 && accessor.Receiver is not null && preparedReceiver >= 0 ? preparedReceiver
                 : accessor?.Kind == PropertyAccessorKind.Set && preparedInput >= 0 ? preparedInput
                 : this.PrepareCallArgument(call, call.ArgumentNodes[i], argument);
-            borrows |= this.HasCallInspection(prepared);
             this.arguments.Add(prepared);
         }
 
@@ -1606,11 +1382,6 @@ public sealed partial class OwnershipAnalysis
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         if (!acquired || ReferenceEquals(call.BoundType, BoundType.Never))
         {
-            if (borrows)
-            {
-                this.body.CallLoans.Add(new(invoke, -1, -1, LoanRequirement.None));
-            }
-
             this.current = -1;
             this.EndComparisonLoans(loanDepth, call);
             this.comparisonDepth = loanDepth;
@@ -1635,12 +1406,7 @@ public sealed partial class OwnershipAnalysis
 
         // Result Origins retain their source Loans independently of call-argument Loans.
         // Secure the result before ending the latter.
-        var loanEnd = this.EndComparisonLoans(loanDepth, call);
-        if (borrows)
-        {
-            this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, ReferenceTypes.IndependentResult(plan.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref));
-        }
-
+        this.EndComparisonLoans(loanDepth, call);
         this.comparisonDepth = loanDepth;
 
         return result;
@@ -1713,6 +1479,16 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    // Library bodies are analyzed as calls reach them; analyzing one may reach further ones.
+    private void AnalyzeLibraryBodies()
+    {
+        for (var i = 0; i < this.libraryBodies.Count; i++)
+        {
+            this.flow!.Append(this.libraryBodies[i]);
+            this.collector.Visit(this.libraryBodies[i]);
+        }
+    }
+
     private int Argument(Koto argument, ArgumentOperationKind kind, AcquisitionKind? acquisition = null)
     {
         if (kind is ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead)
@@ -1740,13 +1516,10 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    private int Condition(Koto condition) => this.Condition(condition, out _);
-
-    private int Condition(Koto condition, out int cleanupStart)
+    private int Condition(Koto condition)
     {
         var mark = this.temporaries.Count;
         var value = this.Value(this.Expression(condition, PlaceUseKind.Read));
-        cleanupStart = this.body.Operations.Count;
         this.Cleanup(mark, this.locals.Count, condition, CleanupReason.ExpressionEnd);
         this.temporaries.RemoveRange(mark, this.temporaries.Count - mark);
         return value;
@@ -1861,10 +1634,10 @@ public sealed partial class OwnershipAnalysis
         this.EndComparisonLoans(loanDepth, jump);
         if (returns)
         {
-            var secured = this.WriteResult(jump, this.resultPlace, value, jump.Expression is null ? -1 : reported);
+            this.WriteResult(jump, this.resultPlace, value, jump.Expression is null ? -1 : reported);
             this.CheckConstruction(jump);
             this.Cleanup(0, 0, jump, CleanupReason.Return);
-            this.Deliver(jump, secured);
+            this.Deliver(jump);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         }
         else if (selected && jump is YieldKoto or ExitKoto)

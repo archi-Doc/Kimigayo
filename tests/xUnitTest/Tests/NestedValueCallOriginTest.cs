@@ -62,7 +62,7 @@ public class NestedValueCallOriginTest
     public void ResultOnlyOriginsAreFreshAtEachValueCall()
     {
         var c = MinimalEmissionTest.Analyze(EmptyCalls);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.ValueCallOf() is not null).ToArray();
         Assert.Equal(2, calls.Length);
         var first = calls[0].TypeOf()!.Components[0].Origin!;
@@ -83,8 +83,8 @@ public class NestedValueCallOriginTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }
 

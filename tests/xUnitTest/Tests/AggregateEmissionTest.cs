@@ -2,12 +2,15 @@
 
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 public class AggregateEmissionTest
 {
+    private const string Echo = "func echo(x: string) -> string => x@move\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "AggregateTuple", "let value = (\"a\", \"b\")", "a=1;b=1" },
@@ -27,10 +30,12 @@ public class AggregateEmissionTest
         { "AggregateConditionalLoop", "var value = (\"a\", \"b\")\nvar i = 0\nwhile i < 3\n    if i == 1 => value@move\n    value = (\"c\", \"d\")\n    i += 1", "a=1;b=1;c=3;d=3" },
         { "AggregateMixed", "let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())", "a=1;b=1" },
         { "AggregateResultPayload", "let value = (if true => \"a\" else => \"b\", \"c\")", "a=1;b=0;c=1" },
-        { "AggregateCallPayload", "func echo(x: string) -> string => x@move\nlet value = (echo(\"a\"), \"b\")", "a=1;b=1" },
-        { "AggregatePartialExit", "loop\n    let value: (string, i32) = (\"a\", (exit))", "a=1" },
-        { "AggregatePartialReturn", "func f() -> ()\n    let value: (string, i32) = (\"a\", (return))\nf()", "a=1" },
-        { "AggregateArrayPartialExit", "loop\n    let value: [2 of string] = [\"a\", (exit)]", "a=1" },
+        { "AggregateCallPayload", Echo + "let value = (echo(\"a\"), \"b\")", "a=1;b=1" },
+
+        // The component a transfer abandons is a call's result, which has a destruction to audit; a constant has none (PLAN G157 (45)).
+        { "AggregatePartialExit", Echo + "loop\n    let value: (string, i32) = (echo(\"a\"), (exit))", "a=1" },
+        { "AggregatePartialReturn", Echo + "func f() -> ()\n    let value: (string, i32) = (echo(\"a\"), (return))\nf()", "a=1" },
+        { "AggregateArrayPartialExit", Echo + "loop\n    let value: [2 of string] = [echo(\"a\"), (exit)]", "a=1" },
         { "AggregateMatch", "match true\n    true\n        let value = (\"a\", \"b\")\n    false\n        let value = (\"c\", \"d\")", "a=1;b=1;c=0;d=0" },
         { "AggregateCovered", "match true\n    _ => ()\n    true\n        let value = (\"a\", \"b\")", "a=0;b=0" },
         { "AggregateDefer", "var i = 0\nloop\n    defer\n        let value = (\"a\", \"b\")\n    i += 1\n    if i == 3 => exit\n    continue", "a=3;b=3" },
@@ -56,45 +61,10 @@ public class AggregateEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, allocated);
-    }
-
-    [Theory]
-    [InlineData("count")]
-    [InlineData("declaration")]
-    [InlineData("placement")]
-    [InlineData("completion")]
-    [InlineData("flag")]
-    public void InvalidAggregatePlansDoNotWriteIr(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("var value = (\"a\", 1)\nif true => value@move\nvalue = (\"b\", 2)");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var construction = body.ConstructionStorage[0];
-        if (mutation == "count")
-        {
-            body.ConstructionStorage[0] = construction with { PayloadCount = 0 };
-        }
-        else if (mutation == "flag")
-        {
-            var index = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Consume && x.Place == 1);
-            Assert.True(index >= 0);
-            body.OperationStorage[index] = body.OperationStorage[index] with { Acquisition = AcquisitionKind.Copy };
-        }
-        else
-        {
-            var kind = mutation == "declaration" ? OwnershipOperationKind.Declare : mutation == "placement" ? OwnershipOperationKind.PayloadPlacement : OwnershipOperationKind.CompleteConstruction;
-            var index = body.OperationStorage.FindIndex(x => x.Kind == kind && (kind == OwnershipOperationKind.CompleteConstruction ? x.Place == construction.Place : x.Place == construction.PayloadStart));
-            Assert.True(index >= 0);
-            body.OperationStorage[index] = body.OperationStorage[index] with { Kind = OwnershipOperationKind.Produce };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Equal(string.Empty, writer.ToString());
     }
 
     [Fact]
@@ -102,11 +72,10 @@ public class AggregateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())");
         var type = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>()).TypeOf()!;
-        var pool = new AggregateLayoutPool(c.Layout);
-        var layout = Assert.IsType<AggregateLayout>(pool.Get(type));
-        Assert.Equal(new[] { 56, 0, 24, 32, 57 }, layout.Value.Layout.FieldOffsets.ToArray());
-        Assert.Equal(64, layout.Value.Layout.Size);
-        Assert.Equal(8, layout.Value.Layout.Alignment);
+        var layout = c.Layout.Of(type).Value!.Layout;
+        Assert.Equal(new[] { 56, 0, 24, 32, 57 }, layout.FieldOffsets.ToArray());
+        Assert.Equal(64, layout.Size);
+        Assert.Equal(8, layout.Alignment);
         const string Source = "let value = (\"first\", \"second\", \"third\")";
         var ir = ScalarEmissionTest.EmitFixture("AggregateOrder", Source, string.Empty);
         StringEmissionTest.WriteAuditedFixture("AggregateOrder", ir, string.Empty, "first=1;second=1;third=1", order: [2, 1, 0]);
@@ -118,9 +87,10 @@ public class AggregateEmissionTest
     public void UnsupportedAggregateShapesRemainExplicit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
+        c.ReportAnalysis();
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out var error));
-        Assert.False(string.IsNullOrEmpty(error));
+        Assert.False(c.Generate(writer));
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error); // check's or Generate's record explains it
         Assert.Equal(string.Empty, writer.ToString());
     }
 

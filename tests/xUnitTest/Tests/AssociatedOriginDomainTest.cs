@@ -50,7 +50,7 @@ public class AssociatedOriginDomainTest
     {
         var source = "contract C\n    associate Item(a, b)\n        origin a outlives b\nstruct S\n    Self is C\n    associate C.Item(left, right) is ref/i32 during right\n        " + relation;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 }

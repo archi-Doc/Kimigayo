@@ -1,0 +1,7 @@
+func inspect(value: ref/i32) => ()
+public func main()
+    let x: i32 = 1
+    let c = func (y: ref/i32) -> ref/i32 => y
+    let a = c(x@ref)
+    let m = c@move
+    inspect(a)

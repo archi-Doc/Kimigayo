@@ -30,17 +30,17 @@ public class ObjectExclusiveFieldBorrowTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Item + use);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void ExclusiveFieldLoansProtectTheOwningHandle()
     {
         var c = MinimalEmissionTest.Analyze(Item + "var owner = Kimi.Intrinsics.makeObj(Item.init())\nlet field = owner.id@uniq\nlet moved = owner@move\nrequire field == 7 else => $abort(\"live\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -48,10 +48,10 @@ public class ObjectExclusiveFieldBorrowTest(ITestOutputHelper output)
     public void WarmExclusiveFieldPlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Item + "var owner = Kimi.Intrinsics.makeObj(Item.init())\nlet field = owner.id@uniq\nfield@follow += 2\nrequire owner.id == 9 else => $abort(\"edit\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -67,7 +67,7 @@ public class ObjectExclusiveFieldBorrowTest(ITestOutputHelper output)
             (layers ? "let view = owner@objref\nlet slot = view@ref\nlet field = slot.id@ref\n" : "let field = owner.id@uniq\n") +
             (conflict ? "let moved = owner@move\n" : string.Empty) + "require field == 7 else => $abort(\"live\")";
         var c = MinimalEmissionTest.Analyze(text, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);

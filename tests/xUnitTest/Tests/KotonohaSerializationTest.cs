@@ -93,6 +93,28 @@ public class KotonohaSerializationTest
     }
 
     [Fact]
+    public void ADeserializedModuleTakesItsBaseFromItsNewCompilationAndItsDeserializedUrl()
+    {
+        // A root module without a project directory: the current directory its new compilation captured.
+        var original = Compilation.CreateForTest();
+        original.Kotonoha.AddSource(new SourceDocument(Path.GetFullPath("A.kimi"), "/// A.\nstruct A\n"));
+        var destination = Compilation.CreateForTest();
+        destination.CollectDocumentation = true;
+        var root = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(original.Kotonoha))!;
+        root.OnDeserialized(destination);
+        Assert.Equal("A.kimi", Assert.Single(root.DocumentationSources).LogicalName);
+
+        // A dependency read into a module of another project: its deserialized Url's directory.
+        var library = Path.GetFullPath("serialized-library");
+        var dependency = new Kotonoha(original, "Library", Path.Combine(library, "Library.kimiproj"));
+        dependency.AddSource(new SourceDocument(Path.Combine(library, "src", "Library.kimi"), "/// L.\nstruct L\n"));
+        var target = new Kotonoha(destination, "Other", Path.Combine(Path.GetFullPath("serialized-other"), "Other.kimiproj"));
+        TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(dependency), ref target);
+        target!.OnDeserialized(destination);
+        Assert.Equal("src/Library.kimi", Assert.Single(target.DocumentationSources).LogicalName);
+    }
+
+    [Fact]
     public void RebuildsLineIndexWhenDeserializingIntoExistingDocument()
     {
         var restored = new SourceDocument("old.kimi", "old\ntext\n");

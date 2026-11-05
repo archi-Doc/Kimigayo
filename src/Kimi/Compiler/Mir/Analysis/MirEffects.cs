@@ -1,19 +1,21 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
-// Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
+// Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
-// (MirProgram.Drops), TyCtxt's obligations and callee facts.
+// (MirProgram.Drops), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
+// DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12).
 // Output: IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
+// UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
 // per view (Keys, Field).
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
-// G128's bound); requirement and virtual calls take the bounds of the caller's own premises; one worklist with recorded dependencies solves
+// G128's bound); requirement calls on an abstract Self and virtual calls take the bounds of the caller's own premises, a requirement on
+// another Self what its witnesses run; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing.
-// Must not read syntax or HIR, re-derive premises, bounds or obligations, or report a failure that only an Opaque site or a callee
-// Binding rejected causes (derived, R4-M10).
+// Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
+// Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
 using System.Numerics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -33,14 +35,27 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>A class of a summary: an effect this implementation cannot classify yet (a located <c>Unsupported_Kd</c>).</summary>
     internal const byte Limit = 4;
 
-    /// <summary>A class of a summary: an effect only an Opaque site or a callee Binding rejected causes, a dependent of that error
-    /// (R4-M10).</summary>
+    /// <summary>A class of a summary: an effect only an Opaque site, a callee Binding rejected or a body with a validator finding causes,
+    /// a dependent of that error (R4-M10, R5-M183).</summary>
     internal const byte Derived = 8;
 
-    private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
-    private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
-    private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
+    /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
+    /// limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
+    internal const byte Deep = 16;
 
+    /// <summary>An atom's kind: the destruction of a value of its Type; any other kind but <see cref="Requires"/> is 1 + the receiver of
+    /// a call through it.</summary>
+    internal const byte Drop = 0;
+
+    /// <summary>An atom's kind: a call through its Type with a shared borrow, as a published row's Callable input is called.</summary>
+    internal const byte Shared = 1 + (int)SemanticsKind.Ref;
+
+    /// <summary>An atom's kind: a published requirement on its Type (SPEC 4.9.6).</summary>
+    internal const byte Requires = byte.MaxValue;
+
+    private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
+
+    private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
     private byte[] local = []; // The classes of each node's local facts.
@@ -53,6 +68,17 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private int edgeCount;
     private byte found; // The classes the current evaluation or local walk found.
     private ulong version; // The program version whose body views Local records (MirProgram.Version; 0: none).
+
+    /// <summary>Gets the one answer of classes (DECISIONS R4-M153): the Join of their outcomes, an <see cref="Environment"/> or
+    /// <see cref="Unknown"/> effect decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep. A4's obligations and A5's effect
+    /// rule record by it.</summary>
+    /// <param name="classes">Classes of a summary or a site.</param>
+    /// <returns>The classes' outcome.</returns>
+    internal static MirOutcome Outcome(byte classes)
+    {
+        var decided = (classes & (Environment | Unknown)) != 0 ? MirOutcome.Decided : MirOutcome.None;
+        return decided.Join((classes & Limit) != 0 ? MirOutcome.Limit : MirOutcome.None).Join((classes & Deep) != 0 ? MirOutcome.Deep : MirOutcome.None);
+    }
 
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
     /// effects and static accesses, its calls with a body as edges into the callee views their substitution selects, and the parts its
@@ -98,6 +124,17 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.keyEnds[node] = this.keyCount;
     }
 
+    // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
+    // destroys (A4's, and A5's MirBorrows.Destructions'): the declared Type's instance as every reader reads one (TyCtxt.ReadableInstance,
+    // DECISIONS R4-M139), Rejected storage included; null where the substitution does not instantiate it or its storage is a Limit.
+    internal BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
+    {
+        var declared = TyCtxt.Signature(callee, null, slot, out _);
+        var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
+        _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
+        return below;
+    }
+
     private static byte Class(CompilerFunctionEffect effect) => effect switch
     {
         CompilerFunctionEffect.Inputs => 0,
@@ -122,8 +159,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
-    // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A requirement call that selects a built-in
-    // target runs what its Self's witnesses run; any other requirement or dynamic virtual call has the bounds of the caller's
+    // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A tuple operator's call runs its parts'
+    // comparisons (Compared). A requirement call that selects a built-in
+    // target or whose Self is not abstract (an inline default copy's instance, SPEC 7.2.3) runs what its Self's witnesses run under the
+    // Contract reference the call recorded (Require); one on an abstract Self or a dynamic virtual call has the bounds of the caller's
     // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
     // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
@@ -139,11 +178,19 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee.Kind == MirCalleeKind.Fn)
         {
-            this.Function(program, terminator);
+            this.Function(program, callee);
         }
-        else if (callee is { Kind: MirCalleeKind.Requirement, Symbol.CompilerFunction: not CompilerFunctionKind.None, Subst.Self: { } self })
+        else if (callee is { Kind: MirCalleeKind.Requirement, Arg: not 0 })
         {
-            this.Item(cases.Type(self), Requires, callee.Symbol); // Binding's built-in target for its Self.
+            var contract = TyCtxt.Contract(callee.Symbol!);
+            this.compared.Clear();
+            this.Compared(program, body, contract, types.Comparison(contract, callee.Subst!.Self!, operators: true)!); // The builder's root.
+        }
+        else if (callee is { Kind: MirCalleeKind.Requirement, Subst: { Self: { } written } subst } && cases.Type(written) is var self &&
+            (callee.Symbol!.CompilerFunction != CompilerFunctionKind.None || !self.IsAbstract))
+        {
+            // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference.
+            this.Item(self, Requires, callee.Symbol, callee.Contract, subst.Declaring is { } reference ? cases.Type(reference) : null);
         }
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
@@ -162,21 +209,21 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.Given(body, terminator);
             }
         }
-        else if (callee.Arg == (int)IntrinsicId.StaticEnsure && program.StaticInit(body, body.Operands[terminator.Start]) is { } initializer)
+        else if (callee.Arg == (int)IntrinsicId.StaticEnsure)
         {
-            this.AddEdge(initializer, null);
+            this.AddEdge(program.StaticInit(body, body.Operands[terminator.Start])!, null); // The validator checks it has one (G191).
         }
     }
 
-    private void Function(MirProgram program, in MirTerminator terminator)
+    private void Function(MirProgram program, in MirCallee call)
     {
-        var symbol = terminator.Callee.Symbol!;
-        var subst = terminator.Callee.Subst;
-        if (terminator.Callee.Arg == 0 && types.Published(symbol) is { } row)
+        var symbol = call.Symbol!;
+        var subst = call.Subst;
+        if (call.Arg == 0 && types.Published(symbol) is { } row)
         {
             if (row.Runs is { } requirement)
             {
-                this.Item(this.Below(symbol, subst, row.On), Requires, requirement);
+                this.Item(this.Below(symbol, subst, row.On), Requires, requirement, TyCtxt.Contract(requirement));
             }
 
             if (row.Destroys >= 0)
@@ -184,12 +231,20 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.Item(this.Below(symbol, subst, row.Destroys), Drop);
             }
 
+            if (row.Calls >= 0)
+            {
+                // SPEC 4.9.6, 8.11.4: the row's Callable input, called through a shared borrow of the actual argument and then destroyed.
+                var callable = this.Below(symbol, subst, row.Calls);
+                this.Item(callable, Shared);
+                this.Item(callable, Drop);
+            }
+
             return;
         }
 
-        if (program.Callee(terminator.Callee) is { } target)
+        if (program.Callee(call) is { } target)
         {
-            if (terminator.Callee.Arg > 0)
+            if (call.Arg > 0)
             {
                 this.AddEdge(target, subst); // SPEC 8.13: a default is always the original's, evaluated before a specialization is called.
                 return;
@@ -210,12 +265,39 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.Enter(null, subst, symbol);
     }
 
-    // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
-    // destroys; null where the substitution does not instantiate it.
-    private BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
+    // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs, once per distinct node of its Self's comparison under source
+    // operators (the validator checked it composes), what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf
+    // the requirement under the caller's premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf and a
+    // Composite's own node nothing. A None leaf, no answer (a broken contract the collector records as InternalInvariant_Kd at the item,
+    // a dependent in an incomplete Binding), is what Require gives a Type nothing resolves for: the Limit, never a silent empty summary.
+    private void Compared(MirProgram program, MirBody body, BindingSymbol contract, ComparisonNode node)
     {
-        _ = TyCtxt.Layer(TyCtxt.Signature(callee, subst, slot, out _) is { } parameter ? cases.Type(parameter) : null, out var below, out _);
-        return below;
+        if (!this.compared.Add(node))
+        {
+            return;
+        }
+
+        foreach (var part in node.Parts)
+        {
+            this.Compared(program, body, contract, part);
+        }
+
+        switch (node.Kind)
+        {
+            case ComparisonKind.Composite or ComparisonKind.Builtin:
+                break;
+            case ComparisonKind.Witness:
+                this.Function(program, new(MirCalleeKind.Fn, node.Target, node.Subst));
+                break;
+            case ComparisonKind.Requirement:
+                this.found |= types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true ? (byte)0 : Unknown;
+                break;
+            case ComparisonKind.None:
+                this.found |= Limit;
+                break;
+            default:
+                throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");
+        }
     }
 
     // R4-M6a: what a Drop destroys in the view, by A2's verdict group. One only the checks reach runs no destructor (drop elaboration and
@@ -236,7 +318,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // A verdict row and its subtree: Elide destroys nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
     // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit; a part is covered by a direct child row
-    // of its argument (a mask below 64 parts, past them the rows themselves). Returns the row after the subtree.
+    // of its argument (a mask below 64 parts, past them the rows themselves). A part Binding rejected (a null Field or Case, DECISIONS
+    // BU-37) destroys nothing, as MirTypes.Destruction reads it, never a limit (R4-M139). Returns the row after the subtree.
     private int Destroyed(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type)
     {
         var node = rows[row];
@@ -273,7 +356,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             if (i > 63 ? !Covers(rows, row, next, i) : (covered & (1UL << i)) == 0)
             {
-                this.Item(body.ProjectedType(type, kind, i), Drop);
+                if (body.ProjectedType(type, kind, i) is { } part)
+                {
+                    this.Item(part, Drop);
+                }
+
                 if (kind == MirProjectionKind.ConstIndex)
                 {
                     break; // A fixed array's elements share one Type.
@@ -301,7 +388,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
     }
 
-    private void Item(BoundType? type, byte kind, BindingSymbol? requirement = null)
+    private void Item(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, BoundType? reference = null)
     {
         if (type is null)
         {
@@ -310,17 +397,38 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
 
         MirDataflow.Grow(ref this.items, this.itemCount + 1);
-        this.items[this.itemCount++] = new(type, kind, requirement);
+        this.items[this.itemCount++] = new(type, kind, requirement, contract, reference);
     }
 
     private void AddEdge(MirBody callee, Subst? subst)
     {
         MirDataflow.Grow(ref this.edges, this.edgeCount + 1);
-        this.edges[this.edgeCount++] = new(callee.Ordinal, cases.Views(callee, subst), subst);
+        this.edges[this.edgeCount++] = new(callee.Ordinal, this.Views(callee, subst), subst);
     }
 
-    // An atom of a summary or a local input: a Type and a kind (Drop, 1 + a call's receiver, or Requires with its requirement).
-    private readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement);
+    // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
+    // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).
+    private ulong Views(MirBody body, Subst? subst)
+    {
+        if (body.HasFinding)
+        {
+            this.found |= Derived;
+            return 0;
+        }
+
+        return cases.Views(body, subst);
+    }
+
+    /// <summary>An atom of a summary or a local input: a Type and a kind (<see cref="Drop"/>, 1 + a call's receiver, or
+    /// <see cref="Requires"/> with its requirement and the Contract reference its call recorded).</summary>
+    /// <param name="Type">The Type.</param>
+    /// <param name="Kind">The kind.</param>
+    /// <param name="Requirement">The requirement of a <see cref="Requires"/> atom.</param>
+    /// <param name="Contract">The Contract reference the requirement's call recorded (<see cref="MirCallee.Contract"/>; a published row's
+    /// requirement's own).</param>
+    /// <param name="Reference">That reference in the call's substitution (<see cref="Subst.Declaring"/>) for a local input whose Self is
+    /// not abstract; null for a summary's atom, whose abstract Self names no conformance.</param>
+    internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, BoundType? Reference = null);
 
     // A call of a body: the callee's ordinal, the views its substitution selects and the substitution, null for the callee's own.
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);

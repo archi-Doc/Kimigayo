@@ -37,7 +37,7 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
     {
         const string Source = "struct Empty {source}\ngroup Values\n    public let value: Empty = make()\n    func make() -> Empty => $abort(\"unused\")\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.SymbolOf()?.Name == "value");
         Assert.Same(BoundOrigin.Static, Assert.Single(field.TypeOf()!.OriginArguments));
     }
@@ -84,7 +84,7 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<PropertyKoto>().Single();
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(group, old, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         Assert.Empty(TestDiagnostics.Of(c));
     }

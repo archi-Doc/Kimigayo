@@ -24,8 +24,8 @@ public class ReferenceReadTest
     {
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ReferenceRead", Source, "ok\n");
     }
 
@@ -57,10 +57,10 @@ public class ReferenceReadTest
     {
         // SPEC 13.5.2: the operand of a numeric conversion is a read position; `r@i64` converts the value read through `r`.
         var c = MinimalEmissionTest.Analyze("func f(r: ref/i32) -> i64 => r@i64\nlet x: i32 = 7\nlet y = f(x)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().First();
         Assert.True(c.Binding.ReadsReferent(conversion.Left));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -47,7 +47,7 @@ public class ArithmeticContractTest(ITestOutputHelper output)
     public void RecognizedDeclarationsHaveOneOutputAndSharedRequirement()
     {
         var c = MinimalEmissionTest.Analyze("()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
             var contract = c.Library.GetSymbol(id)!.Contract!;
@@ -166,12 +166,12 @@ public class ArithmeticContractTest(ITestOutputHelper output)
     public void WarmConformanceAndExplicitCallsReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

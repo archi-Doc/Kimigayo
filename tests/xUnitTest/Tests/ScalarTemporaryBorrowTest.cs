@@ -30,7 +30,7 @@ public class ScalarTemporaryBorrowTest
     public void ExecutesScalarTemporaryBorrows(string name, string source, string output)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ScalarTemporaryBorrow" + name, source, output);
     }
 
@@ -40,9 +40,9 @@ public class ScalarTemporaryBorrowTest
     public void RejectsReturnedBorrowOfTemporaryAfterStatement(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -54,6 +54,6 @@ public class ScalarTemporaryBorrowTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

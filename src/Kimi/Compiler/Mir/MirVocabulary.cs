@@ -10,8 +10,8 @@
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A MIR statement (plan 5.4). The six kind vocabularies of MIR are closed (COMPILER_ARCHITECTURE, Closed vocabularies):
-/// a new member needs a SPEC basis and owner approval, and every member has a row in <see cref="MirDescriptors"/>.</summary>
+/// <summary>A MIR statement (plan 5.4). The six kind vocabularies of MIR and its aggregate kinds are closed (COMPILER_ARCHITECTURE, Closed
+/// vocabularies): a new member needs a SPEC basis and owner approval, and every member has a row in <see cref="MirDescriptors"/>.</summary>
 internal enum MirStatementKind : byte
 {
     Assign, // Place = Rvalue.
@@ -30,7 +30,7 @@ internal enum MirRvalueKind : byte
     BinaryOp,
     UnaryOp,
     Cast, // The operand converted to the Type (MirCastKind).
-    Aggregate, // A Tuple, struct or enum Case, fixed array, fill or Closure environment from the operands (MirAggregateKind).
+    Aggregate, // A Tuple, struct or enum Case, fixed array, fill, Closure environment or Array from the operands (MirAggregateKind).
     Discriminant, // The Case ordinal of an enum Place.
     Len, // The length of a sequence Place.
     Opaque, // A value of the Type that a Binding error or an Unsupported form replaced; its site lists the Places it touched.
@@ -78,6 +78,15 @@ internal enum MirCalleeKind : byte
     Virtual, // A virtual function's slot.
     Value, // A Function, Closure or function item value.
     Intrinsic, // An IntrinsicId.
+}
+
+/// <summary>How a comparison of a composite Self compares its Builtin leaves (SPEC 13.4, 13.4.1; DECISIONS R5-M166): a Requirement
+/// callee's <see cref="MirCallee.Arg"/> and a comparison Builtin item's variant.</summary>
+internal enum ComparisonMode : byte
+{
+    Mapping, // The Contract's mapping (SPEC 13.4.1): NaN-reflexive equality; every requirement call but a tuple operator's.
+    Operator, // A tuple operator's (SPEC 13.4): IEEE equality; an ordering's unordered pair compares as greater (<, <=).
+    Reversed, // A tuple operator's ordering whose unordered pair compares as less (>, >=).
 }
 
 /// <summary>A binary operator of MIR; the Type decides checked or wrapping arithmetic.</summary>
@@ -132,11 +141,13 @@ internal enum MirAggregateKind : byte
 {
     Tuple,
     Adt, // A struct (its base first, then its own Fields) or the Case its ordinal names.
-    FixedArray, // A fixed array from its elements, one operand each, or from none (noinit); an Array or a Dictionary from none, the empty
-    // collection its literal's calls fill.
+    FixedArray, // A fixed array from its elements, one operand each, or from none (noinit); a Dictionary from none, the empty Dictionary
+    // its literal's calls fill (until PLAN G255 (C2) gives the Dictionary literal its form; DECISIONS R5-M129).
     Closure, // A Closure environment from its captures.
     Fill, // SPEC 4.3.3: a fixed array whose every element is a copy of its one operand, the value acquired once, also for length 0; its
     // length is its Type's, which an instance closes (DECISIONS R4-M81).
+    Array, // SPEC 4.3.1, 4.9.5, 4.9.6, 12.4.1: an Array from its elements, one operand each in source order, moved into one buffer allocated
+    // for their count, none for no element (`[]`); the allocation may Abort, and no user code runs (DECISIONS R5-M129).
 }
 
 internal enum MirConstKind : byte
@@ -161,7 +172,7 @@ internal enum MirLocalKind : byte
 }
 
 /// <summary>Why a local exists, which maps a finding to its diagnostic code; a guard candidate's role also decides A5's guard-local
-/// Origin (design A3 E7).</summary>
+/// Origin (design A3 E7), and a Result local is the body's result in transit, one of A5's escape holders (DECISIONS R4-M132).</summary>
 internal enum MirLocalRole : byte
 {
     None,
@@ -169,6 +180,8 @@ internal enum MirLocalRole : byte
     PendingSlot, // A prepared argument slot of an inline default.
     GuardCandidate, // A match guard's candidate binding: its value carries γ, which its EndBorrow ends (SPEC 14.8.3, err(ended)).
     Subject, // A match subject.
+    Result, // The body's result in transit: the temp a transfer delivers whole into _0 after the Scope Exit (SPEC 16.2.2, R5-M50).
+    Receiver, // A constructor's _0, its construction receiver self (SPEC 6.3.3-6.3.4): storage its caller's construction expression made.
 }
 
 internal enum MirScopeKind : byte

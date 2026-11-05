@@ -1,0 +1,7 @@
+func inspect(value: ref/i32) => ()
+group Counters
+    public var count: i32 = 0
+public func main()
+    let c = func () => Counters.count@ref
+    let v = c()
+    inspect(v)

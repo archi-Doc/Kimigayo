@@ -107,9 +107,8 @@ public sealed partial class Binding
         return target;
     }
 
-    // The Target Result Type a position fixes for a result target (SPEC 14.9.2 step 1): Unit outside a value context and for while and
-    // for; none for an expectation whose Origin is still inferred, so that the result's actual dependency is inferred before a local
-    // annotation is completed.
+    // SPEC 12.3.1, 14.9.2: the position fixes every source's Target Result Type, even with omitted Origins; their fits collect
+    // the bounds resolved by LocalOrigins. A discard position and while/for fix Unit.
     private static BoundType? ResultExpectation(Koto target, BoundType? expected)
     {
         if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
@@ -117,7 +116,7 @@ public sealed partial class Binding
             return BoundType.Unit;
         }
 
-        return expected?.Origin?.Kind == OriginKind.Inference ? null : expected;
+        return expected;
     }
 
     private BoundType? CommonBorrowResult(BoundType left, BoundType right)
@@ -134,7 +133,7 @@ public sealed partial class Binding
 
         if ((left.CarriesRawOrigin || right.CarriesRawOrigin) && SameExceptRawOrigins(left, right))
         {
-            return this.CommonOriginType(left, right); // SPEC 5.7 (Q-O6): differing raw Origins join unstated, never as a meet.
+            return this.CommonOriginType(left, right, out _); // SPEC 5.7 (Q-O6): differing raw Origins join unstated, never as a meet.
         }
 
         if (left.Kind != BoundTypeKind.Semantics || right.Kind != BoundTypeKind.Semantics ||
@@ -311,45 +310,80 @@ public sealed partial class Binding
         }
 
         BoundType? failed = null;
+        var failure = default(ComparisonFailure);
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
-            context.Invalid |= conflict;
+            if (conflict && this.ConflictWaits(node))
+            {
+                context.Wait(this.SourcesAwait(context));
+                return Complete(node, null); // SPEC 10.5.1: no complete Type without its call's expectation; its call decides it.
+            }
+
+            if (conflict)
+            {
+                context.Conflict();
+            }
         }
         else
         {
             // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one, an Origin relation when only its Origin part fails.
+            // is the explained one. A regional target records source edges; fixed and omitted targets keep their immediate/collecting fit.
             for (var i = 0; i < types.Count; i++)
             {
-                if (!this.FitsTypeAt(types[i], common, node))
+                ComparisonFailure fit;
+                if (!(this.HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
                 {
-                    context.Invalid = true;
-                    failed ??= types[i];
+                    context.Conflict();
+                    if (failed is null)
+                    {
+                        (failed, failure) = (types[i], fit);
+                    }
                 }
             }
         }
 
         // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
-        if (awaiting && common is not null && this.PropagateSources(node, context, common) is { } misfit)
+        if (awaiting && common is not null && this.BindWaitedSources(node, context, common) is { } misfit)
         {
-            context.Invalid = true;
+            context.Conflict();
             failed ??= misfit;
         }
 
         types.Clear();
-        if (context.Invalid)
+        if (context.Outcome == JoinOutcome.Conflict)
         {
-            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common) : this.Fail(node, BindingFailure.TypeMismatch);
+            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure)
+                : this.Fail(node, BindingFailure.TypeMismatch);
+        }
+
+        context.DecideRest();
+        if (context.Outcome == JoinOutcome.Dependent)
+        {
+            return this.CompleteDependent(node, context.Cause!); // SPEC 23.1.2: it rests on its failed source.
         }
 
         if (context.Pending)
         {
-            return Complete(node, null);
+            return Complete(node, null); // Its source waits for its call.
         }
+
+        context.Outcome = JoinOutcome.Decided;
 
         var completion = node is FunctionKoto function ? (function.Body ?? function.ExpressionBody)! : node;
         return Complete(node, !suppliedValue && !this.ResultStructure().CanComplete(completion) ? BoundType.Never : common);
+    }
+
+    // A join's outcome (SPEC 14.9.2, 23.1.2; DECISIONS BU-43): undecided while it collects its sources and forms its Type; waiting for
+    // its position's Type (an outer join's, its call's); failed by a conflict it found (Conflict, its own record) or resting on a failed
+    // part or on the join it waited for (Dependent, no record); or decided (bound, or pending on a source that waits for its call).
+    private enum JoinOutcome : byte
+    {
+        Undecided,
+        Waiting,
+        Conflict,
+        Dependent,
+        Decided,
     }
 
     private sealed class ResultContext
@@ -379,10 +413,16 @@ public sealed partial class Binding
         // Whether the target collects its sources after its survey, so that a literal source waits for its Type (SPEC 14.9.2 step 3).
         internal bool Collecting { get; set; }
 
-        // Whether the target waits for its position's Type, which decides it when the position binds it (SPEC 14.9.2).
-        internal bool Waiting { get; set; }
+        // The join's one outcome (DECISIONS BU-43), written once where it becomes true and read by every enclosing join and call, and
+        // what a Dependent one rests on: its failed part, or the join it waited for.
+        internal JoinOutcome Outcome { get; set; }
 
-        internal bool Invalid { get; set; }
+        internal Koto? Cause { get; set; }
+
+        // What a Waiting join awaits its position for (SPEC 14.9.2 step 3; DECISIONS BU-87): published with the outcome (Wait) from its
+        // sources as they are then, and again when its call takes its parts (DecideTaken); every reader of a Waiting join's waiting
+        // reads it (AwaitsFor).
+        internal Awaiting Awaiting { get; private set; }
 
         internal bool HasLiteral { get; set; }
 
@@ -403,7 +443,10 @@ public sealed partial class Binding
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;
-            this.Invalid = this.Pending = this.Collecting = this.Waiting = false;
+            this.Pending = this.Collecting = false;
+            this.Outcome = JoinOutcome.Undecided;
+            this.Awaiting = Awaiting.None;
+            this.Cause = null;
             this.Sources.Clear();
             this.SourceNodes.Clear();
             this.Evidence.Clear();
@@ -416,6 +459,36 @@ public sealed partial class Binding
         {
             this.Sources.Add(type);
             this.SourceNodes.Add(node);
+        }
+
+        // The one writer of Waiting (DECISIONS BU-87): the join waits for its position or its call, awaiting what its sources await
+        // (SourcesAwait), each held join's own fact already published.
+        internal void Wait(Awaiting awaiting)
+        {
+            this.Outcome = JoinOutcome.Waiting;
+            this.Awaiting = awaiting;
+        }
+
+        // Records the join's own conflict, whose record it writes; it prevails over a dependence (RestOn).
+        internal void Conflict() => this.Outcome = JoinOutcome.Conflict;
+
+        // Records the first failure the join did not find and will rest on (SPEC 23.1.2), unless it found a conflict. U1.6h: a failed source
+        // takes no part in its join's kind, so recording it decides nothing; the join rests on it at its verdict (DecideRest).
+        internal void RestOn(Koto cause)
+        {
+            if (this.Outcome != JoinOutcome.Conflict)
+            {
+                this.Cause ??= cause;
+            }
+        }
+
+        // U1.6h: the verdict, the one writer of Dependent: when the join decides, it rests on its recorded cause unless it found a conflict.
+        internal void DecideRest()
+        {
+            if (this.Outcome != JoinOutcome.Conflict && this.Cause is not null)
+            {
+                this.Outcome = JoinOutcome.Dependent;
+            }
         }
     }
 }

@@ -27,8 +27,8 @@ public class TempProbeTest(ITestOutputHelper output)
             }
         }
 
-        output.WriteLine(MinimalEmissionTest.Describe(c, null));
-        foreach (var body in c.Ownership.Bodies)
+        output.WriteLine(MinimalEmissionTest.Describe(c));
+        foreach (var body in c.AnalyzeLegacyOwnership().Bodies)
         {
             output.WriteLine("BODY " + body.Function?.ToString()?.Split('\n')[0]);
             for (var i = 0; i < body.Places.Count; i++)

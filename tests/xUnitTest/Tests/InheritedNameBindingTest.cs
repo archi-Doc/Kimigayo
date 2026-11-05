@@ -37,7 +37,7 @@ public class InheritedNameBindingTest
     public void InaccessibleNamesAndSameLayerOverloadsRemainValid(string parent, string child)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    " + parent + "\nstruct S: Base\n    " + child);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
     }

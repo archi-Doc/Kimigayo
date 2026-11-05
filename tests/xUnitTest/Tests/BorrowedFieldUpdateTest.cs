@@ -45,7 +45,7 @@ public class BorrowedFieldUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -53,10 +53,10 @@ public class BorrowedFieldUpdateTest
     public void RejectsOwnerWritesWhileTheBorrowIsLive(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.NotEmpty(c.Problems);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -75,7 +75,7 @@ public class BorrowedFieldUpdateTest
     {
         var c = MinimalEmissionTest.Analyze("func change(pair: uniq/(i32, bool))\n    pair.0 += 1\n    pair.0++\nvar pair: (i32, bool) = (40, true)\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
@@ -83,7 +83,7 @@ public class BorrowedFieldUpdateTest
             Assert.True(restored.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(restored.Analyze().IsVerified);
             using var output = new StringWriter();
-            Assert.True(restored.WriteIr(output, out error), error);
+            Assert.True(restored.Generate(output), MinimalEmissionTest.Describe(restored));
             Assert.Equal(original.ToString(), output.ToString());
         }
     }

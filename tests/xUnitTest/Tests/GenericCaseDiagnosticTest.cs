@@ -16,6 +16,10 @@ public sealed class GenericCaseDiagnosticTest
 
     private const string Conflict = "func f<s/T>(value: s/T, x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    let local = v\n    v@follow = x\n    _ = local@follow\n" + Main;
 
+    private const string Borrow = "borrow that created the loan";
+
+    private const string Retained = "later use of the value retaining the conflicting loan";
+
     [Fact]
     public void AProblemOfOneCaseNamesTheCaseAndItsBinding()
     {
@@ -25,11 +29,30 @@ public sealed class GenericCaseDiagnosticTest
         var fact = Assert.Single(error.Reason!);
         Assert.Equal(("case", "s = uniq"), (fact.Name, fact.Value));
         Assert.Contains("Found under the Semantics case s = uniq (SPEC 8.15)", error.Note, StringComparison.Ordinal);
-        // Related locations are ordered by role name (DIAGNOSTICS.md §4.4).
+        // Related locations are ordered by role name (DIAGNOSTICS.md §4.4). Since the MIR decides acceptance (R6-check H5), the record is
+        // A5's: it relates the borrow that created the Loan and the later use that retains it (H3b T49, class 3).
         Assert.Collection(
             error.Related!,
+            x => Assert.Equal(
+                ("borrow", Conflict.IndexOf("local = v", StringComparison.Ordinal) + 8, "v", Borrow),
+                (x.Role, x.Span!.Value.Start, Text(Conflict, x.Span), x.Label)),
             x => Assert.Equal(("declaration", "s/T", "the Semantics binding s"), (x.Role, Text(Conflict, x.Span), x.Label)),
-            x => Assert.Equal(("loan", "let local = v"), (x.Role, Text(Conflict, x.Span))));
+            x => Assert.Equal(("loan", "local@follow", Retained), (x.Role, Text(Conflict, x.Span), x.Label)));
+    }
+
+    // DIAGNOSTICS "Semantics cases": a found set that is no product lists its cases, binders by `, ` and cases by `; ` (Binding's
+    // Semantics-case renderer, DECISIONS BU-82); each binding it names is related.
+    [Fact]
+    public void ACaseSetThatIsNoProductListsItsCases()
+    {
+        var source = "func f<t/U, s/T>(value: s/t/U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n    U is Copy\n    let local = value\n    _ = value\n" +
+            "    _ = local\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        const string Cases = "t = owner, s = uniq; t = uniq, s = owner; t = uniq, s = uniq";
+        Assert.Equal(("case", Cases), (Assert.Single(error.Reason!).Name, error.Reason![0].Value));
+        Assert.Contains($"Found under the Semantics cases {Cases} (SPEC 8.15)", error.Note, StringComparison.Ordinal);
+        Assert.Equal(["the Semantics binding t", "the Semantics binding s"], error.Related!.Where(static x => x.Role == "declaration").Select(static x => x.Label));
     }
 
     [Fact]
@@ -41,8 +64,7 @@ public sealed class GenericCaseDiagnosticTest
         Assert.Equal(source.IndexOf("m = 2", StringComparison.Ordinal), error.Span!.Value.Start);
         Assert.Null(error.Reason);
         Assert.DoesNotContain("Semantics case", error.Note ?? string.Empty, StringComparison.Ordinal);
-        var related = Assert.Single(error.Related!);
-        Assert.Equal("loan", related.Role);
+        Assert.Equal([("borrow", "m@uniq", Borrow), ("loan", "r@follow", Retained)], error.Related!.Select(x => (x.Role, Text(source, x.Span), x.Label)));
     }
 
     [Fact]
@@ -56,8 +78,11 @@ public sealed class GenericCaseDiagnosticTest
         Assert.Equal(("case", "s = uniq"), (fact.Name, fact.Value)); // t is found under both of its cases and is omitted.
         Assert.Collection(
             error.Related!,
-            x => Assert.Equal(("declaration", "s/T"), (x.Role, Text(source, x.Span))),
-            x => Assert.Equal("loan", x.Role));
+            x => Assert.Equal(
+                ("borrow", source.IndexOf("local = v", StringComparison.Ordinal) + 8, "v", Borrow),
+                (x.Role, x.Span!.Value.Start, Text(source, x.Span), x.Label)),
+            x => Assert.Equal(("declaration", "s/T", "the Semantics binding s"), (x.Role, Text(source, x.Span), x.Label)),
+            x => Assert.Equal(("loan", "local@follow", Retained), (x.Role, Text(source, x.Span), x.Label)));
     }
 
     [Fact]

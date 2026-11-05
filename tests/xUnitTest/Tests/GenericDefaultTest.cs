@@ -78,9 +78,9 @@ public class GenericDefaultTest
     public void AReplicaPartLoanStillConflicts()
     {
         var c = MinimalEmissionTest.Analyze(Maker + Pair + "        let r = pair.1@ref\n        let whole = pair@move\n        Console.writeLine(r)\n        exit to result 1\n    ) -> i32\n        T is Maker\n        return marker\nlet n = Helpers.evaluate(Box.init(1))");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 8.11, 8.15, 14.8: a residual Subject part of a replica contributes the exact destruction effect of its instantiated
@@ -99,10 +99,10 @@ public class GenericDefaultTest
             "group Helpers\n    public func evaluate<T>(sample: ref/T, marker: i32 = label result: do\n        let pending: " + pending + "\n        match pending@move\n" + arms + "    ) -> i32\n        T is Maker\n        return marker\n" +
             "struct Worker\n    Self is Runner\n    public var held: " + type + "\n    public init(held: " + type + ") => self.held = held@move\n    public func run(self: ref/Self) -> i32 => Helpers.evaluate(self.held@ref)\n" +
             "let w = Worker.init(" + type + ".make())\nlet r = w.run()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (valid)
         {
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
         else
         {
@@ -116,7 +116,7 @@ public class GenericDefaultTest
     public void ReplicaPlacesResolveCopyOrMoveExactly()
     {
         var c = MinimalEmissionTest.Analyze(Maker + Evaluate + "let a = Helpers.evaluate(Box.init(1))\nlet b = Helpers.evaluate(Pt.init(2))");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -128,16 +128,16 @@ public class GenericDefaultTest
     public void RebindingAndReloadKeepCallContexts()
     {
         var c = MinimalEmissionTest.Analyze(GenericCall);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
-        Assert.True(restored.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
+        Assert.True(restored.Generate(TextWriter.Null), MinimalEmissionTest.Describe(restored));
     }
 
     [Theory]
@@ -149,16 +149,22 @@ public class GenericDefaultTest
         var source = Declaration + (calls.Length == 0 ? "public func main() => ()" : calls);
         var path = Path.GetFullPath("generic-default.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), DiagnosticSeverity.Error, DiagnosticCategory.Language), (record.Code, record.Severity, record.Category));
         Assert.Equal(source.IndexOf("copied = x\n    exit", StringComparison.Ordinal), record.Span!.Value.Start);
-        Assert.Contains(record.Related!, related => related.Role == "loan" && related.Span is { } span && source.Substring(span.Start, span.Length) == "let r = copied@ref");
+
+        // A5's record (R6-check H5; H3b T49, class 3) relates the borrow that created the Loan and the later use of the value retaining it,
+        // as A5 publishes them, not the holder's declaration `let r = copied@ref`, and has no Note.
+        Assert.Equal(
+            [("borrow", "copied@ref", "borrow that created the loan"), ("loan", "inspect(r)", "later use of the value retaining the conflicting loan")],
+            record.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+        Assert.Null(record.Note);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
@@ -187,7 +193,7 @@ public class GenericDefaultTest
     {
         var snippet = ReplicaSnippet.Find(name);
         var declaration = MinimalEmissionTest.Analyze(ReplicaSnippet.Prelude + snippet.Declare(ReplicaShape.Default) + "public func main() => ()");
-        Assert.True(declaration.Analysis.IsVerified, MinimalEmissionTest.Describe(declaration, null));
+        Assert.True(declaration.Analysis.IsVerified, MinimalEmissionTest.Describe(declaration));
         var record = new StringBuilder();
         var failures = new StringBuilder();
         foreach (var shape in ReplicaSnippet.Shapes)
@@ -229,8 +235,7 @@ public class GenericDefaultTest
             try
             {
                 var c = MinimalEmissionTest.Analyze(source);
-                string? error = null;
-                return c.Analysis.IsVerified && c.WriteIr(writer, out error) ? null : MinimalEmissionTest.Describe(c, error);
+                return c.Analysis.IsVerified && c.Generate(writer) ? null : MinimalEmissionTest.Describe(c);
             }
             catch (InvalidOperationException exception)
             {
@@ -249,10 +254,10 @@ public class GenericDefaultTest
         public void WarmGenericDefaultsAllocateNothing(string source)
         {
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
         }
 
@@ -263,11 +268,11 @@ public class GenericDefaultTest
         public void WarmDefaultContextsAllocateNothing(string axis, int count)
         {
             var c = MinimalEmissionTest.Analyze(Verification.VerificationWorkloads.GenericDefaults(axis, count));
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
-            Assert.Equal(axis == "depth" ? 2 * (count + 1) : count, c.Ownership.Bodies.Max(static x => x.DefaultContexts?.Count ?? 0));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+            Assert.Equal(axis == "depth" ? 2 * (count + 1) : count, c.AnalyzeLegacyOwnership().Bodies.Max(static x => x.DefaultContexts?.Count ?? 0));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
         }
     }

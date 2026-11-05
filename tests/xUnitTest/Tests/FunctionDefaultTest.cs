@@ -97,28 +97,6 @@ public class FunctionDefaultTest
     public void ErasedFunctionDefaultsExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture(Prefix + name, source + "\nConsole.writeLine(\"done\")", "done\n");
 
-    // SPEC 7.2.3: generation validates a default closure's entry against the argument that its call prepared for that
-    // parameter; another prepared argument of the same Type is not that slot.
-    [Fact]
-    public void ACaptureOfAnotherPreparedArgumentFailsGeneration()
-    {
-        var c = MinimalEmissionTest.Analyze("func run(k: i32, j: i32, action: (i32) -> i32 = func [k] (x) => x + k) -> i32 => action(j)\nrequire run(1, 2) == 3 else => $abort(\"k\")");
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && o.Source is FunctionKoto { IsAnonymous: true }));
-        var capture = body.OperationStorage.FindIndex(static x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && x.Source is FunctionKoto { IsAnonymous: true });
-        var call = body.OperationStorage.FindIndex(static x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.DefaultArguments.IsEmpty: false });
-
-        // The call acquires k, then j, then the default. The entry is redirected, with its SSA input, to j's prepared value.
-        Assert.Equal(body.Operations[call - 3].Place, body.Operations[capture].Place);
-        var other = body.Operations[call - 2].Place;
-        var produced = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == other);
-        body.OperationStorage[capture] = body.Operations[capture] with { Place = other };
-        body.ValueOperands[body.Values[capture].Start] = produced;
-        Assert.False(c.Validate(out _));
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
-    }
-
     // Each omission creates and releases its own environment, and only the selected arm allocates.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -183,9 +161,8 @@ public class FunctionDefaultTest
     // The rule decides an arm or a Tuple element as it decides the whole default, for the Type parameters of the declaration and
     // of its container under their Constraints.
     [InlineData("struct Box<T>\n    T is PrimitiveInteger\n    public let v: T\n    public init(v: T) => self.v = v\n    public func set(self, w: T = \"s\") -> () => ()\npublic func main() => ()\n", "T = \"s\"", "\"s\"", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
-    [InlineData("struct Box<T>\n    public let v: T\n    public init(v: T) => self.v = v\n    public func put(self, w: T = 0) -> () => ()\npublic func main() => ()\n", "T = 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
+    [InlineData("struct Box<T>\n    public let v: T\n    public init(v: T) => self.v = v@move\n    public func put(self, w: T = 0) -> () => ()\npublic func main() => ()\n", "T = 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func n<T>(x: T, y: T = x@ref) -> () => ()\npublic func main() => ()\n", "= x@ref", "x@ref", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
-    [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\npublic func main() => ()\n", "else => 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => \"s\") -> ()\n    T is PrimitiveInteger\n    return ()\npublic func main() => ()\n", "= if b", "if b => x else => \"s\"", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func c<T>(x: T, y: (T, i32) = (0, 1)) -> () => ()\npublic func main() => ()\n", "(0, 1)", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func m<T, U>(x: T, y: (T, U) = (1, true)) -> () => ()\npublic func main() => ()\n", "(1, true)", "1", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
@@ -213,6 +190,17 @@ public class FunctionDefaultTest
         Assert.True(error.Repairs is null or { Length: 0 });
     }
 
+    // The arm rule beside a bare move of the preceding argument in the other arm: Binding's DefaultArgumentMove_Kd at `x` (R6-check H1,
+    // DECISIONS BU-84; a record added on this rejected program, Q13) and the arm's TypeMismatch_Kd at `0`.
+    [Fact]
+    public void AnArmMismatchBesideABareMoveOfAPrecedingArgument()
+    {
+        const string Source = "func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\npublic func main() => ()\n";
+        Assert.Equal(
+            [("DefaultArgumentMove_Kd", "x"), ("TypeMismatch_Kd", "0")],
+            DiagnosticCorpus.Check(Source).Diagnostics.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
+    }
+
     // SPEC 8.7.4, 7.2.3: a literal default fits every binding of a PrimitiveInteger T and is checked even without an instance.
     [Fact]
     public void GenericLiteralDefaultUnderItsConstraintIsNoMismatch()
@@ -223,22 +211,14 @@ public class FunctionDefaultTest
 
     // The default Note reaches the console and both language-server placements unchanged (SPEC 7.2.3).
     [Theory]
-    [InlineData("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\nlet a = runT(\"a\")", false)]
-    [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\nConsole.writeLine(\"x\")", true)]
-    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func bump(self: uniq/Self, f: () -> i32 = func () => self.value) -> i32 => f()\nConsole.writeLine(\"x\")", true)]
-    public void DefaultDiagnosticsReachTheCliAndTheLanguageServer(string source, bool binding)
+    [InlineData("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\nlet a = runT(\"a\")")]
+    [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\nConsole.writeLine(\"x\")")]
+    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func bump(self: uniq/Self, f: () -> i32 = func () => self.value) -> i32 => f()\nConsole.writeLine(\"x\")")]
+    public void DefaultDiagnosticsReachTheCliAndTheLanguageServer(string source)
     {
         var path = Path.GetFullPath("function-default.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        if (binding)
-        {
-            c.Binding.ReportDiagnostics();
-        }
-        else
-        {
-            c.ReportAnalysis();
-        }
-
+        c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
@@ -258,19 +238,17 @@ public class FunctionDefaultTest
     [Fact]
     public void ReanalysisAndReloadKeepOneDefaultCaptureError()
     {
+        // R6-check H1: the omitted capture is Binding's record (S3), so each rebind and the reload keep exactly that one.
         var c = MinimalEmissionTest.Analyze("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\nlet a = runT(\"a\")");
         for (var i = 0; i < 3; i++)
         {
-            Assert.True(c.Bind().IsComplete);
-            Assert.False(c.Analyze().IsVerified);
-            Assert.Single(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
-            Assert.DoesNotContain(c.Problems, x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.MovedPlace_Kd);
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal([DiagnosticCode.TransferRequired_Kd], c.Binding.Issues.Select(static x => x.Code));
         }
 
         var restored = CompilationTestHelper.Reload(c);
-        Assert.True(restored.Bind().IsComplete);
-        Assert.False(restored.Analyze().IsVerified);
-        Assert.Single(restored.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        Assert.False(restored.Bind().IsComplete);
+        Assert.Equal([DiagnosticCode.TransferRequired_Kd], restored.Binding.Issues.Select(static x => x.Code));
     }
 
     // Generic defaults are checked in the declaration without requiring any concrete call.
@@ -297,12 +275,12 @@ public class FunctionDefaultTest
     {
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"plans\")");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         using var rebound = new StringWriter();
-        Assert.True(c.WriteIr(rebound, out error), error);
+        Assert.True(c.Generate(rebound), MinimalEmissionTest.Describe(c));
         Assert.Equal(original.ToString(), rebound.ToString());
 
         var restored = CompilationTestHelper.Reload(c);
@@ -310,7 +288,7 @@ public class FunctionDefaultTest
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var reloaded = new StringWriter();
-        Assert.True(restored.WriteIr(reloaded, out error), error);
+        Assert.True(restored.Generate(reloaded), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), reloaded.ToString());
     }
 
@@ -320,10 +298,10 @@ public class FunctionDefaultTest
     {
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"warm\")");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Function default emission failed.");
             }

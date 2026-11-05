@@ -1,0 +1,76 @@
+// Final-review probes (frev): a raw pointer argument whose own value carries a Loan that no read through it carries.
+// Each *Bad program is an error by intent (the stored or transferred pointer carries y's shared Loan); each *Ctl and *Ok is valid.
+func appendRawOwnBad()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var a: Array<raw/i32> = []
+    a.append(p)
+    y = 5
+    inspect(a)
+func appendRawOwnCtl()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var a: Array<raw/i32> = []
+    a.append(p)
+    y = 5
+func insertRawOwnBad()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var a: Array<raw/i32> = [null]
+    a.insert(0, p)
+    y = 5
+    inspect(a)
+func dictInsertRawOwnBad()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var d: Dictionary<i32, raw/i32> = [:]
+    _ = d.insertOrReplace(1, p)
+    y = 5
+    inspect(d)
+func exchangeRawOwnStoreBad()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var x: raw/i32 = null
+    let old = Kimi.Intrinsics.exchange(x@uniq, with: p)
+    y = 5
+    usep(x)
+    usep(old)
+func exchangeRawOwnResultOk()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var x: raw/i32 = null
+    let old = Kimi.Intrinsics.exchange(x@uniq, with: p)
+    x = null
+    y = 5
+    usep(old)
+func swapRawOwnBad()
+    var y: i32 = 1
+    let r = y@ref
+    var x: raw/i32 = r@follow@raw
+    var z: raw/i32 = null
+    Kimi.Intrinsics.swap(x@uniq, z@uniq)
+    y = 5
+    usep(z)
+func popRawOwnBad()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var a: Array<raw/i32> = [p]
+    let x = a.pop()
+    a.clear()
+    y = 5
+    inspect(x)
+func popRawOwnCtl()
+    var y: i32 = 1
+    let r = y@ref
+    let p = r@follow@raw
+    var a: Array<raw/i32> = [p]
+    let x = a.pop()
+    a.clear()
+    y = 5

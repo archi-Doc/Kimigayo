@@ -52,7 +52,7 @@ public class ConstraintContextBindingTest
         var proposition = ((IsKoto)function.TypeConstraints[0]).ConstraintOf()!;
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(proposition, function));
         Assert.True(group.RemoveAttribute(Assert.IsType<AttributeKoto>(group.AttributeChain)));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(proposition, ((IsKoto)function.TypeConstraints[0]).ConstraintOf());
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function));
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function, [proposition.RequiredType], c.Kotonoha.RootKoto));

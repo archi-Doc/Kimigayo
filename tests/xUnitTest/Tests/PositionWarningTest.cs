@@ -51,7 +51,7 @@ public class PositionWarningTest
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
         c.Binding.ReportDiagnostics();
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var warning = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
         Assert.Equal(DiagnosticSeverity.Warning, warning.Severity);
 

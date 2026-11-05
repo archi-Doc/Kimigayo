@@ -28,8 +28,9 @@ internal static class BorrowStorageMeasurements
                 throw new InvalidOperationException("Inspection workload must bind.");
             }
 
+            // The first analysis is the entry's own run; each later Analyze() runs the old analysis of this version again.
             var allocated = GC.GetAllocatedBytesForCurrentThread();
-            Analyze();
+            c.AnalyzeLegacyOwnership();
             allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
             for (var warm = 0; warm < 8; warm++)
             {
@@ -48,12 +49,12 @@ internal static class BorrowStorageMeasurements
                 samples[sample] = Stopwatch.GetElapsedTime(start).TotalMilliseconds / 8;
             }
 
-            var body = c.Ownership.Bodies.Single(static x => x.Function.Name == "check");
+            var body = c.AnalyzeLegacyOwnership().Bodies.Single(static x => x.Function.Name == "check");
             results.Add(new { count, stored, places = body.Places.Count, operations = body.Operations.Count, firstAnalysisBytes = allocated, dependencyCells = body.BorrowDependencyCapacity, tableBytes = body.BorrowStorageBytes, milliseconds = samples });
 
             void Analyze()
             {
-                if (!c.Ownership.Analyze().IsVerified)
+                if (!c.AnalyzeLegacyOwnership().Analyze().IsVerified)
                 {
                     throw new InvalidOperationException("Inspection workload must pass ownership verification.");
                 }

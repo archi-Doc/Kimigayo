@@ -1,16 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 public class ObjectCallableOriginTest
 {
-    // The old path's verdict until R6-check: Program's `apply(identity, n@mode)` borrows the Function Item temporary `identity` for
-    // `f: ref/F`, SPEC 15.4.3 (1) binds the result to `f` as well, and SPEC 3.6 ends that temporary at its statement, so the later use
-    // of `direct` is invalid. A5 rejects it (ComparisonLoanConflict_Kd rows of R4's MIR difference ledger, which R4 reclassifies to
-    // class (a)); the default pipeline keeps D5's Function Item boundary (OwnershipBody.IsTemporaryOriginRoot).
+    // Program's `apply(identity, n@mode)` borrows the Function Item temporary `identity` for `f: ref/F`, and SPEC 15.4.3 (1) binds the
+    // result to `f` as well; but the result can hold neither `f`'s value nor a borrow formed through it (F's handed signature builds it
+    // from `value`, and `identity`'s item has no parts), so it keeps only `f`'s Content (SPEC 15.6.4 as the owner's 「SPEC 15.6.4 の読み
+    // (iii) と (β)」 reads it, DECISIONS R4-M154) and the later use of `direct` keeps no Loan on the temporary SPEC 3.6 ends: valid, as
+    // the MIR decides (R6-check H5, DECISIONS R5-M185; dev's A5 rejected it, a class (a) row of R4-M136).
     [Theory]
     [InlineData("ref")]
     [InlineData("uniq")]
@@ -20,7 +23,7 @@ public class ObjectCallableOriginTest
     {
         var source = Program(mode);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ObjectCallableOrigin" + mode, source, string.Empty);
     }
 
@@ -47,7 +50,7 @@ public class ObjectCallableOriginTest
     public void CallablePayloadsCallThroughObjectCallees(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ObjectCallablePayload" + name, source, string.Empty);
     }
 
@@ -56,15 +59,15 @@ public class ObjectCallableOriginTest
     public void WarmPayloadCallPlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () -> i32 => n + 1)\nlet v = h@objref\nrequire h() == 5 and v() == 5 and h@follow() == 5 else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         bool verified = true, written = true, bound = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null)));
         Assert.Equal(0, AllocationMeasurement.Measure(() => bound &= c.Bind().IsComplete));
         Assert.Equal((true, true, true), (verified, written, bound));
     }
 
-    // Program's acceptance is the old path's verdict until R6-check (SPEC 15.4.3 (1), 3.6; see BorrowSignaturesSharePerCallOriginInstantiation).
+    // Program is valid on both pipelines (see BorrowSignaturesSharePerCallOriginInstantiation; DECISIONS R4-M154).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("objref")]
@@ -72,7 +75,7 @@ public class ObjectCallableOriginTest
     public void WarmContractAndCallChecksReuseStorage(string mode)
     {
         var c = MinimalEmissionTest.Analyze(Program(mode));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 

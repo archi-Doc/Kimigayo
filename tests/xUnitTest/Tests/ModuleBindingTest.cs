@@ -27,7 +27,7 @@ public partial class ModuleBindingTest
         {
             Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(compilation.Analyze().IsVerified);
-            Assert.True(compilation.Validate(out var failure), failure);
+            Assert.True(compilation.Generate(TextWriter.Null), MinimalEmissionTest.Describe(compilation));
         }
     }
 
@@ -108,7 +108,9 @@ public partial class ModuleBindingTest
         Assert.True(compilation.Analyze().IsVerified);
         compilation.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "public func broken() => missing()"));
         Assert.False(compilation.Bind().IsComplete);
-        Assert.False(compilation.Analyze().IsVerified);
+        compilation.Analyze();
+        Assert.False(compilation.Accepts); // Since the MIR decides acceptance (R6-check H5), Binding's record rejects the program.
+        Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd], compilation.Binding.Issues.Select(static x => x.Code));
     }
 
     [Fact]
@@ -607,6 +609,22 @@ public partial class ModuleBindingTest
         Assert.True(c.Analyze().IsVerified);
         c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "group Generated\n    func output() => Console.writeLine(\"generated\")"));
         Assert.True(c.Bind().IsComplete);
+    }
+
+    // A prepared compilation of a root project in the directory `root` with one dependency, Lib, in `library` (full paths); the caller
+    // adds each module's sources.
+    internal static Compilation Prepared(string root, string library)
+    {
+        var compilation = Compilation.CreateForTest();
+        var project = compilation.Project;
+        project.Directory = root;
+        var file = Path.Combine(library, "Lib.kimiproj");
+        project.ProjectFile.Dependencies.Add("Lib", new() { PackageId = "library", PackageVersion = "1", Project = Path.GetRelativePath(root, file) });
+        var node = new DependencyNode("root", new(Path.Combine(root, "App.kimiproj"), project.ProjectFile, [], []), -1, string.Empty);
+        var dependency = new DependencyNode("library@1", new(file, new() { OutputKind = OutputKind.Library }, [], []), 0, "Lib");
+        node.Edges.Add("Lib", dependency.Key);
+        Assert.True(compilation.Prepare(WindowsProfile.Target, new([node, dependency])));
+        return compilation;
     }
 
     internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null)

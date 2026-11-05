@@ -58,7 +58,7 @@ public class CopyOperationTest
     public void ACopyIsAnIdentityAcquisitionThatKeepsItsPlace()
     {
         var c = MinimalEmissionTest.Analyze("var n: i32 = 1\nlet a = n@copy\nn = 2\nlet b = n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.Equal(ConversionBinding.Identity, conversion.ConversionOf().Kind);
         Assert.Equal(BoundType.I32, conversion.TypeOf());
@@ -69,7 +69,7 @@ public class CopyOperationTest
     public void ACopiedSubjectIsByValue()
     {
         var c = MinimalEmissionTest.Analyze("var count: i32 = 1\nmatch count@copy\n    var n => n += 5");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var match = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>().Single();
         Assert.True(c.Binding.TryGetMatch(match, out var plan));
         Assert.Equal(SubjectMode.ByValue, plan!.Mode);
@@ -94,7 +94,7 @@ public class CopyOperationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -104,7 +104,7 @@ public class CopyOperationTest
     public void CompleteOwningTargetsRemainIdentityAcquisitions(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionOf().Kind == ConversionBinding.Identity);
     }
 

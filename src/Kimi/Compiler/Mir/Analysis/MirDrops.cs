@@ -4,15 +4,18 @@
 // Input: the state MirInit's checks replay holds before each Drop the runtime edges reach (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
 // no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop one verdict group per view class, the
-// body's flags and their set and clear points, the views judged (A1 and A2 completed them), the body's first A1 or A2 problem (its code and
-// subject, which both set before MirReport.Add, an inline copy's included: the table is exact only without one, R4-M6a, R4-M102), and
-// MovedPlace_Kd through MirReport where a layer with its own drop may be incomplete at its Drop, inside an inline default copy with the
-// copy's call as its Inlined fact (R4-M69).
+// body's flags and their set and clear points, the views judged (A1 and A2 completed them), the body's first A1 or A2 problem, an inline
+// copy's included (its code, its subject in its location's scope and MirReport.Add's index, -1 for a copy's, which the report drops; both
+// set it after Add; the table is exact only without one, R4-M6a, R4-M102, R4-M132), and MovedPlace_Kd through MirReport where a layer
+// with its own drop may be incomplete at its Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69).
 // Elide where the view's Type needs no drop (MirTypes.MayNeedDrop) or nothing is
 // initialized on any path; Keep where the whole is initialized on every path or the Place has no Move Path; Flag where it is complete or
 // wholly absent on every path, the flag mirroring the path's own bit; Open where a part may be missing: the components without a child
 // path follow the own bit, each child path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per
 // view. Flags are numbered in path order per body, so a subtree's flags are one range.
+// Invariant: a body the table marks has an Error problem in MirReport (R6-check IC, MirAnalysisTest): the one its index names, of its code
+// at its subject, or for -1 its template's of that code and subject (an inline copy's, R4-M69) or MirReport's InternalInvariant_Kd (a merge
+// naming another requirement); generation's gate reads the mark.
 // Must not rewrite MIR, judge a Drop only check edges reach (SPEC 14.10.3), read syntax, or apply a derived-problem rule (MirReport's).
 
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.
@@ -90,10 +93,14 @@ internal sealed class MirDropTable
     internal long ViewsOf(int body) => (uint)body < (uint)this.ends.Count ? this.ends[body].Views : 0;
 
     /// <summary>Gets a body's first A1 or A2 problem, an inline default copy's included (R4-M102): its verdicts are exact only without one
-    /// (R4-M6a). A1's arena limit is <c>OwnershipStorageLimit_Kd</c> at the body's source, its views 0 (R4-M15a); A3, A4 and A5 set none.</summary>
+    /// (R4-M6a). A1's arena limit is <c>OwnershipStorageLimit_Kd</c> at the body (the default source), its views 0 (R4-M15a), whose facts
+    /// carry its arguments (G213); A3, A4 and A5 set none.</summary>
     /// <param name="body">The body's ordinal.</param>
-    /// <returns>The problem's code and subject, the template's for a copy's (R4-M69); null for an exact body or a body not analyzed.</returns>
-    internal (DiagnosticCode Code, SourceRef Subject)? Incomplete(int body) => (uint)body < (uint)this.ends.Count ? this.ends[body].Incomplete : null;
+    /// <returns>The problem's code, its subject (the template's for a copy's, R4-M69) in its location's scope, which locates it out of an
+    /// inline default (K 4.9), and its index in the report, -1 for a copy's, which the report drops (R4-M132); null for an exact body or a
+    /// body not analyzed.</returns>
+    internal (DiagnosticCode Code, SourceInfo Source, int Problem)? Incomplete(int body)
+        => (uint)body < (uint)this.ends.Count ? this.ends[body].Incomplete : null;
 
     /// <summary>Gets a Drop's verdict group under a view, the one lookup of its readers.</summary>
     /// <param name="body">The body's ordinal.</param>
@@ -126,7 +133,7 @@ internal sealed class MirDropTable
     /// <param name="flags">Its number of flags.</param>
     /// <param name="views">The views judged, from view 0.</param>
     /// <param name="incomplete">Its first A1 or A2 problem, or null.</param>
-    internal void Close(int flags, long views, (DiagnosticCode Code, SourceRef Subject)? incomplete)
+    internal void Close(int flags, long views, (DiagnosticCode Code, SourceInfo Source, int Problem)? incomplete)
         => this.ends.Add(new(this.Rows.Count, this.Points.Count, flags, views, incomplete));
 
     /// <summary>Removes every body, keeping the storage.</summary>
@@ -141,7 +148,7 @@ internal sealed class MirDropTable
     private End Start(int body) => body > 0 ? this.ends[body - 1] : default;
 
     // A closed body's ends in the rows and points, its flags, its judged views and its first A1 or A2 problem.
-    private readonly record struct End(int Rows, int Points, int Flags, long Views, (DiagnosticCode Code, SourceRef Subject)? Incomplete);
+    private readonly record struct End(int Rows, int Points, int Flags, long Views, (DiagnosticCode Code, SourceInfo Source, int Problem)? Incomplete);
 }
 
 /// <summary>Drop elaboration (A2, SPEC 16.2, 16.3.2; DECISIONS R4-M6a): <see cref="Begin"/> starts a body, MirInit's checks replay records
@@ -167,7 +174,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
     private int firstRow; // The body's first row and point in the table.
     private int firstPoint;
     private long judged; // The body's views judged, from view 0.
-    private (DiagnosticCode Code, SourceRef Subject)? incomplete; // The body's first A1 or A2 problem.
+    private (DiagnosticCode Code, SourceInfo Source, int Problem)? incomplete; // The body's first A1 or A2 problem.
 
     /// <summary>Begins a body whose move paths are built.</summary>
     /// <param name="body">The body.</param>
@@ -207,11 +214,12 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
     /// <param name="views">The views of the solve.</param>
     internal void Event(MirLocation at, int path, bool set, ulong views) => this.events.Add(new(at, path, set, views));
 
-    /// <summary>Records an A1 or A2 problem of the body where its rule forms it, before MirReport.Add, which drops an inline default copy's
-    /// (R4-M69): the first is the body's <see cref="MirDropTable.Incomplete"/> (R4-M102).</summary>
+    /// <summary>Records an A1 or A2 problem of the body where its rule forms it, after MirReport.Add, which drops an inline default copy's
+    /// (R4-M69): the first is the body's <see cref="MirDropTable.Incomplete"/> (R4-M102, R4-M132).</summary>
     /// <param name="code">The problem's code.</param>
-    /// <param name="subject">Its subject.</param>
-    internal void Incomplete(DiagnosticCode code, SourceRef subject) => this.incomplete ??= (code, subject);
+    /// <param name="source">Its subject in its location's scope (the default for the body).</param>
+    /// <param name="problem">Its index in the report, -1 for a problem the report dropped.</param>
+    internal void Incomplete(DiagnosticCode code, in SourceInfo source, int problem) => this.incomplete ??= (code, source, problem);
 
     /// <summary>Judges the recorded trees under the selected view, the views in order from 0; a body a view decides records its trees again
     /// for the next view.</summary>
@@ -264,6 +272,11 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         this.ByBlock(CollectionsMarshal.AsSpan(this.table.Points)[this.firstPoint..], ref this.pointOrder, static x => x.At.Block);
         this.table.Close(this.before[paths.Length], this.judged, this.incomplete);
     }
+
+    /// <summary>Closes the next body's entry for a body with a validator finding (MirBody.HasFinding), which no consumer reads (DECISIONS
+    /// R5-M183): an empty entry (no rows or points, no flags, <see cref="MirDropTable.ViewsOf"/> 0), so every later body keeps its own.</summary>
+    /// <param name="program">The program, whose drop table the entry goes to.</param>
+    internal void Exclude(MirProgram program) => program.Drops.Close(0, 0, null);
 
     private static bool Any(ulong[] state, int lane, int first, int end) => MirDataflow.Any(state, MirInit.Lanes, lane, first, end);
 
@@ -327,10 +340,10 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
                 var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
                 var subject = this.body.Subject(drop.Terminator.Source);
                 var inlined = this.body.Inlining(drop.Terminator.Source.Scope);
-                this.Incomplete(DiagnosticCode.MovedPlace_Kd, subject);
-                this.report.Add(
+                var problem = this.report.Add(
                     new(DiagnosticCode.MovedPlace_Kd, requirement, subject, this.body.Ordinal, views),
                     inlined < 0 ? default : [new(MirFactKind.Inlined, this.body.Scopes[inlined].Source)]);
+                this.Incomplete(DiagnosticCode.MovedPlace_Kd, drop.Terminator.Source, problem);
             }
 
             var flag = verdict == MirDropVerdict.Elide ? -1 : node.Flag;

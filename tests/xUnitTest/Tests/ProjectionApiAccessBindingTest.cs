@@ -15,9 +15,9 @@ public class ProjectionApiAccessBindingTest
     public void NormalizedParametersRetainQualifierAndRequirementDomains(string typeAccess, string contractAccess)
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose(value: S.C.Element) => ()");
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node is FunctionKoto { Name: "expose" } && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public class ProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze("struct Hidden\npublic contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is Hidden\npublic group Api\n    public func expose(value: S.C.Element) => ()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -112,7 +112,7 @@ public class ProjectionApiAccessBindingTest
         var replacement = replacementSource.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single().Parameters[0].Type;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(KotoHelper.Replace(function, replacement, original));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingFailure.Access, function.FailureOf());
@@ -136,14 +136,14 @@ public class ProjectionApiAccessBindingTest
     private static void Accept(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     private static void Reject(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node is FunctionKoto { Name: "expose" } && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

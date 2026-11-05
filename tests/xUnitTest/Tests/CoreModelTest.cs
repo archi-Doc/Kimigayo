@@ -33,19 +33,15 @@ public class CoreModelTest
     }
 
     [Theory]
-    [InlineData("x86_64-pc-win32-msvc", OsType.Win32, "windows", 64)]
-    [InlineData("x86_64-unknown-linux-gnu", OsType.Linux, "linux", 64)]
-    [InlineData("aarch64-apple-macosx", OsType.MacOSX, "macos", 64)]
-    public void PrepareCreatesCanonicalTargetVariables(
-        string target,
-        OsType expectedOs,
-        string expectedOsVariable,
-        long expectedPointerWidth)
+    [InlineData("x86_64-pc-win32-msvc", "windows", 64)]
+    [InlineData("x86_64-unknown-linux-gnu", "linux", 64)]
+    [InlineData("aarch64-apple-macosx", "macos", 64)]
+    public void PrepareCreatesCanonicalTargetVariables(string target, string expectedOsVariable, long expectedPointerWidth)
     {
         var compilation = Compilation.CreateForTest();
 
         Assert.True(compilation.Prepare(target));
-        Assert.Equal(expectedOs, compilation.TargetTriple.Os);
+        Assert.Equal(expectedOsVariable, compilation.TargetTriple.OsFamily);
         Assert.Equal(expectedPointerWidth, compilation.PointerWidth);
         Assert.True(compilation.Variables.TryGetValue(expectedOsVariable, out var osValue));
         Assert.True(osValue.Bool);
@@ -53,13 +49,18 @@ public class CoreModelTest
         Assert.Equal(expectedPointerWidth, pointerWidth.I64);
     }
 
-    [Fact]
-    public void PrepareRejectsAnUnsupportedTargetAndClearsTargetVariables()
+    // An unknown architecture, and one without an LLVM backend (LLVM's pointer width 32 or 64), has no IR target (DECISIONS R5-M174).
+    [Theory]
+    [InlineData("unknown-unknown-unknown")]
+    [InlineData("amdil-unknown-unknown")]
+    [InlineData("hsail64-unknown-unknown")]
+    public void PrepareRejectsAnUnsupportedTargetAndClearsTargetVariables(string target)
     {
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
 
-        Assert.False(compilation.Prepare("unknown-unknown-unknown"));
+        Assert.False(compilation.Prepare(target));
+        Assert.Contains(TestDiagnostics.Of(compilation), x => x.Code == nameof(DiagnosticCode.UnsupportedTarget_Kd));
         Assert.Same(TargetTriple.Invalid, compilation.TargetTriple);
         Assert.Same(IrTarget.Invalid, compilation.IrTarget);
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));

@@ -29,6 +29,25 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
     public void SharedObjectBaseCallsUseTheOriginalHeaderAndLoan(string name, string body)
         => ScalarEmissionTest.EmitFixture("InheritedObject" + name, Types + body, string.Empty);
 
+    // SPEC 3.4.3, 9.6.1, 13.5.5 (E9, P34_REMAINING R1; DECISIONS R5-M114): an inherited base getter and ref/Self method reached through
+    // reference layers read the base subobject of the value or object below them, and a virtual call there dispatches on that object.
+    [Theory]
+    [InlineData("RefRef", "ref/(ref/Leaf during a)", "var owner = Leaf.init()\nlet view = owner@ref\n", "view@ref", false)]
+    [InlineData("UniqUniq", "uniq/(uniq/Leaf during a)", "var owner = Leaf.init()\nvar view = owner@uniq\n", "view@uniq", false)]
+    [InlineData("RefObj", "ref/(obj/Leaf)", "var owner = Leaf.init()@obj\n", "owner@ref", true)]
+    [InlineData("RefRc", "ref/(rc/Leaf)", "let owner = Leaf.init()@rc\n", "owner@ref", true)]
+    [InlineData("UniqObj", "uniq/(obj/Leaf)", "var owner = Leaf.init()@obj\n", "owner@uniq", true)]
+    public void ReceiversThroughReferenceLayersReadTheirBaseSubobject(string name, string parameter, string setup, string argument, bool objects)
+    {
+        var source = "open struct Base\n    public let n: i32 = 7\n    public computed twice: i32\n        get(self: ref/Self) -> i32 => self.n * 2\n" +
+            "    public init() => ()\n    public func read(self: ref/Self) -> i32 => self.n\n    public virtual func slot(self: objref/Self) -> i32 => 1\n" +
+            "struct Leaf : Base\n    public let m: i32 = 100\n    public init() : base() => ()\n    override func slot(self: objref/Self) -> i32 => self.m\n" +
+            $"func probe(r: {parameter}) -> i32\n    require r.read() == 7 else => $abort(\"read\")\n    require r.twice == 14 else => $abort(\"getter\")\n" +
+            (objects ? "    require r.slot() == 100 else => $abort(\"slot\")\n" : string.Empty) + "    return 0\n" +
+            setup + $"require probe({argument}) == 0 else => $abort(\"probe\")\nConsole.writeLine(\"layers\")\n";
+        ScalarEmissionTest.EmitFixture("InheritedObjectReceiverLayers" + name, source, "layers\n");
+    }
+
     [Fact]
     public void DirectBaseCallsAndCapturesUseTheSameObjectProjection()
     {
@@ -79,7 +98,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
 
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -105,7 +124,7 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(DiagnosticCode.UnprovenConstraint_Kd, Assert.Single(c.Binding.Issues).Code);
         Assert.True(KotoHelper.Replace(clause, changed, original));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(call.CallOf());
     }
 
@@ -136,12 +155,12 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
     public void WarmObjectBaseCallsReuseAllPlans()
     {
         var c = MinimalEmissionTest.Analyze(Types + "let owner = Leaf<i32>.init()@obj\nlet r = owner.view()\n_ = r\n_ = owner.read()");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

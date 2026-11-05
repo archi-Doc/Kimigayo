@@ -1,12 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the closed table of runtime abort reasons (SPEC 22.5.2; DECISIONS R5-M15): each reason's index, its template name and its
-// message text, and their expansion into the runtime template (the reason table, the message constants, the reason count and the
-// index at each `{{reason_<name>}}` call site).
-// Input: the runtime template text. Output: the expanded text; the reason index generated code passes to the Abort routine.
+// message text, and the text of their markers in a runtime template, which LlvmModuleText's one scan writes (the reason table with
+// the message constants at `{{abort_reasons}}`, the reason count at `{{abort_reason_count}}` and the index at each
+// `{{reason_<name>}}` call site).
+// Input: a marker's name and the expanded text being written. Output: the marker's text appended; the reason index generated code
+// passes to the Abort routine.
 // Invariants: indices are module-local ABI values, contiguous from 0 in table order; message texts are printable ASCII without
-// `"` or `\`, checked at expansion, so they need no escaping.
-// Must not take syntax, HIR, Binding internals, EmissionModule or MIR types, or use LINQ.
+// `"` or `\`, checked where the table is written, so they need no escaping.
+// Must not take syntax, HIR, Binding internals or MIR types, or use LINQ.
 
 using System.Globalization;
 using System.Text;
@@ -61,34 +63,33 @@ internal static class AbortReasons
         new(StaticCycle, "static_cycle", "KIMI_E_STATIC_CYCLE: Static initialization cycle"),
     ];
 
-    // The runtime template with its reason table, message constants, reason count and call-site indices filled in.
-    internal static string Expand(string runtime)
+    // Appends the text of a runtime template's abort marker: the reason table and the message constants (`abort_reasons`), the
+    // reason count (`abort_reason_count`) or a reason's index (`reason_<name>`); false for any other marker.
+    internal static bool Expand(ReadOnlySpan<char> marker, StringBuilder runtime)
     {
-        var table = new StringBuilder();
         var count = Reasons.Length.ToString(CultureInfo.InvariantCulture);
-        table.Append("@__kimi_reasons = private constant [").Append(count).Append(" x { ptr, i64 }] [\n");
-        for (var i = 0; i < Reasons.Length; i++)
+        if (marker.SequenceEqual("abort_reasons"))
         {
-            var reason = Reasons[i];
-            if (reason.Id != i || !IsPlain(reason.Text))
-            {
-                throw new InvalidDataException("Abort reasons require contiguous indices and unescaped ASCII text.");
-            }
-
-            table.Append("  { ptr, i64 } { ptr @__kimi_").Append(reason.Name).Append("_reason, i64 ")
-                .Append(reason.Text.Length.ToString(CultureInfo.InvariantCulture)).Append(" }").Append(i + 1 == Reasons.Length ? "\n" : ",\n");
-            runtime = runtime.Replace("{{reason_" + reason.Name + "}}", reason.Id.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            WriteTable(runtime, count);
+            return true;
         }
 
-        table.Append("]\n");
+        if (marker.SequenceEqual("abort_reason_count"))
+        {
+            runtime.Append(count);
+            return true;
+        }
+
         foreach (var reason in Reasons)
         {
-            table.Append("@__kimi_").Append(reason.Name).Append("_reason = private constant [")
-                .Append(reason.Text.Length.ToString(CultureInfo.InvariantCulture)).Append(" x i8] c\"").Append(reason.Text).Append("\"\n");
+            if (marker.StartsWith("reason_", StringComparison.Ordinal) && marker["reason_".Length..].SequenceEqual(reason.Name))
+            {
+                runtime.Append(reason.Id.ToString(CultureInfo.InvariantCulture));
+                return true;
+            }
         }
 
-        return runtime.Replace("{{abort_reasons}}", table.ToString(), StringComparison.Ordinal)
-            .Replace("{{abort_reason_count}}", count, StringComparison.Ordinal);
+        return false;
     }
 
     /// <summary>Gets the reason of a fixed SPEC 22.5.2 code, whose text begins with the code and a colon.</summary>
@@ -105,6 +106,30 @@ internal static class AbortReasons
         }
 
         return -1;
+    }
+
+    // The reason table, then each reason's message constant; indices are contiguous and texts plain, or the template fails.
+    private static void WriteTable(StringBuilder runtime, string count)
+    {
+        runtime.Append("@__kimi_reasons = private constant [").Append(count).Append(" x { ptr, i64 }] [\n");
+        for (var i = 0; i < Reasons.Length; i++)
+        {
+            var reason = Reasons[i];
+            if (reason.Id != i || !IsPlain(reason.Text))
+            {
+                throw new InvalidDataException("Abort reasons require contiguous indices and unescaped ASCII text.");
+            }
+
+            runtime.Append("  { ptr, i64 } { ptr @__kimi_").Append(reason.Name).Append("_reason, i64 ")
+                .Append(reason.Text.Length.ToString(CultureInfo.InvariantCulture)).Append(" }").Append(i + 1 == Reasons.Length ? "\n" : ",\n");
+        }
+
+        runtime.Append("]\n");
+        foreach (var reason in Reasons)
+        {
+            runtime.Append("@__kimi_").Append(reason.Name).Append("_reason = private constant [")
+                .Append(reason.Text.Length.ToString(CultureInfo.InvariantCulture)).Append(" x i8] c\"").Append(reason.Text).Append("\"\n");
+        }
     }
 
     // Whether the text is printable ASCII without " or \, so an LLVM c"..." constant holds it unescaped.

@@ -103,7 +103,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         struct Nest<T>
             public var value: T
             public var next: Option<rc/Nest<(T, T)>> = .None
-            public init(value: T) => self.value = value
+            public init(value: T) => self.value = value@move
 
         """;
 
@@ -215,9 +215,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
-    /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's.</summary>
+    /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's, and
+    /// 15.6.4's destruction retention (PLAN G264 U1).</summary>
     public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases
-        .Where(static x => x.Family == "F3" || x.Section is "14.8.3" or "15.6.6" or "15.6.7")
+        .Where(static x => x.Family == "F3" || x.Section is "14.8.3" or "15.6.6" or "15.6.7" || x.Name == "15.6.4-drop-retention")
         .SelectMany(static x => x.Variants.Select((_, i) => $"{x.Name}/{i}"))];
 
     // The codes of A5's Loan stratum (A3 5's A6 table, the rows its rules decide).
@@ -420,13 +421,65 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(v)
                 """));
 
+    // SPEC 3.5.1, 15.6.3: a bare read of a holder of `uniq/i32` is a Reborrow, a child Loan whose access path the holder prefixes, so
+    // Moving the holder while the child is live is an error, whether the holder is a parameter or a local, the child is written or only read
+    // after the Move, or a Closure captures it; a child used before the Move or never, and a Copy of a shared `ref` holder, are valid.
+    // PLAN G268: the old analysis accepts the four errors until R6-check (its Loans are keyed by the root referent; frozen, D5).
+    [Fact]
+    public void MovingAHolderConflictsWithItsLiveReborrow()
+        => Assert.Equal(
+            ["parameterHolder: value", "localHolder: value", "readAfterMove: value", "capturedHolder: value"],
+            Problems("""
+                func parameterHolder(value: uniq/i32)
+                    let first = value
+                    let m = value@move
+                    first@follow += 1
+                func parameterHolderUsedBefore(value: uniq/i32)
+                    let first = value
+                    first@follow += 1
+                    let m = value@move
+                func parameterHolderUnused(value: uniq/i32)
+                    let first = value
+                    let m = value@move
+                func localHolder()
+                    var x: i32 = 1
+                    let value = x@uniq
+                    let first = value
+                    let m = value@move
+                    first@follow += 1
+                func localHolderUnused()
+                    var x: i32 = 1
+                    let value = x@uniq
+                    let first = value
+                    let m = value@move
+                func sharedHolder(value: ref/i32) -> i32
+                    let first = value
+                    let m = value@move
+                    return first@follow
+                func readAfterMove(value: uniq/i32) -> i32
+                    let first = value
+                    let m = value@move
+                    return first@follow
+                func capturedHolder(value: uniq/i32)
+                    var bump = func [value] () => value@follow += 1
+                    let m = value@move
+                    bump()
+                func capturedHolderCalledBefore(value: uniq/i32)
+                    var bump = func [value] () => value@follow += 1
+                    bump()
+                    let m = value@move
+                """));
+
     // SPEC 15.6, 15.6.4 (A3's transit, 25a, 25b, 29c): a value a location stores into a holder live after it is checked with its access,
     // so storing what borrows the destination into it is an error, unless the destination is dead; a write through a reference stores
-    // into the holders its Loans name (P10).
+    // into the holders its Loans name (P10). `pin`'s result is `ref/i32 during slot`, which can hold neither its argument's own value nor
+    // a borrow formed through it (`**slot` lies past a second shared layer, SPEC 15.6.3), so it keeps only what a read through the
+    // argument carries, never the argument's Loan, and selfStore and partStore store nothing borrowing their destination (the owner's
+    // 「SPEC 15.6.4 の読み (iii) と (β)」, DECISIONS R4-M154; dev kept the Loan by the result's Origin).
     [Fact]
     public void AStoredValueIsCheckedInTransit()
         => Assert.Equal(
-            ["selfStore: x = pin(x@ref)", "partStore: s.r = pin(s.r@ref)", "throughStore: x = 3"],
+            ["throughStore: x = 3"],
             Problems("""
                 func selfStore(y: ref/i32)
                     var x = y
@@ -757,15 +810,16 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     _ = buffer.text()
                 """));
 
-    // SPEC 15.6.4, 15.6 (A3 E16, DECISIONS R4-M73): retention is decided per argument, never per Origin, and E may be used after every
-    // point, so a call's store reaches the holders of its argument's route with every Loan it stores, the route's own included; rustc
-    // accepts each of these, and SPEC's letter rejects them (no loss; PLAN's G148-X precision candidate would recover the first three).
-    // Through a concrete route they are Language problems: a self-row returning a route's own Loan to its holder, read twice
-    // (twoLayersRead, acrossLayersRead). Where the route passes a holder whose Type passes the guard only through a Type argument (an
-    // iterator's Loan<uniq/T>), the store holds its view, so each is a located Unsupported_Kd until the guard reads each part (P13's
-    // body hold, R4-M73): an exclusive iteration over a local collection of shared references, then reads (iterated), or over
-    // exclusive elements, then a shared one (exclusiveElements, MemberThroughLayersTest's program), and an exclusive parameter's
-    // iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values is formed, R4-M68).
+    // SPEC 15.6.4, 15.6 (A3 E16, DECISIONS R4-M73, R4-M147): retention is decided per argument, never per Origin, and E may be used after
+    // every point, so a call's store reaches the holders of its argument's route with every Loan it stores, the route's own included;
+    // rustc accepts each of these, and SPEC's letter rejects them (no loss; PLAN's G148-X precision candidate would recover the first
+    // three). Each is a Language problem: a self-row returning a route's own Loan to its holder, read twice (twoLayersRead,
+    // acrossLayersRead); and through an iterator, whose stored raw layer steps Exclusive and passes the guard through its members' referents
+    // (R4-M147), an exclusive iteration over a local collection of shared references, then reads (iterated), or over exclusive elements,
+    // then a shared one (exclusiveElements, MemberThroughLayersTest's program, with the ends of b and the array, whose Loans the iterator's
+    // stores carry to E: its value names b's exclusive Loan, b holding none, so it carries Φ_E by the untracked rule, R4-M116 PQ-2), and an
+    // exclusive parameter's iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values
+    // is formed, R4-M68).
     [Fact]
     public void ACallStoreFollowsSpecsPerArgumentRule()
     {
@@ -810,15 +864,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(
             [
                 "twoLayersRead: w@follow@ref", "twoLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref",
-                "iterated: refs@ref Unsupported_Kd", "iterated: refs@ref Unsupported_Kd", "exclusiveElements: exclusive Unsupported_Kd",
-                "bumpRefs: values Unsupported_Kd",
+                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive",
+                "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq]", "exclusiveElements: var b = Data.init()", "bumpRefs: values",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // G147 (1), G160-3 (SPEC 5.7, 15.6.4): a Dictionary literal places each entry through placeEntry, whose handle `raw/Dictionary<K, V>`
-    // admits K and V, so an element keeps its Loan: writing the borrowed Place while the Dictionary is used afterwards errs. A5 has no raw
-    // holders or addresses until G160-4 (R4-M95), so the valid twins (the Dictionary dead, the entry removed) are G160-4's ledger rows.
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 15.6 Addresses): a Dictionary literal places each entry through placeEntry, whose handle
+    // `raw/Dictionary<K, V>` admits K and V and addresses the Dictionary's holder (dictionaryStorage's handle), so an element keeps its
+    // Loan there: writing the borrowed Place while the Dictionary is used afterwards errs, and once it is dead the write is valid.
     [Fact]
     public void ADictionaryLiteralKeepsItsElementsLoans()
         => Assert.Equal(
@@ -829,6 +883,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     let entries = [1: value@ref]
                     value = 99
                     inspect(entries)
+                func deadLiteral()
+                    var value = 42
+                    let entries = [1: value@ref]
+                    value = 99
                 """));
 
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
@@ -1087,13 +1145,14 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 15.6.7, 15.7.1, 4.9.6 (A3 err(activate); 10a–10d, 28a–28d, 31a, 31b): a reservation is shared until its call activates it, as
     // an exclusive borrow checked against the holders live into the call but its own, so a read during it is valid, and so are disjoint or
     // shared arguments and two parameters; an overlapping reservation or shared argument, or a live view, conflicts at the activation, a
-    // stored exclusive borrow where the shared argument is formed.
+    // stored exclusive borrow where the shared argument is formed and at the activation of its Reborrow, its parent Loan (SPEC 15.6.7).
     [Fact]
     public void AReservationIsSharedUntilItsActivation()
         => Assert.Equal(
             [
                 "r10b: tasks.remove(0) CallReservationConflict_Kd", "r10d: Kimi.Intrinsics.swap(p@uniq, p@uniq) CallReservationConflict_Kd",
-                "r28a: two(a@uniq, a@ref) CallActivationConflict_Kd", "r28d: a@ref", "r31b: r31a(x@uniq, x@uniq) CallReservationConflict_Kd",
+                "r28a: two(a@uniq, a@ref) CallActivationConflict_Kd", "r28d: a@ref", "r28d: two(r, a@ref) CallActivationConflict_Kd",
+                "r31b: r31a(x@uniq, x@uniq) CallReservationConflict_Kd",
                 "sorted: values.sort() CallActivationConflict_Kd",
             ],
             Problems("""
@@ -1487,12 +1546,41 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     p@follow = D.init(r: p.r@follow@uniq)
                 """));
 
+    // SPEC 3.6, 15.6.6 (DECISIONS R4-M129): a call's result that borrows its argument's temporary and observes it in its destruction is
+    // destroyed before that temporary, so the Loan its destruction observes is still valid (fail-before: the argument's storage ended first,
+    // a conflict at each argument).
+    [Fact]
+    public void AResultIsDestroyedBeforeTheTemporaryItBorrows()
+        => Assert.Empty(Problems("func lend(value: ref/i32) -> R => R.init(r: value)\nfunc t()\n    inspect(lend(1 + 1))\n    inspect(lend(size(3)))\n"));
+
+    // SPEC 14.2.1, 16.2.2 step 3, 15.6.6 (DECISIONS R4-M129): an if clause's, a match arm's and a do's body is its own Body, so the
+    // temporaries of its result end with it, and a result that borrows one and observes it in its destruction outlives it: an error at
+    // the temporary (fail-before: an if clause's and a do's temporaries were the enclosing statement's, destroyed after the result).
+    [Fact]
+    public void AnArmsResultDoesNotOutliveItsTemporaries()
+        => Assert.Equal(
+            ["t1: 1 + 1", "t2: 1 + 1", "t3: 1 + 1"],
+            Problems("""
+                func lend(value: ref/i32) -> R => R.init(r: value)
+                func t1(c: bool)
+                    inspect(if c => lend(1 + 1) else => return)
+                func t2(c: bool)
+                    inspect(match c
+                        true => lend(1 + 1)
+                        false => return
+                    )
+                func t3()
+                    inspect(do => lend(1 + 1))
+                """));
+
     // SPEC 8.15.1, 15.6, 15.6.6, 3.6 (PLAN10-X1 and abstract temporaries; the R5 plan's Q1 programs, its Q5 and ask A-3): a generic body is
     // checked for every instance, so a holder of an abstract Type may observe its Loans when it is destroyed: replacing `local` while the
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
     // over Array<i32>, whose iterator observes nothing, is valid; and a borrow of an abstract call's temporary ends with its full
-    // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s body is held (its abstract iterator's next stores past the
-    // by-argument iterator, DECISIONS R4-M73), so its conflict is the located Unsupported_Kd, the body hold's cost (the owner, 2026-10-19).
+    // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s abstract iterator passes the guard (an abstract part may
+    // be an exclusive reference, the owner's Q1 (a), DECISIONS R4-M147), so its conflict is the Language problem its twin's is; its
+    // erased destruction (16.3.3, BU-47's `0 Content store 0`), composed as a uniq/Self call (R4-M150), may store past `it` into storage
+    // the body does not own what `it` carries, its own Loan after `it.next()`'s self-row (R4-M154), so `it`'s storage end errs too.
     [Fact]
     public void AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition()
     {
@@ -1540,7 +1628,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """);
         Assert.Equal(
-            ["hold: local = second@move Unsupported_Kd", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
+            ["hold: local = second@move", "hold: var it = local.iterate()", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
@@ -1548,14 +1636,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // operands in order and uses each one's value after its access, so operand i's access is checked with the values of the operands up to
     // it and the holders of the later ones: a Place read before a later operand reads through an exclusive reference to it errs, read
     // after it is valid, whether the operands are a call's (named ones, an unbound reference's receiver supplied after a parameter, a
-    // setter's value before its receiver, a Value callee before its arguments), a by-value receiver's, an aggregate's or an operator's.
+    // setter's value before its receiver, a Value callee before its arguments), a by-value receiver's, an aggregate's or an operator's; a
+    // later shared argument also meets the earlier argument's activation at its Reborrow's parent Loan (131c; SPEC 15.6.7, 23.1.2).
     [Fact]
     public void AnOperandIsCheckedWithTheValuesEvaluatedAroundIt()
         => Assert.Equal(
             [
                 "o136b: give2(x, r@follow)", "o136d: (x, r@follow)", "o136f: x + r@follow", "o136g: x.plus(r@follow)", "o137b: (x@uniq, x)",
                 "o137c: (r, x)", "o137e: x", "n2: x", "s2: g", "rs1: x",
-                "o131a: give(r, x)", "o131b: giveR(r, x)", "o131c: x", "o130g: bump(value)",
+                "o131a: give(r, x)", "o131b: giveR(r, x)", "o131c: x", "o131c: giveS(r, x) CallActivationConflict_Kd", "o130g: bump(value)",
             ],
             Problems(Order + """
                 func o136a()
@@ -1805,9 +1894,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 8.14, 15.6.7 (A3 E13 (3), (4), review N3; prototype 132, 134, 138, 139): a pair-layer acquisition is its own Assign's borrow in its
     // marker's mode: an invocation's input reserves in its exclusive case, activated at its Call, so a shared borrow of its Place before
     // the Call is valid; elsewhere (a local, a tuple's element, a capture) it is a live exclusive borrow; and in a view where the pair
-    // layer is a reference its step is a borrow Deref's, so a borrow through the layer meets it. Each body errs in its uniq view. p139d's
-    // uniq view is held (inner11's self-row stores past the abstract x, DECISIONS R4-M73), so its conflict at `x@ref`, which no store
-    // causes, is the located Unsupported_Kd, the body hold's cost (the owner, 2026-10-19).
+    // layer is a reference its step is a borrow Deref's, so a borrow through the layer meets it. Each body errs in its uniq view, p139d at
+    // `x@ref`, which no store causes (an Unsupported_Kd until R4-M147 removed P13's body hold).
     [Fact]
     public void APairLayerAcquisitionBorrowsAsItsMarkerSays()
     {
@@ -1888,7 +1976,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "p132a: inner2(v@ref, v) CallActivationConflict_Kd", "p132c: inner3(v, v@ref) CallActivationConflict_Kd",
                 "p132h: inner9(v, v) CallReservationConflict_Kd", "p132m: innerR(v, u) CallActivationConflict_Kd", "p134a: v",
                 "p134c: v@follow@ref", "p134e: v@follow@ref", ": func [v, u]() => ()", ": func [u, v]() => ()", "p138d: v@follow@ref",
-                "p139d: x@ref Unsupported_Kd", "pN3: v@follow@ref",
+                "p139d: x@ref", "pN3: v@follow@ref",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1926,7 +2014,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // R4-M36, R4-M51, A3 5: a Drop whose Type's destruction walk passes its depth bound and a call whose contract Binding does not
     // instantiate (CallRetention.Limit: storage nested past its depth bound, as a growing recursive Type's) are not classified:
-    // Unsupported_Kd there, and no Loan problem; a body without a Loan, which no conflict can depend on, reports neither.
+    // OwnershipDepthLimit_Kd there (the owner's 「G272: (1)」, R4-M153), and no Loan problem; a body without a Loan, which no conflict can
+    // depend on, reports neither. The parameter's Drop is located at its parameter (DECISIONS BU-48's locations, settled (a): a parameter's
+    // record at its Type occurrence, R4-M90 D6's rule extended).
     [Fact]
     public void AnUnclassifiedDestructionOrCallIsUnsupported()
     {
@@ -1935,180 +2025,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             "func unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n");
         var program = Analyze(c);
         Assert.Equal(
-            ["Unsupported_Kd func deep(n: Nest<ref/i32 during a>)", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"],
-            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
-    }
-
-    // A3's listed loss P13 under its interim, the owner's body hold (DECISIONS R4-M73, R4-M76, PD30; until the guard reads each part,
-    // before R4's exit): the guard is per holder, so a call's store follows what a holder carries past a holder whose Type passes it only
-    // through a Type argument, a pair layer or an abstract part, and a (body, view) where a Call's W stores a non-empty value so is held:
-    // every Loan problem it owns is a located Unsupported_Kd at its access, never a Language problem, whatever route the conflict takes.
-    // The conflicts that depend on such a store: a generic loop over a local Array<T>, then an append (g1), the same over Array<s/T>
-    // (pairs, the pair cases' B6-for), an abstract Iterable's parameter end (count), a shared loop over a local Array<uniq/(ref/i32)>
-    // (sharedOverExclusive; its twin without next is valid), a Loan<…> holder's stores reached through the closure (closureRoute) and
-    // through err(ended)'s γ (guardP13), through a later write through a reference (writeQ) and through E5's seed (seedRoute), the three
-    // routes the interim's taint missed. The cost: a held body's Language problem that does not depend on the store is Unsupported_Kd too
-    // (cleanRoute's append, which the live iterator keeps clean; g1's `var xs`), while a body that is not held keeps it (notHeld, an
-    // iterator whose Type holds no exclusive reference; emptyStore, whose by-argument store's value is empty). A conflict inside an
-    // inline default copy stays its template's (R4-M69): the template reports it and the held caller adds nothing for the copy
-    // (heldCopy, dd3); a Loan a copy's value keeps is the held caller's own problem at its access (heldDefault, R-a).
-    [Fact]
-    public void AListedLossIsUnsupported()
-    {
-        var c = MirBuildTest.Compile(Prelude + """
-            func storeL(l: uniq/Loan<uniq/(ref/(ref/i32 during p) during q) during a>, v: ref/(ref/i32 during p) during q) => ()
-            func storeD(l: uniq/Loan<uniq/(ref/Data during q) during a>, v: ref/Data during q) -> bool => true
-            func storeU(l: uniq/Loan<uniq/(uniq/(ref/i32 during p) during q) during a>, v: uniq/(ref/i32 during p) during q) => ()
-            struct WQ {a}
-                public var p: uniq/(ref/i32 during a) during a
-                public var q: ref/(ref/i32 during a) during a
-                public init(p: uniq/(ref/i32 during a) during a, q: ref/(ref/i32 during a) during a)
-                    self.p = p
-                    self.q = q
-            func storeQ(l: uniq/Loan<uniq/WQ during q> during m, v: ref/(ref/i32 during p) during q) => ()
-            func dd3(n: i32, m: i32 = (do
-                var t = n
-                let r = t@ref
-                t = 2
-                yield size(r)
-            )) => ()
-            func sameD(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
-            func g1<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                for e in xs
-                    _ = e
-                xs.append(b)
-            func pairs<s/T>(value: s/T, x: T)
-                s is owner or uniq
-                T is Copy
-                var v = value@move
-                let child = v
-                do
-                    var arr: Array<s/T> = [child@move]
-                    for e in arr
-                        _ = e@follow@follow
-                v@follow = x
-            func count<S>(items: S) -> i32
-                S is Iterable
-                var n: i32 = 0
-                for _ in items
-                    n += 1
-                return n
-            func sharedOverExclusive()
-                var x = 1
-                var w = x@ref
-                do
-                    var arr: Array<uniq/(ref/i32)> = [w@uniq]
-                    for e in arr
-                        _ = e
-                inspect(w)
-            func sharedOverExclusiveTwin()
-                var x = 1
-                var w = x@ref
-                do
-                    var arr: Array<uniq/(ref/i32)> = [w@uniq]
-                    var it = arr.iterate()
-                    _ = it@uniq
-                inspect(w)
-            func closureRoute()
-                var x = 1
-                var y = 2
-                var z: ref/i32 = x@ref
-                var w: ref/(ref/i32) = z@ref
-                var lh = Loan<uniq/(ref/(ref/i32))>.init(w@uniq)
-                var b: ref/i32 = y@ref
-                storeL(lh@uniq, b@ref)
-                y = 5
-                inspect(w)
-            func guardP13()
-                let packet: Packet = .Data(Data.init())
-                let other = Data.init()
-                var saved = other@ref
-                var lh = Loan<uniq/(ref/Data)>.init(saved@uniq)
-                match packet
-                    .Data(let d) if storeD(lh@uniq, d) => ()
-                    _ => ()
-                inspect(saved)
-            func writeQ()
-                var x = 1
-                var y = 2
-                var c = 3
-                var z: ref/i32 = x@ref
-                var z2: ref/i32 = x@ref
-                var zz = z2@ref
-                var w = WQ.init(p: z@uniq, q: zz)
-                var lh = Loan<uniq/WQ>.init(w@uniq)
-                var b: ref/i32 = y@ref
-                storeQ(lh@uniq, b@ref)
-                w.p@follow = c@ref
-                c = 5
-                inspect(b)
-            func seedRoute()
-                var x = 1
-                var y = 2
-                var z: ref/i32 = x@ref
-                var w: uniq/(ref/i32) = z@uniq
-                var lh = Loan<uniq/(uniq/(ref/i32))>.init(w@uniq)
-                var b: ref/i32 = y@ref
-                storeU(lh@uniq, b@uniq)
-                let r = w@follow@follow@ref
-                inspect(r)
-            func cleanRoute<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                var it = xs.iterate()
-                _ = it.next()
-                xs.append(b)
-                _ = it.next()
-            func notHeld()
-                var x = 1
-                var xs: Array<ref/i32> = []
-                xs.append(x@ref)
-                var it = xs.iterate()
-                _ = it.next()
-                x = 2
-                _ = it.next()
-            func heldCopy<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                for e in xs
-                    _ = e
-                xs.append(b)
-                dd3(1)
-            func heldDefault<T>(a: T, b: T)
-                T is Copy
-                var xs: Array<T> = []
-                xs.append(a)
-                for e in xs
-                    _ = e
-                var k = 1
-                let r = sameD(k@ref)
-                k = 2
-                inspect(r)
-            func emptyStore<T>()
-                var xs: Array<Option<T>> = []
-                xs.append(.None)
-                var k = 1
-                let r = k@ref
-                k = 2
-                inspect(r)
-            """);
-        Assert.Equal(
-            [
-                "dd3: t = 2", "g1: xs.append(b) Unsupported_Kd", "g1: var xs: Array<T> = [] Unsupported_Kd",
-                "pairs: var arr: Array<s/T> = [child@move] Unsupported_Kd", "pairs: v@follow = x Unsupported_Kd",
-                "count: func count<S>(items: S) -> i32 Unsupported_Kd", "sharedOverExclusive: var arr: Array<uniq/(ref/i32)> = [w@uniq] Unsupported_Kd",
-                "sharedOverExclusive: inspect(w) Unsupported_Kd", "closureRoute: y = 5 Unsupported_Kd", "closureRoute: inspect(w) Unsupported_Kd",
-                "guardP13: let d Unsupported_Kd", "guardP13: inspect(saved) Unsupported_Kd", "writeQ: c = 5 Unsupported_Kd",
-                "seedRoute: w@follow@follow@ref Unsupported_Kd", "cleanRoute: xs.append(b) Unsupported_Kd", "cleanRoute: var xs: Array<T> = [] Unsupported_Kd",
-                "notHeld: x = 2", "heldCopy: xs.append(b) Unsupported_Kd", "heldCopy: var xs: Array<T> = [] Unsupported_Kd",
-                "heldDefault: k = 2 Unsupported_Kd", "heldDefault: var xs: Array<T> = [] Unsupported_Kd", "emptyStore: k = 2",
-            ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            ["OwnershipDepthLimit_Kd Nest<ref/i32 during a>", "OwnershipDepthLimit_Kd Nest<ref/i32>.init(value: y@ref)"], // The parameter's at its Type (BU-48 (a)).
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
     // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
@@ -2333,8 +2251,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // The SPEC examples of the guard, reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 14.8.3,
-    // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, from A5 run on the MIR here; VerifiedSpecExampleTest checks the
-    // driver's records of the landed families (F1 and F3, unit 1b-5b-1).
+    // 15.6.6, 15.6.7 and 15.6.4's drop retention) get exactly the Loan problems their records give, from A5 run on the MIR here;
+    // VerifiedSpecExampleTest checks the driver's records of the landed families (F1 and F3, unit 1b-5b-1).
     [Theory]
     [MemberData(nameof(SpecVariants))]
     public void TheSpecExamplesGetTheirLoanCodes(string name)
@@ -2355,7 +2273,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // A3 6.4, R4-M3a: a problem's facts are its Loan's or guard candidate's anchor and its witness: the holder's next use in its chain (for
-    // an activation from its call on; none in a later chain), or the store that carries the Loan; and an activation's reservation.
+    // an activation from its call on; past it the holder's declaration as a Store, as `saved` after the match), or the store that carries
+    // the Loan (TheWarningCarriesItsFacts's `Store b`); and an activation's reservation. selfStore is valid (AStoredValueIsCheckedInTransit;
+    // DECISIONS R4-M154).
     [Fact]
     public void AProblemNamesItsLoanAndWitness()
     {
@@ -2385,10 +2305,40 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var problems = program.Problems.All.ToArray();
         Assert.Equal(
             [
-                "x = 2: Anchor x@ref, Use inspect(r)", "x = pin(x@ref): Anchor x@ref, Store x = pin(x@ref)",
-                "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq", "let d: Anchor let d",
+                "x = 2: Anchor x@ref, Use inspect(r)", "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq",
+                "let d: Anchor let d, Store var saved = fallback@ref",
             ],
             problems.Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code)).Select(x =>
+                $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
+    }
+
+    // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the block or `if` it leaves, is witnessed by its
+    // declaration, the value retaining the Loan: an undecided holder and its decided twin (BlockEscapeLoanTest), a chain between body Origins
+    // (OriginRelationDiagnosticTest) and a fixed input's capture (InputDependentValueCallTest).
+    [Theory]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n    let k = label block: do\n        let n = 5\n" +
+        "        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Store var o: Option<ref/i32> = .Some(z@ref)")]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o = z@ref\n    let k = label block: do\n        let n = 5\n        o = n@ref\n" +
+        "        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Store var o = z@ref")]
+    [InlineData(
+        "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
+        "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",
+        "let w = 9: Anchor w@ref, Store var keep = h.item")]
+    [InlineData(
+        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
+        "        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n",
+        "let y: i32 = 5: Anchor y@ref, Store var c = func [var start](n: ref/i32 during r) -> ref/i32 during r")]
+    public void AHolderUsedPastTheChainIsWitnessedByItsDeclaration(string source, string problem)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = Analyze(c);
+        Assert.Equal(
+            [problem],
+            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 
@@ -2400,7 +2350,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // reference in loop k, an output quadratic in N: the worklist settles each loop before the next (R4-M65), so the passes stay constant
     // and the work and the Loan-set bytes (ν) are dense, not cubic. One operation with N operands, each carrying a Loan and each an
     // access of a borrowed root, gathers its check sets once (A3 E13 (5)), so it stays linear. N calls storing through a four-layer chain
-    // write every layer (A3 E16), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73).
+    // write every layer (A3 E16), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73). N addressed
+    // holders read through their live pointers across N writes (each write scans the live holders, the addressed ones among them) and a
+    // raw chain of depth N (each pointer addressing the one before, read through at the end) stay within the dense bound (R4-M116, B §7).
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -2420,6 +2372,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     [InlineData("    var x = 0\n    var r = x@ref\n", "    while flag\n        x = {0}\n        r = x@ref\n        inspect(r)\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n    let rr = r@ref\n", "", "", false, "r")]
     [InlineData("    var x = 1\n    var b = 2\n    var w = x@ref\n    var s1 = w@uniq\n    var s2 = s1@uniq\n    var s3 = s2@uniq\n", "    put4(s3@uniq, b@ref)\n", "", true)]
+    [InlineData(
+        "    var y = 1\n    var z = 0\n", "    var w{0}: ref/i32 = y@ref\n    let p{0} = w{0}@raw\n    z = {0}\n", "    unsafe => inspect(*p{0})\n", true)]
+    [InlineData("    var y = 1\n    var w: ref/i32 = y@ref\n    let p0 = w@raw\n", "    let p{1} = p{0}@raw\n", "    _ = p{1} == null\n", true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense, string operand = "")
     {
         var (work, bytes) = this.Scaled(head, each, after, operand);
@@ -2532,24 +2487,75 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(alone.Borrows.Work, after.Borrows.Work - work);
     }
 
-    // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too) and the dataflow
-    // keep their storage.
+    // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too), addresses (a raw
+    // Ref's, a `during self` layer's), a Chain row's closure, the own-step Warning's tags and the dataflow keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunAllocatesNothing()
     {
-        var c = MirBuildTest.Compile(Prelude + "func loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
+        var c = MirBuildTest.Compile(Prelude + RawShapes + ChainShapes + "func chained()\n    var y = 1\n    var w: ref/i32 = y@ref\n" +
+            "    var h: raw/u8 = w@raw@raw/u8\n    var h2: raw/(raw/u8) = h@raw\n    let r = getRRR(h2@raw)\n    usep(r)\n" +
+            "func addressed()\n    var y = 1\n    var w: ref/i32 = y@ref\n    let p = w@raw\n    y = 2\n" +
+            "    _ = p == null\nfunc selfRead()\n    var y = 1\n    var b = Buf<ref/i32>.init(4)\n    b.push(y@ref)\n    let p = b.data\n    y = 2\n" +
+            "    _ = p == null\nfunc loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
             "        x = 3\n        inspect(r)\n        r = x@ref\nfunc stored()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n" +
             "    put(slot@uniq, x@ref)\n    x = 3\n    inspect(slot)\nfunc reserved()\n    var tasks: Array<Task> = []\n    tasks.append(tasks.remove(0))\n" +
             "func written()\n    var x = 1\n    let v = x@ref\n    x += 1\n    inspect(v)\nfunc destroyed()\n    var x = 1\n    var y = 2\n" +
             "    var s = D.init(r: x@uniq)\n    let c = s.r@follow@uniq\n    s = D.init(r: y@uniq)\n    c@follow = 1\nfunc escaped()\n" +
             "    let fallback = Data.init()\n    let packet: Packet = .Data(Data.init())\n    var saved = fallback@ref\n    match packet\n" +
             "        .Data(let d) if save(saved@uniq, d) => ()\n        _ => ()\n    inspect(saved)\nfunc raw()\n    var x = 1\n" +
-            "    let p: raw/(ref/i32) = Raw.allocate(1)\n    unsafe => Raw.initialize(p, x@ref)\n    x = 2\n");
+            "    let p: raw/(ref/i32) = Raw.allocate(1)\n    unsafe => Raw.initialize(p, x@ref)\n    x = 2\nfunc departed()\n    var b = Buf<i32>.init(4)\n" +
+            "    let p = b.data\n    let c = b@move\n    _ = p == null\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(7, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Equal(9, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
+    }
+
+    // V16, design §8 (DECISIONS R4-M154): A5's second pass over a program allocates nothing, the Origin stratum's and the Loan stratum's
+    // runs alike: whichever role the Loan stratum's two swapped Loan arrays then hold (MirBorrows.Order keeps them one capacity; Milestone7
+    // regrew 32 Loans before), and whatever atoms the first pass added to a body's table (MirOrigins sizes its Anchor table by the Refs'
+    // own atoms; Milestone7 regrew it by 64 B before). The standard window (AllocationMeasurement) warms up before it measures, which
+    // absorbs a second-pass regrow, so this pass is measured on its own.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void A5sSecondPassAllocatesNothing()
+    {
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone7");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        stratum.Run(program);
+        Assert.Equal(0, AllocationMeasurement.MeasureOnce(() => stratum.Run(program)));
+    }
+
+    // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
+    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
+    // nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ARebindRefillsTheHoldingMemoWithoutAllocating()
+    {
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone34");
+        var stratum = new Stratum(c.Types);
+        stratum.Run(c.BuildMir());
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            stratum.Run(c.BuildMir());
+        }));
+    }
+
+    // G308 D3, SPEC 13.4: the left operand of a comparison of a DAG Tuple with string leaves is inspected through a shared Loan live while
+    // the right operand is evaluated, so moving it there is rejected; comparing it with another value is accepted.
+    [Fact]
+    public void ADagComparisonsInspectionLoanRejectsAMoveOfItsOperand()
+    {
+        const string Tuple = "(((\"a\", 1), (\"b\", 2)), ((\"c\", 3), (\"d\", 4)))";
+        Assert.Equal(
+            ["bad: t"],
+            Problems($"func take<T>(value: T) -> T => value@move\nfunc bad() -> bool\n    let t = {Tuple}\n    return t == take(t@move)\n" +
+                $"func good() -> bool\n    let t = {Tuple}\n    let other = {Tuple}\n    return t == other\n"));
     }
 
     // The Loan problems of a program's own bodies.
@@ -2572,12 +2578,14 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // A program's problems of some codes in its own bodies: function and the subject's first line, with the code unless it is a comparison's.
     private static string[] Problems(Compilation c, MirProgram program, DiagnosticCode[] codes)
     {
-        return [.. program.Problems.All.ToArray().Where(x => codes.Contains(x.Code) && x.Subject.Module == 0)
+        return [.. program.Problems.All.ToArray().Where(x => !x.IsRecord && codes.Contains(x.Code) && x.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}{Code(x.Code)}")];
 
-        static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
         static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;
     }
+
+    // The function a node lies in: the nearest enclosing declaration's name.
+    private static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
 
     private static MirProgram Analyze(Compilation c) => AnalyzeUnsupported(c, []);
 
@@ -2611,10 +2619,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
-    private static bool Grows(long[] measure, int factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
+    private static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
 
     // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines, a Tuple of N operands where one is
-    // given, and N after lines, with no Loan problem.
+    // given, and N after lines ({0} the index, {1} the index plus one), with no Loan problem.
     private (long[] Work, long[] Bytes) Scaled(string head, string each, string after, string operand = "")
     {
         var (sizes, work, bytes) = (new[] { 32, 64, 128 }, new long[3], new long[3]);
@@ -2625,7 +2633,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             {
                 for (var n = 0; n < sizes[i]; n++)
                 {
-                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, pass == 0 ? each : after, n);
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, pass == 0 ? each : after, n, n + 1);
                 }
 
                 if (pass == 0 && operand.Length > 0)
@@ -2665,13 +2673,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         private readonly MirReport obligations = new(); // A4's obligation problems, which A5 does not read.
         private readonly MirCases cases;
         private readonly MirEffects effects;
+        private readonly MirOrigins origins; // The Origin stratum, which judges each body first, as the driver's step 4 does (rule W).
         private ulong version; // The program version A4 last solved.
 
         internal Stratum(TyCtxt types)
         {
             this.cases = new(types);
             this.effects = new(types, this.cases, this.flow);
-            this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects);
+            this.origins = new(types, this.cases);
+            this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins);
         }
 
         internal MirBorrows Borrows { get; }
@@ -2686,14 +2696,21 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal void Run(MirProgram program, MirBody body)
         {
-            this.Summaries(program);
-            this.flow.Begin(body);
-            this.moves.Build(body, this.flow);
+            this.Begin(program, body);
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 this.cases.Select(body, view);
                 this.Borrows.Run(program, body, view);
             }
+        }
+
+        // A4's summaries of the program version, then the body's dataflow, Moves and Origin stratum, before its views.
+        private void Begin(MirProgram program, MirBody body)
+        {
+            this.Summaries(program);
+            this.flow.Begin(body);
+            this.moves.Build(body, this.flow);
+            this.origins.Judge(body, MirCases.Count(body), program.Problems);
         }
 
         // A4 over a program version it has not solved: each body's views' local facts, then the summaries and keys.

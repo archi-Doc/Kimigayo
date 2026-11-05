@@ -24,6 +24,8 @@ internal static class OriginProofWorkloads
         ("chain", null),
         ("chain-broken", "UnprovenOriginRelation_Kd"),
         ("cycle", "UnprovenOriginRelation_Kd"),
+        ("closure-pending", null),
+        ("defaults", null),
     ];
 
     // `size` borrowed Holder inputs (or chain links) around the family's relation.
@@ -56,6 +58,63 @@ internal static class OriginProofWorkloads
             }
 
             source.Append("    return o0\npublic func main() => ()\n");
+            return source.ToString();
+        }
+
+        if (family == "defaults")
+        {
+            // `size` defaulted parameters chaining the callee's Origins o0 >= o1 >= ... >= oN: each default's Type is well formed only
+            // under its link, which the caller's clauses prove at the call and which bounds the call's solution (DECISIONS BU-51).
+            source.Append("func f(");
+            for (var i = 0; i <= size; i++)
+            {
+                source.Append(i == 0 ? string.Empty : ", ").Append('x').Append(i).Append(": ref/i32 during o").Append(i);
+            }
+
+            for (var i = 1; i <= size; i++)
+            {
+                source.Append(", w").Append(i).Append(": Option<ref/(ref/i32 during o").Append(i - 1).Append(") during o").Append(i).Append("> = .None");
+            }
+
+            source.Append(") -> ref/i32 during o").Append(size).Append("\n    return x").Append(size).Append("\nfunc g(");
+            for (var i = 0; i <= size; i++)
+            {
+                source.Append(i == 0 ? string.Empty : ", ").Append('p').Append(i).Append(": ref/i32");
+            }
+
+            source.Append(") -> ref/i32 during p").Append(size).Append('\n');
+            for (var i = 0; i < size; i++)
+            {
+                source.Append("    origin p").Append(i).Append(" outlives p").Append(i + 1).Append('\n');
+            }
+
+            source.Append("    return f(");
+            for (var i = 0; i <= size; i++)
+            {
+                source.Append(i == 0 ? string.Empty : ", ").Append('p').Append(i);
+            }
+
+            source.Append(")\npublic func main() => ()\n");
+            return source.ToString();
+        }
+
+        if (family == "closure-pending")
+        {
+            // `size` locals of one Closure body, each a Borrow of an environment binding: a pending relation each, judged once the
+            // Closure is classified (DECISIONS R4-M126 §2.5; PLAN V16: one list entry per formation).
+            source.Append("func g() -> i32\n    let n: i32 = 1\n    let f = func [n] () -> i32\n");
+            for (var i = 0; i < size; i++)
+            {
+                source.Append("        var r").Append(i).Append(": ref/i32 = n@ref\n");
+            }
+
+            source.Append("        return r0@follow");
+            for (var i = 1; i < size; i++)
+            {
+                source.Append(" + r").Append(i).Append("@follow");
+            }
+
+            source.Append("\n    return f()\npublic func main() => ()\n");
             return source.ToString();
         }
 

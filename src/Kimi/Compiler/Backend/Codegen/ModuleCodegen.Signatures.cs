@@ -1,17 +1,28 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
 // The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1; DECISIONS R5-M65, R5-M89, R5-M102, R5-M106): a body item's from
-// its own body, the one its definition and every call write; a DropGlue item's; a StaticInit item's slot's ensure function; and the
-// per-index cache they share with the called imports' C signatures (ModuleCodegen.Imports.cs) and the common Function values' entries
-// (ModuleCodegen.Erasures.cs): each computed once per Write, or kept, and the previous one reused while it still matches, so a warm
-// module allocates nothing.
+// its own body, the one its definition and every call write; a DropGlue item's; a Builtin item's, its requirement's in its instance
+// (DECISIONS R5-M126), and a PropertyWitness item's, its key's (InstanceCollector.StorageSignature; DECISIONS R5-M141); a StaticInit item's
+// slot's ensure function; the per-index cache they share with the called imports' C signatures
+// (ModuleCodegen.Imports.cs) and the common Function values' entries (ModuleCodegen.Erasures.cs); and the unnamed signatures of the
+// calls that reach their callee through a pointer (Unnamed: a Function Type's erased one, Erased; a virtual slot's, Slot), keyed by their
+// inputs and kept while a Write uses them: each computed once per Write, or kept, and the previous one reused while it still matches, so
+// a warm module allocates nothing. A request naming an item is for a Generated item (Requested: K11). A slot's and a Builtin
+// item's signature reads TyCtxt.Signature, code generation's input for a virtual slot (package C 3.2), under the call's substitution, an
+// Item's own (TyCtxt.SubstOfItem, a function of its Type) or none, each Type in the item's instance by InstanceCollector.TypeOf: no
+// substitution is composed here (DECISIONS R5-M114).
 internal sealed partial class ModuleCodegen
 {
+    /// <summary>The name of a body item's function before its index (<see cref="Signature"/>).</summary>
+    internal const string FunctionPrefix = "__kimi_f";
+
     /// <summary>The name of a StaticInit item's slot before its index (SPEC 22.4.3); its state adds <see cref="StateSuffix"/>, its ensure
     /// function <c>_ensure</c>.</summary>
     internal const string StaticPrefix = "__kimi_static";
@@ -19,6 +30,13 @@ internal sealed partial class ModuleCodegen
     /// <summary>The name of a static slot's state after its slot's.</summary>
     internal const string StateSuffix = "_state";
 
+    /// <summary>The name of a Builtin item's function before its index (<see cref="Shim"/>).</summary>
+    internal const string BuiltinPrefix = "__kimi_builtin";
+
+    /// <summary>The name of a PropertyWitness item's function before its index (<see cref="Shim"/>).</summary>
+    internal const string WitnessPrefix = "__kimi_witness";
+
+    private readonly Dictionary<UnnamedKey, (FunctionAbi Abi, int Write)> unnamed = new(); // By inputs, a signature and its latest Write.
     private FunctionAbi?[] helpers = []; // By adapter or StaticInit item, its helper function (Release, Ensure), kept across Writes.
     private FunctionAbi?[] signatures = []; // By item.
     private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
@@ -33,18 +51,13 @@ internal sealed partial class ModuleCodegen
     /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of its signature.</returns>
     internal FunctionAbi? Signature(int item)
     {
-        var entry = this.set.Items[item];
-        if (!this.set.IsGenerated(item))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // Only a Generated item is requested (K11).
-        }
-
+        this.Requested(item);
         if (this.Stamped(ref this.signatures, ref this.signed, item) is { } current)
         {
             return current;
         }
 
-        var body = this.program.Bodies[entry.BodyOrdinal];
+        var body = this.program.Bodies[this.set.Items[item].BodyOrdinal];
         if (this.Inputs(item, body, out var count) is not { } result)
         {
             return null; // Recorded.
@@ -55,7 +68,7 @@ internal sealed partial class ModuleCodegen
         var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
         var flags = (KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
             (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
-        return this.Define(item, "__kimi_f", flags, result, this.parameters.AsSpan(0, count));
+        return this.Define(item, FunctionPrefix, flags, result, this.parameters.AsSpan(0, count));
     }
 
     /// <summary>Gets the signature of a DropGlue item (package C 3.6), named <c>__kimi_drop</c> with its index: the previous one while it is
@@ -64,11 +77,7 @@ internal sealed partial class ModuleCodegen
     /// <returns>The signature.</returns>
     internal FunctionAbi Glue(int item)
     {
-        if (!this.set.IsGenerated(item))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
-        }
-
+        this.Requested(item);
         if (item >= this.signatures.Length)
         {
             Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
@@ -82,13 +91,101 @@ internal sealed partial class ModuleCodegen
         return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
     }
 
+    /// <summary>Gets the signature a call through a virtual slot takes and every entry of the slot has (SPEC 6.4.1: an override keeps its
+    /// original's inputs and result; IMPL 21.3.1; DECISIONS R5-M114): the internal convention, without flags (no virtual function is a
+    /// caller-location library function), over the original's parameter and result Types (TyCtxt.Signature, package C 3.2's input) under the
+    /// dispatching substitution, each in the item's instance (InstanceCollector.TypeOf); unnamed, since the call reaches an entry through its
+    /// receiver's table (Unnamed).</summary>
+    /// <param name="original">The slot's original.</param>
+    /// <param name="subst">The dispatching substitution: a Virtual callee's.</param>
+    /// <param name="item">The item whose instance the call is in.</param>
+    /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of it.</returns>
+    internal FunctionAbi? Slot(BindingSymbol original, Subst? subst, int item)
+        => this.Declared(original, subst, item, out var count) is { } result
+            ? this.Unnamed(Abi.Flags.None, result, this.parameters.AsMemory(0, count)) : null;
+
+    /// <summary>Gets the signature a virtual function's Item's call takes (<see cref="Slot(BindingSymbol, Subst, int)"/>), under the Item's own
+    /// substitution, the pure one its Type makes (TyCtxt.SubstOfItem; DECISIONS R5-M43).</summary>
+    /// <param name="function">The Item's Type in the item's instance.</param>
+    /// <param name="item">The item whose instance the call is in.</param>
+    /// <returns>The signature, or null after a record.</returns>
+    internal FunctionAbi? Slot(BoundType function, int item) => this.Slot(function.Symbol!, this.types.SubstOfItem(function), item);
+
     /// <summary>Gets the ensure function of a StaticInit item's slot (SPEC 22.4.3; DECISIONS R5-M106): void, taking the access's location
     /// (SPEC 22.5.1), named after its slot with <c>_ensure</c>, kept across Writes.</summary>
     /// <param name="item">The StaticInit item.</param>
     /// <returns>The signature.</returns>
     internal FunctionAbi Ensure(int item)
-        => this.Helper(item) ??=
+    {
+        this.Requested(item);
+        return this.Helper(item) ??=
             new(StaticPrefix + item.ToString(CultureInfo.InvariantCulture) + "_ensure", "void", [RuntimeAbi.Location, RuntimeAbi.LocationLength]);
+    }
+
+    /// <summary>Gets the signature of a shim item (PD3), by its kind's row: a Builtin item's, its function's requirement's in the item's
+    /// instance, the substitution of the call that admitted it (InstanceCollector.TypeOf; DECISIONS R5-M126), named
+    /// <see cref="BuiltinPrefix"/>; a PropertyWitness item's, the one its key fixes (InstanceCollector.StorageSignature; DECISIONS R5-M141),
+    /// named <see cref="WitnessPrefix"/>. Each under the internal convention and caller-location (one ABI rule for every shim; SPEC 22.5.1:
+    /// a failure inside it reports its invoking expression), the one every call of the item writes: a call under another substitution of
+    /// the same key has the same Abi, since the key's Self erases to one Type, a reference is a pointer whatever its Origin and SPEC 13.3.3
+    /// fixes a built-in numeric Type's counterpart and Output to itself. Computed once per Write and the previous one while it still
+    /// matches.</summary>
+    /// <param name="item">The Builtin or PropertyWitness item.</param>
+    /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of it.</returns>
+    internal FunctionAbi? Shim(int item)
+    {
+        this.Requested(item);
+        if (this.Stamped(ref this.signatures, ref this.signed, item) is { } current)
+        {
+            return current;
+        }
+
+        var key = this.set.Items[item].Key;
+        var count = 0;
+        var (prefix, result) = key.Kind == MonoKind.PropertyWitness
+            ? (WitnessPrefix, this.Stored(item, out count)) : (BuiltinPrefix, this.Declared(key.Symbol!, null, item, out count));
+        return result is null ? null : this.Define(item, prefix, Abi.Flags.CallerLocation, result, this.parameters.AsSpan(0, count));
+    }
+
+    // A function's result Type and its parameter Types in slot order into the scratch, each under a substitution (null: its declared Type) in
+    // an item's instance (InstanceOf); null, recorded at the item's site, where the instance does not make one.
+    private BoundType? Declared(BindingSymbol function, Subst? subst, int item, out int count)
+    {
+        _ = TyCtxt.Signature(function, null, int.MaxValue, out count);
+        this.Reserve(count);
+        var result = this.InstanceOf(function, subst, -1, item);
+        for (var slot = 0; result is not null && slot < count; slot++)
+        {
+            if (this.InstanceOf(function, subst, slot, item) is not { } parameter)
+            {
+                return null; // Recorded.
+            }
+
+            this.parameters[slot] = parameter;
+        }
+
+        return result;
+    }
+
+    // A PropertyWitness item's result Type and its parameter Types in slot order into the scratch, the ones its key fixes
+    // (InstanceCollector.StorageSignature); null, recorded at the item's site, where its representative Self stores no such Field, a broken
+    // contract (the collector admitted the item on that Field, InstanceCollector.Agrees).
+    private BoundType? Stored(int item, out int count)
+    {
+        if (this.collector.StorageSignature(item, -1, out count) is not { } result)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site);
+            return null;
+        }
+
+        this.Reserve(count);
+        for (var slot = 0; slot < count; slot++)
+        {
+            this.parameters[slot] = this.collector.StorageSignature(item, slot, out _)!; // The key's Field was found for the result.
+        }
+
+        return result;
+    }
 
     // A body item's Callable inputs, its parameter Types in slot order into the scratch (its Arg locals' in its instance, by
     // FunctionCodegen.ArgumentPosition; a Closure body's environment, its Arg local 1, is no parameter slot), and its result Type, local 0's;
@@ -123,9 +220,22 @@ internal sealed partial class ModuleCodegen
         return result;
     }
 
-    // The head of the by-index signature cache of Signature, Adapter and ImportSignature: the arrays grown to hold the index, and the
-    // signature stamped in this Write (null: the caller computes it, then stamps it: Define for an item's).
-    private FunctionAbi? Stamped(ref FunctionAbi?[] kept, ref int[] stamps, int index)
+    // K11: a request naming an item (Signature, Glue, Ensure, Shim, Adapter, Factory, Row, Wrapper) is for a Generated item, the only
+    // items the module defines; another is a broken contract, recorded at the item's site. Release, ArrayDrop and DictionaryDrop name the
+    // item being written, which the Write's loop chose by its mark.
+    private void Requested(int item)
+    {
+        if (!this.set.IsGenerated(item))
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site);
+        }
+    }
+
+    // The head of the by-index caches of Signature, Adapter, ImportSignature and a descriptor's row (ModuleCodegen.Objects): the arrays
+    // grown to hold the index, and the entry stamped in this Write (null: the caller computes it, then stamps it: Define for an item's
+    // signature).
+    private T? Stamped<T>(ref T?[] kept, ref int[] stamps, int index)
+        where T : class
     {
         if (index >= kept.Length)
         {
@@ -140,7 +250,7 @@ internal sealed partial class ModuleCodegen
         return stamps[index] == this.writes ? kept[index] : null;
     }
 
-    // The tail of an item's signature (Signature, Adapter): the item stamped for this Write, the previous Write's signature while it still
+    // The tail of an item's signature (Signature, Shim): the item stamped for this Write, the previous Write's signature while it still
     // matches, else a new one named before the item's index (only then, so a warm module allocates nothing).
     private FunctionAbi Define(int item, string prefix, Abi.Flags flags, BoundType result, ReadOnlySpan<BoundType> types)
     {
@@ -152,6 +262,54 @@ internal sealed partial class ModuleCodegen
 
         var name = prefix + item.ToString(CultureInfo.InvariantCulture);
         return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
+    }
+
+    // A function's parameter Type at a slot (at -1 its result) under a substitution, in an item's instance (Slot); null, recorded at the
+    // item's site, where the instance does not make it.
+    private BoundType? InstanceOf(BindingSymbol function, Subst? subst, int slot, int item)
+    {
+        if (TyCtxt.Signature(function, subst, slot, out _) is { } declared && this.collector.TypeOf(item, declared) is { } type)
+        {
+            return type;
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // The collector laid out the call's Types (K 4.8).
+        return null;
+    }
+
+    // An unnamed signature under the internal convention, which its calls reach through a pointer (a common Function value's entry,
+    // ModuleCodegen.Erasures.cs; a virtual slot's, Slot), by its inputs (UnnamedKey; DECISIONS R5-M173): the one this Write used; else the
+    // kept one while Abi.Matches holds (a Type's layout may change between Writes), else a new one; a new key owns a copy of the inputs.
+    private FunctionAbi Unnamed(Abi.Flags flags, BoundType result, ReadOnlyMemory<BoundType> inputs)
+    {
+        UnnamedKey key = new(flags, result, inputs);
+        ref var kept = ref CollectionsMarshal.GetValueRefOrNullRef(this.unnamed, key);
+        if (Unsafe.IsNullRef(ref kept))
+        {
+            var abi = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, inputs.Span);
+            this.unnamed.Add(key with { Inputs = inputs.ToArray() }, (abi, this.writes));
+            return abi;
+        }
+
+        if (kept.Write != this.writes && !Abi.Matches(kept.Abi, this.Layout, Abi.Convention.Internal, flags, result, inputs.Span))
+        {
+            kept.Abi = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, inputs.Span);
+        }
+
+        kept.Write = this.writes;
+        return kept.Abi;
+    }
+
+    // The unnamed signatures the previous Write did not use, dropped as a Write starts (Unnamed).
+    private void Prune()
+    {
+        foreach (var (key, kept) in this.unnamed)
+        {
+            if (kept.Write < this.writes - 1)
+            {
+                this.unnamed.Remove(key);
+            }
+        }
     }
 
     // The kept helper function of an item (Release, Ensure: an item is an adapter or a StaticInit, never both), its array grown to hold it.
@@ -171,6 +329,25 @@ internal sealed partial class ModuleCodegen
         if (this.parameters.Length < count)
         {
             this.parameters = new BoundType[Math.Max(count, 2 * this.parameters.Length)];
+        }
+    }
+
+    // An unnamed signature's inputs (Unnamed): its flags, closed result Type and closed parameter Types in slot order, Abi.Of's inputs under
+    // the internal convention, compared element by element (a BoundType is interned: identity is equality).
+    private readonly record struct UnnamedKey(Abi.Flags Flags, BoundType Result, ReadOnlyMemory<BoundType> Inputs)
+    {
+        public bool Equals(UnnamedKey other)
+            => this.Flags == other.Flags && ReferenceEquals(this.Result, other.Result) && this.Inputs.Span.SequenceEqual(other.Inputs.Span);
+
+        public override int GetHashCode()
+        {
+            var hash = HashCode.Combine((int)this.Flags, this.Result);
+            foreach (var input in this.Inputs.Span)
+            {
+                hash = HashCode.Combine(hash, input);
+            }
+
+            return hash;
         }
     }
 }

@@ -25,10 +25,10 @@ public class StoredObjectReferenceTest
     public void TheLoadedViewKeepsTheExternalOwnerLoan()
     {
         var c = MinimalEmissionTest.Analyze(Item + Owner + "let view = owner@objref\nlet slot = view@ref\nlet field = slot.id@ref\nlet moved = owner@move\nrequire field == 7 else => $abort(\"field\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -43,7 +43,7 @@ public class StoredObjectReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Item + Owner + "var view = owner@objref\nlet slot = view@uniq\n" + use);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -51,10 +51,10 @@ public class StoredObjectReferenceTest
     public void WarmReferenceLayerPlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Item + Owner + "let view = owner@objref\nlet slot = view@ref\nrequire slot.id == 7 else => $abort(\"field\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -37,6 +38,11 @@ public class ElementParameterMoveEmissionTest
         { "GenericNested", "func f<T>(a: ((T, string), string)) -> T => a.0.0@move\nConsole.writeLine(f<string>(((\"first\", \"last\"), \"outer\")))", "first\n", "first=1;last=1;outer=1", [2, 1, 0] },
         { "GenericAggregate", "func f<T>(a: ((T, string), string)) -> T => a.0.0@move\nlet moved = f<(string, string)>((((\"first\", \"second\"), \"last\"), \"outer\"))", string.Empty, "first=1;second=1;last=1;outer=1", [3, 2, 1, 0] },
         { "ConditionalNested", "func f(a: ((string, string), string), take: bool)\n    if take\n        let moved = a.0.0@move\n    else\n        let moved = a.0@move\nf(((\"first\", \"last\"), \"outer\"), true)\nf(((\"first\", \"last\"), \"outer\"), false)", string.Empty, "first=2;last=2;outer=2", [0, 2, 1, 1, 0, 2] },
+
+        // The located receiver stays protected while its index operands evaluate (SPEC 4.7.4), and a move of its sibling there does not
+        // touch it, so the program is accepted (R4's 1a verdict, the owner 2026-11-03): the old analysis's ComparisonLoanConflict_Kd went
+        // with the MIR deciding acceptance (H5).
+        { "IndexSibling", "func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]\nif f((\"first\", [42])) == 42 => Console.writeLine(\"ok\")", "ok\n", "first=1;ok=1", [0, 1] },
     };
 
     [Theory]
@@ -58,18 +64,32 @@ public class ElementParameterMoveEmissionTest
     [InlineData("func take(a: string) -> string => a@move\nfunc f(a: (string, string)) -> bool => a.0 == take(a.0@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
     [InlineData("func f(a: [2 of string], i: isize) -> string => a[i]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
     [InlineData("func f(a: [2 of string]) -> string => a[0 + 0]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
-    [InlineData("let moved = (\"first\", \"last\").0", DiagnosticCode.Unsupported_Kd)]
     [InlineData("func f(a: ([0 of string], string))\n    let moved = a.0@move\n    let twice = a.0@move", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("func f(a: ((string, string), string))\n    let moved = a.0@move\n    let nested = a.0.0@move", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]", DiagnosticCode.ComparisonLoanConflict_Kd)]
     public void InvalidMovesFailBeforeEmission(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
+    }
+
+    // A bare move of a temporary's part is Binding's TransferRequired_Kd (SPEC 3.5; R6-check H1, DECISIONS BU-84), its one published
+    // record: the MIR adds none. The old analysis's Unsupported_Kd at it is not restored (1x: the old analysis's limit record, withdrawn
+    // at H3b round 0, as OwnershipAnalysisTest states for this program; DECISIONS Q13, R5-M185).
+    [Fact]
+    public void ABareMoveOfATemporarysPartFailsBeforeEmission()
+    {
+        var c = MinimalEmissionTest.Analyze("let moved = (\"first\", \"last\").0\nConsole.writeLine(\"ok\")");
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.TransferRequired_Kd), (string?)"(\"first\", \"last\").0")],
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text)));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -82,87 +102,8 @@ public class ElementParameterMoveEmissionTest
         var c = MinimalEmissionTest.Analyze("func f(a: (string, i32))\n    let moved = a.0@move\n    " + statement + "\nf((\"first\", 0))");
         Assert.False(c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
-    }
-
-    [Theory]
-    [InlineData("missing")]
-    [InlineData("value")]
-    [InlineData("duplicate")]
-    public void ConditionalPathFlagsRequireParameterInitialization(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Conditional);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var function = module.GetFunction(1);
-        Assert.NotEmpty(function.PathFlags);
-        Assert.All(function.PathFlags, path =>
-        {
-            var root = body.GetMovePath(path).Root;
-            Assert.Equal(OwnershipPlaceKind.Parameter, body.Places[root].Kind);
-            Assert.Contains(function.Instructions, x => x.Opcode == EmissionOpcode.StorePathFlag && x.Place == path && x.Constant == 1 &&
-                body.Operations[x.Operation].Kind == OwnershipOperationKind.Produce && body.Operations[x.Operation].Place == root);
-        });
-        var index = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StorePathFlag && x.Constant == 1);
-        var instruction = function.Instructions[index];
-        if (defect == "missing")
-        {
-            function.Instructions.RemoveAt(index);
-        }
-        else if (defect == "value")
-        {
-            function.Instructions[index] = instruction with { Constant = 0 };
-        }
-        else
-        {
-            function.Instructions.Insert(index, instruction);
-        }
-
-        Assert.False(BodyLowering.ValidatePathFlags(body, function, new int[body.Operations.Count]));
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData("kind")]
-    [InlineData("receipt")]
-    [InlineData("source")]
-    [InlineData("acquisition")]
-    public void InvalidParameterPlansPublishNoIrAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Conditional);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var projection = Assert.Single(body.Projections);
-        var root = projection.Root;
-        var receipt = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == root);
-        switch (defect)
-        {
-            case "kind": body.PlaceStorage[root] = body.Places[root] with { Kind = OwnershipPlaceKind.Temporary }; break;
-            case "receipt": body.OperationStorage[receipt] = body.Operations[receipt] with { Kind = OwnershipOperationKind.Declare }; break;
-            case "source": body.OperationStorage[receipt] = body.Operations[receipt] with { Source = body.Operations[projection.Operation].Source }; break;
-            case "acquisition": body.OperationStorage[projection.Output] = body.Operations[projection.Output] with { Acquisition = AcquisitionKind.None }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Fact]
-    public void ParameterStorageIsUsedWithoutAWholeAggregateTransfer()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(a: (string, string)) -> string => a.0@move\nConsole.writeLine(f((\"first\", \"last\")))");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var function = module.GetFunction(1);
-        var root = Assert.Single(body.Projections).Root;
-        Assert.Equal(EmissionOperandKind.Argument, function.SlotAddresses[root].Kind);
-        Assert.DoesNotContain(function.Slots, x => x.Place == root);
-        Assert.DoesNotContain(function.Instructions, x => x.Opcode == EmissionOpcode.TransferAggregate);
-        Assert.Contains(function.Instructions, x => x.Opcode == EmissionOpcode.MoveString && function.Operands[x.OperandStart].Kind == EmissionOperandKind.ElementAddress);
     }
 
     [Fact]
@@ -199,14 +140,14 @@ public class ElementParameterMoveEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);

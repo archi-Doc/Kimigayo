@@ -215,11 +215,18 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin)
-        => whole.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target)
-            : whole.Kind == BoundTypeKind.Parameter || whole.Semantics == SemanticsKind.Parameter
-                ? this.types.Intern(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, [target], origin: origin)
-                : this.Form(whole.Semantics, target, origin);
+    // SPEC 8.1.2: `s/U`, a pair binder's binding `whole` applied to `target`: a family case by case, an abstract binding's application, and
+    // a layer the binding's Semantics forms over the target, read through TyCtxt.PairBinding (DECISIONS BU-46): never its Origin, but a
+    // borrow states `origin`, the annotation's, and a raw layer what the binding states (none, or a declaration's Unstated); an owner
+    // binding gives the target.
+    private BoundType ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin) => whole switch
+    {
+        { Kind: BoundTypeKind.SemanticsAdaptation } => this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target),
+        { Kind: BoundTypeKind.Parameter } or { Semantics: SemanticsKind.Parameter }
+            => this.types.Intern(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, [target], origin: origin),
+        { Kind: BoundTypeKind.Semantics } => this.types.Rebuild(this.types.PairBinding(whole), [target], IsBorrow(whole.Semantics) ? origin : null, []),
+        _ => this.Form(whole.Semantics, target, origin),
+    };
 
     private BoundType? SubstituteFamilyArgument(BoundType family, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, int slot, BoundType whole)
     {

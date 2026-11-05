@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -77,7 +78,7 @@ public class DictionaryIndexTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -98,7 +99,11 @@ public class DictionaryIndexTest
         NativeAllocationAudit.WriteFixture("DictionaryIndexBorrowedKey", Source, 2, 2, 192);
     }
 
-    [Trait("Purpose", "Allocation")]
+    // SPEC 15.6.4, 16.3.3: the program is valid, but since G264 (S) S2 A5 errs at `var owned = entries@move` (the replaced abstract V's
+    // composed erased destruction, a `uniq/Self` call, stores the Loan on `owned` into `owned`'s storage, a self-row), and generation
+    // refuses it; the old analysis accepted it, and the native allocation audit ran it (fixture DictionaryIndexGeneric, 1, 1, 192). A
+    // refused program has no run to audit, so the audit and the Allocation purpose wait with it. H5's (e) list, row "S2's self-row family"
+    // (the owner's O-9, 「(a) 加えて着地」, and O-14, 「加える」): PLAN G416 restores the acceptance and re-points this test back to its audit.
     [Fact]
     public void GenericIndexUsesTheConcreteEqualityWitness()
     {
@@ -111,7 +116,26 @@ public class DictionaryIndexTest
             _ = entries.tryInsert((1, 2), "old")
             consume(entries@move, (1, 2), "new")
             """;
-        NativeAllocationAudit.WriteFixture("DictionaryIndexGeneric", Source, 1, 1, 192);
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, new("var owned = entries@move")));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
+
+    // The boundary of that (e) row (R4's triage for O-14): its twins with a concrete V, a Copy V, no index assignment, or a `tryInsert` in
+    // its place compose no erased destruction of an abstract V that stores into `owned`, so they are valid, accepted and generated.
+    [Theory]
+    [InlineData("func consume<K>(entries: Dictionary<K, string>, key: ref/K, value: string)\n    K is Equatable\n    var owned = entries@move\n    owned[key] = value@move\n", "string", "consume(entries@move, (1, 2), \"new\")")]
+    [InlineData("func consume<K, V>(entries: Dictionary<K, V>, key: ref/K, value: V)\n    K is Equatable\n    V is Copy\n    var owned = entries@move\n    owned[key] = value@move\n", "i32", "consume(entries@move, (1, 2), 5)")]
+    [InlineData("func keep<K, V>(entries: Dictionary<K, V>)\n    K is Equatable\n    var owned = entries@move\n", "string", "keep(entries@move)")]
+    [InlineData("func insert<K, V>(entries: Dictionary<K, V>, key: K, value: V)\n    K is Equatable\n    var owned = entries@move\n    _ = owned.tryInsert(key@move, value@move)\n", "string", "insert(entries@move, (1, 2), \"new\")")]
+    public void GenericIndexTwinsAreAccepted(string declaration, string value, string call)
+    {
+        var c = MinimalEmissionTest.Analyze(declaration + $"var entries: Dictionary<(i32, i32), {value}> = [:]\n" + call);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -127,7 +151,7 @@ public class DictionaryIndexTest
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.WriteFixture("DictionaryIndexMissing", output.ToString(), "rhs\n", 1, "Hello.kimi:5:1: abort KIMI_E_MISSING_KEY: Dictionary key was not found\n");
     }
 

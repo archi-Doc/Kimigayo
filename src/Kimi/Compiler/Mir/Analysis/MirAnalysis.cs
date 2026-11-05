@@ -1,23 +1,32 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
-// Input: a built and validated MirProgram. Output: its Problems for that version, which the analyses add through MirReport.
-// Runs them once per version, after build and validation, in a fixed order, one line per step (a body's steps 1 and 2 together); a step's
-// details are in the comment of the method that runs it or in its analysis's contract:
-// 1. per body, A3;
+// Input: a built and validated MirProgram and its root modules, the range of Source.Module Compilation gives the collector too.
+// Output: its Problems for that version, which the analyses add through MirReport after the construction records (MirProgram.Clear resets
+// them with the bodies, R6-check H3-1).
+// Runs them once per version, after build and validation, in a fixed order, one line per step (a judged body's steps 1 and 2 together,
+// another body's step 2 only); a step's details are in the comment of the method that runs it or in its analysis's contract:
+// 1. per judged body, A3;
 // 2. per body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program;
-// 4. per body, A5;
+// 4. per judged body, A5: the Origin stratum's judgment, which adds its problems, then the Loan stratum per view; then, once per program,
+//    the C1-F4 view's findings and the rows of layers no constructor body includes (MirOrigins.Findings);
 // 5. A6 inside MirReport.
+// Input rule (DECISIONS R5-M168): steps 1 and 4 judge the bodies of the root modules (Judged), whose problems are the program's; a body
+// outside them is built from its library definition alone, so its A3 and A5 verdicts are the same in every program. Steps 2 and 3 visit
+// every body without a validator finding: A4 composes library callees' local facts and code generation reads A2's tables. The library's
+// own A3 and A5 verdicts are MirAnalysisTest.TheLibraryHasNoAnalysisProblem's, the check every unit changing A3 or A5 runs.
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
-// adds its field and its pass row at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its own loop over the bodies after
-// A4's, Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems.
-// Must not read syntax, HIR or plans, publish, decide acceptance, or analyze a program with validator findings.
+// adds its field and its pass row at its step: step 2 in Body, steps 1, 3 and 4 in Run (A5 with its own loop over the bodies after A4's,
+// Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems.
+// Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
+// R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
+// (MirEffects.Views); the initialization proof that consults one rests on it (MirBorrows.Unproved).
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The driver of the MIR analyses (plan P7–P9, R4 shadow: the old path still decides): <see cref="Run"/> analyzes a program
-/// version once; a repeated run of the same version keeps its problems.</summary>
+/// <summary>The driver of the MIR analyses (plan P7–P9), whose problems decide acceptance (DECISIONS R5-M185): <see cref="Run"/>
+/// analyzes a program version once; a repeated run of the same version keeps its problems.</summary>
 internal sealed class MirAnalysis
 {
     private readonly MirCases cases;
@@ -28,6 +37,7 @@ internal sealed class MirAnalysis
     private readonly MirDrops drops;
     private readonly MirEffects effects;
     private readonly MirBorrows borrows;
+    private readonly MirOrigins origins;
     private ulong version; // The program version whose problems the program holds (0: none).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
@@ -42,14 +52,16 @@ internal sealed class MirAnalysis
         this.drops = new(this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, this.flow);
-        this.borrows = new(types, this.flow, this.moves, this.cases, this.effects); // A5 reads A4's keys (R4-M92).
+        this.origins = new(types, this.cases); // A5's Origin stratum (2a0-D D13).
+        this.borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins); // A4's keys (R4-M92), rule W's causes (R4-M132).
     }
 
-    /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and one with validator
-    /// findings is not analyzed.</summary>
+    /// <summary>Analyzes a program unless this version already was: a new version starts with its construction records only (MirProgram.Clear),
+    /// and a body with a validator finding is not analyzed (DECISIONS R5-M183).</summary>
     /// <param name="program">The built and validated program.</param>
+    /// <param name="rootModules">The number of root modules, whose bodies steps 1 and 4 judge (DECISIONS R5-M168).</param>
     /// <returns>The program.</returns>
-    internal MirProgram Run(MirProgram program)
+    internal MirProgram Run(MirProgram program, int rootModules)
     {
         if (program.Version == this.version)
         {
@@ -57,32 +69,43 @@ internal sealed class MirAnalysis
         }
 
         this.version = program.Version;
-        program.Problems.Clear();
         program.Drops.Clear();
-        if (program.Findings.Count > 0)
-        {
-            return program;
-        }
-
         foreach (var body in program.Bodies)
         {
-            this.Body(program, body); // 1. and 2. per body.
+            if (body.HasFinding)
+            {
+                this.drops.Exclude(program); // No consumer reads it (R5-M183): an empty entry keeps the table's ordinals.
+                continue;
+            }
+
+            if (Judged(body, rootModules))
+            {
+                this.lints.Run(body, program.Problems); // 1. A3 per judged body.
+            }
+
+            this.Body(program, body); // 2. per body.
         }
 
         this.effects.Run(program, program.Problems); // 3. A4's summaries and obligations over the program.
         foreach (var body in program.Bodies)
         {
-            this.Borrows(program, body); // 4. per body.
+            if (Judged(body, rootModules) && !body.HasFinding)
+            {
+                this.Borrows(program, body); // 4. per judged body.
+            }
         }
 
+        this.origins.Findings(program, program.Problems); // 4. once per program.
         return program;
     }
 
-    // Steps 1 and 2 of one body: 1. A3, then 2. its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the
-    // analyses' limit stopping those views (R4-M15a), then per view A4's local facts.
+    // Whether steps 1 and 4 judge a body: a root module's (DECISIONS R5-M168).
+    private static bool Judged(MirBody body, int rootModules) => body.Source.Module < rootModules;
+
+    // Step 2 of one body: its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the analyses' limit
+    // stopping those views (R4-M15a), then per view A4's local facts.
     private void Body(MirProgram program, MirBody body)
     {
-        this.lints.Run(body, program.Problems); // 1. A3 per body.
         this.flow.Begin(body); // 2.
         this.moves.Build(body, this.flow);
         this.drops.Begin(body, program);
@@ -106,12 +129,15 @@ internal sealed class MirAnalysis
     }
 
     // 4. A5 over the views of a body A1 and A2 completed, which A2's table publishes (MirDropTable.ViewsOf), after its block order and move
-    // paths are built again (design A3 6.1, DECISIONS R4-M57), reading A4's keys (R4-M92).
+    // paths are built again (design A3 6.1, DECISIONS R4-M57), reading A4's keys (R4-M92): the Origin stratum judges its classes of views
+    // and adds their problems, then the Loan stratum runs per view (2a0-D D13, DECISIONS R4-M132).
     private void Borrows(MirProgram program, MirBody body)
     {
         this.flow.Begin(body);
         this.moves.Build(body, this.flow);
-        for (var view = 0L; view < program.Drops.ViewsOf(body.Ordinal); view++)
+        var views = program.Drops.ViewsOf(body.Ordinal);
+        this.origins.Judge(body, views, program.Problems);
+        for (var view = 0L; view < views; view++)
         {
             this.cases.Select(body, view);
             this.borrows.Run(program, body, view);

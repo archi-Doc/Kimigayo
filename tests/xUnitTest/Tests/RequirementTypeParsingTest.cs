@@ -22,6 +22,9 @@ public class RequirementTypeParsingTest
     [InlineData("(Pair<i32, string> or [1 of (bool, i32)])")]
     [InlineData("(::Api.Box<(i32, string)>.C.Element and Copy)")]
     [InlineData("(i32, string) and not Box<i32>.C.Element")]
+    [InlineData("(S{k}).Item")]
+    [InlineData("(S{k}).(C).Item")]
+    [InlineData("((S{k}).Item or i32)")]
     public void RequirementsPreserveSyntaxThroughWritingAndReload(string requirement)
     {
         var tree = ParseTestHelper.ParseSuccess($"func use<T>(value: T)\n    T is {requirement}\n    ()");
@@ -71,13 +74,13 @@ public class RequirementTypeParsingTest
     [InlineData("((i32,) or string) and not bool", "(1,)", true)]
     public void CallsDischargeTupleIdentityRequirements(string requirement, string argument, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value\nlet result = identity({argument})");
+        var c = MinimalEmissionTest.Analyze($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value@move\nlet result = identity({argument})");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 
@@ -92,12 +95,12 @@ public class RequirementTypeParsingTest
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is {requirement}\n        ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Bind().IsComplete);
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
 
         var restored = Compilation.CreateForTest();
@@ -118,7 +121,24 @@ public class RequirementTypeParsingTest
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
     }
 
+    // SPEC F: a BoundContainerQualifier `(S{k})` takes a PathSuffix, so `(S{k}).Item` is an associated specification's Type, and a
+    // missing member is Binding's record; a grouped Type `(S during w)` takes none and stays a parse error.
     [Theory]
+    [InlineData("(S{k}).Item\n        origin k.s == w", "")]
+    [InlineData("(S{k}).Nope\n        origin k.s == w", "InvalidAssociatedType_Kd UnresolvedBinding_Kd")]
+    [InlineData("(S during w).Item", "IncompatibleContractImplementation_Kd ExpectedSyntax_Kd")]
+    public void BoundQualifierProjectionsAreSpecificationTypes(string specification, string codes)
+    {
+        var source = "contract Src\n    associate Item\n    func read(self: ref/Self) -> Self.Item\nstruct S {s}\n    Self is Src\n    public let v: ref/i32 during s\n    public init(v: ref/i32 during s) => self.v = v\n    public func read(self: ref/Self) -> ref/i32 during s => self.v\n" +
+            $"struct W {{w}}\n    Self is Src\n    associate Item is {specification}\n    public let v: ref/i32 during w\n    public init(v: ref/i32 during w) => self.v = v\n    public func read(self: ref/Self) -> ref/i32 during w => self.v\npublic func main() => ()\n";
+        Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(source).Select(static x => x.Code)));
+    }
+
+    [Theory]
+    [InlineData("(S during y).Item")]
+    [InlineData("(S).Item")]
+    [InlineData("(i32).Item")]
+    [InlineData("((i32) -> i32).Item")]
     [InlineData("(i32,, string)")]
     [InlineData("(i32, string")]
     [InlineData("(i32 and string, bool)")]
@@ -133,7 +153,7 @@ public class RequirementTypeParsingTest
         var tree = ParseTestHelper.Parse(source);
         Assert.True(tree.Compilation.Diagnostics.HasErrors);
         Assert.All(TestDiagnostics.Of(tree), x => Assert.InRange(x.Span.Start, 0, source.Length));
-        Assert.False(MinimalEmissionTest.Analyze(source).Validate(out _));
+        Assert.False(MinimalEmissionTest.Analyze(source).Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

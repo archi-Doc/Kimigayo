@@ -6,14 +6,107 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
+    // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises).
+    private enum Contribution : byte
+    {
+        // An independently typable part, well formed where it was formed (SPEC 15.6.1): judged only where the fit replaced an Origin.
+        Evidence,
+
+        // A position whose Type the callee's instantiated parameter Type gives, such as a default: every position is judged.
+        Signature,
+
+        // A position whose Type comes through a slot the call's expected result solves: its contributor proves it, not this call.
+        Result,
+    }
+
+    // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
+    // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
+    // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2, the child
+    // rows, ComposePositionRows; `[]` has none). A join argument stays Evidence until U2j (after revision B, on its representation). A
+    // receiver is Evidence; a default is a Signature position.
+    private Contribution PartContribution(Koto part)
+    {
+        var core = KotoHelper.UnwrapParentheses(part);
+        return ClassifyPart(core) == PartKind.Aggregate ? Contribution.Signature : this.RecordedPart(core).Kind switch
+        {
+            PartKind.Typed or PartKind.Aggregate or PartKind.Join => Contribution.Evidence,
+            _ => Contribution.Signature,
+        };
+    }
+
     // SPEC 10.8, 10.5.1: the evidence walk of a candidate's solution, by each argument part's kind at its position. A typed part is
     // evidence through the common adaptation (SPEC 10.2) and, at a Function pattern, its known call signature; a Never-typed part is
     // none. A Literal part is evidence only through the default applied to the selected candidate (SPEC 10.2.1). A waiting part is none,
     // except the parameter and result Types an anonymous function's header writes (SPEC 10.5.4). A Tuple or array literal is evidence by
     // its parts at their positions, and at a bare slot only when every part is; a mixed range by its range typing (SPEC 4.6.2). The early
-    // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing.
+    // pass takes typed parts and written headers; the late pass, after the expected result, the defaults and range typing. Each
+    // argument's contribution to the call (Contribution) is this walk's fact, written to its root row (PositionRow) once the expected
+    // result has solved its slots (Contribute).
     private ref partial struct SlotSolution
     {
+        // F1 (R4-M164): each argument's contribution by its part's kind (PartContribution), once the expected result has filled the
+        // slots no evidence bound (`unbound`, which keeps those it solved); a Signature position whose parameter Type names such a slot
+        // is a Result position, which the contributor of the expected result proves (SPEC 10.3). The Result is the record of the
+        // candidate's evaluation (U2b): its selected candidate's later runs (CheckDefaulted, the re-run after CompleteWaiting) fix the
+        // slots the expected result solved from the construction's Type, so they keep a recorded Result and never rewrite it. A Case
+        // construction's is the same rule over its payloads (ContributePayloads).
+        internal readonly void Contribute(int[] mapping, ref SlotSet unbound)
+        {
+            for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
+            {
+                if (unbound.Contains(g) && this.Types[g] is null)
+                {
+                    unbound.Remove(g);
+                }
+            }
+
+            for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
+            {
+                var part = this.Call.ArgumentNodes[i];
+                var pattern = this.Function.Parameters[mapping[i]].Type.BoundType;
+                var contribution = this.ContributionAt(i, pattern, unbound);
+                var kept = contribution == Contribution.Signature && this.Rows[i].Contribution == Contribution.Result;
+                this.Rows[i] = new(i, -1, part, this.Binding.KindOf(part), pattern, kept ? Contribution.Result : contribution);
+            }
+        }
+
+        // F1 of a Case construction (R4-M164 U4): the call's rule over its payloads. `solved` holds the slots its expected Type fixed; as
+        // in a call, only those that no evidence binds count as the expected result's (Contribute), and an Evidence payload binds each
+        // slot its Type names (SPEC 10.8), settled or not, since the expected Type fixes the slots before the payloads' evidence (c3a).
+        // That derivation is a second copy of the call's rule (R4-M164 U4c, PLAN G391): it goes when the solve publishes the slots its
+        // evidence binds for calls and constructions alike.
+        internal readonly void ContributePayloads(ReadOnlySpan<Koto> payload, SlotSet solved)
+        {
+            var slot = this.Binding.RentSlotSet(CallSlotCount(this.Binder));
+            try
+            {
+                for (var g = 0; g < CallSlotCount(this.Binder); g++)
+                {
+                    slot.Clear();
+                    slot.Add(g);
+                    for (var i = 0; solved.Contains(g) && i < payload.Length; i++)
+                    {
+                        if (this.Binding.PartContribution(this.Call.ArgumentNodes[i]) == Contribution.Evidence &&
+                            MentionsSlots(payload[i].BoundType!, this.SlotOwner, slot))
+                        {
+                            solved.Remove(g);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                this.Binding.ReturnSlotSet(slot);
+            }
+
+            for (var i = 0; i < payload.Length; i++)
+            {
+                var part = this.Call.ArgumentNodes[i];
+                this.Rows[i] = new(i, -1, part, this.Binding.KindOf(part), payload[i].BoundType, this.ContributionAt(i, payload[i].BoundType, solved));
+            }
+        }
+
         // The Type of a parameter as this candidate reads it: the declaring Type's slots substituted and Self replaced; null when it fails.
         internal readonly BoundType? Pattern(BoundType pattern)
             => this.Binding.CallMemberPattern(pattern, this.Binder, this.DeclaringType) is { } member
@@ -22,34 +115,10 @@ public sealed partial class Binding
         // SPEC 10.8: one argument part's evidence for the slots of the pattern at its position (Pattern), in the early or the late pass.
         internal bool InferArgument(BoundType pattern, Koto part, bool late)
         {
-            var binding = this.Binding;
-            var node = KotoHelper.UnwrapParentheses(part);
-            if (node is FunctionKoto { IsAnonymous: true } closure)
-            {
-                return late || this.InferAnonymous(pattern, part, closure);
-            }
-
-            switch (binding.KindOf(node))
-            {
-                case ArgumentKind.Composite:
-                    return this.InferComposite(pattern, part, late);
-                case ArgumentKind.Literal:
-                    return !late || binding.DefaultOf(node) is not { } literalDefault ||
-                        binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
-                        this.InferAdapted(pattern, literalDefault, node);
-                default:
-                    if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
-                    {
-                        return true;
-                    }
-
-                    // SPEC 14.9.2 step 3: a part that awaits its position is evidence as a Literal's default is, only for slots no other
-                    // evidence binds, in the late pass.
-                    return binding.AwaitsPosition(node)
-                        ? !late || binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
-                            this.InferAdapted(pattern, actual, part)
-                        : late || this.InferAdapted(pattern, actual, part);
-            }
+            var start = this.Binding.OpenPosition(part);
+            var inferred = this.InferPosition(pattern, start, late);
+            this.Binding.ClosePosition(start);
+            return inferred;
         }
 
         // SPEC 10.8: an argument's (or the receiver's) Type as evidence for the slots of its parameter's declared Type.
@@ -100,8 +169,8 @@ public sealed partial class Binding
             for (var i = 0; i < arguments.Count; i++)
             {
                 var source = arguments[i];
-                if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot ||
-                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || binding.WasWaitingPart(source) ||
+                if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
+                    binding.KindOf(source) == PartKind.Function || binding.WasDeferred(source) ||
                     source.BoundType is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     !binding.TryCallable(actual, this.Scope, out var actualSignature, out _))
@@ -158,7 +227,7 @@ public sealed partial class Binding
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
                 applied = false;
                 Koto? misfit = null;
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
@@ -190,6 +259,54 @@ public sealed partial class Binding
             return misfit;
         }
 
+        // The i-th argument's contribution at a position whose parameter Type is `pattern`; `solved` holds the slots the expected result
+        // solved.
+        private readonly Contribution ContributionAt(int i, BoundType? pattern, SlotSet solved)
+        {
+            var contribution = this.Binding.PartContribution(this.Call.ArgumentNodes[i]);
+            return contribution == Contribution.Signature && pattern is not null && MentionsSlots(pattern, this.SlotOwner, solved)
+                ? Contribution.Result : contribution;
+        }
+
+        // SPEC 10.8: the evidence of the parts at a position (Binding.ArgumentKinds.Positions.cs) for the slots of its pattern.
+        private bool InferPosition(BoundType pattern, int start, bool late)
+        {
+            var binding = this.Binding;
+            var end = binding.positionParts.Count;
+            if (end - start != 1)
+            {
+                return this.InferParts(pattern, start, end, late);
+            }
+
+            var part = binding.positionParts[start];
+            var node = KotoHelper.UnwrapParentheses(part);
+            var kind = binding.KindOf(node);
+            if (kind == PartKind.Function && node is FunctionKoto closure)
+            {
+                return late || this.InferAnonymous(pattern, part, closure);
+            }
+
+            switch (kind)
+            {
+                case PartKind.Aggregate or PartKind.Join:
+                    return this.InferComposite(pattern, start, end, late);
+                case PartKind.Literal:
+                    return this.InferLiteral(pattern, node, late);
+                default:
+                    if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
+                    {
+                        return true;
+                    }
+
+                    // SPEC 14.9.2 step 3: a part that awaits its position is evidence as a Literal's default is, only for slots no other
+                    // evidence binds, in the late pass.
+                    return binding.AwaitsPosition(node)
+                        ? !late || binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
+                            this.InferAdapted(pattern, actual, part)
+                        : late || this.InferAdapted(pattern, actual, part);
+            }
+        }
+
         // An anonymous function: once bound, its Type at any pattern but a Function Type (where its signature meets the pattern after
         // selection); always the Types its header writes, at a pattern with a call signature.
         private bool InferAnonymous(BoundType pattern, Koto part, FunctionKoto closure)
@@ -212,18 +329,7 @@ public sealed partial class Binding
             }
 
             var callee = actual;
-            if (pattern.Kind == BoundTypeKind.Function && binding.FunctionItemSignature(actual) is { } itemSignature)
-            {
-                actual = itemSignature;
-            }
-            else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
-                actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
-            {
-                // SPEC 7.7.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
-                // its receiver and Owned conditions included, is judged once the call is selected.
-                actual = closure.Signature;
-            }
-
+            actual = binding.SignatureAtFunction(pattern, actual);
             pattern = binding.FormedApplication(pattern, this.SlotOwner, this.Types);
             var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
@@ -233,12 +339,16 @@ public sealed partial class Binding
             {
                 this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
-                binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+                if (binding.PartContribution(source) == Contribution.Evidence)
+                {
+                    // N2 (U2b): a completed Signature part's premises are SolveLate's, over the instantiated parameter Type, alone.
+                    binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
+                }
             }
 
             pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
             // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
-            if (binding.WasWaitingPart(source))
+            if (binding.WasDeferred(source))
             {
                 return true;
             }
@@ -258,11 +368,41 @@ public sealed partial class Binding
                 relateLater: true);
         }
 
-        // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
-        // whole literal, only when every part is evidence. A composite at `ref/T` borrows its temporary, whose Origin binds the input's.
-        private bool InferComposite(BoundType pattern, Koto part, bool late)
+        // SPEC 10.5.1 (the owner, 2026-10-26), 14.9.2: a join's position of several parts is evidence once, by its kind: a Typed one at
+        // its parts' common Type, which the join's step 2 forms (value reads included), in the early pass; a Literal one by its first
+        // literal's default in the late pass; an Aggregate one by its child positions; a Call one and one Never in every source none.
+        private bool InferParts(BoundType pattern, int start, int end, bool late)
         {
             var binding = this.Binding;
+            switch (binding.PositionKind(start, end, out var type))
+            {
+                case PartKind.Aggregate:
+                    return this.InferComposite(pattern, start, end, late);
+                case PartKind.Literal:
+                    return this.InferLiteral(pattern, binding.FirstLiteral(start, end), late);
+                case PartKind.Typed when type is not null && !late:
+                    type = binding.SignatureAtFunction(pattern, type); // As a typed argument's evidence (InferAdapted; U1.6g (c)).
+                    binding.MatchInputOrigins(pattern, type, this.Binder, this.Origins, this.Inputs);
+                    pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
+                    return binding.Infer(pattern, type, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
+                default:
+                    return true;
+            }
+        }
+
+        // SPEC 10.2.1: a Literal is evidence only through its default, applied to the selected candidate, for slots no other evidence binds.
+        private bool InferLiteral(BoundType pattern, Koto literal, bool late)
+            => !late || this.Binding.DefaultOf(literal) is not { } literalDefault ||
+                this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
+                this.InferAdapted(pattern, literalDefault, literal);
+
+        // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
+        // whole literal, only when every part is evidence. A composite at `ref/T` borrows its temporary, whose Origin binds the input's.
+        // A join its call classifies, and a join position of aggregates, go by their child positions likewise (SPEC 10.5.1, 14.9.2).
+        private bool InferComposite(BoundType pattern, int start, int end, bool late)
+        {
+            var binding = this.Binding;
+            var part = binding.positionParts[start];
             if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref })
             {
                 if (pattern.Origin is { } origin)
@@ -286,66 +426,48 @@ public sealed partial class Binding
                 {
                     pattern = fixedType;
                 }
-                else if (binding.IndependentAggregateType(source, late) is { } inferred)
+                else if (binding.IndependentPositionType(start, late) is { } inferred)
                 {
                     return binding.Infer(pattern, inferred, this.SlotOwner, this.Types, lengths: this.Lengths);
                 }
             }
 
-            if (source is TupleLiteralKoto tuple)
+            if (source is ArrayLiteralKoto array && !this.InferArrayLength(pattern, array))
             {
-                if (pattern.Kind != BoundTypeKind.Tuple || pattern.Components.Count != tuple.Elements.Count)
-                {
-                    return true; // Probing reports a shape mismatch once the target is fixed.
-                }
+                return false;
+            }
 
-                for (var i = 0; i < tuple.Elements.Count; i++)
+            for (var i = 0; i < binding.ChildPositions(start, end); i++)
+            {
+                var child = binding.positionParts.Count;
+                var element = binding.AddChildPosition(start, end, i, pattern);
+                var inferred = element is null || this.InferPosition(element, child, late);
+                binding.ClosePosition(child);
+                if (element is null || !inferred)
                 {
-                    if (!this.InferArgument(pattern.Components[i], tuple.Elements[i], late))
-                    {
-                        return false;
-                    }
+                    return inferred; // A shape mismatch is no evidence: probing reports it once the target is fixed.
                 }
+            }
 
+            return true;
+        }
+
+        // An array literal's length binds the function's length slot of a fixed-array pattern.
+        private readonly bool InferArrayLength(BoundType pattern, ArrayLiteralKoto array)
+        {
+            if (pattern.Kind != BoundTypeKind.FixedArray || pattern.LengthExpression is not { Parameter: { } parameter } ||
+                !ReferenceEquals(parameter.Scope.Owner, this.Binder))
+            {
                 return true;
             }
 
-            return source is not ArrayLiteralKoto array || this.InferArrayLiteral(pattern, array, late);
-        }
-
-        // An array literal's length binds the function's length slot of a fixed-array pattern; each element is evidence at its Type.
-        private bool InferArrayLiteral(BoundType pattern, ArrayLiteralKoto array, bool late)
-        {
-            if (pattern.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array))
+            var length = array.FillLength is null ? this.Binding.InternLength(KotoKind.NumberLiteral, array.Elements.Count) : array.FillCount;
+            if (length is null || (this.Lengths[parameter.Slot] is { } previous && !ReferenceEquals(previous, length)))
             {
-                return true; // Existing candidate-specific probing diagnoses other shapes.
+                return false;
             }
 
-            if (pattern.Kind == BoundTypeKind.FixedArray && pattern.LengthExpression is { Parameter: { } parameter } &&
-                ReferenceEquals(parameter.Scope.Owner, this.Binder))
-            {
-                var length = array.FillLength is null ? this.Binding.InternLength(KotoKind.NumberLiteral, array.Elements.Count) : array.FillCount;
-                if (length is null)
-                {
-                    return false;
-                }
-
-                if (this.Lengths[parameter.Slot] is { } previous && !ReferenceEquals(previous, length))
-                {
-                    return false;
-                }
-
-                this.Lengths[parameter.Slot] = length;
-            }
-
-            for (var i = 0; i < array.Elements.Count; i++)
-            {
-                if (!this.InferArgument(pattern.Components[0], array.Elements[i], late))
-                {
-                    return false;
-                }
-            }
-
+            this.Lengths[parameter.Slot] = length;
             return true;
         }
 
@@ -401,41 +523,77 @@ public sealed partial class Binding
         // or array literal and the literal-only boundary of a mixed range.
         private readonly Koto? DefaultPart(Koto part, BoundType pattern, SlotSet unsolved, ref bool applied)
         {
+            var start = this.Binding.OpenPosition(part);
+            var misfit = this.DefaultPosition(start, pattern, unsolved, ref applied);
+            this.Binding.ClosePosition(start);
+            return misfit;
+        }
+
+        private readonly Koto? DefaultPosition(int start, BoundType pattern, SlotSet unsolved, ref bool applied)
+        {
             var binding = this.Binding;
+            var end = binding.positionParts.Count;
             if (!MentionsSlots(pattern, this.SlotOwner, unsolved))
             {
                 return null;
             }
 
-            var source = KotoHelper.UnwrapParentheses(part);
-            if (binding.KindOf(source) == ArgumentKind.Literal)
+            if (end - start != 1)
+            {
+                return this.DefaultParts(start, end, pattern, unsolved, ref applied);
+            }
+
+            var source = KotoHelper.UnwrapParentheses(binding.positionParts[start]);
+            if (binding.KindOf(source) == PartKind.Literal)
             {
                 return this.Default(source, binding.PartDefault(source, this.Scope), ref applied);
             }
 
             Koto? misfit = null;
-            if (source is TupleLiteralKoto tuple)
-            {
-                for (var i = 0; i < tuple.Elements.Count; i++)
-                {
-                    var element = pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count ? pattern.Components[i] : pattern;
-                    misfit = this.DefaultPart(tuple.Elements[i], element, unsolved, ref applied) ?? misfit;
-                }
-            }
-            else if (source is ArrayLiteralKoto array)
-            {
-                var element = pattern.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray ? pattern.Components[0] : pattern;
-                for (var i = 0; i < array.Elements.Count; i++)
-                {
-                    misfit = this.DefaultPart(array.Elements[i], element, unsolved, ref applied) ?? misfit;
-                }
-            }
-            else if (source is RangeKoto range && IsMixedRange(range))
+            if (source is RangeKoto range && IsMixedRange(range))
             {
                 var ranged = pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 2 };
                 misfit = this.DefaultBoundary(range.Start, range.End, ranged ? pattern.Components[0] : pattern, binding.EndType, unsolved, ref applied);
-                misfit = this.DefaultBoundary(
+                return this.DefaultBoundary(
                     range.End, range.Start, ranged ? pattern.Components[1] : pattern, binding.StartType, unsolved, ref applied) ?? misfit;
+            }
+
+            return this.DefaultChildren(start, end, pattern, unsolved, ref applied);
+        }
+
+        // SPEC 10.5.1, 10.2.1 (the owner, 2026-10-26): a join's Literal position takes its first literal's default, which each of its
+        // literals must fit (its own record otherwise); an Aggregate one defaults by its child positions; the others take none.
+        private readonly Koto? DefaultParts(int start, int end, BoundType pattern, SlotSet unsolved, ref bool applied)
+        {
+            var binding = this.Binding;
+            switch (binding.PositionKind(start, end, out _))
+            {
+                case PartKind.Literal:
+                    var type = binding.PartDefault(binding.FirstLiteral(start, end), this.Scope);
+                    Koto? misfit = null;
+                    for (var i = start; i < end; i++)
+                    {
+                        misfit = this.Default(binding.positionParts[i], type, ref applied) ?? misfit;
+                    }
+
+                    return misfit;
+                case PartKind.Aggregate:
+                    return this.DefaultChildren(start, end, pattern, unsolved, ref applied);
+                default:
+                    return null;
+            }
+        }
+
+        private readonly Koto? DefaultChildren(int start, int end, BoundType pattern, SlotSet unsolved, ref bool applied)
+        {
+            var binding = this.Binding;
+            Koto? misfit = null;
+            for (var i = 0; i < binding.ChildPositions(start, end); i++)
+            {
+                var child = binding.positionParts.Count;
+                var element = binding.AddChildPosition(start, end, i, pattern) ?? pattern;
+                misfit = this.DefaultPosition(child, element, unsolved, ref applied) ?? misfit;
+                binding.ClosePosition(child);
             }
 
             return misfit;
@@ -461,7 +619,8 @@ public sealed partial class Binding
                 return null;
             }
 
-            binding.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(ArgumentKind.Literal, type);
+            ref var record = ref binding.RecordPart(literal, PartKind.Literal); // A Literal does not await its call (RecordPart's row).
+            record = record with { Default = type };
             applied = true;
             if (binding.FitsLiteralPart(literal, type, this.Scope))
             {
@@ -472,4 +631,11 @@ public sealed partial class Binding
             return literal;
         }
     }
+
+    // SPEC 7.7.4, 10.5: a Function Item or a concrete Closure meets a common Function Type pattern through its call signature, as
+    // evidence; the conversion itself, its receiver and Owned conditions included, is judged once the call is selected. Any other Type,
+    // or any Type at another pattern, as it is.
+    private BoundType SignatureAtFunction(BoundType pattern, BoundType actual)
+        => pattern.Kind != BoundTypeKind.Function ? actual
+            : this.FunctionItemSignature(actual) ?? BoundClosure.Of(actual)?.Signature ?? actual;
 }

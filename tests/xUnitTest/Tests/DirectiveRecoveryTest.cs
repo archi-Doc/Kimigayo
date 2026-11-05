@@ -125,7 +125,7 @@ public class DirectiveRecoveryTest(ITestOutputHelper output)
         output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span + " " + x.Message)));
         Assert.Equal(["InvalidCompileTimeSwitchItem_Kd", grammarCode, "TypeMismatch_Kd"], errors.Select(static x => x.Code));
         Assert.DoesNotContain(errors[1].Related ?? [], static x => x.Role == "excludedBy");
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         c.Bind();
         c.Binding.ReportDiagnostics();

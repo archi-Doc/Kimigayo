@@ -176,43 +176,21 @@ public class GenericDestructorEmissionTest
     public void InstantiatedDestructorsReuseWarmEmissionState()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    let tag: i32\n    public init(value: T)\n        self.value = value@move\n        self.tag = 1\n    drop\n        if self.tag == 1 => Console.writeLine(\"tag\")\nlet a = Box<i8>.init(7)\nlet b = Box<i64>.init(8)");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.WriteIr(TextWriter.Null, out var error))
+            if (!c.Generate(TextWriter.Null))
             {
-                throw new InvalidOperationException(error);
+                throw new InvalidOperationException(MinimalEmissionTest.Describe(c));
             }
         }));
-    }
-
-    // The old generator's own substitution-set limit, on a compilation pinned to it, which goes by G4 at the latest (DECISIONS R5-M85).
-    [Fact]
-    public void DestructorSubstitutionsRespectTheGenerationLimit()
-    {
-        var limit = GenericStoragePlan.SubstitutionSetLimit;
-        GenericStoragePlan.SubstitutionSetLimit = 2;
-        try
-        {
-            var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    drop => ()\nfunc a(value: Box<i8>) => ()\nfunc b(value: Box<i16>) => ()\nfunc c(value: Box<i32>) => ()\npublic func main() => ()", codegen: CompilerCodegen.Legacy);
-            using var output = new StringWriter();
-            Assert.False(c.WriteIr(output, out var error));
-            Assert.Empty(output.ToString());
-            Assert.True(c.Emission.FailureIsResourceLimit, error);
-            GenericStoragePlan.SubstitutionSetLimit = 3;
-            Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-        }
-        finally
-        {
-            GenericStoragePlan.SubstitutionSetLimit = limit;
-        }
     }
 
     [Theory]
     [InlineData("raw/T")]
     [InlineData("(T, T)")]
     public void GrowingDestructorContextsAreResourceDiagnosed(string argument)
-        => MinimalEmissionTest.AssertGenerationResourceLimit($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()", "grows");
+        => MinimalEmissionTest.AssertGenerationResourceLimit($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()", $"let next = Grow<{argument}>.init()");
 
     // SPEC 16.3.1: no Field of drop's self is Moved out, so each Move is Binding's record, in a generic body too.
     [Fact]
@@ -221,7 +199,7 @@ public class GenericDestructorEmissionTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n        let again = self.value@move\nlet value = Box<i32>.init(7)");
         Assert.Equal([DiagnosticCode.ExclusivePathTake_Kd, DiagnosticCode.ExclusivePathTake_Kd], c.Binding.Issues.Select(static x => x.Code));
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 }

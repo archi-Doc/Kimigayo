@@ -15,7 +15,7 @@ public class Utf8BorrowTest
     public void SharedViewsRetainExclusiveSourceAuthority(string view)
     {
         var c = MinimalEmissionTest.Analyze(Fixed + "let result = " + view + "\n_ = storage[0]\n_ = result@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
@@ -25,7 +25,7 @@ public class Utf8BorrowTest
     public void ViewLastUseReleasesSource(string view)
     {
         var c = MinimalEmissionTest.Analyze(Fixed + "let result = " + view + "\n_ = result@move\n_ = storage[0]");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -41,7 +41,7 @@ public class Utf8BorrowTest
     public void StringViewCannotOutliveItsOwner(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
@@ -67,7 +67,7 @@ public class Utf8BorrowTest
     public void CopiedViewKeepsTheOriginalExclusiveLoan(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Fixed + "match (buffer@move).intoText()\n    .Ok(let view)\n        let copy = view\n        " + use.Replace("\n", "\n        ", StringComparison.Ordinal) + "\n    .Err(_) => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 }

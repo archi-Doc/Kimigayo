@@ -28,7 +28,7 @@ public class ScalarBorrowShorthandTest
     public void ExecutesScalarShorthandBorrows(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ScalarBorrowShorthand" + name, source, string.Empty);
     }
 
@@ -39,9 +39,9 @@ public class ScalarBorrowShorthandTest
     public void RejectsOverlappingScalarBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public class ScalarBorrowShorthandTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // SPEC 15.1.5 lending rule: a directly owned scalar Place is lent exclusively only with @uniq.
@@ -64,6 +64,6 @@ public class ScalarBorrowShorthandTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.ExclusiveBorrowRequired_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

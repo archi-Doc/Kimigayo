@@ -52,14 +52,14 @@ public sealed partial class OwnershipBody
 
                 if (conflict)
                 {
-                    this.ReportIssue(new(op.Source, OwnershipRequirement.DefaultArgumentAccess, Related: parameter.Source));
+                    this.ReportIssue(new(op.Source, OwnershipRequirement.DefaultArgumentAccess));
                     break;
                 }
             }
 
             if (escaped >= 0)
             {
-                this.ReportIssue(new(this.Operations[escaped].Source, OwnershipRequirement.DefaultArgumentBorrow, Related: parameter.Source));
+                this.ReportIssue(new(this.Operations[escaped].Source, OwnershipRequirement.DefaultArgumentBorrow));
             }
         }
 
@@ -234,9 +234,6 @@ public sealed partial class OwnershipBody
 
         return this.SymbolPlaces.TryGetValue(symbol, out place);
     }
-
-    internal bool TrySymbolPlaceAt(BindingSymbol symbol, int operation, out int place)
-        => this.TrySymbolPlace(symbol, this.DefaultContextAt(operation), out place);
 
     internal int DefaultContextAt(int operation)
     {

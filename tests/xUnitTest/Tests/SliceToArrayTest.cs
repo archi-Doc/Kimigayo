@@ -44,7 +44,7 @@ public class SliceToArrayTest
     public void NonCopyElementsInnerLoansAndAliasingKeepOrdinaryRestrictions(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -57,9 +57,9 @@ public class SliceToArrayTest
         {
             valid &= c.Bind().IsComplete;
             c.Binding.CheckStartup(OutputKind.Application);
-            valid &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Analyze().IsVerified && c.Generate(TextWriter.Null);
         });
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, bytes);
     }
 }

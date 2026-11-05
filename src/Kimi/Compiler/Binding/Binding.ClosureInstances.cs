@@ -1,73 +1,275 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// A Closure Type's call signature, its Origin arguments and its instances (SPEC 3.2.1, 6.1.3, 7.7.3, 15.3.4, 15.3.5, 15.6.4, 15.8.2;
+// DECISIONS R5-M63, R4-M152, R4-M159).
+// - Responsibility: ClosureType, a definition's Type with its Origin arguments: the atoms of enclosing Closures its signature names (a receiver,
+//   an environment binding, a call result or an input, in any Origin position, raw layers included), which its own Type carries, so
+//   every walk that images a Type's Origins (a maker's call, P8's publication, an instantiation, erasure) images them with its
+//   environment; FixedAtoms, the one walk of the atoms of a binder class a Type names, its Closures' signatures included (DECISIONS
+//   BU-73); ClosureSignature, a Closure Type's call signature as its value reads it: its definition's under its closure context,
+//   each definition argument replaced by the Type's; ClosureDefinitionSignature, the definition's under the context, which a call
+//   declares (CallPlan.DeclaredSignature) and retention reads; ClosureArgumentVariance, an argument's variance by its occurrences in the
+//   definition's signature; CloseClosureTypes, the closures an instance makes closed.
+// - Inputs: the definition (BoundClosure.Of), its published signature and its Type (EnvironmentType).
+// - Outputs: interned Types and Origin arguments.
+// - Invariants: a definition naming no enclosing Closure's atom has no argument, so a flat Closure's Type is unchanged; a Type's
+//   arguments are positionally its definition's images; no atom of a Closure that does not enclose a use reaches the use's Types through
+//   a Type that passed its maker's call (SPEC 15.3.4).
+// - Prohibitions: no second substitution (SubstituteStoredOrigins' PerCallImages); no judgment of a relation.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The old generator's CallPlan of each closure an instance closed, by closure and context, kept until an edit (DECISIONS R5-M36).
-    [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
-    private readonly Dictionary<(BindingSymbol Closure, Subst Context), CallPlan> closureCalls = new();
-
-    internal BoundType? ClosureSignature(BoundType type)
-        => type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure }
-            ? type.ClosureContext is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
-
-    // The bridge from a closure's context to the CallPlan the old generator keys the closure's instance by (GenericStoragePlan,
-    // BodyLowering): one per closure and context, so two closures of one instance keep two entries (S2-S4 X10), and the same one at
-    // every request until an edit, so warm generation allocates nothing; null for a closure no instance closed.
-    [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
-    internal CallPlan? ClosureCall(BoundType closure)
+    // The binders whose atoms FixedAtoms collects (DECISIONS BU-73): an anonymous function enclosing the subject, whose atoms a Closure
+    // Type carries as Origin arguments (ClosureType), or a container enclosing it, whose atoms leave through an inferred stored Property
+    // Type (SPEC 11.6).
+    private enum BinderClass : byte
     {
-        if (closure is not { ClosureContext: { } context, Symbol: { Declaration: FunctionKoto { BoundClosure: { } definition } } symbol })
+        EnclosingAnonymous,
+        EnclosingContainer,
+    }
+
+    // SPEC 15.8.2, 6.1.3: a Closure Type's call signature as its value reads it: its definition's under the Type's closure context, each of
+    // the definition's Origin arguments replaced by the Type's (DECISIONS R4-M159), so a Closure returned from its maker's call reads the
+    // Origins that call bound; the definition is the one the Type names (BoundClosure.Of), whatever its literal's creation outcome
+    // (DECISIONS R5-M63, R4-M152).
+    internal BoundType? ClosureSignature(BoundType type)
+    {
+        var signature = this.ClosureDefinitionSignature(type);
+        if (signature is null || type.OriginArguments.Count == 0)
+        {
+            return signature;
+        }
+
+        // A Type's arguments are positionally its definition's images (R4-M159); a Type with arguments its definition lacks is a broken contract.
+        if (BoundClosure.Of(type)!.EnvironmentType is not { } definition || definition.OriginArguments.Count != type.OriginArguments.Count)
+        {
+            throw new InvalidOperationException($"Closure Type `{type}` has Origin arguments its definition does not declare (InternalInvariant; R4-M159).");
+        }
+
+        var from = (BoundOrigin[])definition.OriginArguments;
+        var to = (BoundOrigin[])type.OriginArguments;
+        for (var i = 0; i < from.Length; i++)
+        {
+            if (!ReferenceEquals(from[i], to[i]))
+            {
+                return this.SubstituteStoredOrigins(signature, definition.Symbol!.Declaration!, [], new PerCallImages([], null, null, from, to));
+            }
+        }
+
+        return signature;
+    }
+
+    // The call signature a Closure Type's definition declares, under the Type's closure context (CallPlan.DeclaredSignature; retention
+    // reads a call in the definition's world).
+    internal BoundType? ClosureDefinitionSignature(BoundType type)
+        => BoundClosure.Of(type) is { } closure
+            ? TyCtxt.ClosureInstance(type) is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
+
+    // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's
+    // signature (a parameter contravariant, the result covariant, each layer's target as ComponentVariance composes it); equal
+    // occurrences keep their variance, different ones are invariant. One query of `visitedParts` meets each distinct part once per
+    // polarity (a state bit per polarity): Join is idempotent, so a part met again at a polarity adds nothing (DECISIONS BU-63). The
+    // table is the definition's compilation's Binding's, whether or not the caller reads premises (`binding`).
+    private static OriginVariance ClosureArgumentVariance(BoundType type, int index, Binding? binding)
+    {
+        if (BoundClosure.Of(type) is not { Signature: { } signature, EnvironmentType: { } definition } || index >= definition.OriginArguments.Count)
+        {
+            return OriginVariance.Invariant;
+        }
+
+        var owner = type.Symbol!.Declaration!.CodeContext.Compilation.Binding;
+        var query = owner.visitedParts.Begin(owner.storageVersion);
+        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused, owner, query);
+        return variance == OriginVariance.Unused ? OriginVariance.Invariant : variance;
+
+        static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen, Binding owner, uint query)
+        {
+            if (!type.CarriesAnyOrigin)
+            {
+                return seen;
+            }
+
+            seen = Names(OwnedOrigin(type), atom) ? Join(seen, polarity) : seen;
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                seen = Names(type.OriginArguments[i], atom) ? Join(seen, ComposeVariance(polarity, OriginArgumentVariance(type, i, binding))) : seen;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                var part = type.Components[i];
+                var position = ComposeVariance(polarity, ComponentVariance(type, i, binding));
+                if (part.CarriesAnyOrigin && owner.FirstVisit(part, query, (byte)(1 << (int)position)))
+                {
+                    seen = Occurrences(part, atom, position, binding, seen, owner, query);
+                }
+            }
+
+            return seen;
+        }
+
+        static bool Names(BoundOrigin? origin, BoundOrigin atom)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Names(origin.Operands[i], atom))
+                {
+                    return true;
+                }
+            }
+
+            return ReferenceEquals(origin, atom);
+        }
+
+        static OriginVariance Join(OriginVariance seen, OriginVariance variance)
+            => seen == OriginVariance.Unused || seen == variance ? variance : OriginVariance.Invariant;
+    }
+
+    // SPEC 3.2.1, 15.3.4, 15.6.4 (DECISIONS R4-M159): the Type of the Closure `function` with its environment and call signature: its Origin
+    // arguments are each atom of an enclosing Closure the signature names (FixedAtoms), in first-occurrence order. The bound pass and the
+    // fill pass are each one query of `visitedParts`.
+    private BoundType ClosureType(BindingSymbol symbol, FunctionKoto function, BoundType signature, ReadOnlySpan<BoundType> environment)
+    {
+        var bound = 0;
+        _ = this.FixedAtoms(signature, function, BinderClass.EnclosingAnonymous, null, ref bound, this.visitedParts.Begin(this.storageVersion));
+        var scratch = this.originScratch.Rent(bound);
+        try
+        {
+            var count = 0;
+            _ = this.FixedAtoms(signature, function, BinderClass.EnclosingAnonymous, scratch, ref count, this.visitedParts.Begin(this.storageVersion));
+            return this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, environment, originArguments: scratch.AsSpan(0, count));
+        }
+        finally
+        {
+            this.originScratch.Return(scratch, clearArray: true);
+        }
+    }
+
+    // R4-M159's atom walk (DECISIONS BU-73): the atoms of a binder class that a Type names, added to `scratch` in first-occurrence order,
+    // raw layers and nested arguments included, and each Closure part's call signature as its value reads it (ClosureSignature), at any
+    // depth; with no scratch, `count` grows by an upper bound, the candidate occurrences. Returns the first Closure part, outermost, through
+    // which the walk met an atom. One query meets each distinct part once: a part met again adds no atom its first visit did not, so the
+    // order of first occurrence is kept (DECISIONS BU-63). For an enclosing anonymous function the descent into a signature adds nothing:
+    // a nested Closure's enclosing atoms are already its Origin arguments, and its own atoms do not enclose the subject.
+    private BoundType? FixedAtoms(BoundType type, Koto subject, BinderClass binders, BoundOrigin[]? scratch, ref int count, uint query)
+    {
+        if (!type.CarriesAnyOrigin && !type.ContainsClosure)
         {
             return null;
         }
 
-        if (!this.closureCalls.TryGetValue((symbol, context), out var call))
+        var before = count;
+        BoundType? reached = null;
+        count = Add(OwnedOrigin(type), subject, binders, scratch, count);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            var result = this.types.Apply(definition.Signature.Components[1], context)!; // Checked when the instance made the context.
-            call = new();
-            call.Set(
-                context.Target,
-                result,
-                null,
-                [],
-                context.Types,
-                declaringType: context.Declaring,
-                origins: context.Origins,
-                inputOrigins: context.Inputs,
-                lengthArguments: context.Lengths);
-            this.closureCalls.Add((symbol, context), call);
+            count = Add(type.OriginArguments[i], subject, binders, scratch, count);
         }
 
-        return call;
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            var part = type.Components[i];
+            if ((part.CarriesAnyOrigin || part.ContainsClosure) && this.FirstVisit(part, query))
+            {
+                // Every part is walked; the first Closure part reached is kept.
+                var found = this.FixedAtoms(part, subject, binders, scratch, ref count, query);
+                reached ??= found;
+            }
+        }
+
+        if (type.Kind == BoundTypeKind.Closure && this.ClosureSignature(type) is { } signature && this.FirstVisit(signature, query))
+        {
+            _ = this.FixedAtoms(signature, subject, binders, scratch, ref count, query);
+        }
+
+        return type.Kind == BoundTypeKind.Closure && count > before ? type : reached;
+
+        static int Add(BoundOrigin? origin, Koto subject, BinderClass binders, BoundOrigin[]? scratch, int count)
+        {
+            if (origin is null)
+            {
+                return count;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                count = Add(origin.Operands[i], subject, binders, scratch, count);
+            }
+
+            if (!Binds(origin, subject, binders))
+            {
+                return count;
+            }
+
+            for (var i = 0; scratch is not null && i < count; i++)
+            {
+                if (ReferenceEquals(scratch[i], origin))
+                {
+                    return count;
+                }
+            }
+
+            if (scratch is not null)
+            {
+                scratch[count] = origin;
+            }
+
+            return count + 1;
+        }
+
+        // The binder class: an anonymous function enclosing the subject, other than the subject, or a container enclosing it.
+        static bool Binds(BoundOrigin origin, Koto subject, BinderClass binders)
+            => binders == BinderClass.EnclosingAnonymous
+                ? origin.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Parameter &&
+                    origin.Binder is FunctionKoto { IsAnonymous: true } binder && !ReferenceEquals(binder, subject) && IsWithin(subject, binder)
+                : origin.Binder is DeclarationContainerKoto container && IsWithin(subject, container);
     }
 
-    // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it: each closure its binder encloses (through anonymous
-    // functions) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36). One call is one query of the
-    // closing table, its instance fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure signature's own
-    // instantiation begins its own query.
-    private BoundType? CloseClosureTypes(BoundType type, Subst instance) => this.ClosePart(type, instance, this.closedParts.Begin(this.storageVersion));
+    // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it (Close). One call is one query of the closing table,
+    // its inputs fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure signature's own instantiation begins
+    // its own query.
+    private BoundType? CloseClosureTypes(BoundType type, Subst instance) => this.Close(type, instance, instance.Declaring);
 
-    private BoundType? ClosePart(BoundType type, Subst instance, uint query)
+    // DECISIONS BU-60: the closures a kept part of an owner's instance holds, closed by substitution alone (KeptType runs inside storage
+    // walks, so this never queries storage).
+    private BoundType? CloseHeldClosures(BoundType type, BoundType owner) => this.Close(type, null, owner);
+
+    // SPEC 6.1.3, 6.3.3: each closure without a context gets the instance of the declaration whose instance it holds
+    // (TyCtxt.EnclosingDeclaration), when the inputs carry it: a function's is the instance when that is its binder, its conforming Self
+    // included (DECISIONS R5-M36), its result there the failure check; a Type's is what the one producer (TyCtxt.HeldContext; BU-60) makes
+    // of its identity's image in the environment Type, an instance of it or of a declaration it encloses (EnvironmentInstance), the instance
+    // closed first in the same query; a group has none (its statics are R5-M82's gap). A held context is closed again: its instance closed
+    // in this query and given back through the producer (DECISIONS BU-60), so a held instance inside a held context is closed per instance.
+    // A Type without a Closure, and a Closure whose context a function's instance made (closed with its parts by that instance), are kept.
+    private BoundType? Close(BoundType type, Subst? instance, BoundType? environment)
+        => this.ClosePart(type, instance, environment, this.closedParts.Begin(this.storageVersion));
+
+    private BoundType? ClosePart(BoundType type, Subst? instance, BoundType? environment, uint query)
     {
-        if (type.ClosureContext is not null || (type.Components.Count == 0 && type.Kind != BoundTypeKind.Closure))
+        if (!type.ContainsClosure || (type.ClosureContext is not null && TyCtxt.HeldType(type) is null))
         {
             return type;
         }
 
         if (!this.closedParts.TryGet(type, query, out var closed))
         {
-            closed = this.ClosePartCore(type, instance, query);
+            closed = this.ClosePartCore(type, instance, environment, query);
             this.closedParts.Set(type, query, closed);
         }
 
         return closed;
     }
 
-    private BoundType? ClosePartCore(BoundType type, Subst instance, uint query)
+    private BoundType? ClosePartCore(BoundType type, Subst? instance, BoundType? environment, uint query)
     {
         var scratch = this.RentTypes(type.Components.Count);
         try
@@ -75,7 +277,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                if (this.ClosePart(type.Components[i], instance, query) is not { } part)
+                if (this.ClosePart(type.Components[i], instance, environment, query) is not { } part)
                 {
                     return null;
                 }
@@ -84,31 +286,32 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(part, type.Components[i]);
             }
 
-            Subst? context = null;
-            if (type.Kind == BoundTypeKind.Closure && type.Symbol is { Declaration: FunctionKoto { BoundClosure: { } closure } function } symbol &&
-                this.types.Instantiates(symbol))
+            var context = type.ClosureContext;
+            if (BoundClosure.Of(type) is { } closure && type.Symbol is { } symbol && this.types.Instantiates(symbol))
             {
-                var enclosing = function.BoundSymbol!.Scope.Function;
-                while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, instance.Binder))
+                switch (this.types.EnclosingDeclaration(symbol))
                 {
-                    enclosing = enclosing.BoundSymbol?.Scope.Function;
-                }
+                    case { Declaration: FunctionKoto } function when instance is not null && ReferenceEquals(function, instance.Target):
+                        if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
+                        {
+                            return null;
+                        }
 
-                if (enclosing is not null && ReferenceEquals(enclosing, instance.Binder))
-                {
-                    // The closure's result in the instance is the failure check.
-                    if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
-                    {
-                        return null;
-                    }
+                        context = instance;
+                        break;
+                    case { Kind: BindingSymbolKind.Type } declaration
+                        when (TyCtxt.HeldType(type) ?? this.EnvironmentInstance(declaration, environment)) is { } held:
+                        if (this.ClosePart(held, instance, environment, query) is not { } closed)
+                        {
+                            return null;
+                        }
 
-                    context = instance;
+                        context = this.types.HeldContext(symbol, closed);
+                        break;
                 }
             }
 
-            return changed || context is not null
-                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin ?? type.RawOrigin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments)
-                : type;
+            return changed || !ReferenceEquals(context, type.ClosureContext) ? this.WithContext(type, scratch.AsSpan(0, type.Components.Count), context) : type;
         }
         finally
         {
@@ -116,11 +319,17 @@ public sealed partial class Binding
         }
     }
 
-    // The call contexts of function items (read by TyCtxt.SubstOfItem and the old generator) and of closures for the old generator, kept
-    // across unchanged passes and revoked by an edit; G7 inlines this with ClosureCall's removal.
-    private void ResetCallContexts()
-    {
-        this.functionItemContexts.Clear();
-        this.closureCalls.Clear();
-    }
+    // DECISIONS BU-60: the instance of a Type `declaration` an environment Type is or encloses, by substitution alone: the declaration's
+    // identity substituted by the environment's arguments (StoredType), which the producer (TyCtxt.HeldContext) makes a context or none.
+    private BoundType? EnvironmentInstance(BindingSymbol declaration, BoundType? environment)
+        => environment is { Symbol: not null } ? this.StoredType(this.SelfType(declaration), environment) : null;
+
+    // A Closure Type with another context (DECISIONS BU-60: the Type instance a held context holds, which substitution rewrites), every
+    // other part kept.
+    private BoundType WithContext(BoundType type, Subst? context)
+        => ReferenceEquals(context, type.ClosureContext) ? type : this.WithContext(type, (BoundType[])type.Components, context);
+
+    // The Type with these components and this closure context, every other part kept.
+    private BoundType WithContext(BoundType type, ReadOnlySpan<BoundType> components, Subst? context)
+        => this.types.Intern(type.Kind, type.Symbol, type.Semantics, components, type.Length, type.Origin ?? type.RawOrigin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments);
 }

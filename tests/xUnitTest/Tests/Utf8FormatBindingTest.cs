@@ -56,5 +56,5 @@ public class Utf8FormatBindingTest
     }
 
     private static string Describe(Compilation c)
-        => MinimalEmissionTest.Describe(c, null) + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node));
+        => MinimalEmissionTest.Describe(c) + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node));
 }

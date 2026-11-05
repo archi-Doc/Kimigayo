@@ -8,10 +8,15 @@ namespace Kimi.Compiler;
 // in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments (unit 2b-4 adds Transferable's half), as the
 // least fixed point over the declarations one solve reaches; Owned's judgment of a nominal instance through it; the sites of the located
 // Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each a limit (L)
-// a proof carries until its answer is settled (EndProof), and the stored Type a summary's Error rests on (ICheckCause).
+// a proof carries until its answer is settled (EndProof), and the cause a summary's Error rests on (ICheckCause): the stored Type it
+// reads that failed, that Type's failed operand context, or the hops of a conformance resolution that re-entered itself (SPEC 8.3.3;
+// the steps tested are those the hops resolved, so a step resolved through an identity premise is walked, never a re-entry; DECISIONS
+// BU-22, BU-76), with the site of the stored Type read there, whose Unsupported_Kd a use takes when no hop clause failed (ReentrySite).
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
-// declarations its storage names; conformance bindings (ContractType) for a mapped projection whose base is not abstract.
-// Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (PublishSites).
+// declarations its storage names; ContractType's answer and hops, each with the step it resolved, for a mapped projection whose base is
+// not abstract.
+// Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (FailNeededSites,
+// PublishSites).
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
 // pair target of its declaration; a summary belongs to one capability epoch (ClearCapabilityResults ends it); the declarations one solve
 // reaches are iterated together from no exclusion to their least fixed point, which a family cut keeps finite; a warm rebind allocates
@@ -30,7 +35,7 @@ public sealed partial class Binding
     private readonly HashSet<(ComponentSummary Summary, int Slot)> linkSeen = [];
     private readonly TypeMemo<bool> summaryParts = new(); // The parts one summary walk met.
     private readonly TypeMemo<bool> scannedParts = new(); // The parts one storage scan met.
-    private readonly List<BoundType> resolvingSteps = []; // The concrete projection steps the walk in progress resolves through.
+    private readonly List<BoundType> resolvingSteps = []; // The steps the walk in progress resolved through conformance hops.
     private int summaryEpoch;
     private bool solvingSummaries;
 
@@ -54,7 +59,7 @@ public sealed partial class Binding
         var summary = this.Summary(symbol);
         if (summary.Error)
         {
-            return this.ReadVerdict(ConstraintProof.Error, summary);
+            return this.ReadVerdict(ConstraintProof.Error, summary, null);
         }
 
         var result = summary.ExcludesOwned ? ConstraintProof.Refuted : summary.Unresolved ? ConstraintProof.Unknown : ConstraintProof.Proven;
@@ -66,9 +71,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < work.Type.OriginArguments.Count; i++)
         {
-            var origin = work.Type.OriginArguments[i];
-            var outlives = origin is not null && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner);
-            result = CombineProof(result, outlives ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+            result = CombineProof(result, this.StaticOrigin(work.Type.OriginArguments[i], work.Scope), true);
         }
 
         for (var i = 0; i < summary.Projections.Count; i++)
@@ -80,25 +83,18 @@ public sealed partial class Binding
         }
 
         return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
-            ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0]) : result;
+            ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0], null) : result;
     }
 
-    // SPEC 23.1.1: each site a settled proof needed, recorded once at its stored Type after Binding.Check's loop, whose checks can still
-    // need one; a stored Type that failed by itself has its own record. Returns the number of records.
-    private int PublishSites()
+    // SPEC 23.1.1 (DECISIONS BU-76, BU-81): each site a settled proof needed fails its stored Type: in Binding.Check's Final prologue,
+    // where a derived use held on it is settled, and again after the producers' loop for the sites its checks needed. The counting
+    // records and counts that Use once, as PublishNeededLimits' limits.
+    private void FailNeededSites()
     {
-        var count = 0;
-        foreach (var site in this.neededSites)
+        for (var i = 0; this.capabilityMode == BindingMode.Final && i < this.neededSites.Count; i++)
         {
-            if (this.capabilityMode == BindingMode.Final && site.Use.BindingFailure == BindingFailure.None)
-            {
-                this.Fail(site.Use, BindingFailure.Unsupported);
-                this.issues.Add(new(site.Use, DiagnosticCode.Unsupported_Kd) { Failure = BindingFailure.Unsupported });
-                count++;
-            }
+            this.Fail(this.neededSites[i].Use, BindingFailure.Unsupported);
         }
-
-        return count;
     }
 
     private void ClearNeededSites()
@@ -303,7 +299,7 @@ public sealed partial class Binding
                 summary.Unresolved |= !invalid;
                 if (invalid)
                 {
-                    summary.Fail(types[t]);
+                    summary.Fail(this.InvalidOperandContext(stored)!); // OperandContexts' walk and predicate: an Invalid node.
                 }
             }
             else
@@ -326,12 +322,7 @@ public sealed partial class Binding
         this.summaryParts.Set(type, query, true);
         if (TryLeafCapability(type, IntrinsicKind.Owned, out var leaf))
         {
-            summary.ExcludesOwned |= leaf == ConstraintProof.Refuted;
-            if (leaf == ConstraintProof.Error)
-            {
-                summary.Fail(summary.Declaration.Adt!.Types[stored]);
-            }
-
+            summary.ExcludesOwned |= leaf == ConstraintProof.Refuted; // An Owned leaf is never Error.
             return;
         }
 
@@ -372,7 +363,7 @@ public sealed partial class Binding
         summary.Unresolved |= component.Unresolved;
         if (component.Error)
         {
-            summary.Fail(component.Use);
+            summary.Fail(component);
         }
 
         for (var i = 0; i < component.Sites.Count; i++)
@@ -415,19 +406,19 @@ public sealed partial class Binding
         }
     }
 
-    // A projection based at D's formal or pair target is an obligation of D; one with a base that is not abstract is resolved by its
-    // conformance binding under D's premises and walked.
+    // A projection based at D's formal or pair target is an obligation of D; one with a base that is not abstract is resolved under D's
+    // premises, by a conformance binding or an identity premise, and walked; the steps its hops resolved through a conformance are
+    // tested for re-entry, and a step resolved through an identity premise is walked untested.
     private void WalkProjection(ComponentSummary summary, BoundType projection, int stored, uint query)
     {
-        var step = projection;
+        var root = projection.Components[0];
         var length = 1;
-        while (step.Components[0].Kind == BoundTypeKind.AssociatedProjection)
+        while (root.Kind == BoundTypeKind.AssociatedProjection)
         {
-            step = step.Components[0];
+            root = root.Components[0];
             length++;
         }
 
-        var root = step.Components[0];
         if (root.IsAbstract)
         {
             if (length > ProjectionBound)
@@ -443,31 +434,68 @@ public sealed partial class Binding
             return;
         }
 
-        var resolved = this.ContractType(projection, this.ConstraintScope(summary.Declaration.Declaration));
+        var resolved = this.ContractType(projection, this.ConstraintScope(summary.Declaration.Declaration), out var hops);
         if (resolved.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(resolved, projection))
         {
             summary.Unresolved = true; // No conformance binding resolves it: Unknown, as an unresolved stored Type is.
             return;
         }
 
-        foreach (var outer in this.resolvingSteps)
+        if (hops is null)
         {
-            if (ReferenceEquals(outer.Symbol, step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
-                this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
+            // SPEC 8.2.3 (DECISIONS BU-22): an answer whose outer step is resolved through an identity premise has no hops; it is walked
+            // untested, with any growth through an inner conformance. A scope's premise identities are finitely many, and a Contract's
+            // own are bounded by SPEC 8.3.3 (unbounded growth through them fails the Contract, and the walk then reads a failed operand
+            // context); an outer step left unresolved ends the walk as Unknown.
+            this.Walk(summary, resolved, stored, query);
+            return;
+        }
+
+        if (this.Reenters(hops))
+        {
+            // SPEC 8.3.3: a step a hop resolved re-enters a conformance binding the walk is resolving through, at a deeper instance: a
+            // conformance of the resolution revisits itself and fails with its own record. Error, never a cap, resting on the hops
+            // ContractType resolved through (DECISIONS BU-76); only a hop's step is tested, so an identity step of the chain never is.
+            // The depth test is no proof of growth: when no hop clause fails, the use rests on the stored Type's site (DECISIONS BU-22).
+            summary.Fail(hops.Use, hops.Next, this.OwnSite(summary, stored));
+            return;
+        }
+
+        var depth = this.resolvingSteps.Count;
+        for (var hop = hops; hop is not null; hop = hop.Inner)
+        {
+            this.resolvingSteps.Add(hop.Step);
+        }
+
+        this.Walk(summary, resolved, stored, query);
+        this.resolvingSteps.RemoveRange(depth, this.resolvingSteps.Count - depth);
+    }
+
+    // Whether a hop's step re-enters a step the walk is resolving through: the same associated Type on the same root declaration at a
+    // deeper instance (SPEC 8.3.3). The hops of one answer are not compared with each other: one answer's nesting is the projection's
+    // finite syntax.
+    private bool Reenters(ResolutionHops hops)
+    {
+        for (var hop = hops; hop is not null; hop = hop.Inner)
+        {
+            var root = hop.Step.Components[0];
+            foreach (var outer in this.resolvingSteps)
             {
-                // SPEC 8.3.3: the walk re-enters a conformance binding it is resolving through, at a deeper instance: the conformance
-                // uses itself, which has its own record. Error, resting on the stored Type, never a cap.
-                summary.Fail(summary.Declaration.Adt!.Types[stored]);
-                return;
+                if (ReferenceEquals(outer.Symbol, hop.Step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
+                    root.Height > outer.Components[0].Height)
+                {
+                    return true;
+                }
             }
         }
 
-        this.resolvingSteps.Add(step);
-        this.Walk(summary, resolved, stored, query);
-        this.resolvingSteps.RemoveAt(this.resolvingSteps.Count - 1);
+        return false;
     }
 
-    private void AddSite(ComponentSummary summary, int stored)
+    private void AddSite(ComponentSummary summary, int stored) => summary.AddSite(this.OwnSite(summary, stored));
+
+    // The site of a stored Type of the declaration, reused across passes.
+    private ComponentSite OwnSite(ComponentSummary summary, int stored)
     {
         var types = summary.Declaration.Adt!.Types;
         if (summary.OwnSites.Length != types.Count)
@@ -477,16 +505,21 @@ public sealed partial class Binding
 
         var site = summary.OwnSites[stored] ??= new(this.neededSites);
         site.Use = types[stored];
-        summary.AddSite(site);
+        return site;
     }
 
     // A link of the projection-link graph: D's formal From reaches argument Index of To, through projection steps when Projection.
     private readonly record struct ComponentLink(int From, ComponentSummary To, int Index, bool Projection, int Stored);
 
-    // A summary is the cause its Error rests on: the stored Type that decided it, which has its own record.
+    // A summary is the cause its Error rests on: the node the walk read that decided it (a stored Type or its operand context), or the
+    // hops of a resolution that re-entered itself, whose candidates the summary carries with the re-entry's site (DECISIONS BU-76).
     private sealed class ComponentSummary(BindingSymbol declaration) : ICheckCause
     {
         public Koto Use { get; private set; } = null!;
+
+        public ICheckCause? Next { get; private set; }
+
+        public ICheckCause? ReentrySite { get; private set; }
 
         internal BindingSymbol Declaration { get; } = declaration;
 
@@ -515,12 +548,18 @@ public sealed partial class Binding
         {
         }
 
-        internal void Fail(Koto use)
+        internal void Fail(Koto use) => this.Fail(use, null, null);
+
+        internal void Fail(ICheckCause held) => this.Fail(held.Use, held.Next, held.ReentrySite);
+
+        internal void Fail(Koto use, ICheckCause? next, ICheckCause? reentrySite)
         {
             if (!this.Error)
             {
                 this.Error = true;
                 this.Use = use;
+                this.Next = next;
+                this.ReentrySite = reentrySite;
             }
         }
 
@@ -549,6 +588,10 @@ public sealed partial class Binding
     private sealed class ComponentSite(List<ComponentSite> needed) : ICheckCause
     {
         public Koto Use { get; set; } = null!;
+
+        public ICheckCause? Next => null;
+
+        public ICheckCause? ReentrySite => null;
 
         internal bool Needed { get; set; }
 

@@ -4,7 +4,7 @@ namespace Kimi.Compiler;
 
 // The computation behind TyCtxt.RecursiveBase, under its contract (TyCtxt.RecursiveContracts.cs): the pass's recursive Contract
 // declarations, each found by expanding the premise supply of `T is C` in a pooled scope, and the proof of a projection's bases against
-// them under a definition's effect premises.
+// them under a definition's effect premises. IsRecursive also serves the inline-layout summaries inside Bind (RecursiveInStorage, BU-65).
 public sealed partial class Binding
 {
     // The pass's recursive Contract declarations, valid while recursiveVersion is the pass's version; the search's scope and the

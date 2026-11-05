@@ -19,7 +19,7 @@ public class AssociatedFormationEditingTest
         var source = "contract C\n    associate Item(a)" + (capability ? " is Copy" : string.Empty) + " for " + (nested ? "(ref/i32 during a, i32)" : "ref/i32 during a") + "\nstruct S\n    Self is C\n    associate C.Item(a) is i32\nfunc f() -> S.Item(static) => 42\nrequire f() == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         var original = Formation(c.Kotonoha.RootKoto, nested);
         var parent = original.Parent!;
         var donor = ParseTestHelper.ParseSuccess(source.Replace("ref/i32 during a", "uniq/i32 during a", StringComparison.Ordinal));
@@ -27,11 +27,11 @@ public class AssociatedFormationEditingTest
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         output.GetStringBuilder().Clear();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(parent, replacement, original));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
 
         static Koto Formation(Koto root, bool nested)
         {
@@ -62,7 +62,7 @@ public class AssociatedFormationEditingTest
         const string Source = "contract Peek\n    associate Item(a) for ref/Self during a\nstruct H<s/T>\n    s is owner or ref\n    T is Copy\n    Self is Peek\n" +
             "    associate Peek.Item(a) is s/T during a\n    var item: s/T\n    public init(item: s/T) => self.item = item@move\nlet h = H<i32>.init(4)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var clause = Clause(c.Kotonoha.RootKoto, original);
         var parent = clause.Parent!;
         var replacement = Clause(ParseTestHelper.ParseSuccess(Source.Replace(original, edited, StringComparison.Ordinal)).RootKoto, edited);
@@ -72,7 +72,7 @@ public class AssociatedFormationEditingTest
         Assert.True(KotoHelper.Replace(parent, clause, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(parent, replacement, clause));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
 
         static Koto Clause(Koto root, string text)
             => KotoTree.Walk(root).OfType<IsKoto>().First(x => x.ToString() == text);

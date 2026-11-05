@@ -19,7 +19,7 @@ public class AssociatedFormationTest
     {
         var source = Nested + "func f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    $abort(\"unused\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 15.3.7: a call proves the published condition for its substituted result. An argument that pins b to d at an invariant
@@ -70,7 +70,7 @@ public class AssociatedFormationTest
     {
         var source = "contract C\n    associate Item(step)" + capability + " for " + formation + "\nstruct S\n    Self is C\n    associate C.Item(a) is i32\nfunc f() -> S.Item(static) => 42";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -80,7 +80,7 @@ public class AssociatedFormationTest
     {
         var source = "contract C\n    associate Item(a, b) for ref/(ref/i32 during a) during b\nstruct S\n    Self is C\n    associate C.Item(x, y) is i32\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    return 42";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     private const string Peek = "public struct Node\n    public let n: i32\ncontract Peek\n    associate Item(a)\n";

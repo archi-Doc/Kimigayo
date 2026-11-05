@@ -85,7 +85,7 @@ public class ContextualCaptureTest
             "    public func outer(self: ref/Self) -> i32\n        let read = func [self] () => (func () => self.count)()\n        return read()\n\n" +
             "var c = Counter.init(1)\nConsole.writeLine(\"\\(c.bump())\")\nConsole.writeLine(\"\\(c.peek())\")\nConsole.writeLine(\"\\(c.outer())\")\nlet value = 4\nlet add = func () => value + 1\nConsole.writeLine(\"\\(add())\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ContextualCaptureExplicit", Source, "3\n3\n3\n5\n");
     }
 
@@ -116,14 +116,11 @@ public class ContextualCaptureTest
     public void AClosureInADropBodyNeverCapturesTheHelperBorrow(string body, string at)
     {
         var source = Destructor + body;
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var errors = PublishedRecords(source, pipeline);
-            var error = Assert.Single(errors);
-            Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
-            Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
-            Assert.Contains("helper borrow", error.Note, StringComparison.Ordinal);
-        }
+        var errors = PublishedRecords(source);
+        var error = Assert.Single(errors);
+        Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
+        Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
+        Assert.Contains("helper borrow", error.Note, StringComparison.Ordinal);
     }
 
     // SPEC 16.3.1, 7.7.2: the helper borrow passed to helpers, used by a defer, held in a local aggregate (stored means beyond the body),
@@ -142,7 +139,7 @@ public class ContextualCaptureTest
     public void TheHelperBorrowOutsideACaptureAndACapturedFieldBorrowAreValid(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 23.1: each record is a Language error with the helper borrow's Note and the captured binding's declaration related; a capture
@@ -153,6 +150,7 @@ public class ContextualCaptureTest
     [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = w.buffer@ref\n", 1, "capture,declaration")]
     [InlineData("        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        let g = func () => Audit.observe(v)\n        f()\n        g()\n        let w = self@ref\n        v = w.buffer@ref\n", 1, "capture,capture,declaration")]
     [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func () => Audit.observe(v) + Audit.observe(v)\n", 2, "borrow,declaration")]
+    [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n", 1, "borrow,declaration")]
     public void TheHelperBorrowCaptureRecordIsPublished(string body, int count, string roles)
     {
         var path = Path.GetFullPath("Hello.kimi");
@@ -183,6 +181,36 @@ public class ContextualCaptureTest
         }
     }
 
+    // SPEC 7.7.2, 23.1.2: beside a repeated capture name, the entry that captures the helper borrow is published from its own fact, as in a
+    // list without repeats: the helper borrow's Note, the declaration and the value that brought it into the var's region (borrow).
+    [Theory]
+    [InlineData("        let w = self@ref\n        let f = func [w, w] () => Audit.inspect(w)\n", "declaration")]
+    [InlineData("        var v = self.buffer@ref\n        let w = self@ref\n        v = w.buffer@ref\n        let f = func [v, v] () => Audit.observe(v)\n", "borrow,declaration")]
+    public void AHelperBorrowEntryBesideARepeatIsPublishedFromItsFact(string body, string roles)
+    {
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = MinimalEmissionTest.Analyze(Destructor + body, path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var records = c.Diagnostics.Finalize(rejected: true).Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.DuplicateBinding_Kd), nameof(DiagnosticCode.InvalidCaptureBinding_Kd)], records.Select(static x => x.Code).Order(StringComparer.Ordinal));
+        var helper = Assert.Single(records, static x => x.Code == nameof(DiagnosticCode.InvalidCaptureBinding_Kd));
+        Assert.Equal(roles, string.Join(',', helper.Related!.Select(static x => x.Role).Order(StringComparer.Ordinal)));
+        Assert.Contains("helper borrow", helper.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.1 (DECISIONS BU-17): the helper borrow's Origin H shows as self in an Origin relation record: a retaining call result carries
+    // H that no Borrow supplies, so the display reads H itself; a Borrow that supplies H shows by its text, the same.
+    [Theory]
+    [InlineData("        let w = self.me()\n        Pin.pin(w)\n")]
+    [InlineData("        let w = Audit.same(self)\n        Pin.pin(w)\n")]
+    public void AnOriginRelationOverTheHelperBorrowShowsSelf(string body)
+    {
+        var source = "group Pin\n    public func pin(value: ref/Connection during static) => ()\n" + Destructor + body;
+        var error = Assert.Single(PublishedRecords(source), static x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
+        Assert.Equal(("w", "requires the borrow self outlives static, which is false"), (error.Text, error.Label));
+    }
+
     // A Closure rejected where it captures the helper borrow is a failure its later uses rest on: called, copied, passed on or captured
     // by another Closure, each pipeline publishes exactly its one record, and the MIR records no internal fault.
     [Theory]
@@ -192,12 +220,9 @@ public class ContextualCaptureTest
     [InlineData("        let g = func [f] () => f()\n        g()\n")]
     public void ALaterUseOfARejectedClosureAddsNoRecord(string uses)
     {
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var error = Assert.Single(PublishedRecords(Rejected + uses, pipeline));
-            Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
-            Assert.StartsWith("w] ()", (Rejected + uses)[error.Span.Start..], StringComparison.Ordinal);
-        }
+        var error = Assert.Single(PublishedRecords(Rejected + uses));
+        Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
+        Assert.StartsWith("w] ()", (Rejected + uses)[error.Span.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 15.6.5, 16.3.1: a var captured before a later value brings the helper borrow into its region (OQ2: judged on Origins, without
@@ -214,16 +239,31 @@ public class ContextualCaptureTest
     public void AVarCapturedBeforeTheHelperBorrowReachesItFailsAtThatValue(string body, string at)
     {
         var source = Destructor + body;
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            var error = Assert.Single(PublishedRecords(source, pipeline));
-            Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
-            Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
-            Assert.Contains("which a Closure captures", error.Note, StringComparison.Ordinal);
-        }
+        var error = Assert.Single(PublishedRecords(source));
+        Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
+        Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
+        Assert.Contains("which a Closure captures", error.Note, StringComparison.Ordinal);
 
         var c = MinimalEmissionTest.Analyze(source);
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsAnonymous), static x => Assert.NotNull(x.ClosureOf()));
+    }
+
+    // SPEC 16.3.1, 23.1.2 (DECISIONS R4-M152): the helper-capture judgment reads a Closure's definition, so in a drop body a Closure whose
+    // erasure to a common Function Type fails (its creation failed) still has its capture judged: a later helper-borrow value of the
+    // captured var is InvalidCaptureBinding_Kd, the independent record its created twin has (BU's zz3_h2 and zz3_h2ok).
+    [Theory]
+    [InlineData(
+        "        var v = self.buffer@ref\n        Audit.run(func [v] () => Audit.observe(v))\n        let w = self@ref\n        v = w.buffer@ref\n",
+        "UnprovenConstraint_Kd func [v] () => Audit.observe(v); InvalidCaptureBinding_Kd w.buffer@ref")]
+    [InlineData(
+        "        var v = self.buffer@ref\n        let f = func [v] () => Audit.observe(v)\n        f()\n        let w = self@ref\n        v = w.buffer@ref\n",
+        "InvalidCaptureBinding_Kd w.buffer@ref")]
+    public void AClosureWhoseCreationFailedHasItsCapturesJudged(string body, string records)
+    {
+        var source = Destructor + body;
+        var found = PublishedRecords(source).OrderBy(static x => x.Span.Start)
+            .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}");
+        Assert.Equal(records, string.Join("; ", found));
     }
 
     // One failure per node: a Closure argument rejected at its capture is not judged again at its erasure to a common Function Type,
@@ -258,11 +298,11 @@ public class ContextualCaptureTest
         Assert.Equal(failure is null ? [] : [(Enum.Parse<BindingFailure>(failure), at!)], c.Binding.Issues.Select(static x => (x.Node.FailureOf(), x.Node.ToString())));
     }
 
-    // The Binding and analysis records a pipeline publishes for a program, which records no internal fault.
-    internal static TestDiagnostic[] PublishedRecords(string source, CompilerPipeline pipeline)
+    // The Binding and analysis records a program publishes, which records no internal fault; every pipeline publishes the same (DECISIONS
+    // R5-M156), so one compilation of the process's pipeline judges them (PLAN G314).
+    internal static TestDiagnostic[] PublishedRecords(string source)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = pipeline;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();

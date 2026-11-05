@@ -13,12 +13,23 @@ public class ContextualClosureTest(ITestOutputHelper output)
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("String", "let text = \"owned\"\nlet f: () -> bool = func [text@move] () => text == \"owned\"\nrequire f() and f() else => $abort(\"capture\")", 1, 24, "")]
-    [InlineData("Object", "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet f: () -> i32 = func [owner@move] () => owner.id\nrequire f() == 7 and f() == 7 else => $abort(\"capture\")", 2, 28, "drop\n")]
     [InlineData("Large", "let a: i64 = 1\nlet b: i64 = 2\nlet c: i64 = 3\nlet f: () -> i64 = func [a, b, c] () => a + b + c\nrequire f() == 6 else => $abort(\"capture\")", 1, 24, "")]
     [InlineData("Parameter", "func make(offset: i32) -> (i32) -> i32 => func [offset] (value) => value + offset\nlet f = make(7)\nrequire f(2) == 9 else => $abort(\"parameter\")", 0, 0, "")]
     [InlineData("Argument", "func use(f: () -> bool) -> bool => f()\nlet text = \"owned\"\nrequire use(func [text@move] () => text == \"owned\") else => $abort(\"argument\")", 1, 24, "")]
     public void DirectExpectedFunctionsUseOwnedConcreteEnvironments(string name, string source, int count, int bytes, string stdout)
         => NativeAllocationAudit.WriteFixture("ContextualClosure" + name, source, count, count, bytes, stdout);
+
+    // An expected Function Type's environment of 8 bytes holding an obj handle, which needs destruction, is stored in the Function value's
+    // word (PD19, IMPL 21.1.3; DECISIONS R5-M104, R5-M112), so the object is the one allocation, of 20 bytes.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnObjectCaptureOfAnExpectedFunctionTypeIsReleasedOnce()
+    {
+        const string Source = "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
+            "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet f: () -> i32 = func [owner@move] () => owner.id\n" +
+            "require f() == 7 and f() == 7 else => $abort(\"capture\")";
+        NativeAllocationAudit.WriteFixture("ContextualClosureObject", Source, 1, 1, 20, "drop\n");
+    }
 
     [Theory]
     [InlineData("let text = \"owned\"\nlet f: () -> bool = func [text] () => text == \"owned\"")]
@@ -30,7 +41,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -88,12 +99,12 @@ public class ContextualClosureTest(ITestOutputHelper output)
     public void WarmContextualBindingAndEmissionReuseTheirPlans()
     {
         var c = MinimalEmissionTest.Analyze("let text = \"owned\"\nlet f: () -> bool = func [text@move] () => text == \"owned\"\nrequire f() else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -102,6 +113,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
     // failures are Constraint records (ErasureOwnedDiagnosticTest).
     [Theory]
     [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "expected (i32) -> i32, found closure (i32) -> i32", "This closure requires an Exclusive call; a common Function value permits Shared calls only")]
+    [InlineData("public func main() -> ()\n    let c = func [] (n: i32) -> i32 => n\n    let g: (i64) -> i32 = c\n", "expected (i64) -> i32, found closure (i32) -> i32", "The closure's parameter or result contract does not match the expected common Function signature")]
     public void AFailedClosureConversionShowsTheClosure(string source, string label, string note)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

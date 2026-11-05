@@ -10,7 +10,7 @@ namespace XunitTest;
 /// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
 /// prepared slot, every jump its target, every evaluated node its completion and its Place, every consumed child its Adjust, every
 /// match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration, every body
-/// its pair binders and every call target its disposition; publishing changes no other result and allocates nothing again.</summary>
+/// its pair binders and every call target its disposition; a Final pass publishes them itself and allocates nothing again.</summary>
 public sealed class HirColumnsTest
 {
     // Virtual bodies over a generic base whose applicability has premises, and over a closed base.
@@ -50,11 +50,18 @@ public sealed class HirColumnsTest
         Assert.True(problems.Count == 0, $"{problems.Count} unpublished facts:\n{string.Join('\n', problems.Take(40))}");
     }
 
-    // Publishing before the ownership analysis leaves every Binding, control-flow and ownership fact and diagnostic unchanged.
+    // DECISIONS BU-81 (R6-check H1a): a Final pass publishes between its failure producers and its counting. Publishing before the
+    // ownership analysis is then no longer a choice, and the comparison this test made, the semantic snapshot with and without it
+    // (PublishIsInvisible), compared two equal runs. It now checks what replaced the choice: the pass's own columns are there before
+    // any request, every parsed node with its Op, and a request returns their version.
     [Theory]
     [MemberData(nameof(Corpus))]
-    public void PublishIsInvisible(string name)
-        => Assert.Equal(SemanticSnapshotTest.Take(name, false).Text, SemanticSnapshotTest.Take(name, true).Text);
+    public void TheFinalPassPublishes(string name)
+    {
+        var (c, module) = SemanticSnapshotTest.Bind(name);
+        Assert.DoesNotContain(Reachable(module), x => ReferenceEquals(x.SyntaxOwner, module.Syntax) && x.SyntaxId <= module.Syntax.ParsedCount && HirTables.Op(x) == HirOp.Unset);
+        Assert.NotEqual(0UL, HirTables.Publish(c));
+    }
 
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -185,7 +192,7 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} views {IntrinsicDisposition.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
 
-            if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
+            if (op == HirOp.Closure && (((FunctionKoto)node).ClosureDefinition is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
             {
                 problems.Add($"{where} without its closure definition");
             }

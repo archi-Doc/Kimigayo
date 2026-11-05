@@ -39,7 +39,7 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
         var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity];
         Assert.Equal(error.Display!.Range, Assert.Single(sent, static x => x.Code == "NoApplicableOverload_Kd").Range);
         var valid = MinimalEmissionTest.Analyze(Prefix + "let search = key@ref\nrequire entries[search@ref] == 42 else => $abort(\"key\")");
-        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid, null));
+        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid));
     }
 
     [Theory]
@@ -112,7 +112,7 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
         var sent = Assert.Single(WorkspaceCheck.Place(output, [identity], identity, true)[identity], x => x.Code == code);
         Assert.Equal(record.Display!.Range, sent.Range);
         Assert.Contains(record.Label!, sent.Message, StringComparison.Ordinal);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -120,16 +120,17 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
     {
         const string Source = "func read(values: ref/Dictionary<i32, string>) -> string\n    var number: i32\n    let copy = number\n    return values[1]";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         var result = c.Diagnostics.Finalize();
-        var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-        Assert.Equal(2, errors.Length);
-        Assert.Single(errors, static x => x.Code == "TransferRequired_Kd");
-        var uninitialized = Assert.Single(errors, static x => x.Code == "UninitializedPlace_Kd");
-        Assert.Equal("number", Source.Substring(uninitialized.Span!.Value.Start, uninitialized.Span.Value.Length));
+        var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span!.Value.Start).ToArray();
+        (string Code, string Text)[] expected = [("UninitializedPlace_Kd", "number"), ("TransferRequired_Kd", "values[1]")];
+
+        // The bare read is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84). H5 restored the independent UninitializedPlace_Kd
+        // (PD29): the MIR's record is published on a program whose Binding is incomplete (DECISIONS R5-M184; H3b T51, class 4).
+        Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
         Assert.False(c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -139,10 +140,10 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
     public void ElementResultsAndSearchKeysRetainTheirLoans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -155,7 +156,10 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            if (!c.Generate(TextWriter.Null))
+            {
+                Assert.Fail(MinimalEmissionTest.Describe(c)); // only on failure: the function is measured
+            }
         }
 
         Compile();

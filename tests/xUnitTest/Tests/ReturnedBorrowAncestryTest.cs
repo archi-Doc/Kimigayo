@@ -31,10 +31,10 @@ public class ReturnedBorrowAncestryTest
     public void RejectsParentUseWhileReturnedLoanLives(string source)
     {
         var c = MinimalEmissionTest.Analyze(Counter + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -43,8 +43,8 @@ public class ReturnedBorrowAncestryTest
     public void ResultAncestryUsesRecordedInputsAfterSourceDetachment(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Counter + "func change(p: uniq/Counter, q: uniq/Counter)\n    " + expression + ".value += 1\n    p.value += 1");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "change");
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "change");
         var call = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i].Kind == OwnershipOperationKind.Call && body.CallAt(i)?.Target.Name == "second");
         var inputs = body.CallInputs(call).ToArray();
         var expected = Assert.Single(inputs, x => x.Parameter == 1).Entry;
@@ -62,6 +62,6 @@ public class ReturnedBorrowAncestryTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + "func change(p: ref/Counter)\n    relay(p).value += 1");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

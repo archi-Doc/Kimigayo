@@ -10,58 +10,13 @@ namespace Kimi.Compiler;
 // a node beyond the first).
 public sealed partial class Binding
 {
-    private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
-    {
-        if (!type.CarriesOrigin)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } outer && MentionsOrigin(outer, origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (MentionsOrigin(type.OriginArguments[i], origin))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (MentionsOrigin(type.Components[i], origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool MentionsOrigin(BoundOrigin expression, BoundOrigin origin)
-    {
-        if (ReferenceEquals(expression, origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < expression.Operands.Count; i++)
-        {
-            if (ReferenceEquals(expression.Operands[i], origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // Whether the Origins and Origin arguments of a Type's parts name `origin`, a meet's operand included (a meet's operands are atoms,
+    // Meet); raw layers' Origins are not read. A test of its Origin summary's Nodes (Binding.OriginSummaries).
+    private bool MentionsOrigin(BoundType type, BoundOrigin origin) => Array.IndexOf(this.SummaryOf(type).Nodes, origin) >= 0;
 
     // The input, other than the failing one, whose parameter names the callee's Type parameter `slot` and whose adapted Type carries
     // `value`, the Origin of the slot's solution: the input whose invariant binding fixed it. Receiver first, then the arguments.
-    private static Koto? SlotEqualitySource(in CallFit context, BoundType slot, BoundOrigin value)
+    private Koto? SlotEqualitySource(in CallFit context, BoundType slot, BoundOrigin value)
     {
         for (var n = 0; n <= context.ArgumentCount; n++)
         {
@@ -69,7 +24,7 @@ public sealed partial class Binding
             var operation = context.Operations[i];
             if (operation is { Source: { } source, AdaptedType: { } adapted } && !ReferenceEquals(source, context.At) &&
                 operation.ParameterIndex >= 0 && operation.ParameterIndex < context.Selected.Parameters.Count &&
-                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsSlot(pattern, slot.Symbol!) && MentionsOrigin(adapted, value))
+                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsSlot(pattern, slot.Symbol!) && this.MentionsOrigin(adapted, value))
             {
                 return source;
             }
@@ -98,13 +53,19 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 15.6.5, 10.1: applicability uses only the structural part of each fit, so the Origin relations of the selected
     // candidate are judged here, after selection and at their own sources: the receiver's and each argument's fit to its completed
-    // parameter Type, then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
+    // parameter Type, then the well-formedness of each slot the call fills (SPEC 15.6.4 step 3: the receiver's, each argument's and each
+    // default's, at the call), then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
     // UnprovenOriginRelation_Kd records at the value that does not fit; a chain between body Origins, which ownership analysis cannot
-    // represent yet, is an obligation that it reports as the located limit at that value. Erasures, anonymous bodies, aggregates and
-    // contextual payloads are judged where they are bound. The expected result is judged at its destination.
-    private void JudgeSelectedCall(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    // represent yet, is an obligation that it reports as the located limit at that value. An aggregate argument's well-formedness is
+    // judged by its positions' rows (JudgePositionRows). Erasures, anonymous bodies and join arguments (U2j) are judged where they
+    // are bound. The expected result is judged at its destination. `operations` holds the arguments' and, last, the receiver's; the
+    // selected candidate's solution holds its Origins and each argument's root row (F1, R4-M164), and the receiver is Evidence.
+    private void JudgeSelectedCall(
+        InvocationKoto call, in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, ReadOnlySpan<BoundDefaultArgument> defaults)
     {
+        var selected = solution.Function;
         this.callRelationScratch.Clear();
+        var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)
         {
@@ -116,12 +77,27 @@ public sealed partial class Binding
             this.JudgeCallFit(selected, operations, argumentCount, i);
         }
 
-        for (var i = 0; i <= argumentCount; i++)
+        for (var i = 0; i < operations.Length; i++)
         {
-            this.RequireInputPremises(operations[i]);
+            if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+            {
+                this.RequireInputPremises(at, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
+            }
+            else if (i < argumentCount && solution.Rows[i].Contribution != Contribution.Result && operations[i] is { Source: { } whole, ParameterType: { } type })
+            {
+                // SPEC 10.2: a composite borrowed at `ref/T` (its cross-semantics borrow) is walked at its value Type T, the operation's
+                // SourceType (FitComposite).
+                var borrowed = operations[i] is { Adaptation: ArgumentAdaptation.CrossSemanticsBorrow, SourceType: { } value } ? value : null;
+                this.JudgePositionRows(whole, solution.Rows[i], borrowed ?? type);
+            }
         }
 
-        this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
+        foreach (var argument in defaults)
+        {
+            this.RequireInputPremises(call, argument.ParameterType, null, Contribution.Signature);
+        }
+
+        this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
         this.PublishCallRelations();
         this.CollectFitBounds(operations, argumentCount);
     }
@@ -139,7 +115,14 @@ public sealed partial class Binding
             {
                 if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } && adapted.CarriesOrigin)
                 {
-                    _ = this.FitsStructurallyAt(adapted, parameter, at);
+                    // SPEC 10.1, 10.3, 15.6.1: applicability fitted the structural part alone (FitsStructuralPartAt); a Function Type
+                    // position's whole contract and its implementation's own well-formedness are judged here, after selection, at the
+                    // argument (DECISIONS R4-M155, landing review B1).
+                    var walk = new RelationWalk(this, at, OriginPart.Structural);
+                    if (!walk.Fits(adapted, parameter))
+                    {
+                        _ = this.FailMismatch(at, at, adapted, parameter, walk.Failure);
+                    }
                 }
             }
         }
@@ -251,7 +234,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
         {
-            var variance = actual.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+            var variance = OriginArgumentVariance(actual, i, this);
             var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
             if (both || variance == OriginVariance.Covariant)
             {
@@ -298,7 +281,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(longer, shorter, at, condition))
+        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(longer, shorter, at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
@@ -309,8 +292,8 @@ public sealed partial class Binding
         }
 
         // Complete initializer-owned holes before deferring finite constraints to the body graph.
-        var forwardProven = this.FitOriginOutlives(longer, shorter, at, condition);
-        var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at, condition);
+        var forwardProven = this.FitOriginOutlives(longer, shorter, at, default, condition);
+        var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at, default, condition);
         if (BodyChain(longer, shorter, this.formingBody))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));
@@ -325,9 +308,13 @@ public sealed partial class Binding
             // Location; SPEC 10.8: the first invariant binding of a slot is its solution).
             var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
                 : variable is not null ? this.EqualitySource(context, variable, shorter)
-                : slot is not null ? SlotEqualitySource(context, slot, shorter) : null;
+                : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
-            this.callRelationScratch.Add((at, new(at, longer, shorter, equality, declared ? null : context.Parameter, refuted, declared ? clause : null, Substituted: declared, FixedBy: fixedBy, WellFormed: wellFormed)));
+            var destination = declared ? null : context.Parameter;
+            var supplier = this.SuppliedAtUse(longer, at);
+            var declaredClause = declared ? clause : null;
+            var fact = new OriginRelationFact(at, longer, supplier, shorter, equality, destination, refuted, declaredClause, declared, fixedBy, wellFormed);
+            this.callRelationScratch.Add((at, fact));
             return;
         }
 
@@ -358,7 +345,7 @@ public sealed partial class Binding
             var operation = context.Operations[i];
             if (operation is { Source: { } source, AdaptedType: { } adapted } && !ReferenceEquals(source, context.At) &&
                 operation.ParameterIndex >= 0 && operation.ParameterIndex < context.Selected.Parameters.Count &&
-                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsOrigin(pattern, variable) && MentionsOrigin(adapted, value))
+                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && this.MentionsOrigin(pattern, variable) && this.MentionsOrigin(adapted, value))
             {
                 return source;
             }
@@ -374,7 +361,7 @@ public sealed partial class Binding
         {
             var operation = operations[n == 0 ? argumentCount : n - 1];
             if (operation is { Source: { } source, ParameterIndex: >= 0 } && operation.ParameterIndex < selected.Parameters.Count &&
-                selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsOrigin(pattern, origin))
+                selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && this.MentionsOrigin(pattern, origin))
             {
                 return source;
             }

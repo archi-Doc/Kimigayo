@@ -33,9 +33,9 @@ public class NestedBorrowedProjectionTest
     public void RejectsOverlappingNestedBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -43,6 +43,6 @@ public class NestedBorrowedProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(Outer + "func f(p: ref/Outer)\n    let a = p.inner.c@uniq\n    a.value += 1");
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

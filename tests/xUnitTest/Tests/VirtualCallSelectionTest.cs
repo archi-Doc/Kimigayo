@@ -99,7 +99,7 @@ public class VirtualCallSelectionTest
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.Method is MemberAccessKoto { Left: BaseReferenceKoto }).CallOf()!;
         Assert.Equal("B", call.VirtualImplementingType!.Symbol!.Name);
         Assert.Equal(BindingFailure.OverrideContractMismatch, call.VirtualImplementation!.FailureOf());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

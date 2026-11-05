@@ -22,7 +22,7 @@ public class SiblingMoveBorrowTest
     public void KeepsDisjointBorrowAliveAcrossMove(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("SiblingMoveBorrow" + name, Pair + source, string.Empty);
     }
@@ -38,9 +38,9 @@ public class SiblingMoveBorrowTest
     public void RejectsMovedOrOverlappingBorrowedStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() || x.Code is DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -48,19 +48,5 @@ public class SiblingMoveBorrowTest
     {
         const string Source = "struct Counter\n    public var value: i32 = 1\n    drop => Console.writeLine(\"drop\")\nvar pair = (Counter.init(), Counter.init())\nlet a = pair.0@uniq\nlet moved = pair.1@move\na.value += moved.value\nrequire pair.0.value == 2 else => $abort(\"value\")";
         ScalarEmissionTest.EmitFixture("SiblingMoveBorrowCleanup", Source, "drop\ndrop\n");
-    }
-
-    [Fact]
-    public void EmissionRechecksTheBorrowedSubtree()
-    {
-        var c = MinimalEmissionTest.Analyze(Pair + "var pair = Pair.init()\nlet moved = pair.right@move\nlet a = pair.left@ref\nlet value = a.value");
-        Assert.True(c.Validate(out var failure), failure);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
-        var moved = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Produce && x.Projection >= 0).Source;
-        body.OperationStorage[borrow] = body.Operations[borrow] with { Source = moved };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
     }
 }

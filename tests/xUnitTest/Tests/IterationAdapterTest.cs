@@ -49,7 +49,7 @@ public class IterationAdapterTest
         ScalarEmissionTest.EmitFixture("IterationAdapterLending", Source, "lending\n");
         var c = MinimalEmissionTest.Analyze(Source);
         var valid = true;
-        var bytes = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _));
+        var bytes = AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null));
         Assert.True(valid);
         Assert.Equal(0, bytes);
     }

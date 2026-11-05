@@ -29,7 +29,7 @@ public partial class UserIterationTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init()\n    let value: i32 = item");
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(BoundType.I32, loop.Bindings[0].TypeOf());
     }
 
@@ -41,11 +41,11 @@ public partial class UserIterationTest
         var replacement = MinimalEmissionTest.Analyze(Drain + "for item in Batch<bool>.init(true) => ()");
         var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.True(KotoHelper.Replace(loop, loop.Iterable, ParseTestHelper.Detach(changed.Iterable, new CodeBlockKoto(loop.CodeContext))));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(BoundType.Boolean, loop.Bindings[0].TypeOf());
         Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.IterationOf().Entry!.Method).Left);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -58,10 +58,10 @@ public partial class UserIterationTest
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<ForKoto>());
         var body = ParseTestHelper.Detach(changed.Body, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(loop, loop.Body, body));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Same(loop.Body, loop.IterationOf().Plan!.Decomposition.Arms[0].Syntax.Body);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -69,6 +69,11 @@ public partial class UserIterationTest
     public void ConcreteEntryExecutes()
         => ScalarEmissionTest.EmitFixture("UserIterationCounter", Counter + Three + "var total: i32 = 0\nfor item in Three.init()\n    total += item\nrequire total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n");
 
+    // SPEC 15.6.4 (R4-M170): the program is valid, but since G264 (S) S2 A5 errs twice at count's `for` (the lent item's composed erased
+    // destruction stores next()'s Loan into the iterator, a self-row; EntryConstraintDispatchesInAGenericBody's count, ledger
+    // 33e9ca2366ff), so generation and the native audit (UserIterationCost, 0, 0, 0) wait; a warm rebind and reanalysis still reuse their
+    // plans and allocate nothing. H5's (e) list, row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the
+    // acceptance and re-points this test back to its zero-allocation generation and audit.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmUserIterationCompilationReusesItsPlans()
@@ -77,27 +82,31 @@ public partial class UserIterationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.False(c.Analyze().IsVerified);
+        var loop = new SyntaxLocation("for _ in batch@move => count += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        var ownershipBytes = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified);
-        var generationBytes = AllocationMeasurement.Measure(() => success &= c.WriteIr(TextWriter.Null, out _));
+        var ownershipBytes = AllocationMeasurement.Measure(() => success &= !c.Analyze().IsVerified);
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, ownershipBytes);
-        Assert.Equal(0, generationBytes);
-        NativeAllocationAudit.WriteFixture("UserIterationCost", Source, 0, 0, 0);
     }
 
+    // SPEC 15.6.4 (R4-M170): both programs are valid, but since G264 (S) S2 A5 errs twice at count's `for` (the lent item's composed
+    // erased destruction stores next()'s Loan into the iterator, a self-row; ledger 33e9ca2366ff, d2662f97b5ca), and generation refuses
+    // them; the old analysis accepted and ran them (fixtures UserIterationConstraint "ok\n", UserIterationConstraintItems "item\nok\n").
+    // H5's (e) list, row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and re-points both
+    // tests back to their runs.
     [Fact]
     public void EntryConstraintDispatchesInAGenericBody()
-        => ScalarEmissionTest.EmitFixture("UserIterationConstraint", Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")\nConsole.writeLine(\"ok\")", "ok\n");
+        => AssertRefusedPendingG416(Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")\nConsole.writeLine(\"ok\")");
 
     [Fact]
     public void EntryConstraintPreservesOwnedAndBorrowedItems()
-        => ScalarEmissionTest.EmitFixture("UserIterationConstraintItems", Drain + "struct Tracked\n    drop => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "item\nok\n");
+        => AssertRefusedPendingG416(Drain + "struct Tracked\n    drop => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")");
 
     [Fact]
     public void GenericLoopTransfersItsProjectedItemIntoTheResult()
@@ -125,7 +134,7 @@ public partial class UserIterationTest
     public void EntryConstraintStillConsumesItsSubject()
     {
         var c = MinimalEmissionTest.Analyze("func count<B>(batch: B)\n    B is IntoIterable\n    for _ in batch@move => ()\n    let again = batch@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
@@ -265,7 +274,7 @@ public partial class UserIterationTest
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, x => x.Code is DiagnosticCode.MovedPlace_Kd or DiagnosticCode.ComparisonLoanConflict_Kd);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -275,7 +284,7 @@ public partial class UserIterationTest
     public void GenericEntrySubstitutesTheCompleteItem(string type, string value, string binding, string body)
     {
         var c = MinimalEmissionTest.Analyze(Drain + "var n: i32 = 7\nfor " + binding + " in Batch<" + type + ">.init(" + value + ")\n    " + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
     }
 
@@ -283,7 +292,7 @@ public partial class UserIterationTest
     public void ItemKeepsItsExternalOrigin()
     {
         var c = MinimalEmissionTest.Analyze(Drain + "func inspect(n: ref/i32 during a)\n    for item in Batch<ref/i32 during a>.init(n)\n        let value: ref/i32 during a = item");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 14.6.2: a Subject without the entry conformance of its mode is a Contract error at the Subject, never a method-name
@@ -307,5 +316,16 @@ public partial class UserIterationTest
         Assert.Equal(code, issue.Code);
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.Same(atSubject ? loop.Iterable : loop, issue.Node);
+    }
+
+    // An (e) row of S2's self-row family: the program binds, A5's two records at count's `for` are its MIR side, and generation refuses it.
+    private static void AssertRefusedPendingG416(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var loop = new SyntaxLocation("for _ in batch@move => count += 1");
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

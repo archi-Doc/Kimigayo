@@ -74,7 +74,7 @@ options(3)            // Error: 3 supplies mode, and count is missing.
 
 ### 7.2.3. Default evaluation
 
-At each call, the explicit arguments are acquired in source order into pending slots; then each omitted default is evaluated once, in parameter order, in the declaration's scope; it may use preceding parameters, but not later parameters or the caller's locals. It may Copy a preceding Copy value or inspect it through temporary shared access (also a reserved exclusive input, [§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations), without its exclusive access), but cannot Move or modify that slot. Its result cannot keep a new Borrow or Reborrow of a preceding argument, but may Copy an existing shared borrow. Inspection Loans end before callee entry. A default is **recursive** when its evaluation may evaluate it again through the defaults that the calls in it omit; the value of an omitted recursive default carries the Loans of every preceding argument of its call, as a result that may retain each of them does ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). Transfers inside a default target only constructs inside it.
+At each call, the explicit arguments are acquired in source order into pending slots; then each omitted default is evaluated once, in parameter order, in the declaration's scope; it may use preceding parameters, but not later parameters or the caller's locals. It may Copy a preceding Copy value or inspect it through temporary shared access (also a reserved exclusive input, [§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations), without its exclusive access), but cannot Move or modify that slot. Its result cannot keep a new Borrow or Reborrow of a preceding argument, but may Copy an existing shared borrow. Inspection Loans end before callee entry, and so do a default's temporaries: a default is an outermost expression of its own ([§3.6](03-types-and-values.md#36-temporaries)), whose temporaries are destroyed in reverse creation order once its value is in its pending slot, before the next default is evaluated. A default is **recursive** when its evaluation may evaluate it again through the defaults that the calls in it omit; the value of an omitted recursive default carries the Loans of every preceding argument of its call, as a result that may retain each of them does ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). Transfers inside a default target only constructs inside it.
 
 A default is checked at its declaration like a generic body ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)): it must fit its parameter Type for every binding that satisfies the Constraints, and it is no evidence for inference. Each evaluation instantiates it with the call's bindings; beyond the call's ordinary argument and Loan checks, it can make the call invalid only through the effects it contributes to effect bounds ([§8.11](08-generics-constraints-and-contracts.md#811-effect-bounds)).
 
@@ -321,7 +321,7 @@ let invalid = func (value) => value * 2                 // Error: no fixed input
 
 Captures resolve by Binding Identity. Without a list, no Move, Borrow, Reborrow ([§3.5](03-types-and-values.md#35-copy-and-move)) or partial capture is inferred, so a Non-Copy root is rejected even when only a Copy Field is read; an existing `ref/T` is Copied with its dependencies, and Copy that depends on generic parameters needs declared evidence.
 
-An explicit entry names one binding and acquires it at creation exactly as its initialization would ([§3.5](03-types-and-values.md#35-copy-and-move), [§13.5](13-operators-and-assignment.md#135-explicit-operations), [§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects)): a bare entry Reborrows a binding holding `uniq/T` or `objuniq/T` and rejects other Non-Copy bindings, and `x@ref` or `x@uniq` borrows the outer slot, on which the Closure then depends ([§15.8](15-ownership-and-lifetime-analysis.md#158-captured-and-erased-dependencies)).
+An explicit entry names one binding and acquires it at creation exactly as its initialization would ([§3.5](03-types-and-values.md#35-copy-and-move), [§13.5](13-operators-and-assignment.md#135-explicit-operations), [§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects)): a bare entry Reborrows a binding holding `uniq/T` or `objuniq/T`, its child's Origin being the meet of the Origins that contain it ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)), and rejects other Non-Copy bindings, and `x@ref` or `x@uniq` borrows the outer slot, on which the Closure then depends ([§15.8](15-ownership-and-lifetime-analysis.md#158-captured-and-erased-dependencies)).
 
 Only outer runtime locals and parameters are captured. Type names, Containers, static storage (static Fields and Properties, whose direct use is a static access, [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)) and named functions, including local named functions, are not captures. Top-level locals are ordinary locals and are captured like any other. Contextual `self` and a setter's `value` are never captured implicitly; explicit captures of them obey the receiver and accessor rules. In a constructor or `drop`, no entry captures `self` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)). The contextual `storage` binding cannot be captured by name. A static Property's `storage` is static storage, so a Closure in its accessor uses it as a static access; an instance Property's `storage` is never captured.
 
@@ -335,7 +335,7 @@ group Totals
 
 Explicit entries execute left to right, unused ones included; duplicates and names of parameters are errors. Inferred captures execute once each, in order of first occurrence in selected source.
 
-A capture without `var` is a `let`-like environment binding, whatever its source's mutability; a value capture is a snapshot, and `var` changes only the binding's mutability. In a call, each environment binding acts as a local of the call with its capture's `let`/`var` mutability: a Shared call only reads it, an Exclusive call may also assign a `var` binding and use captured `uniq` referents, and only a Consuming call may move a capture out. A consumed `let` capture cannot be reinitialized. Environment bindings are not parameters, so the owned-Type parameter restriction of [§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition) does not apply to them. No environment may borrow its own owned capture through another capture.
+A capture without `var` is a `let`-like environment binding, whatever its source's mutability; a value capture is a snapshot, and `var` changes only the binding's mutability. In a call, each environment binding acts as a local of the call with its capture's `let`/`var` mutability: a Shared call only reads it, an Exclusive call may also assign a `var` binding and use the environment, captured `uniq` referents included, with exclusive access ([§7.7.3](#773-call-receiver)), and only a Consuming call may move a capture out. A consumed `let` capture cannot be reinitialized. Environment bindings are not parameters, so the owned-Type parameter restriction of [§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition) does not apply to them. No environment may borrow its own owned capture through another capture.
 
 **Nested Closures** acquire through every enclosing environment: a binding used only by the inner Closure must also be captured by the outer one, and each omitted list requires Copy on its own. Moving an outer environment value into an inner Closure makes the outer call Consuming. An inner `[x@uniq]` borrows the outer environment binding `x`: an error when it is `let`, otherwise judged by the outer call's permission ([§7.7.3](#773-call-receiver)).
 
@@ -358,11 +358,13 @@ Each concrete Closure has one minimum **Call Receiver Requirement**, from all re
 
 | Requirement | Receiver | Body access |
 | --- | --- | --- |
-| Shared | `ref/Self` | Reads the environment |
-| Exclusive | `uniq/Self` | Mutates the environment or captured referents |
+| Shared | `ref/Self` | Only reads the environment and what it reaches |
+| Exclusive | `uniq/Self` | Mutates the environment, or uses it or what it reaches with exclusive access |
 | Consuming | `owner/Self` | Moves values out of the environment |
 
 A Move on any possible path requires Consuming. Where a conditional acquisition plan ([§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects)) gives admitted cases different effects, each case has its own requirement, and every use is checked in every case ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)); for example, a bare acquisition of a captured value whose Type is a pair layer makes the call Exclusive exactly in the cases where it Reborrows.
+
+The requirement comes from the operations, never from the receiver they would run under: deciding it, a path from an environment binding has no receiver layer. Exclusive access includes an exclusive Borrow or Reborrow, a `uniq/Self` receiver and a `match` or `for` Subject in Exclusive mode, which a Subject reached from an environment binding takes from that binding's own layers ([§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects)), also when the arms or the loop body only read and whatever the iteration entry does. It also includes an access through a raw pointer read from the environment, or through a pointer derived from it, that needs write capability: a write, a Take, an in-place destruction or an exclusive borrow ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions) condition 3). In a Shared call such a pointer is read past `ref/Self` and has no write authority, so these accesses make the call Exclusive, and a read leaves it Shared.
 
 A direct call acquires the receiver like a method receiver ([§7.3.3](#733-method-calls)). An owned Closure Place is borrowed shared for a Shared call and exclusively for an Exclusive call when its lending point is exclusively writable ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)); `uniq/F` and `ref/F` values are Reborrowed, and `ref/F` cannot supply an Exclusive call. A Consuming call Copies a Copy Closure and otherwise needs `c@move()`.
 
@@ -381,6 +383,24 @@ let taken = take@move()   // Consuming: transfers item out.
 // take()                 // Error: take was consumed.
 ```
 
+```kimi
+var cell: i32 = 0
+let p = cell@raw
+let peek = func [p] () -> i32
+    unsafe => return *p              // Shared: a read through a pointer read from the environment.
+let poke = func [p] ()
+    unsafe => *p = 1                 // Exclusive: a write needs write capability.
+var values: Array<i32> = [1, 2]
+let all = values@uniq
+let total = func [all] () -> i32
+    var sum: i32 = 0
+    for v in all => sum += v         // Exclusive: an Exclusive-mode Subject, although the body only reads.
+    return sum
+let first = peek()
+// poke()                           // Error: an Exclusive call of a let Closure.
+// let sum = total()                // Error: an Exclusive call of a let Closure.
+```
+
 ### 7.7.4. Function references and erasure
 
 A function reference is resolved under [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries) and has its Function Item Type, including bound generic arguments and Origin contract; different declarations have distinct Types. `drop` cannot be taken as a value. Requirement references, including built-in witnesses ([§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts)), follow the same rules. A safe compiler-implemented function is referenced the same way, and a requirement value keeps its selected implementation.
@@ -388,7 +408,7 @@ A function reference is resolved under [§10.5](10-overload-resolution-and-infer
 At a position whose fixed expected Type ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)) is a common Function Type, a Function Item or concrete Closure is erased implicitly exactly when:
 
 - its signature fits, with the same task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), and its minimum receiver is Shared;
-- its complete environment is Owned, and its result does not borrow the environment;
+- its complete environment is Owned, and its result contract does not depend on its receiver;
 - all public Origin and Loan contracts hold, and ordinary acquisition of the source is legal.
 
 Erasure is never chained with another implicit adaptation: a borrowed Closure is not erased ([§3.2.1](03-types-and-values.md#321-callable-value-types)), an erased value is not then borrowed, and nothing inside an existing structure is erased. Explicit acquisition may precede erasure ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)). The common-Type search of [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) never erases. A qualified Case construction erases its payload like the leading-dot form ([§6.5.2](06-declarations-and-containers.md#652-case-references)).

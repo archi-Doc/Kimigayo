@@ -107,9 +107,8 @@ internal sealed record SpecCase(string Name, string Section, string Anchor, stri
 /// <param name="Uncomment">The text after <c>// </c> of the one commented line the variant uncomments; null for the block as written.</param>
 /// <param name="Expected">The Error records; none for an accepted variant.</param>
 /// <param name="Family">The deciding analysis or family when it is not the case's.</param>
-/// <param name="Old">The old path's records where they differ from the SPEC (plan §9.2).</param>
-/// <param name="Mir">The MIR's records where they differ from the SPEC, for a landed family.</param>
-internal sealed record SpecVariant(string? Uncomment, SpecRecord[] Expected, string? Family = null, SpecDifference? Old = null, SpecDifference? Mir = null);
+/// <param name="Mir">The MIR's records where they differ from the SPEC.</param>
+internal sealed record SpecVariant(string? Uncomment, SpecRecord[] Expected, string? Family = null, SpecDifference? Mir = null);
 
 /// <summary>One Error record of a SPEC example: its code, the code named by DIAGNOSTICS or by the catalog entry whose message states the
 /// rule, and the text that locates the line holding its primary location.</summary>
@@ -120,11 +119,11 @@ internal sealed record SpecVariant(string? Uncomment, SpecRecord[] Expected, str
 /// <param name="Basis">Why the code, when neither DIAGNOSTICS nor a catalog message states the rule.</param>
 internal sealed record SpecRecord(string Code, string Line, bool Dependent = false, string? Basis = null);
 
-/// <summary>A path's records of a variant where they differ from the SPEC, with the class the difference ledger would give the difference
+/// <summary>The MIR's records of a variant where they differ from the SPEC, with the class the difference ledger would give the difference
 /// ((a) an old-path error, which goes with the old path at R6-check; (b) a new-path error, including Binding's, which both paths share;
 /// (c) a SPEC ambiguity; (d) an intended change, a rule the SPEC changed that MIR alone implements, plan §9.2; or (e) a form MIR does not
 /// build yet) and the SPEC clause.</summary>
-/// <param name="Records">The path's Error records.</param>
+/// <param name="Records">The MIR's Error records.</param>
 /// <param name="Category">The class.</param>
 /// <param name="Clause">The SPEC sections deciding the variant, separated by spaces.</param>
 /// <param name="Note">The difference.</param>
@@ -210,7 +209,9 @@ internal static class DiagnosticCorpus
             var project = Path.Combine(folder, "Program.kimiproj");
             File.WriteAllText(project, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
-            Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+            Assert.True(
+                Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
+                string.Join(", ", failures));
             return CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         }
         finally

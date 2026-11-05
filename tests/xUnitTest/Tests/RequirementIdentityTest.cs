@@ -21,7 +21,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
     public void DistinctBoundParentsKeepBothRequirements(string parents)
     {
         var c = MinimalEmissionTest.Analyze(Declarations(parents));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
         Assert.Equal(2, q.SymbolOf()!.Contract!.Requirements.Count);
     }
@@ -62,7 +62,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
             let source = S.init()
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
         Assert.Single(q.SymbolOf()!.Contract!.Requirements);
     }
@@ -75,7 +75,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var source = Declarations("P<i32>, P<U>").Replace("contract Q:", "contract Q<U>:", StringComparison.Ordinal)
             .Replace("Self is Q", "Self is Q<" + argument + ">", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "S");
         var reference = Assert.Single(s.ConstraintNodes).ConstraintOf()!.Contract!;
         Assert.Equal(count, reference.Contract!.Requirements.Count);
@@ -90,7 +90,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var source = Declarations("P<i32>, P<i64>").Replace("struct S", "    effect (" + bounded + ").value confined\nstruct S", StringComparison.Ordinal);
         source = source.Replace("-> " + (bounded == "P<i32>" ? "i64" : "i32") + " => x", "-> " + (bounded == "P<i32>" ? "i64" : "i32") + "\n        Console.writeLine(\"unbounded\")\n        return x", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
     {
         var source = Declarations("P<i32>, P<i64>").Replace("struct S", "    effect (P<i32>).value confined\n    effect (P<i64>).value confined\nstruct S", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -109,12 +109,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var source = "contract P<T>\n    func value(self: ref/Self, x: T) -> T\ncontract Q: P<i32>, P<i64>\n    effect (P<i32>).value confined\n" +
             "contract Safe\n    func run(self: ref/Self) -> " + argument + "\n        effect confined\n" +
             "struct Wrapper<T>\n    T is Q\n    Self is Safe\n    let inner: T\n    public func run(self: ref/Self) -> " + argument + "\n        let x: " + argument + " = 7\n        return self.inner.value(x)\nlet present = 1";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
+        EffectBoundImplementationTest.AssertBound(MinimalEmissionTest.Analyze(source), valid, "Self is Safe"); // A4's record (R6-check H3b T40)
     }
 
     // SPEC 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a later call of either requirement of one Contract reaches
@@ -127,8 +122,8 @@ public class RequirementIdentityTest(ITestOutputHelper output)
     {
         var source = KeyedTake + EitherRequirement(second) + "let present = 1";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -164,7 +159,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var donor = CompilationTestHelper.ParseSuccess("contract Q: P<i64>").Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single();
         Assert.True(KotoHelper.Replace(declaration, declaration.Bases[0], ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(declaration.CodeContext))));
         Assert.False(mapping.IsVerified);
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(mapping.IsVerified);
         Assert.Equal(previous[1].Identity, Assert.Single(mapping.Witnesses).Identity);
         Assert.Null(mapping.GetImplementation(previous[0].Identity));
@@ -204,9 +199,9 @@ public class RequirementIdentityTest(ITestOutputHelper output)
     public void WarmBoundRequirementRebindDoesNotAllocate()
     {
         var c = MinimalEmissionTest.Analyze(Declarations("P<i32>, P<i64>").Replace("struct S", "    effect (P<i32>).value confined\nstruct S", StringComparison.Ordinal));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var bytes = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, bytes);
     }
 

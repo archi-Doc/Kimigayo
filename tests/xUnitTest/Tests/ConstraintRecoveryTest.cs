@@ -50,7 +50,7 @@ public class ConstraintRecoveryTest(ITestOutputHelper output)
         var contract = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "C").SymbolOf()!;
         Assert.Equal(ConstraintProof.Error, c.Binding.ResolveConformance(use.Parameters[0].Type.TypeOf()!, contract, use, out var path));
         Assert.Null(path);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, TestDiagnostics.Of(c));

@@ -32,7 +32,7 @@ public class BorrowedSlotReferenceTest
     public void TheSlotIsBorrowedInPlace()
     {
         var c = MinimalEmissionTest.Analyze("func pick(p: ref/(ref/i32 during a, i32)) -> ref/(ref/i32 during a) during p => p.0@ref\nvar value = 1\nlet t = (value@ref, 2)\nlet r = pick(t@ref)\nrequire r == 1 else => $abort(\"slot\")");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // A stored Origin that is not known to outlive the result's stays a mismatch at the result.
@@ -45,15 +45,16 @@ public class BorrowedSlotReferenceTest
         Assert.Equal("p.item@ref", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
     }
 
+    // The record is the MIR's (H5): at the exclusive borrow `t@uniq`, or at the write.
     [Theory]
-    [InlineData("var t = (value@ref, 2)\nlet r = pick(t@ref)\nlet w = t@uniq\nrequire r == 1 else => $abort(\"slot\")", "t")]
+    [InlineData("var t = (value@ref, 2)\nlet r = pick(t@ref)\nlet w = t@uniq\nrequire r == 1 else => $abort(\"slot\")", "t@uniq")]
     [InlineData("var t = (value@ref, 2)\nlet r = pick(t@ref)\nt.1 = 9\nrequire r == 1 else => $abort(\"slot\")", "t.1 = 9")]
     public void TheCallerKeepsTheRootLoan(string body, string conflict)
     {
         var c = MinimalEmissionTest.Analyze("func pick(p: ref/(ref/i32 during a, i32)) -> ref/(ref/i32 during a) during p => p.0@ref\nvar value = 1\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

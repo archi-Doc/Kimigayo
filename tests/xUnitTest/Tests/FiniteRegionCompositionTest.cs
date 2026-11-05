@@ -24,17 +24,18 @@ public class FiniteRegionCompositionTest
     public void FiniteAndInferredRegionsShareValueFlow(string name, string source)
         => ScalarEmissionTest.EmitFixture("FiniteRegionComposition" + name, source, string.Empty);
 
+    // In the `use` row `f()`'s result `during x` keeps no Loan live (SPEC 15.6) and the call retains no argument (15.6.4, 15.6.7), so
+    // `x@follow = 9` is valid (PLAN G147 (7)).
     [Theory]
     [InlineData(Values + "let view: ref/i32 during root = b@ref\nb = 3\n" + Read, "b = 3")]
     [InlineData(Values + Identity + "let view = f(b@ref)\nb = 3\n" + Read, "b = 3")]
     [InlineData("var n = 7\nlet f = func (pair: (ref/i32, i32)) => pair.0\nlet view = f((n@ref, 1))\nn = 8\nrequire view@follow == 7 else => $abort(\"closure\")", "n = 8")]
     [InlineData(Store + "n = 3\n" + ReadStored, "n = 3")]
-    [InlineData("func use(x: uniq/i32, f: ref/(() -> ref/i32 during x)) -> i32\n    var old = x@follow@ref\n    let view = f()\n    x@follow = 9\n    return view@follow\npublic func main() => ()", "x")]
-    public void EveryTransferredBorrowStillProtectsItsSource(string source, string at)
+    [InlineData("func use(x: uniq/i32, f: ref/(() -> ref/i32 during x)) -> i32\n    var old = x@follow@ref\n    let view = f()\n    x@follow = 9\n    return view@follow\npublic func main() => ()")]
+    public void EveryTransferredBorrowStillProtectsItsSource(string source, string? mir = null)
     {
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Contains(errors, x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd) && source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == at);
-        Assert.DoesNotContain(errors, x => x.Category == DiagnosticCategory.Unsupported);
+        var c = MinimalEmissionTest.Analyze(source, "Program.kimi");
+        MirTargetSide.Check(c, mir is null ? [] : [(DiagnosticCode.ComparisonLoanConflict_Kd, new(mir))]);
     }
 
     [Theory]
@@ -49,8 +50,8 @@ public class FiniteRegionCompositionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }
 }

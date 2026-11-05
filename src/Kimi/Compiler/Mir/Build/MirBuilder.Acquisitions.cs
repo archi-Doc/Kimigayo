@@ -5,9 +5,14 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Acquisitions (SPEC 3.5, 10.2, 13.5.6, 15.1.5): a Place as its consumer's acquisition and adaptation take it (Acquire), by the pair
-// layer's case (ByCase), and the one borrow rule (Ref, Lent), each formed in a temp or the place given (Temporary, Borrow).
+// layer's case (ByCase), and the one borrow rule (Ref, Lent), each formed in a temp or the place given (Temporary, Borrow); a Place in an
+// Opaque temp is lent by none (Unlent; DECISIONS R4-M149).
 internal sealed partial class MirBuilder
 {
+    // The body's Opaque temps (DECISIONS R4-M149): the temps the builder holds an Opaque value in for a consumer, the derived value of a
+    // node Binding rejected (Value) and an unsupported or derived form's value (Unsupported); a place a consumer gave is none.
+    private readonly HashSet<int> opaqueTemps = [];
+
     // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (ByCase; a PairAcquire is the
     // whole rvalue of an Assign to the local given or a temp) or, a stored exclusive reference, Reborrowed in its own mode (SPEC 15.1.5).
     // SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
@@ -29,10 +34,10 @@ internal sealed partial class MirBuilder
             return this.Acquired(adjust, place, expected, input, node, into);
         }
 
-        var value = this.Temp(BoundType.Never, node);
+        var value = this.Hold(BoundType.Never, node);
         var acquired = this.body.AddOperand(this.Acquired(adjust, place, expected, input, node));
         this.body.Push(this.current, MirStatement.Assign(value, MirRvalue.Use(acquired), this.Info(node)));
-        return MirOperand.Move(value);
+        return MirOperand.Move(this.Made(value));
     }
 
     // A Place other than the Never value as an acquisition and an adaptation take it (Acquire).
@@ -85,14 +90,20 @@ internal sealed partial class MirBuilder
     // SPEC 15.1.5, 15.6.3 (DECISIONS BU-27): a stored exclusive reference Reborrowed in its own mode, of the Type its consumer expects,
     // which is Binding's name for the Reborrow (a receiver's, an argument's or a payload's AdaptedType, a Subject's borrow, a destination's
     // Type) and a same-mode reference to the stored referent; as Acquired types every other borrow by `expected`. Any other expected Type is
-    // a broken contract: InternalInvariant_Kd, the value a derived Opaque of the stored Type.
+    // a broken contract: InternalInvariant_Kd, the value a derived Opaque of the stored Type in an Opaque temp, whose site names only the
+    // Place's root, built already (R5-M63, R5-M84).
     private MirOperand Reborrowed(MirPlace place, BoundType stored, BoundType? expected, bool input, Koto node, MirPlace? into)
     {
         if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
             stored.Components is not [var referent] || !MirTypes.Agree(named, referent))
         {
-            this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
-            return MirOperand.Move(this.Unsupported(node, derived: true, stored));
+            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
+            var temp = this.Temp(stored, node);
+            this.opaqueTemps.Add(temp.Root);
+            this.roots.Clear();
+            this.roots.Add(place.Root);
+            this.Site(node, temp, Completes(node));
+            return MirOperand.Move(temp);
         }
 
         return this.Temporary(expected, this.Ref(place, expected, input), node, into);
@@ -105,16 +116,23 @@ internal sealed partial class MirBuilder
     {
         if (MirCases.Binder(this.body, type) is var binder and >= 0)
         {
-            return MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq);
+            return this.Unlent(place, type) ??
+                MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq);
         }
 
         return MirTypes.IsExclusive(type) ? this.Ref(place, type, input) : null;
     }
 
     // SPEC 13.5.6, 5.4: a reference of a Type to a Place, the one rule of every borrow: of the Place it lends (Lent), in its Type's mode
-    // (MirTypes.RefKind; an exclusive reservation, a call's input or an update's destination, is two-phase).
+    // (MirTypes.RefKind; an exclusive reservation, a call's input or an update's destination, is two-phase); none of an Opaque temp.
     private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
-        => MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
+        => this.Unlent(place, reference) ?? MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
+
+    // SPEC 23.1.2, 3.6 (DECISIONS R4-M149): an Opaque temp is no storage, so an rvalue of a Type that would lend a Place in one (a Ref, a
+    // pair-case acquisition, a case adaptation) is its consumer's derived value instead: an Opaque located at the temp's node whose site
+    // names only the temp, built already; null for a Place in other storage.
+    private MirRvalue? Unlent(MirPlace place, BoundType type) => this.opaqueTemps.Contains(place.Root)
+        ? MirRvalue.Opaque(type, this.body.AddOpaque(this.body.Locals[place.Root].Source.Syntax, [place.Root])) : null;
 
     // SPEC 13.5.6, 6.2.2: the Place a reference of a Type to a Place lends: the Place's layer whose Type is the reference's referent (an
     // object borrow's payload, a reborrow's referent) or its base that is (a base view).

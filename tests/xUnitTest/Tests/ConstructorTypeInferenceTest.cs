@@ -20,13 +20,13 @@ public class ConstructorTypeInferenceTest
     public void OwnTypeSlotsUseTheCommonCallInference(string use, string name)
     {
         var c = MinimalEmissionTest.Analyze(Box + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true });
         var plan = Assert.IsType<CallPlan>(call.CallOf());
         Assert.True(plan.TypeArguments.IsEmpty);
         Assert.Equal(name, Assert.Single(plan.DeclaringType!.Components).Name);
         Assert.Same(plan.DeclaringType, call.TypeOf());
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -38,7 +38,7 @@ public class ConstructorTypeInferenceTest
     {
         var source = "struct Pair<T>\n    public init(first: T, second: T) => ()\nlet n: i32 = 42\nlet pair = Pair" + (explicitType ? "<i32>" : string.Empty) + ".init(" + (reverse ? "n@ref, n" : "n, n@ref") + ")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete == explicitType, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == explicitType, MinimalEmissionTest.Describe(c));
         if (!explicitType)
         {
             Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.NoApplicableCandidate);
@@ -59,7 +59,7 @@ public class ConstructorTypeInferenceTest
     public void IndependentExpectationFillsOtherwiseUnboundSlots(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("struct Empty<T>\n    public init() => ()\n" + use);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnboundTypeArgument);
@@ -93,7 +93,7 @@ public class ConstructorTypeInferenceTest
     public void OneWaitingConstructorKeepsItsConcreteClosure(string use)
     {
         var c = MinimalEmissionTest.Analyze(Box + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true });
         Assert.Equal(BoundTypeKind.Closure, call.TypeOf()!.Components[0].Kind);
     }
@@ -108,7 +108,7 @@ public class ConstructorTypeInferenceTest
     public void LookupCommitsTheDeclarationAndOuterBindings(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -121,8 +121,8 @@ public class ConstructorTypeInferenceTest
     public void CompositeAndBorrowTypesFollowTheExistingStoragePath(string use)
     {
         var c = MinimalEmissionTest.Analyze(Box + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -131,7 +131,7 @@ public class ConstructorTypeInferenceTest
     public void ExplicitRecursiveConstructionSubstitutesOnce(string argument)
     {
         var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    public init() => ()\n    public func make() -> Grow<{argument}> => Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.TypeOf()?.Components.FirstOrDefault()?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Semantics);
         Assert.Equal(argument == "raw/T" ? "Grow<raw/T>" : "Grow<(T, T)>", Binding.DiagnosticTypeName(call.TypeOf()!));
     }
@@ -143,8 +143,8 @@ public class ConstructorTypeInferenceTest
     {
         var source = "struct View<T>{source}\n    public let value: ref/T during source\n    public init(value: ref/T during source) => self.value = value\nlet n: i32 = 42\nlet view = View" + (explicitType ? "<i32>" : string.Empty) + ".init(n@ref)\nrequire view.value@follow == 42 else => $abort(\"loan\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("ConstructorStoredLoan" + explicitType, source, string.Empty);
     }
 
@@ -199,7 +199,7 @@ public class ConstructorTypeInferenceTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

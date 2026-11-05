@@ -5,94 +5,16 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-/// <summary>Per-substitution plans of universally verified generic bodies (SPEC 21.3.1 step 3).</summary>
+/// <summary>The Semantics-case substitution of a definition run and its pair layers (SPEC 8.15, 13.5.5).</summary>
 public sealed partial class OwnershipAnalysis
 {
-    private readonly List<OwnershipBody> instancePool = new();
-    private int instanceCount;
-    private OwnershipBody? instanceBody;
-    private CallPlan? instance;
-    private bool instanceFailed;
-
     // SPEC 8.15: the Semantics case of the current definition run, one admitted Semantics per resolved pair binder in scope;
-    // empty outside a case run. A case run and an instance are the two substitutions of a declared Type (Concrete).
+    // empty outside a case run. A case run substitutes the declared Types (Concrete).
     private PairCase[] cases = [];
     private int caseCount;
 
-    internal string? InstanceStorageLimit { get; private set; }
-
-    internal OwnershipBody? FailedInstance { get; private set; }
-
-    // Whether declared Types are substituted in this run: by a closed call (an instance) or by a Semantics case (SPEC 8.15).
-    private bool Substituting => this.instance is not null || this.caseCount != 0;
-
-    /// <summary>Releases the instance plans of the previous generation request.</summary>
-    /// <param name="preserveFailure">Keeps the failed body's pooled facts available for immediate diagnostic publication.</param>
-    internal void ClearInstances(bool preserveFailure = false)
-    {
-        this.instanceCount = 0;
-        this.InstanceStorageLimit = null;
-        if (!preserveFailure)
-        {
-            this.FailedInstance = null;
-        }
-    }
-
-    /// <summary>
-    /// Rebuilds the ownership plan of a verified generic body under one closed call substitution. The
-    /// universal verification remains the acceptance proof; the instance plan only fixes acquisitions,
-    /// value flow and cleanup for concrete lowering, and a refused instance returns null.
-    /// </summary>
-    /// <param name="generic">The universally verified generic body.</param>
-    /// <param name="call">A closed call whose substitution selects the instance.</param>
-    /// <param name="defaultParameter">The default to execute, or -1 for the ordinary function body.</param>
-    /// <returns>The verified instance plan, valid until <see cref="ClearInstances"/>.</returns>
-    internal OwnershipBody? AnalyzeInstance(OwnershipBody generic, CallPlan call, int defaultParameter = -1)
-    {
-        if (!generic.IsVerified || this.flow is null || this.Substituting)
-        {
-            return null;
-        }
-
-        if (this.instanceCount == this.instancePool.Count)
-        {
-            this.instancePool.Add(new());
-        }
-
-        var saved = this.body;
-        var issueCount = this.issues.Count;
-        var target = this.instancePool[this.instanceCount];
-        this.instanceBody = target;
-        this.instance = call;
-        this.instanceFailed = false;
-        try
-        {
-            this.Build(generic.Function, defaultParameter);
-            if (this.instanceFailed || target.IssueStorage.Count != 0 || !target.IsVerified)
-            {
-                target.IsVerified = false;
-                this.FailedInstance = target;
-                if (target.IssueStorage.Count == 0)
-                {
-                    // A refused checked instance must retain a cause. An unexplained refusal is an invariant failure,
-                    // never evidence that the user's universally verified generic definition is invalid.
-                    target.ReportIssue(new(generic.Function, OwnershipRequirement.Internal));
-                }
-
-                return null;
-            }
-
-            this.instanceCount++;
-            return target;
-        }
-        finally
-        {
-            this.issues.RemoveRange(issueCount, this.issues.Count - issueCount);
-            this.body = saved;
-            this.instanceBody = null;
-            this.instance = null;
-        }
-    }
+    // Whether declared Types are substituted in this run: by a Semantics case (SPEC 8.15).
+    private bool Substituting => this.caseCount != 0;
 
     // SPEC 13.5.5: a @follow that selects the referent of a reference. A followed pair layer does so in a Semantics case or an
     // instance whose binding is ref or uniq; for owner it selects the operand Place itself.
@@ -291,26 +213,10 @@ public sealed partial class OwnershipAnalysis
     }
 
     // A declared Type of the analyzed body interpreted in a context (SPEC 7.2.3, 8.15): the context's default substitution, then
-    // the Semantics case's Types or the instance's closed substitution; a case substitution cannot fail.
+    // the Semantics case's Types; a case substitution cannot fail.
     private BoundType? Resolve(BoundType? type, InterpretationContext context)
     {
         type = this.body.SubstituteDefaults(type, context);
-        if (type is null)
-        {
-            return type;
-        }
-
-        if (this.instance is not { } call)
-        {
-            return this.caseCount == 0 ? type : this.compilation.Binding.CaseType(type, this.cases.AsSpan(0, this.caseCount));
-        }
-
-        if (this.compilation.Binding.InstantiateStorageType(type, call) is { } concrete)
-        {
-            return concrete;
-        }
-
-        this.instanceFailed = true;
-        return type;
+        return type is null || this.caseCount == 0 ? type : this.compilation.Binding.CaseType(type, this.cases.AsSpan(0, this.caseCount));
     }
 }

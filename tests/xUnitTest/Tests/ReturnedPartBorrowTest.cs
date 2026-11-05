@@ -21,7 +21,7 @@ public class ReturnedPartBorrowTest
     public void RetainsDeclaredInputFootprint(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("ReturnedPartBorrow" + name, Prefix + source, string.Empty);
     }
@@ -36,9 +36,9 @@ public class ReturnedPartBorrowTest
     public void ReturnedLoanStillProtectsItsInput(string source)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() || x.Code is DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -56,9 +56,9 @@ public class ReturnedPartBorrowTest
 
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
         Assert.True(c.Bind().IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Analyze();
-        Assert.True(c.Validate(out var failure), failure);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

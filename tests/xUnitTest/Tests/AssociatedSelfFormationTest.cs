@@ -25,7 +25,7 @@ public class AssociatedSelfFormationTest
     {
         var source = "contract C\n    associate Item(a) for ref/Self during a\nfunc f<T>(value: " + input + ", other: ref/i32 during a) -> T.(C).Item(a)\n    T is C\n    $abort(\"unused\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

@@ -30,6 +30,22 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private const string Fixed = "contract Fixed: Equatable\n    effect Equatable.equals confined\nstruct Key\n    Self is Fixed\n" +
         "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n";
 
+    // G308 E1: the DAG Tuple t4 of depth 4 over the pair t1, compared with itself.
+    private const string Dag4 = "        let t2 = (t1, t1)\n        let t3 = (t2, t2)\n        let t4 = (t3, t3)\n        _ = t4 == t4\n";
+
+    // G308 review (R4's N5): Dag4 under an ordering, whose 16 leaves share one compare.
+    private const string Dag4Less = "        let t2 = (t1, t1)\n        let t3 = (t2, t2)\n        let t4 = (t3, t3)\n        _ = t4 < t4\n";
+
+    // An ordered struct whose compare reads an environment (Ranked) and a pure one (Level).
+    private const string Ordered = "struct Ranked\n    Self is Comparable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+        "    public func compare(self: ref/Self, other: ref/Self) -> i32\n        _ = State.value\n        return 0\n" +
+        "struct Level\n    Self is Comparable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+        "    public func compare(self: ref/Self, other: ref/Self) -> i32 => 0\n";
+
+    // G308 E2: a generic comparison of a DAG Tuple of depth 3 over its leaf T, under Fixed.
+    private const string DeepSame = "    public func deep<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        let x = ((a, a), (a, a))\n" +
+        "        let y = ((b, b), (b, b))\n        return (x, x) == (y, y)\n";
+
     // SPEC 8.11.2: an access to a mutable static, a raw pointer read from an immutable static, an integer made a pointer and a foreign
     // call obtain authority from the environment; reading an immutable static (its initializer enters the summary), writing through a raw
     // input and a foreign call where nothing owes confined do not.
@@ -258,6 +274,41 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        return f()\n"));
     }
 
+    // SPEC 23.1.1 (DECISIONS R4-M153, implementation review 1's N3): beside the limit of several signatures, the same witness destroys a
+    // Tuple nested past the destruction walk's bound: the guard's one ranking decides, the unsupported part over the part past the bound,
+    // so one record; with one signature the depth limit alone.
+    [Theory]
+    [InlineData("", "OwnershipDepthLimit_Kd Self is Work 1")]
+    [InlineData("        F is Callable<(i32) -> i32>\n            effect confined\n", "Unsupported_Kd Self is Work 1")]
+    public void AnUnsupportedPartOutranksAPartPastTheBound(string second, string expected)
+    {
+        var premises = "        F is Callable<() -> i32>\n            effect confined\n" + second;
+        var deep = new string('(', 40) + "0" + string.Concat(Enumerable.Range(0, 40).Select(static i => $", {i})"));
+        Assert.Equal(
+            Expected(expected),
+            Problems("contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n    Self is Work\n" +
+                "    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + $"        _ = {deep}\n        return f()\n"));
+    }
+
+    // SPEC 23.1.1 (DECISIONS R4-M153's revision 3): a destruction walk enters a Type at the shallowest depth it meets it, so a destroyed
+    // Loud, 41 levels down a Tuple and 9 levels down beside it (one Type at both depths), gives its environment effect, which fails the
+    // contract's `confined`, in either order of the components, never the depth limit for the part past the bound.
+    [Theory]
+    [InlineData("deep first")]
+    [InlineData("shallow first")]
+    public void APartsTypeEnteredWithinTheBoundIsNoDeepInEitherOrder(string order)
+    {
+        var (deep, shallow) = (Nested(40), Nested(8));
+        var premises = "        F is Callable<() -> i32>\n            effect confined\n";
+        Assert.Equal(
+            Expected("IncompatibleContractImplementation_Kd Self is Work 1"),
+            Problems(Loud + "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises + "        effect confined\nstruct W\n" +
+                "    Self is Work\n    public func run<F>(self: ref/Self, f: ref/F) -> i32\n" + premises +
+                $"        _ = ({(order == "deep first" ? $"{deep}, {shallow}" : $"{shallow}, {deep}")})\n        return f()\n"));
+
+        static string Nested(int levels) => new string('(', levels) + "Loud.init()" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
+    }
+
     [Theory]
     [InlineData("ref", "")]
     [InlineData("owner", "UnsatisfiedEffectBound_Kd f@move 18446744073709551615")]
@@ -405,14 +456,23 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("        let first = Compared.init()\n        _ = ((first@ref, 1), 3) == ((first@ref, 2), 3)\n", Failed)]
     [InlineData("        let key = Key.init()\n        _ = H.same(key, key)\n", "")]
     [InlineData("        let key = Key.init()\n        _ = H.loose(key, key)\n", Failed)]
+    // G308 E1: a DAG Type of depth 4, whose 16 leaves share one witness: Compared's environment read fails, Key's pure equals does not.
+    [InlineData("        let first = Compared.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4, Failed)]
+    [InlineData("        let first = Key.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4, "")]
+    [InlineData("        let first = Ranked.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4Less, Failed)]
+    [InlineData("        let first = Level.init()\n        let t1 = (first@ref, first@ref)\n" + Dag4Less, "")]
+    // G308 E2: a generic body comparing a DAG Self over its leaf T, Fixed's confined equals and Equatable's, which bounds no effect.
+    [InlineData("        let key = Key.init()\n        _ = H.deep(key, key)\n", "")]
+    [InlineData("        let key = Key.init()\n        _ = H.deepLoose(key, key)\n", Failed)]
     public void ACompositeComparisonRunsItsPartsWitnesses(string body, string expected)
         => Assert.Equal(
             Expected(expected),
-            Problems(Sink + Loud + Fixed + "group State\n    public var value: i32 = 0\nstruct Compared\n    Self is Equatable\n" +
+            Problems(Sink + Loud + Fixed + Ordered + "group State\n    public var value: i32 = 0\nstruct Compared\n    Self is Equatable\n" +
                 "    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n" +
                 "group H\n    public func same<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        return (a, 1) == (b, 1)\n" +
-                "    public func loose<T>(a: ref/T, b: ref/T) -> bool\n        T is Equatable\n        return (a, 1) == (b, 1)\n" + Witness + body +
-                "        return .Ok(())\n"));
+                "    public func loose<T>(a: ref/T, b: ref/T) -> bool\n        T is Equatable\n        return (a, 1) == (b, 1)\n" +
+                DeepSame.Replace("Fixed", "Equatable", StringComparison.Ordinal).Replace("deep", "deepLoose", StringComparison.Ordinal) + DeepSame +
+                Witness + body + "        return .Ok(())\n"));
 
     // SPEC 8.11.3: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
     // instance (fail-before: the first, judged by the premises).
@@ -456,14 +516,16 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 15.3.5, 16.3.3, 8.15: a growing recursive Type, Nest<(T, T)> below a Sealed rc payload, ends at the destruction walk's bound,
     // since the payload's walk goes on below its handle: a body destroying one is analyzed (it hung before), and where it owes confined
-    // that destruction is a limit, the located Unsupported_Kd.
+    // that destruction is a limit, OwnershipDepthLimit_Kd (the owner's 「G272: (1)」, R4-M153).
     [Fact]
     public void AGrowingRecursiveDestructionEndsAtTheBound()
     {
         const string Nest = "struct Nest<T>\n    var value: T\n    var next: Option<rc/Nest<(T, T)>>\n    public init(value: T)\n" +
             "        self.value = value@move\n        self.next = .None\n";
         Assert.Empty(Problems(Nest + "func release(nest: Nest<i32>) => ()\n"));
-        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
+        Assert.Equal(
+            ["OwnershipDepthLimit_Kd Self is Sink 1"],
+            Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
     }
 
     // SPEC 16.3, 15.3.5 (DECISIONS R4-M58): the destruction walk enters each Type once per query, so a recursive Type that repeats through
@@ -555,8 +617,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
     public void SummariesScaleLinearly(string member)
     {
-        var (sizes, evaluations, allocated) = (new[] { 256, 512, 1024 }, new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, evaluations) = (new[] { 256, 512, 1024 }, new long[3]);
+        var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder(Sink + "group G\n    public let flag: bool = false\ngroup H\n");
             for (var n = 0; n < sizes[i]; n++)
@@ -573,9 +636,12 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             var (cases, report) = (new MirCases(c.Types), new MirReport());
             var flow = new MirDataflow(new MirReach());
             var effects = new MirEffects(c.Types, cases, flow);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            Analyze(effects, flow, cases, program, report);
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            analyses[i] = (effects, flow, cases, program, report);
+            return () => Analyze(effects, flow, cases, program, report);
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (effects, flow, cases, program, report) = analyses[i];
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
@@ -626,6 +692,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     }
 
     private static string[] Problems(Compilation c, MirReport report)
-        => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
-            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        => [.. report.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
+            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipDepthLimit_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

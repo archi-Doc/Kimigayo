@@ -73,10 +73,4 @@ Assert-KimiTestSelections @('XunitTest.OneTest') @('XunitTest.OneTest.Storage') 
 $cases++
 Reject { Assert-KimiTestSelections @() @('XunitTest.OneTest.Run', 'XunitTest.TwoTest.Explicit') $executed 'among the executed tests' } "'XunitTest.TwoTest.Explicit' among the executed tests"
 Reject { Assert-KimiTestSelections @('XunitTest.TwoTest') @() $executed 'among the executed tests' } "'XunitTest.TwoTest' among the executed tests"
-# MIR code generation needs the mir pipeline (R5 PD4); every other pair of -Pipeline and -Codegen runs.
-foreach ($pair in @(@('legacy', 'legacy'), @('mir', 'legacy'), @('mir', 'mir'))) {
-    Assert-KimiCompilerConfiguration $pair[0] $pair[1]
-    $cases++
-}
-Reject { Assert-KimiCompilerConfiguration 'legacy' 'mir' } '-Codegen mir needs -Pipeline mir'
 Write-Output "Passed $cases verification selector checks."

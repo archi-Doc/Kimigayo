@@ -86,7 +86,7 @@ public class SignatureProjectionCertificateBindingTest
     {
         var source = Consumer(property).Replace("contract C\n", "contract C\n    associate Item\n", StringComparison.Ordinal).Replace("Self is C\n", "Self is C\n    associate C.Item is i32\n", StringComparison.Ordinal).Replace("Source.Origin.Item", "Self.C.Item", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }

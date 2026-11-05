@@ -6,31 +6,20 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(DictionaryCallee Callee, BoundType Key, BoundType Value), CallPlan> dictionaryStorageCalls = new();
+    private readonly Dictionary<(BoundType Key, BoundType Value), CallPlan> dictionaryStorageCalls = new();
 
-    // Closed compiler calls reuse the same source definitions, substitutions and equality witnesses as ordinary library calls. Only
-    // complete Dictionary element Types reach these generation bridges, and only the two DictionaryStorage functions generic over
-    // the entry Types; any other callee is a broken contract.
-    internal CallPlan DictionaryStorageCall(DictionaryCallee callee, BoundType key, BoundType value)
+    // SPEC 12.4.3: a dictionary literal's findEntry call (CallPlan.Of), which reuses the same source definition, substitution and
+    // equality witnesses as an ordinary library call over the literal's complete entry Types.
+    internal CallPlan DictionaryStorageCall(BoundType key, BoundType value)
     {
-        var find = callee switch
+        var symbol = this.Library.DictionaryStorage(DictionaryCallee.FindEntry);
+        var parameters = ((FunctionKoto)symbol.Declaration).Parameters;
+        if (!this.dictionaryStorageCalls.TryGetValue((key, value), out var call))
         {
-            DictionaryCallee.FindEntry => true,
-            DictionaryCallee.ClearEntries => false,
-            _ => throw new InvalidOperationException("A DictionaryStorage callee is not generic over the entry Types."),
-        };
-        var symbol = this.Library.DictionaryStorage(callee);
-        var function = (FunctionKoto)symbol.Declaration;
-        var identity = (callee, key, value);
-        if (!this.dictionaryStorageCalls.TryGetValue(identity, out var call))
-        {
-            this.dictionaryStorageCalls.Add(identity, call = new());
+            this.dictionaryStorageCalls.Add((key, value), call = new());
         }
 
-        var parameters = function.Parameters;
-        var first = parameters[0].Type.BoundType!.Origin!;
-        var result = find ? BoundType.ISize : BoundType.Unit;
-        call.Set(symbol, result, null, [], [key, value], inputOrigins: find ? [first, parameters[1].Type.BoundType!.Origin!] : [first]);
+        call.Set(symbol, BoundType.ISize, null, [], [key, value], inputOrigins: [parameters[0].Type.BoundType!.Origin!, parameters[1].Type.BoundType!.Origin!]);
         return call;
     }
 }

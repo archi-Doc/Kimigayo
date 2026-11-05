@@ -209,7 +209,7 @@ public sealed partial class KimiLibrary
         ParseSource(ref reader, source.Signatures, container);
         if (context.Documentation is { } documentation)
         {
-            documentation.SetLocation(string.Empty);
+            documentation.SetLocation(this.Kotonoha.LogicalName(document));
             documentation.Finish(context.Compilation.Diagnostics.HasSyntaxErrors(document));
             this.Kotonoha.RecordDocumentation(documentation);
         }

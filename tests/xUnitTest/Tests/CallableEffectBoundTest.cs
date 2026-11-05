@@ -29,21 +29,41 @@ public class CallableEffectBoundTest
     public void AcceptsAConfinedClosure()
     {
         var c = MinimalEmissionTest.Analyze(Apply + "public func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    [Fact]
-    public void ReportsTheViolatingCallableAfterSelection()
+    private static readonly string ApplyFromGroup = "group Callbacks\n    public " + Apply.TrimEnd('\n').Replace("\n", "\n    ", StringComparison.Ordinal) + "\n";
+
+    // SPEC 8.11.2, 7.7.2: mutable static storage is environmental through either its Property name or its accessor's storage name. A4's
+    // record is at the selected argument, without the effect's Label or a Note (AssertA4Record).
+    [Theory]
+    [InlineData("group State\n    public var count: i32 = 0\nfunc entry() -> i32\n    let f = func [] () -> i32 => State.count\n    return Callbacks.apply(f@ref)\n", "f@ref")]
+    [InlineData("group State\n    public var count: i32 = 0\n        get() -> i32\n            let f = func [] () -> i32 => storage\n            return Callbacks.apply(f@ref)\n", "f@ref")]
+    [InlineData("group State\n    public var count: i32 = 0\n        get() -> i32\n            let f = func [] () -> i32\n                storage = 3\n                return 0\n            return Callbacks.apply(f@ref)\n", "f@ref")]
+    [InlineData("group State\n    public var count: i32 = 0\n        get() -> i32\n            func f() -> i32 => storage\n            return Callbacks.apply(f)\n", "f")]
+    public void ReportsTheViolatingCallableAfterSelection(string declarations, string argument)
     {
-        var c = MinimalEmissionTest.Analyze(Apply + "group State\n    public var count: i32 = 0\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => State.count\n    return apply(f@ref)\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var c = MinimalEmissionTest.Analyze(ApplyFromGroup + declarations + "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analyze().IsVerified);
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Code == "UnsatisfiedEffectBound_Kd");
         Assert.Equal("UnsatisfiedEffectBound_Kd", error.Code);
-        Assert.Equal("f@ref", error.Text);
-        Assert.Contains("confined", error.Label);
-        Assert.Contains("mutable static", error.Label);
+        Assert.Equal(argument, error.Text);
+        Assert.Null(error.Label);
+        Assert.Null(error.Note);
+    }
+
+    // SPEC 8.11.2: immutable storage is not mutable-static, so the custom getter's closure that reads it keeps apply's confined bound. The
+    // old analysis refused the initializer's cleanup with Unsupported_Kd at `storage` and `f@ref`; since the MIR decides acceptance (H5,
+    // DECISIONS R5-M185) the program is accepted (H3b 1a, T15, the owner 2026-11-03): check publishes no record, and a Library build (every
+    // root, K11) generates the getter and apply.
+    [Fact]
+    public void ImmutableStaticStorageKeepsTheConfinedBound()
+    {
+        var source = ApplyFromGroup + "group State\n    public let count: i32 = 0\n        get() -> i32\n            let f = func [] () -> i32 => storage\n            return Callbacks.apply(f@ref)\npublic func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Contains("apply", MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
     }
 
     // SPEC 8.11.4: the Reason names the cause and the Note the rule; `confined` appears at most once in one Constraint.
@@ -85,13 +105,11 @@ public class CallableEffectBoundTest
         var source = Apply + "func forward<G>(g: ref/G) -> i32\n    G is Callable<() -> i32>\n" +
             (bounded ? "        effect confined\n" : string.Empty) + "    return apply(g)\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 8\n    return forward(f@ref)\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(bounded, c.Analysis.IsVerified);
         if (!bounded)
         {
-            var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-            Assert.Equal("UnsatisfiedEffectBound_Kd", record.Code);
-            Assert.Contains("premise", record.Label);
+            AssertA4Record(source, DiagnosticCode.UnsatisfiedEffectBound_Kd, MirTargetSide.At("apply(g)", "g"));
         }
     }
 
@@ -99,20 +117,23 @@ public class CallableEffectBoundTest
     public void ErasureKeepsNoBound()
     {
         var source = Apply + "public func main() => ()\nfunc entry() -> i32\n    let f: () -> i32 = func [] () -> i32 => 5\n    return apply(f@ref)\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal("UnsatisfiedEffectBound_Kd", error.Code);
-        Assert.Contains("erasure", error.Label);
+        AssertA4Record(source, DiagnosticCode.UnsatisfiedEffectBound_Kd, MirTargetSide.At("apply(f@ref)", "f@ref"));
     }
 
+    // SPEC 8.11.2 (DECISIONS R5-M145): a function item passed under a bound carries its callees' effects, so outer, whose callee reads mutable
+    // static storage, violates confined at its argument and outer over a pure callee does not; the static is declared only where it is read.
     [Theory]
-    [InlineData("State.count", false)]
-    [InlineData("42", true)]
-    public void FunctionItemsUseTheirTransitiveEffects(string body, bool valid)
+    [InlineData("group State\n    public var count: i32 = 0\n", "State.count", false)]
+    [InlineData("", "42", true)]
+    public void FunctionItemsUseTheirTransitiveEffects(string declarations, string body, bool valid)
     {
-        var source = Apply + $"group State\n    public var count: i32 = 0\nfunc inner() -> i32 => {body}\nfunc outer() -> i32 => inner()\npublic func main() => ()\nfunc entry() -> i32 => apply(outer)\n";
+        var source = Apply + declarations + $"func inner() -> i32 => {body}\nfunc outer() -> i32 => inner()\npublic func main() => ()\nfunc entry() -> i32 => apply(outer)\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
+        var at = (source.LastIndexOf("outer)", StringComparison.Ordinal), "outer".Length);
+        var violations = DiagnosticCorpus.Check(source).Diagnostics.Where(static x => x.Code == "UnsatisfiedEffectBound_Kd").Select(static x => (x.Span!.Value.Start, x.Span.Value.Length));
+        Assert.Equal(valid ? [] : [at], violations);
     }
 
     [Theory]
@@ -124,7 +145,7 @@ public class CallableEffectBoundTest
             $"func apply<F>(f: {(receiver == "ref" ? "ref/F" : "F")}) -> i32\n    F is Callable<{receiver}, () -> i32>\n        effect confined\n    return {(receiver == "ref" ? "f()" : "f@move()")}\n" +
             $"public func main() => ()\nfunc entry() -> i32\n    let item = Item.init()\n    let f = func [item@move] () -> i32 => item.value\n    return apply(f@{(receiver == "ref" ? "ref" : "move")})\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
@@ -140,20 +161,18 @@ public class CallableEffectBoundTest
     [Fact]
     public void CallerRecordReachesConsoleAndBothLspPlacements()
     {
-        var check = DiagnosticCorpus.Check(Apply + "func noisy() -> i32\n    Console.writeLine(\"noisy\")\n    return 0\npublic func main() => ()\nfunc entry() -> i32 => apply(noisy)\n");
-        var record = Assert.Single(check.Diagnostics);
-        Assert.Equal("UnsatisfiedEffectBound_Kd", record.Code);
-        Assert.Equal(["bound", "effect"], record.Related!.Select(static r => r.Role));
+        const string Source = Apply + "func noisy() -> i32\n    Console.writeLine(\"noisy\")\n    return 0\npublic func main() => ()\nfunc entry() -> i32 => apply(noisy)\n";
+        var check = AssertA4Record(Source, DiagnosticCode.UnsatisfiedEffectBound_Kd, MirTargetSide.At("apply(noisy)", "noisy"));
+        var record = check.Diagnostics[0];
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(new DiagnosticResult(check.Diagnostics, check.Sources), string.Empty);
-        Assert.Contains("confined", console.Text);
-        Assert.Contains("external operation", console.Text);
+        Assert.Contains(record.Message + " : " + record.Code, console.Text);
+        Assert.Contains("apply(noisy)", console.Text);
         var identity = SourceIdentity.FromPath(check.Sources[record.Source].Path);
         foreach (var related in new[] { false, true })
         {
             var lsp = Assert.Single(WorkspaceCheck.Place(check, [identity], identity, related)[identity]);
-            Assert.Equal(record.Code, lsp.Code);
-            Assert.Contains("confined", lsp.Message);
+            Assert.Equal((record.Code, record.Message), (lsp.Code, lsp.Message));
         }
     }
 
@@ -178,7 +197,7 @@ public class CallableEffectBoundTest
         var source = $"func need<F>() -> ()\n    F is Callable<{required}, () -> i32>\n        effect confined\n    return\n" +
             $"func forward<G>() -> ()\n    G is Callable<{required}, () -> i32>\n    G is Callable<{premise}, () -> i32>\n        effect confined\n    need<G>()\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
@@ -249,16 +268,15 @@ public class CallableEffectBoundTest
         var source = Apply + "func reference<G>() -> ()\n    G is Callable<() -> i32>\n" +
             (bounded ? "        effect confined\n" : string.Empty) +
             $"    G is Owned\n    let f: (ref/G) -> i32 = {reference}\npublic func main() => ()\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
         if (bounded)
         {
-            Assert.Empty(records);
+            Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
         }
         else
         {
-            var diagnostic = Assert.Single(records);
-            Assert.Equal("UnsatisfiedEffectBound_Kd", diagnostic.Code);
-            Assert.Contains("premise", diagnostic.Label);
+            // The selected use: the Type argument of `apply<G>`, or the reference `apply` that infers it.
+            var at = MirTargetSide.At($"= {reference}\n", reference.EndsWith('>') ? "G" : reference);
+            AssertA4Record(source, DiagnosticCode.UnsatisfiedEffectBound_Kd, at);
         }
     }
 
@@ -294,16 +312,13 @@ public class CallableEffectBoundTest
             "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
             "    public func noisy() -> i32\n        Console.writeLine(\"noisy\")\n        return 0\n" +
             $"struct Worker\n    Self is Work\n    public func run(self: ref/Self) -> i32 => Helpers.invoke(func [] () -> i32 => {expression})\npublic func main() => ()\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
         if (valid)
         {
-            Assert.Empty(records);
+            Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
         }
         else
         {
-            var diagnostic = Assert.Single(records);
-            Assert.Equal("IncompatibleContractImplementation_Kd", diagnostic.Code);
-            Assert.Contains("external operation", diagnostic.Label);
+            AssertA4Record(source, DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At("Self is Work"));
         }
     }
 
@@ -316,28 +331,24 @@ public class CallableEffectBoundTest
         var source = "contract Work\n    func run<F>(self: ref/Self, f: ref/F) -> i32\n        F is Callable<() -> i32>\n" + bound +
             "        effect confined\nstruct Worker\n    Self is Work\n    public func run<F>(self: ref/Self, f: ref/F) -> i32\n        F is Callable<() -> i32>\n" + bound +
             "        return f()\npublic func main() => ()\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
         if (bounded)
         {
-            Assert.Empty(records);
+            Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
         }
         else
         {
-            var diagnostic = Assert.Single(records);
-            Assert.Equal("IncompatibleContractImplementation_Kd", diagnostic.Code);
-            Assert.Contains("unknown effects", diagnostic.Label);
+            AssertA4Record(source, DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At("Self is Work"));
         }
     }
 
+    // The bounded overload stays selected: its bound's record is at the argument.
     [Fact]
     public void FailedSelectedBoundsNeverChooseTheMoreGeneralOverload()
     {
         const string Source = "func choose<F>(f: ref/F, value: i32) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n" +
             "func choose<F>(f: ref/F, value: i32, spare: i32 = 0) -> i32\n    F is Callable<() -> i32>\n    return 0\n" +
             "func noisy() -> i32\n    Console.writeLine(\"noisy\")\n    return 0\npublic func main() => _ = choose(noisy, 1)\n";
-        var diagnostic = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal("UnsatisfiedEffectBound_Kd", diagnostic.Code);
-        Assert.Contains("never selects another overload", diagnostic.Note);
+        AssertA4Record(Source, DiagnosticCode.UnsatisfiedEffectBound_Kd, MirTargetSide.At("choose(noisy, 1)", "noisy"));
     }
 
     [Fact]
@@ -369,7 +380,7 @@ public class CallableEffectBoundTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 8.11.4, 8.11.3 (the adopted proposal): nothing relates two calls, so the same, a replaced or another Callable value makes
@@ -392,4 +403,19 @@ public class CallableEffectBoundTest
     internal static string Replacing(string second)
         => "func twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n    var f = one@move\n    let first = f(source)\n" +
             second + "    return (first@move, second@move)\n";
+
+    // R6-check H3b T41: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges a selected Callable's or an implementation's
+    // effect bound where Binding did, and check publishes its one record at the obligation's subject: the selected use, or the conformance's
+    // `Self is C` clause (docs/dev/DIAGNOSTICS.md, Callable effect bounds). It has no Label, Note or related location until A4 publishes its
+    // facts (H0a 4.1's Effect* rows).
+    private static CheckOutput AssertA4Record(string source, DiagnosticCode code, SyntaxLocation at)
+    {
+        var check = DiagnosticCorpus.Check(source);
+        var record = Assert.Single(check.Diagnostics);
+        Assert.Equal((code.ToString(), at.Resolve(source)), (record.Code, record.Span!.Value));
+        Assert.Null(record.Label);
+        Assert.Null(record.Note);
+        Assert.Null(record.Related);
+        return check;
+    }
 }

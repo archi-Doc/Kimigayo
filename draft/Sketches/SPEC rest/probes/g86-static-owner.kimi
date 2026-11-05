@@ -1,0 +1,5 @@
+struct Holder<s/T> {a}
+    s is owner or uniq
+    public let item: s/T during a
+func makeOwned() -> Holder<i32> during static => $abort("unused")
+let ok: Holder<i32> during static = makeOwned()

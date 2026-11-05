@@ -5,25 +5,45 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Derived and unsupported values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, and the Opaque value that replaces a node
-// Binding rejected or no rule builds, its site naming the roots the node's syntax reads, writes or borrows (MirBuilder.Opaque.Roots.cs).
+// Derived and unsupported values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, the one path of a construction record made
+// in the body being built (Record), and the Opaque value that replaces a node Binding rejected, a form no rule builds, or a default its
+// call does not instantiate (Defaults; SPEC 23.1.1, DECISIONS R4-M127), its site naming the roots the node's syntax reads, writes or
+// borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots.
 internal sealed partial class MirBuilder
 {
-    // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error, a value without a Type, a literal
-    // without its constant (an invalid escape, a number that does not fit), or a name of a local whose declaration is an Error.
-    private static bool Rejected(Koto node) => HirTables.Op(node) is HirOp.Error or HirOp.Literal || HirTables.Meaning(node) is null ||
-        (HirTables.Symbol(node)?.Declaration is { } declaration && HirTables.Op(declaration) == HirOp.Error);
+    // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error (a literal the lexer could not
+    // read among them, Binding.Rejected) or a value without a Type (a name of a local whose rejected declaration has none too). A name of
+    // a local whose rejected declaration has a Type is its local's (Let).
+    private static bool Rejected(Koto node) => HirTables.Op(node) == HirOp.Error || HirTables.Meaning(node) is null;
 
-    // The one way a form without a building rule is built (plan 5.4, 6.2): an Opaque value in its place and a located record, merged by
-    // location, unless the node is one the lexer or Binding rejected, whose error the Opaque value is derived from (SPEC 23.1.2).
+    // The one way a form without a building rule is built (plan 5.4, 6.2): an Opaque value in its place, its site naming the roots the
+    // node's syntax reads, writes or borrows (SiteRoots), and its located record.
     private void Unsupported(Koto node, MirPlace destination)
     {
-        if (!Rejected(node))
+        this.SiteRoots(node);
+        this.Unsupported(node, destination, node);
+    }
+
+    // The one located Unsupported record with an Opaque value: the Opaque value of a value's evaluation at a node's site, naming the roots
+    // its caller collected (Site; a default its call does not instantiate names the earlier slots, Defaults), and the node's record,
+    // merged by location, unless the value is one the lexer or Binding rejected, whose error the Opaque value is derived from (SPEC 23.1.2).
+    private void Unsupported(Koto node, MirPlace destination, Koto value)
+    {
+        if (!Rejected(value))
         {
-            this.program.Report(SourceRef.Of(node));
+            this.Record(node, DiagnosticCode.Unsupported_Kd);
         }
 
-        this.Opaque(node, destination);
+        this.Site(node, destination, Completes(value));
+    }
+
+    // The one path of a construction record made while a body is built (MirProgram.Report): a code at a node of the body, which marks
+    // the body (MirBody.HasConstructionRecord, its one writer; DECISIONS R5-M183's GR-1a line). The module's broken HIR contracts,
+    // recorded before its bodies, have no body in hand (Module).
+    private void Record(Koto node, DiagnosticCode code)
+    {
+        this.program.Report(SourceRef.Of(node), code);
+        this.body.HasConstructionRecord = true;
     }
 
     // An Opaque value of the destination's Type in place of a node, its site naming the locals the node's syntax reads, writes or borrows

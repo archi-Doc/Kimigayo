@@ -19,16 +19,17 @@ internal sealed partial class MirBuilder
         var after = this.body.AddBlock();
         var site = SourceRef.Of(verification);
         var location = MirOperand.Const(this.body.Const(new(MirConstKind.Location, BoundType.I32, ((long)site.Module << 32) | (uint)site.Id)));
-        var issue = this.Temp(BoundType.Primitives["i64"], verification);
+        var issue = this.Hold(BoundType.Primitives["i64"], verification);
         var test = this.Observe(verification.Condition, failed, after, issue, location);
+        this.Made(issue);
         this.Enter(failed, test);
         if (verification.Message is { } message)
         {
             var temporaries = this.OpenScope(block: false);
-            var text = this.Temp(message);
+            var text = this.Hold(TypeOf(message), message);
             var start = this.arguments.Count;
             this.Assign(text, message);
-            if (!this.IsNever(text))
+            if (!this.IsNever(this.Made(text)))
             {
                 this.arguments.Add(MirOperand.Copy(issue));
                 this.arguments.Add(this.Borrow(SemanticsKind.Ref, text, message));
@@ -60,7 +61,7 @@ internal sealed partial class MirBuilder
     private MirPlace Observe(Koto condition, int whenFalse, int whenTrue, MirPlace issue, MirOperand site)
     {
         var tested = this.OpenScope(block: false);
-        var test = this.Temp(BoundType.Boolean, condition);
+        var test = this.Hold(BoundType.Boolean, condition);
         var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
         this.Recorded(test, condition);
@@ -70,7 +71,7 @@ internal sealed partial class MirBuilder
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
-        this.Branch(test, condition, whenFalse, whenTrue);
+        this.Branch(this.Made(test), condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
         return test;
     }

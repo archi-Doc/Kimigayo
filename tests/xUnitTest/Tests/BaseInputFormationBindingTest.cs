@@ -49,7 +49,7 @@ public class BaseInputFormationBindingTest
     public void ValidBaseInputsUseDeclarationEvidence(string declaration)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n" + declaration);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);

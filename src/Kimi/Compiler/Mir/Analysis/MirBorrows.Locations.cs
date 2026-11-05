@@ -5,23 +5,27 @@ namespace Kimi.Compiler.Mir;
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
 // borrowed roots (MirBorrows.Accesses) with the check sets they take, a Call's or Drop's effect access after them, and the reservations it
 // activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
-// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit,
-// the location's activations (MirBorrows.Activations), its effects (MirBorrows.Effects, whose keys select other case views) and at a
-// default template's Return R26-borrow.
+// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), W's undecided store
+// (MirWrites.Limit, R4-M147, MirBorrows.Calls) and a Borrow or read the addresses do not classify (PQ-10, MirBorrows.Addresses), each a
+// located Unsupported_Kd, a borrowed root's destruction past the destruction walk's bound, a call's retention Limit (R4-M51) and a store
+// undecided past a walk's bound (MirBorrows.Calls), each OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract is broken (G136,
+// MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
+// location's activations (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its
+// effects (MirBorrows.Effects, whose keys select other case views) and at a default template's Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     private MirStep[] accessSteps = [];
 
-    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its
-    // effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a Return, R26-borrow on its own
-    // gather.
+    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations, its
+    // own-step departures and its effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a
+    // Return, R26-borrow on its own gather.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
         var at = new MirLocation(block, index);
         var statement = index < this.body.Blocks[block].Count ? this.body.Statements[location] : default;
-        var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
+        var visitor = new Accessing(this, at, this.Reborrowing(statement));
         MirUses.ForEach(cases, at, ref visitor);
         var (accessed, scope) = (this.accessCount, this.Source(location).Scope); // The location's own accesses; its effect access follows them.
         this.Effecting(block, index);
@@ -37,7 +41,7 @@ internal sealed partial class MirBorrows
             var access = this.accesses[a];
             if (access.Kind == AccessKind.Unclassified)
             {
-                this.Unsupported(at);
+                this.Limit(this.Subject(at), MirOutcome.Deep); // A borrowed root's destruction past the destruction walk's bound (R4-M153).
                 continue;
             }
 
@@ -53,12 +57,29 @@ internal sealed partial class MirBorrows
             this.Ended(at, statement.Place.Root);
         }
 
-        if (index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true })
+        var terminator = index == this.body.Blocks[block].Count;
+        if (this.layerBorrowed[location])
         {
-            this.Unsupported(at); // A contract Binding does not instantiate.
+            this.Limit(this.Subject(at), MirOutcome.Limit); // A `during self` layer's enclosing Place (PQ-10).
         }
 
-        this.Activations(at);
+        if (terminator)
+        {
+            // The call's store, one verdict: W's undecided store (R4-M147), a store undecided past a walk's bound and a retention limit
+            // (R4-M51, R4-M153), joined.
+            var deep = this.deep || this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true };
+            this.Limit(this.Subject(at), (this.limit ? MirOutcome.Limit : MirOutcome.None).Join(deep ? MirOutcome.Deep : MirOutcome.None));
+        }
+
+        (this.limit, this.deep) = (false, false);
+
+        if (terminator && this.Broken(this.body.Blocks[block].Terminator))
+        {
+            this.Internal(at); // G136 (R4-M148).
+        }
+
+        this.Activations(state, at);
+        this.Departures(at, accessed);
         if (accessed < this.accessCount)
         {
             this.Effects(at, this.accesses[accessed].Taking);

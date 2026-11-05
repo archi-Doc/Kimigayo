@@ -6,27 +6,35 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, as the witness core resolves it under a definition's
-    // premises, each target with its declaring instance: a built-in comparison's plan leaves, another built-in target itself (no
-    // instance), else the conformance's witness, an inherited one included; false where none resolves. The requirement takes `ref/Self`
-    // (SPEC 4.9.6's rows and the comparisons), which no virtual function implements (virtual-dispatch 1, 6.3).
-    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, as the witness core resolves it under the Contract reference
+    // the call selected (InstanceContract: `recorded`, the call's dispatching Contract reference, and `reference`, that reference instantiated
+    // in the call's substitution, as TyCtxt.Witness reads them) and a definition's premises, each target with its declaring instance: a
+    // built-in comparison's plan leaves, another built-in target itself (no instance), else the conformance's witness, an inherited one
+    // included, or the accessor an accessor-call Property witness runs (SPEC 11.9.2); false where none resolves, a standard Property
+    // witness included, whose Field operation (a Set destroys the replaced value) no rule here reads. A virtual witness dispatches
+    // through its slot, whose bound the caller reads (SPEC 6.4.6, DispatchBounds).
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? recorded, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
     {
-        var contract = requirement.Scope.Owner.BoundSymbol!;
+        var contract = this.InstanceContract(recorded, self, reference);
         var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition));
         if (witness is { Kind: RequirementWitnessKind.Builtin, Target: { } target } &&
             target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
         {
-            return this.ComparisonPlan(target, self, contract.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
+            var declaring = requirement.Scope.Owner.BoundSymbol!; // The comparison's own Contract, whose mapping the plan follows.
+            return this.ComparisonPlan(target, self, declaring.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
         }
 
-        if (witness.Kind is not (RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance))
+        switch (witness.Kind)
         {
-            return false;
+            case RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance:
+                into.Add((witness.Target!, witness.Declaring));
+                return true;
+            case RequirementWitnessKind.Property when witness.Property.Kind == PropertyWitnessKind.AccessorCall:
+                into.Add((this.AccessorFunction(witness.Property.Implementation).BoundSymbol!, witness.Declaring));
+                return true;
+            default:
+                return false;
         }
-
-        into.Add((witness.Target!, witness.Declaring));
-        return true;
 
         static bool Leaves(BoundComparison plan, List<(BindingSymbol Target, BoundType? Declaring)> into)
         {
@@ -47,9 +55,10 @@ public sealed partial class Binding
     // SPEC 8.6.1: the Contract reference a requirement call selected, as Self's Type conforms to it, for the CallPlan materializer and
     // TyCtxt.Witness: a Contract without Type arguments is its own reference; a bound reference, given in the instance (`reference`:
     // `Indexable<Name>`, or `C<E>` read as `C<i32>`; a call's substitution holds it as its declaring Type), is the conformance of
-    // Self's Type that names it. A requirement's function item records its reference as a Type (TyCtxt.Witness(item)), so its Contract
-    // declaration with a reference of that declaration in the instance is that reference (DECISIONS R5-M70). Null when the call recorded
-    // none or no instantiated reference names a conformance of Self's Type.
+    // Self's Type that names it (NamesReference, in the scope of Self's declaration: Self is closed). A requirement's function item
+    // records its reference as a Type (TyCtxt.Witness(item)), so its Contract declaration with a reference of that declaration in the
+    // instance is that reference (DECISIONS R5-M70). Null when the call recorded none or no instantiated reference names a conformance
+    // of Self's Type.
     internal BindingSymbol? InstanceContract(BindingSymbol? recorded, BoundType self, BoundType? reference)
     {
         if (recorded is null || (!IsBoundContractReference(recorded) && !ReferenceEquals(reference?.Symbol, recorded)))
@@ -62,10 +71,11 @@ public sealed partial class Binding
             return null;
         }
 
+        var scope = this.ConstraintScope(owner.Declaration);
         for (var i = 0; i < identities.Count; i++)
         {
             // A conformance of a generic Type names its reference in the Type's own parameters (`Self is Indexable<K>`).
-            if (identities[i].Contract.Type is { } formal && (ReferenceEquals(formal, reference) || ReferenceEquals(this.StoredType(formal, self), reference)))
+            if (identities[i].Contract.Type is { } formal && (ReferenceEquals(formal, reference) || this.NamesReference(formal, self, reference, scope)))
             {
                 return identities[i].Contract;
             }

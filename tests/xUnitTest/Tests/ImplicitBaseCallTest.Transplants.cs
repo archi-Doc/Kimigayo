@@ -27,12 +27,12 @@ public partial class ImplicitBaseCallTest
         ParseTestHelper.Detach(structure, new GroupKoto(structure.CodeContext, default, default));
         Assert.True(KotoHelper.Replace(old.Parent!, old, structure));
         Assert.True(KotoHelper.Replace(structure, bare, field));
-        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient));
         Assert.Same(latent, structure.ImplicitConstructor);
         Assert.All(KotoTree.Walk(latent), node => Assert.Same(recipient.Kotonoha, node.Kotonoha));
         Assert.Same(recipient.Kotonoha.Syntax, latent.SyntaxOwner);
         Assert.True(recipient.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(recipient.Analyze().IsVerified, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(recipient.Analyze().IsVerified, MinimalEmissionTest.Describe(recipient));
         Assert.NotEmpty(CompilationTestHelper.WriteIr(recipient));
     }
 
@@ -43,24 +43,24 @@ public partial class ImplicitBaseCallTest
         var donor = MinimalEmissionTest.Analyze(Derived, "donor.kimi");
         var middle = CompilationTestHelper.BindSuccess("struct Leaf\n    public init() => ()");
         var recipient = MinimalEmissionTest.Analyze(Derived, "recipient.kimi");
-        Assert.True(donor.Analysis.IsVerified, MinimalEmissionTest.Describe(donor, null));
-        Assert.True(recipient.Analysis.IsVerified, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(donor.Analysis.IsVerified, MinimalEmissionTest.Describe(donor));
+        Assert.True(recipient.Analysis.IsVerified, MinimalEmissionTest.Describe(recipient));
         var moved = Constructor(donor);
         var latent = Assert.IsType<InvocationKoto>(moved.BaseInitializer);
         var interim = Constructor(middle);
         ParseTestHelper.Detach(moved, new CodeBlockKoto(moved.CodeContext));
         Assert.True(KotoHelper.Replace(interim.Parent!, interim, moved));
-        Assert.True(middle.Bind().IsComplete, MinimalEmissionTest.Describe(middle, null));
+        Assert.True(middle.Bind().IsComplete, MinimalEmissionTest.Describe(middle));
         Assert.Null(moved.BaseInitializer);
         var target = Constructor(recipient);
         ParseTestHelper.Detach(moved, new CodeBlockKoto(moved.CodeContext));
         Assert.True(KotoHelper.Replace(target.Parent!, target, moved));
-        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(recipient.Bind().IsComplete, MinimalEmissionTest.Describe(recipient));
         Assert.Same(latent, moved.BaseInitializer);
         Assert.All(KotoTree.Walk(latent), node => Assert.Same(recipient.Kotonoha, node.Kotonoha));
         Assert.Same(recipient.Kotonoha, latent.CallOf()!.Target.Declaration.Kotonoha);
         Assert.True(recipient.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(recipient.Analyze().IsVerified, MinimalEmissionTest.Describe(recipient, null));
+        Assert.True(recipient.Analyze().IsVerified, MinimalEmissionTest.Describe(recipient));
         Assert.NotEmpty(CompilationTestHelper.WriteIr(recipient));
 
         static FunctionKoto Constructor(Compilation compilation)

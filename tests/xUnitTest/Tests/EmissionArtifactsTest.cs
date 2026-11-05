@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -28,16 +29,16 @@ public sealed class EmissionArtifactsTest : IDisposable
             ["unused"] = new() { Kind = "import", Input = "unused.lib" },
             Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Input = "native/codec.lib" }],
         };
-        Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
         Assert.Equal(Path.Combine(this.directory, "out", "Hello.ll"), path);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
         var root = manifest.RootElement;
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path!))), root.GetProperty("irSha256").GetString());
         Assert.Equal("Hello.ll", root.GetProperty("irFile").GetString());
         using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64/profile.json"))));
-        Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), WindowsProfile.LlvmVersion);
-        Assert.Equal(WindowsProfile.LlvmVersion, root.GetProperty("codegen").GetProperty("llvmVersion").GetString());
-        Assert.Equal(WindowsProfile.BackendSha256, root.GetProperty("backendSupport").GetProperty("artifactSha256").GetString());
+        Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), ToolchainIdentity.LlvmVersion);
+        Assert.Equal(ToolchainIdentity.LlvmVersion, root.GetProperty("codegen").GetProperty("llvmVersion").GetString());
+        Assert.Equal(ToolchainIdentity.BackendSha256, root.GetProperty("backendSupport").GetProperty("artifactSha256").GetString());
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
@@ -64,28 +65,25 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         c.Project.ProjectFile.Optimization = optimization;
         c.Project.ProjectFile.OutputPath = outputPath;
-        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
-        Assert.NotNull(error);
+        Assert.NotEmpty(PublicationFailure(c));
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
     }
 
     [Theory]
-    [InlineData("kernel32", "static", "kernel32.lib")]
     [InlineData("kimi_backend", "import", "backend.lib")]
     [InlineData("kernel32", "import", "kernel32.dll")]
     [InlineData("kernel32", "import", "/DEFAULTLIB:evil.lib")]
     [InlineData("kernel32", "import", "kernel32.lib\0")]
     [InlineData("kernel32", "import", "")]
-    [InlineData("unused", "unknown", "unused.lib")]
-    [InlineData("unused", null, "unused.lib")]
     public void InvalidNativeInputsAreRejectedEvenWhenUnused(string name, string? kind, string input)
     {
         var c = this.Create();
         c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { [name] = new() { Kind = kind, Input = input } };
-        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
-        Assert.NotNull(error);
+        Assert.NotEmpty(PublicationFailure(c));
     }
 
     [Theory]
@@ -93,14 +91,13 @@ public sealed class EmissionArtifactsTest : IDisposable
     [InlineData(null, "/DEFAULTLIB:evil.lib")]
     [InlineData(null, "/defaultlib:evil.lib")]
     [InlineData(null, "/WHOLEARCHIVE:evil.lib")]
-    [InlineData("static", "codec.lib")]
     public void InvalidPackageTargetedSuppliesAreRejectedEvenWhenUnused(string? kind, string input)
     {
         var c = this.Create();
         c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Kind = kind, Input = input }] };
-        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
-        Assert.NotNull(error);
+        Assert.NotEmpty(PublicationFailure(c));
     }
 
     [Fact]
@@ -116,28 +113,11 @@ public sealed class EmissionArtifactsTest : IDisposable
         var settings = c.Project.ProjectFile;
         settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["kimi_backend"] = new() { Kind = "static" } };
         settings.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Input = "kimi_backend.lib" } };
-        Assert.True(EmissionArtifacts.Publish(c, out _, out var error), error);
+        Assert.True(EmissionArtifacts.Publish(c, null, out _), MinimalEmissionTest.Describe(c));
 
         settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"].Sha256 = new string('0', 64);
-        Assert.False(EmissionArtifacts.Publish(c, out _, out error));
-        Assert.Contains("Sha256 assertion", error);
-
-        settings.NativeLibraries[WindowsProfile.Target]["kimi_backend"] = new() { Kind = "import", Input = "kimi_backend.lib" };
-        Assert.False(EmissionArtifacts.Publish(c, out _, out error));
-        Assert.Contains("disagrees", error);
-    }
-
-    [Fact]
-    public void ExplicitKernel32PathRequiresMigration()
-    {
-        var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
-        {
-            ["kernel32"] = new() { Kind = "import", Input = "sdk/kernel32.lib" },
-        };
-        Assert.False(EmissionArtifacts.Publish(c, out _, out var error));
-        Assert.Contains("Remove the kernel32 entry", error);
-        Assert.False(Directory.Exists(Path.Combine(this.directory, "out")));
+        Assert.False(EmissionArtifacts.Publish(c, null, out _));
+        Assert.Contains("Sha256 assertion", PublicationFailure(c));
     }
 
     [Fact]
@@ -145,7 +125,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         c.Project.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "absent tools");
-        Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
         var json = File.ReadAllText(Path.ChangeExtension(path!, ".link.json"));
         using var manifest = JsonDocument.Parse(json);
         Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
@@ -164,8 +144,8 @@ public sealed class EmissionArtifactsTest : IDisposable
         {
             ["kimi_backend"] = new() { Kind = "static", Input = archive },
         };
-        Assert.False(EmissionArtifacts.Publish(c, out _, out var error));
-        Assert.Contains("SHA-256", error);
+        Assert.False(EmissionArtifacts.Publish(c, null, out _));
+        Assert.Contains("SHA-256", PublicationFailure(c));
     }
 
     [Fact]
@@ -175,9 +155,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         var output = Path.Combine(this.directory, "out");
         Directory.CreateDirectory(Path.Combine(output, "Hello.link.json"));
         File.WriteAllText(Path.Combine(output, "Hello.ll"), "old IR");
-        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
-        Assert.NotNull(error);
+        Assert.NotEmpty(PublicationFailure(c));
         Assert.Empty(Directory.EnumerateFiles(output, "*.tmp"));
     }
 
@@ -234,10 +214,10 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void FailedSemanticGatePreservesOldOutputsWithoutClaimingThem()
     {
         var c = this.Create();
-        Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
         var previous = File.ReadAllBytes(path!);
         c.Bind(); // Old ownership and startup cannot authorize another publication.
-        Assert.False(EmissionArtifacts.Publish(c, out var failedPath, out _));
+        Assert.False(EmissionArtifacts.Publish(c, null, out var failedPath));
         Assert.Null(failedPath);
         Assert.Equal(previous, File.ReadAllBytes(path!));
     }
@@ -262,6 +242,131 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.True(await c.Project.Generate(TestContext.Current.CancellationToken));
     }
 
+    // DECISIONS R5-M165: a publication failure, here an output directory a file blocks, is ArtifactPublicationFailed_Kd (Input) in the
+    // Emission partition, its cause the note, at the project file; kimi build renders it there and publishes nothing.
+    [Fact]
+    public async Task APublicationFailureIsAnInputRecordAtTheProject()
+    {
+        var c = this.Create();
+        var blocker = Path.Combine(this.directory, "out");
+        File.WriteAllText(blocker, "a file where the output directory goes");
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
+        Assert.Null(path);
+        var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
+        Assert.Equal(("ArtifactPublicationFailed_Kd", DiagnosticCategory.Input, DiagnosticSeverity.Error), (record.Code, record.Category, record.Severity));
+        Assert.NotEmpty(PublicationFailure(c));
+
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(Path.Combine(this.directory, "Hello.kimi"), "::Kimi.Console.writeLine(\"Hello, world!\")");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        Assert.False(await project.Generate(TestContext.Current.CancellationToken));
+        Assert.Contains("ArtifactPublicationFailed_Kd", console.Text, StringComparison.Ordinal);
+        Assert.Contains("The build artifacts cannot be published", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*.ll", SearchOption.AllDirectories));
+    }
+
+    // DECISIONS R5-M169 (G330): while code generation writes the publication's output, only the output's I/O failure is publication's
+    // (ArtifactPublicationFailed_Kd with its cause); every other exception is left unclassified, the same instance, with no record, for the
+    // command's fault path. A writer throws each kind: no test input makes code generation's own checks throw.
+    [Theory]
+    [InlineData(typeof(IOException), true)]
+    [InlineData(typeof(UnauthorizedAccessException), true)]
+    [InlineData(typeof(InvalidOperationException), false)]
+    [InlineData(typeof(KeyNotFoundException), false)]
+    [InlineData(typeof(IndexOutOfRangeException), false)]
+    [InlineData(typeof(ArgumentException), false)]
+    [InlineData(typeof(InvalidDataException), false)]
+    public void GenerationIntoTheOutputRecordsOnlyTheOutputsFailure(Type kind, bool output)
+    {
+        var c = this.Create();
+        var failure = (Exception)Activator.CreateInstance(kind, "failure")!;
+        using var writer = new FailingWriter(failure);
+        if (output)
+        {
+            Assert.False(EmissionArtifacts.GenerateInto(c, writer));
+            var record = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
+            Assert.Equal((nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), DiagnosticCategory.Input), (record.Code, record.Category));
+            Assert.Equal("failure", PublicationFailure(c));
+            return;
+        }
+
+        Assert.Same(failure, Assert.Throws(kind, () => EmissionArtifacts.GenerateInto(c, writer)));
+        Assert.Empty(c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics);
+    }
+
+    // PLAN G157 (7), DECISIONS R5-M181: code generation never reads the native configuration, so a publication-time configuration
+    // failure (an unused native input that is not a .lib) and a generation failure (a runtime Drop without a verdict, InternalInvariant_Kd
+    // at the Drop) are independent, and both are reported.
+    [Fact]
+    public void AConfigurationFailureLeavesGenerationsRecords()
+    {
+        var c = this.Create();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = "unused.dll" } };
+        FunctionCodegenTest.RemoveTheDropVerdict(c);
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
+        Assert.Null(path);
+        Assert.Equal(
+            [("ArtifactPublicationFailed_Kd", (string?)null), ("InternalInvariant_Kd", "\"Hello, world!\"")],
+            TestDiagnostics.Of(c).Select(static x => (x.Code, x.Text)).Order());
+        Assert.Contains(".lib", PublicationFailure(c), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
+    }
+
+    // DECISIONS R5-M169: a command ends a result that an exception ends as Faulted (Project.Faults): one CheckFaulted_Kd (Exception) at
+    // the project file, and the command fails and publishes nothing. No production seam: the front end reads a null source path, a caller
+    // contract no command input reaches (BuildTarget's fault); publication checks a null NativeLibraries input that preparation validated
+    // (ArtifactFiles.CheckPath, PublishArtifacts' fault). Code generation's row, a source path with an embedded NUL, left with G346's fix
+    // (DECISIONS R5-M175: naming a source never throws); generation runs outside Publish's classifying catches (R5-M169's amendment),
+    // and no program makes it throw without a production seam.
+    [Theory]
+    [InlineData("front end")]
+    [InlineData("publication")]
+    public async Task AnExceptionEndsTheCommandsResultAsFaulted(string phase)
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        if (phase == "front end")
+        {
+            project.AddKimiFile(null!);
+            Assert.False(await project.Generate(TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            var c = this.Create();
+            c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
+
+            Assert.False(project.PublishArtifacts(c, null, null, out var path));
+            Assert.Null(path);
+        }
+
+        Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(this.directory, "*.l*", SearchOption.AllDirectories));
+    }
+
+    // PLAN G346 (DECISIONS R5-M175): a source path with an embedded NUL inside the project is published, its location escaped (IMPL
+    // 21.4.2), where its location text faulted the command before.
+    [Fact]
+    public void ANulInsideTheProjectIsPublished()
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        var c = this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
+        Assert.True(project.PublishArtifacts(c, null, null, out var path), console.Text);
+        Assert.Equal("He\\u{0}llo.kimi:3:24", c.Locations.Text(SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single())));
+        Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text, StringComparison.Ordinal);
+        Assert.True(File.Exists(path));
+    }
+
     [Fact]
     public void LogicalSourcePathsAreIndependentOfCheckoutDirectory()
     {
@@ -270,7 +375,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             var c = MinimalEmissionTest.Analyze("Console.writeLine(\"日本語\")", Path.Combine(checkout, "Hello.kimi"));
             c.Project.Directory = checkout;
             using var writer = new StringWriter();
-            Assert.True(c.WriteIr(writer, out var error), error);
+            Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
             return writer.ToString();
         }
 
@@ -283,7 +388,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = Compilation.CreateForTest();
         var diagnostics = c.Diagnostics;
         Assert.False(diagnostics.HasErrors);
-        diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.GenerationFailed_Kd, null, note: "test");
+        diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.ArtifactPublicationFailed_Kd, null, note: "test");
         Assert.True(diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
         Assert.False(diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership));
         diagnostics.Invalidate(DiagnosticPartition.Emission);
@@ -313,7 +418,7 @@ public sealed class EmissionArtifactsTest : IDisposable
                 ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('a', 64) },
                 ["unused"] = new() { Kind = "static", Input = "unused.lib" },
             });
-        Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
         var libraries = manifest.RootElement.GetProperty("libraries");
         Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], libraries.EnumerateArray().Select(x => x.GetProperty("name").GetString()));
@@ -330,30 +435,15 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.CreateForeign(
             "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\npublic func main() => ()",
             settings => settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
-        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
+        Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
-        Assert.Contains("has no NativeLibraries supply", error);
+        Assert.Contains("has no NativeLibraries supply", PublicationFailure(c));
         Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
     }
 
-    [Fact]
-    public void DependencyModuleSuppliesAreNotLinkedYet()
-    {
-        var c = ModuleBindingTest.Create(
-            "public func main() => ()",
-            "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32",
-            configure: (root, library) => library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
-        Assert.True(c.Bind().IsComplete);
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        c.Project.Directory = this.directory;
-        c.Project.Name = "Hello";
-        c.Project.ProjectFile.OutputPath = "out/Hello.ll";
-        Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
-        Assert.Null(path);
-        Assert.Contains("dependency modules", error);
-        Assert.Empty(Directory.EnumerateFiles(this.directory, "*", SearchOption.AllDirectories));
-    }
+    // DECISIONS R5-M165: a publication failure is one ArtifactPublicationFailed_Kd record at the project; its cause is the note.
+    private static string PublicationFailure(Compilation c)
+        => Assert.Single(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.ArtifactPublicationFailed_Kd)).Note!;
 
     private Compilation CreateForeign(string source, Action<ProjectFile> configure)
     {
@@ -370,12 +460,20 @@ public sealed class EmissionArtifactsTest : IDisposable
         return c;
     }
 
-    private Compilation Create()
+    private Compilation Create(string source = "::Kimi.Console.writeLine(\"Hello, world!\")", string path = "Hello.kimi")
     {
-        var c = MinimalEmissionTest.Analyze("::Kimi.Console.writeLine(\"Hello, world!\")");
+        var c = MinimalEmissionTest.Analyze(source, path);
         c.Project.Directory = this.directory;
         c.Project.Name = "Hello";
         c.Project.ProjectFile.OutputPath = "out/Hello.ll";
         return c;
+    }
+
+    // A writer whose every write fails with the given exception.
+    private sealed class FailingWriter(Exception failure) : TextWriter
+    {
+        public override Encoding Encoding => Encoding.UTF8;
+
+        public override void Write(char value) => throw failure;
     }
 }

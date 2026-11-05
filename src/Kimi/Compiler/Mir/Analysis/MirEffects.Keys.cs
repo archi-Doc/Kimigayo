@@ -6,7 +6,8 @@ namespace Kimi.Compiler.Mir;
 // access through what it runs. Under the owner's P5 every key of one Field is one key, so keys are Fields, never substituted: a node's keys
 // are its local accesses (AddKey, as Local walks the view) joined with those of every body view it composes (Spread, after Run's fixed
 // point); Keys answers a site of one view with its key row and classes from the summaries and keys of the last Run, Summary gives a body
-// view's own row and classes (a static initializer's, for A5's initialization proof), and Field numbers a Field's bits.
+// view's own row and classes (a static initializer's, for A5's initialization proof), Items its solved classes and atoms (what holds a
+// published operation's body within its row, SPEC 4.9.6), and Field numbers a Field's bits.
 internal sealed partial class MirEffects
 {
     private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number (P5).
@@ -25,11 +26,12 @@ internal sealed partial class MirEffects
     /// inputs, as <see cref="Local"/> records them, evaluated against them in the view. Bit 2f is a read and bit 2f + 1 a write of the
     /// mutable static Field that <see cref="Field"/> numbers f; a read bit beside its write bit is the write. The classes tell apart what
     /// the site runs and A4 does not classify: <see cref="Unknown"/> (an unknown effect, or an atom left abstract under the body's
-    /// premises), which may access any key, <see cref="Limit"/> and <see cref="Derived"/> (a dependent of an error).</summary>
+    /// premises), which may access any key, <see cref="Limit"/>, <see cref="Deep"/> (past the destruction walk's bound) and
+    /// <see cref="Derived"/> (a dependent of an error).</summary>
     /// <param name="body">A body of the last <see cref="Run"/>'s program, with which the dataflow is begun.</param>
     /// <param name="view">The view, which the case views select (a caller reselects its own afterwards).</param>
     /// <param name="block">The block whose terminator is the Call or the Drop.</param>
-    /// <param name="classes">The site's classes among <see cref="Unknown"/>, <see cref="Limit"/> and <see cref="Derived"/>.</param>
+    /// <param name="classes">The site's classes among <see cref="Unknown"/>, <see cref="Limit"/>, <see cref="Deep"/> and <see cref="Derived"/>.</param>
     /// <returns>The row, valid until the next query or <see cref="Run"/>; no bit for another terminator.</returns>
     internal ReadOnlySpan<ulong> Keys(MirBody body, long view, int block, out byte classes)
     {
@@ -41,7 +43,7 @@ internal sealed partial class MirEffects
         this.Terminator(this.program, body, block, view, body.Blocks[block].Terminator);
         this.Inputs(items, this.itemCount, edges, this.edgeCount);
         (this.itemCount, this.edgeCount) = (items, edges); // The site's inputs are not the body's.
-        classes = (byte)(this.found & (Unknown | Limit | Derived)); // With no reader an atom left abstract is Unknown (AddAtom).
+        classes = (byte)(this.Found & (Unknown | Limit | Derived | Deep)); // With no reader an atom left abstract is Unknown (AddAtom).
         return this.keyScratch.AsSpan(0, this.keyWords);
     }
 
@@ -50,18 +52,31 @@ internal sealed partial class MirEffects
     /// composes the body may resolve it so (R4-M92).</summary>
     /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
     /// <param name="view">The view.</param>
-    /// <param name="classes">The summary's classes among <see cref="Unknown"/>, <see cref="Limit"/> and <see cref="Derived"/>.</param>
+    /// <param name="classes">The summary's classes among <see cref="Unknown"/>, <see cref="Limit"/>, <see cref="Deep"/> and <see cref="Derived"/>.</param>
     /// <returns>The row, A4's storage, valid until the next <see cref="Run"/>.</returns>
     internal ReadOnlySpan<ulong> Summary(MirBody body, long view, out byte classes)
     {
         var node = this.bases[body.Ordinal] + (int)view;
-        classes = (byte)(this.classes[node] & (Unknown | Limit | Derived));
+        classes = (byte)(this.classes[node] & (Unknown | Limit | Derived | Deep));
         if (this.atomCounts[node] > 0)
         {
             classes |= Unknown;
         }
 
         return this.keys.AsSpan(node * this.keyWords, this.keyWords);
+    }
+
+    /// <summary>Gets the solved summary of a body view from the last <see cref="Run"/> as A4 keeps it: its classes, an environment
+    /// effect's included, and its atoms over the definition's abstract Types (SPEC 15.6.4: its parameter-dependent effects).</summary>
+    /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
+    /// <param name="view">The view.</param>
+    /// <param name="classes">The summary's classes.</param>
+    /// <returns>The atoms, A4's storage, valid until the next <see cref="Run"/>.</returns>
+    internal ReadOnlySpan<Atom> Items(MirBody body, long view, out byte classes)
+    {
+        var node = this.bases[body.Ordinal] + (int)view;
+        classes = this.classes[node];
+        return this.atoms.AsSpan(this.atomStarts[node], this.atomCounts[node]);
     }
 
     /// <summary>Gets A4's number of a mutable static Field in the program version of the last <see cref="Run"/>, whose bits in a key row

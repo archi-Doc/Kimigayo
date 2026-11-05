@@ -16,7 +16,7 @@ public class CallableRegionInvalidationTest
     {
         const string Source = "func make<T>(value: T) -> i32 => 1\nlet f = make<i32>\n_ = f(42)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "make");
         var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single().TypeOf()!;
         var before = c.Binding.FunctionItemContext(item)!;
@@ -29,14 +29,14 @@ public class CallableRegionInvalidationTest
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "make").ReturnType!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, function.ReturnType!, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var updated = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single().TypeOf()!;
         var after = c.Binding.FunctionItemContext(updated)!;
         Assert.NotSame(before, after);
         Assert.Equal("i64", after.ReturnType!.Name);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -51,9 +51,9 @@ public class CallableRegionInvalidationTest
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "view").InitializerKoto!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(local, local.InitializerKoto!, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

@@ -18,12 +18,21 @@ public sealed partial class OriginRowsTest
 
     private const string Pick = "func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
 
+    // A default whose Type is well formed only when `b outlives a` (PLAN G277 (1)).
+    private const string Put2 = "func put2(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: Option<ref/(ref/i32 during b) during a> = .None)\n" +
+        "    slot@follow = v\n";
+
     // Pick in a group, for callers a top-level function does not reach (a group's or struct's member).
     private const string Util = "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
 
-    // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store).
+    // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store), under an
+    // Exclusive receiver and, consuming another capture, under `owner/Self`.
     private const string EnvStore = "func store(target: uniq/(ref/i32 during t), value: ref/i32 during t) -> ()\n    target@follow = value\n" +
         "func g(x: i32, target: uniq/(ref/i32 during t)) -> ()\n    var f = func [x, target] () => store(target, value: x@ref)\n    f()\n";
+
+    private const string EnvStoreConsuming = "func store(target: uniq/(ref/i32 during t), value: ref/i32 during t) -> ()\n    target@follow = value\n" +
+        "func consume(s: string) => ()\nfunc g(x: i32, target: uniq/(ref/i32 during t), s: string) -> ()\n    let f = func [x, target, s@move] ()\n" +
+        "        consume(s@move)\n        store(target, value: x@ref)\n    f@move()\n";
 
     // A struct whose Field initializer forms rows, with two constructors (2a0-D F2; the review's f2-init-two-ctors).
     private const string FieldInit = Util + "struct S\n    public var n: i32 = Util.pick(3@ref, 4@ref)\n    public init() => ()\n    public init(k: i32) => self.n = k\n";
@@ -37,6 +46,18 @@ public sealed partial class OriginRowsTest
     private const string Getter = "struct Wrap {s}\n    public let values: Slice<i32> during s\n    public init(values: Slice<i32> during s) => self.values = values\n" +
         "    public computed first: i32\n        get() -> i32\n            var sum = 0\n            for v in self.values\n                sum = sum + v@follow\n            return sum\n";
 
+    // An enclosing body's local whose value Origin a named nested signature names (BU-56's unannotated class; DECISIONS BU-89).
+    private const string Local = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    let r = arr[0]\n";
+
+    // The same in a Closure body, and a root function naming a document-local.
+    private const string ClosureBodyLocal = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    let c = func [arr@ref] () -> i32\n" +
+        "        let r2 = arr[0]\n        func put(slot: uniq/Array<ref/i32 during r2>, v: ref/i32 during r2) => slot@follow.append(v)\n        return 0\n" +
+        "    _ = c()\n    return 0\n";
+
+    private const string DocumentLocal = "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r = arr[0]\n" +
+        "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32 during r) => slot@follow.append(v)\nvar other: Array<ref/i32> = []\nother.append(z@ref)\n" +
+        "put(other@uniq, r)\n";
+
     // SPEC 15.6.1: in the library, the milestones, the goldens and the accepting SPEC variants, each Origin row lies once in the slice of the
     // body Binding formed it in; Binding's declaration judge consumes a declaration's rows (DECISIONS BU-26), so none remains; no broken
     // contract is found; no row names another declaration's universal atom (+cen: I-1's shape, PLAN G195, is the only one, and it occurs in
@@ -49,7 +70,7 @@ public sealed partial class OriginRowsTest
             var program = c.BuildMir();
             foreach (var body in program.Bodies)
             {
-                var slice = c.Types.OriginRows(BodyOf(body.Key));
+                var slice = c.Types.OriginRows(body.Key.Body);
                 foreach (var atom in slice.Atoms)
                 {
                     var foreign = atom is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Parameter or OriginKind.Input };
@@ -61,9 +82,9 @@ public sealed partial class OriginRowsTest
             {
                 Assert.True(o.Body.IsBody, $"{name}: the declaration row at {o.Use} remains");
                 var slice = c.Types.OriginRows(o.Body);
-                var longer = c.Types.OriginAtom(o.Body, o.Longer!, o.Use);
-                var shorter = c.Types.OriginAtom(o.Body, o.Shorter!, o.Use);
-                var count = slice.Rows.Take(slice.LayerStart).Count(x => ReferenceEquals(x.Site, o.Use) && slice.Atoms[x.Longer] == longer &&
+                var longer = Atom(c, o.Body, o.Longer!, o.Use);
+                var shorter = Atom(c, o.Body, o.Shorter!, o.Use);
+                var count = slice.Rows.Take(slice.LayerStart).Count(x => x.Site == SourceRef.Of(o.Use) && slice.Atoms[x.Longer] == longer &&
                     slice.Atoms[x.Shorter] == shorter && x.Equality == o.Equality && ReferenceEquals(x.Destination, o.Type));
                 Assert.True(count == (ReferenceEquals(longer.Atom, shorter.Atom) ? 0 : 1), $"{name}: {count} rows at {o.Use}");
             }
@@ -108,11 +129,19 @@ public sealed partial class OriginRowsTest
     // DECISIONS R4-M101 E2, E3 and BU-26: rows formed while Binding binds a declaration (an instance Field's or computed Property's declared
     // Type, a requirement's or an override's signature) are formed with no body and consumed by Binding's declaration judge, so no row whose
     // Use lies in a declaration part remains, and none is in a slice. The second form is PLAN G214's: its header and getter result records.
+    // BU-89 (SPEC 15.3.4): a named nested or root function's row naming an enclosing body's Origin, a fixed Origin of it, is the judge's
+    // too: an input's (also in a Closure body or naming a document-local) and a nested Function Type's result its inputs entail are its
+    // premises, and one they do not entail is Binding's record (dev left each row to the view's InternalInvariant_Kd finding, PLAN G409).
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", false)]
     [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", false)]
     [InlineData("contract C\n    func f(x: ref/(ref/i32 during b) during a) -> i32\n", true)]
     [InlineData("open struct Base\n    public init() => ()\n    public virtual func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 0\nstruct Derived : Base\n    public init() : base() => ()\n    override func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 1\n", true)]
+    [InlineData(Local + "    func put(slot: uniq/Array<ref/i32 during r>) -> i32 => 0\n    return 0\n", true)]
+    [InlineData(Local + "    func k(cb: (ref/(ref/i32 during r)) -> Option<ref/(ref/i32 during r)>) -> i32 => 0\n    return 0\n", true)]
+    [InlineData(Local + "    func k(cb: (ref/i32) -> Option<ref/(ref/i32 during r)>) -> i32 => 0\n    return 0\n", false)]
+    [InlineData(ClosureBodyLocal, true)]
+    [InlineData(DocumentLocal, true)]
     public void ADeclarationsRowsAreConsumedByBinding(string source, bool complete)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -133,20 +162,21 @@ public sealed partial class OriginRowsTest
         Assert.Empty(c.Types.OriginFindings);
     }
 
-    // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit and
-    // header in its evaluating body (the header's, PLAN G216's pinned limit), a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
-    // a module's top-level statements, a user loop's parentless `$for.iterator` Use.
+    // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit in
+    // its evaluating body, a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
+    // a module's top-level statements, a user loop's parentless `$for.iterator` Use, a default's well-formedness at its call in the calling
+    // body (DECISIONS BU-51).
     [Theory]
-    [InlineData(EnvStore, "x@ref", "Closure")]
+    [InlineData(EnvStoreConsuming, "x@ref", "Closure")]
     [InlineData(EnvStore, "func [x, target]() => store(target, value: x@ref)", "Fn:g")]
     [InlineData(Getter, "$for.iterator", "Accessor")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "3@ref", "Default:g:0")]
     [InlineData(Pick + "func h(n: i32, f: () -> i32 = func [] () => pick(7@ref, 8@ref)) -> i32 => f()\n", "7@ref", "Closure")]
-    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "ref/(ref/i32)", "Fn:g")]
     [InlineData(Util + "group G\n    public let n: i32 = Util.pick(3@ref, 4@ref)\n", "3@ref", "Static:n")]
     [InlineData(FieldInit, "3@ref", "Layer:S")]
     [InlineData(Pick + "let v = pick(3@ref, 4@ref)\n", "3@ref", "TopLevel")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "$for.iterator", "Fn:total")]
+    [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put2(keep@uniq, short@ref)\n    return keep@follow\n", "put2(keep@uniq, short@ref)", "Fn:outer")]
     public void ARowIsTheBodyBindingFormsItIn(string source, string site, string expected)
     {
         var c = CompilationTestHelper.Parse(source + (source.Contains("\nlet v", StringComparison.Ordinal) ? string.Empty : Main), "Program.kimi");
@@ -172,7 +202,7 @@ public sealed partial class OriginRowsTest
     public void EachConstructorEndsWithItsLayersRowsJudgedWithTheLayersPremises()
     {
         var c = MirBuildTest.Compile(FieldInit + Main);
-        var constructors = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(BodyOf(x.Key))).ToList();
+        var constructors = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(x.Key.Body)).ToList();
         Assert.Equal(2, constructors.Count);
         Assert.All(constructors, x => Assert.Equal("Layer:S", Describe(x.Layer)));
         Assert.All(constructors, x => Assert.Equal(2, x.Rows.Count - x.LayerStart));
@@ -181,7 +211,7 @@ public sealed partial class OriginRowsTest
 
         c = MirBuildTest.Compile(InitPremise + Main);
         var init = Bodies(c).Single(IsProgramConstructor);
-        var slice = c.Types.OriginRows(BodyOf(init.Key));
+        var slice = c.Types.OriginRows(init.Key.Body);
         var row = Assert.Single(slice.Rows.Skip(slice.LayerStart));
         var (longer, shorter) = (slice.Atoms[row.Longer], slice.Atoms[row.Shorter]);
         Assert.Equal((OriginAtomKind.Fixed, OriginAtomKind.Fixed), (longer.Kind, shorter.Kind));
@@ -195,7 +225,7 @@ public sealed partial class OriginRowsTest
     {
         var c = MirBuildTest.Compile(FieldInit[..FieldInit.IndexOf("    public init()", StringComparison.Ordinal)] +
             "    public init(k: i32 = Util.pick(5@ref, 6@ref)) => self.n = k\n" + Main);
-        var slices = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(BodyOf(x.Key))).ToList();
+        var slices = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(x.Key.Body)).ToList();
         var template = Assert.Single(slices, static x => x.Body.Index == 0);
         Assert.Equal((2, 2, false), (template.Rows.Count, template.LayerStart, template.Layer.IsBody));
         var init = Assert.Single(slices, static x => x.Body.Index < 0);
@@ -203,8 +233,9 @@ public sealed partial class OriginRowsTest
         Assert.Empty(c.Types.OriginFindings);
     }
 
-    // The recorded limit of DECISIONS R4-M101 E4 (PLAN, STATUS): a layer whose struct has no constructor (its omitted base clause
-    // selects none) keeps its Field-initializer rows, which no body's slice includes, so no MIR analysis judges them.
+    // G215's boundary, A5's located limit (DECISIONS R4-M168; removal condition: a body of the layer's own): a layer whose struct has no
+    // constructor (its omitted base clause selects none) keeps its Field-initializer rows, which no body's slice includes; the view lists
+    // it among the layers with rows (OriginLayers), as it lists FieldInit's, whose constructors include it.
     [Fact]
     public void AConstructorlessLayersRowsLieInNoBodysSlice()
     {
@@ -214,6 +245,11 @@ public sealed partial class OriginRowsTest
         var leaf = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Leaf").SymbolOf()!;
         Assert.Equal(2, c.Types.OriginRows(new ExecutableBody(leaf)).Rows.Count);
         Assert.DoesNotContain(Bodies(c), x => AdtDef.IsConstructor(x.Key.Decl) && ReferenceEquals(x.Key.Decl!.Scope.Owner.SymbolOf(), leaf));
+        Assert.Contains(new ExecutableBody(leaf), c.Types.OriginLayers);
+
+        c = MirBuildTest.Compile(FieldInit + Main);
+        var s = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "S").SymbolOf()!;
+        Assert.Contains(new ExecutableBody(s), c.Types.OriginLayers);
     }
 
     // 2a0-D D2: a row's CaseMask numbers the body's pair binders (MirBody.Binders), renumbered from those in scope of its Use.
@@ -224,7 +260,7 @@ public sealed partial class OriginRowsTest
         var masked = 0;
         foreach (var body in c.BuildMir().Bodies)
         {
-            var slice = c.Types.OriginRows(BodyOf(body.Key));
+            var slice = c.Types.OriginRows(body.Key.Body);
             foreach (var o in Rows(c, false).Where(x => x.Body == slice.Body && x.Condition != 0))
             {
                 var useBinders = new List<PairBinder>();
@@ -238,7 +274,7 @@ public sealed partial class OriginRowsTest
                     }
                 }
 
-                Assert.Contains(slice.Rows, x => ReferenceEquals(x.Site, o.Use) && x.CaseMask == expected);
+                Assert.Contains(slice.Rows, x => x.Site == SourceRef.Of(o.Use) && x.CaseMask == expected);
                 masked++;
             }
         }
@@ -259,15 +295,15 @@ public sealed partial class OriginRowsTest
         Assert.NotSame(aliases[0].Shorter, aliases[1].Shorter);
         foreach (var alias in aliases)
         {
-            var longer = c.Types.OriginAtom(alias.Body, alias.Longer!, alias.Use);
-            var shorter = c.Types.OriginAtom(alias.Body, alias.Shorter!, alias.Use);
+            var longer = Atom(c, alias.Body, alias.Longer!, alias.Use);
+            var shorter = Atom(c, alias.Body, alias.Shorter!, alias.Use);
             Assert.Equal(OriginKind.Inference, alias.Shorter!.Kind);
             Assert.Same(longer.Atom, shorter.Atom);
-            Assert.DoesNotContain(c.Types.OriginRows(alias.Body).Rows, x => ReferenceEquals(x.Site, alias.Use));
+            Assert.DoesNotContain(c.Types.OriginRows(alias.Body).Rows, x => x.Site == SourceRef.Of(alias.Use));
         }
 
-        Assert.Equal(OriginAtomKind.Finite, c.Types.OriginAtom(aliases[0].Body, aliases[0].Shorter!, aliases[0].Use).Kind);
-        Assert.Equal(OriginAtomKind.Fixed, c.Types.OriginAtom(aliases[1].Body, aliases[1].Shorter!, aliases[1].Use).Kind);
+        Assert.Equal(OriginAtomKind.Finite, Atom(c, aliases[0].Body, aliases[0].Shorter!, aliases[0].Use).Kind);
+        Assert.Equal(OriginAtomKind.Fixed, Atom(c, aliases[1].Body, aliases[1].Shorter!, aliases[1].Use).Kind);
     }
 
     // 2a0-D D5 (T1): no row comes from a Constraint proof: a Type's own clause forms rows only at a local annotation of that Type, never at
@@ -284,6 +320,37 @@ public sealed partial class OriginRowsTest
         Assert.All(clauses, x => Assert.True(Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)), $"{x.Use}"));
     }
 
+    // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a
+    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row.
+    [Theory]
+    [InlineData("ref/(ref/i32 during b) during a", "WellFormed")]
+    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "Fit")]
+    public void ATypeOccurrencesRelationIsAWellFormedRow(string site, string source)
+    {
+        const string Program = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n" +
+            "    let r: ref/(ref/i32 during b) during a = slot\n    return 0\n";
+        var (_, row) = RowAt(Program, "f", site);
+        Assert.Equal(source, row.Source.ToString());
+    }
+
+    // SPEC 15.6.1, 23.1.2 (PLAN G412): an occurrence's well-formedness is one row. A transparent wrapper (parentheses, a named Type's
+    // layer) returns its inner node's Type, whose relation that node formed; the wrapper forms it only where it supplies the outer
+    // Origin itself (a slice's trailing `during`, written or omitted).
+    [Theory]
+    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "ref/(ref/i32 during b) during a")]
+    [InlineData("let r: ((ref/(ref/i32 during b) during a)) = slot", "ref/(ref/i32 during b) during a")]
+    [InlineData("var r: Option<(ref/(ref/i32 during b) during a)> = .None", "ref/(ref/i32 during b) during a")]
+    [InlineData("let r: S.Item(b, a) = slot", "S.Item(b, a)")]
+    [InlineData("var r: Option<(S.Item(b, a))> = .None", "S.Item(b, a)")]
+    [InlineData("var r: Option<(Slice<ref/i32 during b> during a)> = .None", "Slice<ref/i32 during b> during a")]
+    [InlineData("var r: Option<Slice<ref/i32 during b>> = .None", "Slice<ref/i32 during b>")]
+    public void AnOccurrencesWellFormednessIsOneRow(string local, string site)
+    {
+        var c = MirBuildTest.Compile("contract C\n    associate Item(a, b) is ref/(ref/i32 during a) during b\nstruct S\n    Self is C\n" +
+            $"func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n    {local}\n    return 0\n" + Main);
+        Assert.Equal(site, First(Assert.Single(Rows(c, false), static x => x.WellFormed).Use));
+    }
+
     // 2a0-D §4 (D8): the body's oracle, extracted once at its root, agrees with Binding's per-request proof at the use on every fixed-fixed
     // row of the census, per Semantics case; a layer's rows with the layer's oracle.
     [Fact]
@@ -295,13 +362,13 @@ public sealed partial class OriginRowsTest
             foreach (var o in Rows(c, library).Where(static x => x.Body.IsBody))
             {
                 var slice = c.Types.OriginRows(o.Body);
-                var (longer, shorter) = (c.Types.OriginAtom(o.Body, o.Longer!, o.Use), c.Types.OriginAtom(o.Body, o.Shorter!, o.Use));
+                var (longer, shorter) = (Atom(c, o.Body, o.Longer!, o.Use), Atom(c, o.Body, o.Shorter!, o.Use));
                 if (longer.Kind != OriginAtomKind.Fixed || shorter.Kind != OriginAtomKind.Fixed || ReferenceEquals(longer.Atom, shorter.Atom))
                 {
                     continue;
                 }
 
-                var row = slice.Rows.First(x => ReferenceEquals(x.Site, o.Use) && slice.Atoms[x.Longer] == longer && slice.Atoms[x.Shorter] == shorter);
+                var row = slice.Rows.First(x => x.Site == SourceRef.Of(o.Use) && slice.Atoms[x.Longer] == longer && slice.Atoms[x.Shorter] == shorter);
                 var oracle = Entails(c, o.Body, longer.Atom, shorter.Atom, row.CaseMask) &&
                     (!o.Equality || Entails(c, o.Body, shorter.Atom, longer.Atom, row.CaseMask));
                 Assert.True(oracle == c.Binding.IsVerifiedOriginObligation(o), $"{name}: {o.Use} {longer.Atom.Name} >= {shorter.Atom.Name}");
@@ -331,7 +398,7 @@ public sealed partial class OriginRowsTest
     public void AWarmRebindAndTheViewsReadsAllocateNothing()
     {
         var c = MirBuildTest.Compile(EnvStore + FieldInit + Pick + "func h(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n" + Main);
-        var bodies = c.BuildMir().Bodies.ToArray().Select(static x => BodyOf(x.Key)).ToArray();
+        var bodies = c.BuildMir().Bodies.ToArray().Select(static x => x.Key.Body).ToArray();
         var (counts, rowStamps, atomStamps) = (Read(), RowStamps(), AtomStamps());
         Assert.Equal(counts, Read());
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -341,6 +408,10 @@ public sealed partial class OriginRowsTest
         }));
         Assert.Equal(counts, Read());
         Assert.Equal(rowStamps, RowStamps());
+
+        // The baseline's tables hold the atoms MirOrigins appended during that pass's BuildMir (the view's contract: appended atoms are
+        // per pass), so the new pass is read by the same MIR reader before the whole tables are compared.
+        _ = c.BuildMir();
         Assert.Equal(atomStamps, AtomStamps());
 
         ExecutableBody[] RowStamps() => [.. Rows(c, false).Select(static x => x.Body)];
@@ -366,6 +437,16 @@ public sealed partial class OriginRowsTest
 
             return rows;
         }
+    }
+
+    // A warm rebind of nested signatures' headers (PLAN G216's forms and a Function Type annotation, each called or not) allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindOfNestedSignatureHeadersAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(HeaderOnly + HeaderCalled + FunctionTypeCalled + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
     // The census sets as MirCensusTest loads them (R4-M12): the library, the milestones, the goldens and the accepting SPEC variants.
@@ -400,7 +481,12 @@ public sealed partial class OriginRowsTest
             x.Use.CodeContext.SourceDocument?.Path?.StartsWith("compiler://", StringComparison.Ordinal) == library);
 
     // A MIR body's key in the view's form: a default template's index, or a module's ordinal for top-level statements.
-    private static ExecutableBody BodyOf(MirDefKey key) => new(key.Decl, key.Kind == MirBodyKind.DefaultTemplate || key.Decl is null ? key.Index : -1);
+    // An atom's entry in a body's table, read through the view at a syntax site (the view takes MIR's SourceRef and returns the index).
+    private static OriginAtomEntry Atom(Compilation c, ExecutableBody body, BoundOrigin origin, Koto site)
+        => c.Types.OriginRows(body).Atoms[c.Types.OriginAtom(body, origin, SourceRef.Of(site))];
+
+    // A row's Site as its syntax's first line (the view publishes a SourceRef).
+    private static string Site(Compilation c, OriginRow row) => First(c.SyntaxOf(row.Site));
 
     private static string First(Koto node) => (node.ToString() ?? string.Empty).Split('\n')[0].Trim();
 

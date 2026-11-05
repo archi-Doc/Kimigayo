@@ -2,14 +2,13 @@
 
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 // SPEC 3.5, 8.14, 8.15, 13.5.5: the remaining bare positions of a pair-layer Place. A bare argument at a by-value parameter and a
 // bare result or arm are acquired by each Semantics case as the case Type is; a write through a pair element of a writable Tuple
-// has the owner case's Write; a bare element whose case Type is an exclusive reference is a located limit, as the concrete element.
+// has the owner case's Write; a bare element whose case Type is an exclusive reference is accepted.
 public sealed class PairBarePositionTest
 {
     [Theory]
@@ -20,16 +19,19 @@ public sealed class PairBarePositionTest
     public void ABarePositionIsAcquiredPerCase(string definition)
     {
         var c = MinimalEmissionTest.Analyze(definition + "public func main() -> ()\n    var n: i32 = 1\n    _ = f(n" + (definition.Contains("x: T", StringComparison.Ordinal) ? ", 9" : definition.Contains("c: bool", StringComparison.Ordinal) ? ", true" : string.Empty) + ")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
+    // The old analysis's located limit at the bare element (Unsupported_Kd at `arr[0]`) went with the MIR deciding acceptance (H5; 1a,
+    // the owner 2026-11-03): check accepts the program with no record, and a Library build generates f's instance that main calls.
     [Fact]
-    public void ABareElementOfAnExclusiveCaseIsALocatedLimit()
+    public void ABareElementOfAnExclusiveCaseIsAccepted()
     {
         var source = "func f<s/T>(value: s/T, other: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var arr: [2 of s/T] = [value@move, other@move]\n    let e = arr[0]\n    _ = e@follow\npublic func main() -> ()\n    var n: i32 = 1\n    var m: i32 = 2\n    f(n, m)\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "arr[0]", null), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length), error.Reason));
+        var check = DiagnosticCorpus.Check(source);
+        Assert.True(check.Accepted && check.Diagnostics.Length == 0, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
+        Assert.Contains("f", MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
     }
 
     // SPEC 13.5.6: an exclusive short adaptation borrows the written slot, which must be writable.
@@ -40,8 +42,8 @@ public sealed class PairBarePositionTest
         Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidAssignment_Kd));
         var valid = source.Replace("let v = value@s", "var slot = value@move\n    let v = slot@s", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(valid);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         NativeAllocationAudit.WriteFixture("GenericAdaptationWritableSlot", valid, 0, 0, 0);
     }
 }

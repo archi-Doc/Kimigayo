@@ -25,7 +25,7 @@ public class AcquisitionCorrelationTest
     public void ExplicitConstructionFixesTheCorrelation()
     {
         var c = MinimalEmissionTest.Analyze(Crossed + "let c = C<i64>.init(x, 0)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -35,7 +35,7 @@ public class AcquisitionCorrelationTest
     public void SharedIndependentOrUnresolvedInputsEstablishTheContract(string use)
     {
         var c = MinimalEmissionTest.Analyze("struct Item<T>\n    public init(value: T, code: i32) => ()\n    public init(value: T, name: string) => ()\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

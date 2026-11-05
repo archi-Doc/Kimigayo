@@ -149,7 +149,7 @@ public sealed partial class Binding
 
     private bool RequireAcquisition(Koto source, BoundType actual, BoundType expected, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
     {
-        if (fixedExpectation || (!deferAcquisition && !this.FitsStructurallyAt(actual, expected, source)))
+        if (fixedExpectation || (!deferAcquisition && !this.FitsStructuralPartAt(actual, expected, source)))
         {
             return false;
         }
@@ -170,7 +170,7 @@ public sealed partial class Binding
         }
 
         if (!this.AdaptInput(node, expected, actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
-            !this.FitsStructurallyAt(adapted, expected, node))
+            !this.FitsStructuralPartAt(adapted, expected, node))
         {
             return null;
         }
@@ -224,8 +224,17 @@ public sealed partial class Binding
     }
 
     // The type an argument presents to adaptation: a node already read where its parameter Type was
-    // expected adapts from its own reference Type, so the plan records the Copy read once.
-    private BoundType ArgumentType(Koto source, BoundType actual) => this.ReadsReferent(source) ? source.BoundType ?? actual : actual;
+    // expected adapts from its own reference Type, so the plan records the Copy read once; an erased source presents its own Type,
+    // which its acquisition is judged on (rule E, DECISIONS BU-83).
+    private BoundType ArgumentType(Koto source, BoundType actual)
+        => this.ReadsReferent(source) || source.ErasedFunctionType is not null ? source.BoundType ?? actual : actual;
+
+    // SPEC 3.5, 10.1: whether a bare input is acquired by value. A bare Place never Moves, so a Place whose bare acquisition of `judged`,
+    // the Type it stores, needs a Move is not, unless its acquisition is required on `arriving`, the Type that arrives at the parameter.
+    private bool AcquiresBare(Koto source, BoundType judged, BoundType arriving, BoundType pattern, bool deferAcquisition)
+        => judged.Semantics is not (SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) || !IsBarePlace(source) ||
+            this.BareAcquire(judged, source, out _) != HirAcquire.Move ||
+            this.RequireAcquisition(source, arriving, pattern, BindingFailure.TransferRequired, @object: false, fixedExpectation: false, deferAcquisition);
 
     /// <summary>
     /// Adapts an input to a parameter Type. <paramref name="receiver"/> marks a Receiver Expression, which SPEC 7.3
@@ -246,6 +255,16 @@ public sealed partial class Binding
         if (ReferenceEquals(actual, BoundType.Never) && !explicitBorrow)
         {
             return true; // A noncompleting argument forms no borrow or reference value; an explicit borrow names a Place (IsNeverValue).
+        }
+
+        if (source.ErasedFunctionType is { } erased)
+        {
+            // SPEC 7.7.4, 3.5, 10.2 (rule E, DECISIONS BU-83): an erasure is its node's one implicit adaptation. Binding erased the source at
+            // its position, so the input is the erased Function Type. Erasure acquires the source ordinarily: its bare acquisition is judged
+            // once, here, on its own Type (published as its Adjust, ChildAdjust and BareOf); the erased value is a fresh one.
+            adapted = erased;
+            quality = ArgumentAdaptation.Erasure;
+            return fixedExpectation || this.AcquiresBare(source, source.BoundType ?? erased, erased, pattern, deferAcquisition);
         }
 
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
@@ -283,18 +302,16 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source) && this.ReadTypeReferent(actual, scope) is { } read && this.FitsTypeAt(read, pattern, source))
+            if (!this.FitsTypeAt(actual, pattern, source, out _) && this.ReadTypeReferent(actual, scope) is { } read &&
+                this.FitsTypeAt(read, pattern, source, out _))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!fixedExpectation && actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source) &&
-                this.BareAcquire(actual, source, out _) == HirAcquire.Move && !this.RequireAcquisition(source, actual, pattern, BindingFailure.TransferRequired, false, fixedExpectation, deferAcquisition))
+            else if (!fixedExpectation && !this.AcquiresBare(source, actual, actual, pattern, deferAcquisition))
             {
-                // SPEC 3.5, 10.1: a bare Place never Moves, so a Place whose bare acquisition needs a Move is not acquired by value,
-                // and the candidate that needs the Copy is inapplicable.
-                return false;
+                return false; // The candidate that needs the Copy is inapplicable.
             }
 
             return true;
@@ -303,7 +320,7 @@ public sealed partial class Binding
         // A comparison's Copy read is a temporary value, even though its syntax retains ref/T.
         // Borrow that snapshot; borrowing the original storage would change left-to-right semantics.
         if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
-            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source))
+            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _))
         {
             adapted = this.PreparedBorrowType(source, pattern);
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
@@ -415,7 +432,7 @@ public sealed partial class Binding
                 }
             }
             else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
-                !(target == SemanticsKind.Ref && this.KindOf(source) == ArgumentKind.Literal))
+                !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal))
             {
                 return false;
             }

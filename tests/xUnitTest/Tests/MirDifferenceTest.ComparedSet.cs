@@ -17,6 +17,10 @@ public sealed partial class MirDifferenceTest
         "    let local = 1\n    let t = (g, local@ref)\n    return t\n" +
         "func fixed(x: ref/i32, y: ref/i32) -> ref/i32 during y => x\n";
 
+    // TwinFits with the mixed Tuple's parts swapped: the same records at `t` in either order (G216 (a) U2.1, design-r2 Amendment 1).
+    private const string TwinFitsSwapped = "func mixed(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> (ref/i32 during x, ref/((ref/i32 during x) -> i32))\n" +
+        "    let local = 1\n    let t = (local@ref, g)\n    return t\n";
+
     // A local's clause whose record is a body chain (finite over fixed) and one whose record is fixed-fixed.
     private const string TwinClauses = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n" +
         "func twin(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n" +
@@ -74,12 +78,25 @@ public sealed partial class MirDifferenceTest
         Assert.Equal(expected, MirDifferenceLedger.Sides(c, program).Mir.TakeLast(3));
     }
 
+    // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording): a MIR problem with Cause facts is derived and leaves the compared MIR
+    // side, as publication suppresses it while its causes publish; its cause, the Origin problem, stays.
+    [Fact]
+    public void ADerivedProblemLeavesTheMirSide()
+    {
+        var c = MirBuildTest.Compile("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    var r = local@ref\n    return r\n");
+        var program = c.BuildMir();
+        Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        var mir = MirDifferenceLedger.Sides(c, program).Mir;
+        Assert.Contains(mir, static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
+        Assert.DoesNotContain(mir, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+    }
+
     // PLAN10 §7, R4-M67: the requirement each MIR recording rule names lies in the compared set's MIR column, so its problems take their
     // analysis there (MirAnalysisTest's program, one problem of each rule).
     [Fact]
     public void MirProblemsNameRequirementsOfTheComparedSet()
     {
-        var problems = MirBuildTest.Compile(MirAnalysisTest.Requirements).BuildMir().Problems.All.ToArray();
+        var problems = MirBuildTest.Compile(MirAnalysisTest.Requirements).BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord).ToArray();
         Assert.NotEmpty(problems);
         Assert.All(problems, static x => Assert.True(MirDifferenceLedger.MirAnalysisOf(x.Requirement, x.Code) is not null, $"{x.Code} {x.Requirement}"));
     }
@@ -87,17 +104,16 @@ public sealed partial class MirDifferenceTest
     // R4-M4: the compared set names its owning analysis; pass-through records have none.
     [Theory]
     [InlineData("Ownership", (int)OwnershipRequirement.PossiblyMovedUse, DiagnosticCode.MovedPlace_Kd, "A1")]
-    [InlineData("Ownership", (int)OwnershipRequirement.TransferRequired, DiagnosticCode.TransferRequired_Kd, null)]
+    [InlineData("Binding", (int)BindingFailure.TransferRequired, DiagnosticCode.TransferRequired_Kd, null)]
     [InlineData("Ownership", (int)OwnershipRequirement.Unsupported, DiagnosticCode.Unsupported_Kd, "U")]
     [InlineData("ControlFlow", 0, DiagnosticCode.RequireFallthrough_Kd, "A3")]
     [InlineData("Binding", (int)BindingFailure.None, DiagnosticCode.FunctionFallthrough_Kd, null)]
     [InlineData("Binding", (int)BindingFailure.OriginRelation, DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5")]
-    [InlineData("Binding", (int)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd, "A4")]
-    [InlineData("Binding", (int)BindingFailure.Unsupported, DiagnosticCode.Unsupported_Kd, "U")]
     public void TheComparedSetNamesItsAnalysis(string partition, int kind, DiagnosticCode code, string? analysis)
         => Assert.Equal(analysis, MirDifferenceLedger.AnalysisOf(new(Enum.Parse<DiagnosticPartition>(partition), (ushort)kind), code));
 
-    // R4-M4: every code an ownership failure reports is compared, except TransferRequired's and Internal's. R4-M67: each MIR pair of the
+    // R4-M4: every code an ownership failure reports is compared, except Internal's (TransferRequired is Binding's since H1, BU-84).
+    // R4-M67: each MIR pair of the
     // compared set names its row's analysis, and PLAN10 §7's consistency holds: an Ownership requirement with a code the old analysis
     // gives that failure (OwnershipIssue.Code), or ControlFlow with the require fallthrough; a pair outside it, such as MirReport's
     // disagreement record, has none.
@@ -107,7 +123,7 @@ public sealed partial class MirDifferenceTest
         var images = new HashSet<(DiagnosticRequirement, DiagnosticCode)>();
         foreach (var (failure, code) in PipelineSwitchTest.OwnershipCodes())
         {
-            var passes = failure is OwnershipRequirement.TransferRequired or OwnershipRequirement.Internal;
+            var passes = failure is OwnershipRequirement.Internal;
             Assert.True(passes == (MirDifferenceLedger.AnalysisOf(DiagnosticRequirement.Ownership(failure), code) is null), $"{failure} {code}");
             images.Add((DiagnosticRequirement.Ownership(failure), code));
         }
@@ -122,27 +138,30 @@ public sealed partial class MirDifferenceTest
             }
         }
 
-        var (transfer, defect) = (OwnershipRequirement.TransferRequired, OwnershipRequirement.Internal);
-        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(transfer), DiagnosticCode.TransferRequired_Kd));
-        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(defect), DiagnosticCode.InternalInvariant_Kd));
+        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Binding(BindingFailure.TransferRequired), DiagnosticCode.TransferRequired_Kd));
+        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), DiagnosticCode.InternalInvariant_Kd));
     }
 
     // R4-M111 (R4-M108): Binding's Origin relation records are compared with A5 only where they are twins, the records of a node whose
     // relation is also a row A5 judges: at a fit every record of the node, the mixed fit's fixed-fixed first chain included, and at a
-    // local's clause its body-chain record. An all-fixed-fixed node's records pass through, Binding's until R7, and so, until A5-F7's
-    // 2c-6, does a Closure result over call-local storage, and a call argument's fixed-fixed record beside a body-chain position of the
-    // same call, a row without a record at the same node (BU's review N6). Each row has a record that passes through.
+    // local's clause its body-chain record. An all-fixed-fixed node's records pass through, Binding's until R7; a Closure result over
+    // call-local storage is a twin, its Refuted source at the returned value (DECISIONS R4-M152); a call argument's fixed-fixed record beside a body-chain position of the
+    // same call, a row without a record at the same node (BU's review N6). Each row has a record that passes through. The mixed fit's
+    // Function component is one UnprovenOriginContract_Kd (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC 15.6.1; it was an Origin
+    // relation record compared as `return t`), so only its borrow's record is a twin, and only when the borrow comes first (no row
+    // after the differing Function component until H11).
     [Theory]
-    [InlineData(TwinFits, "UnprovenOriginRelation_Kd A5 return t|UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
+    [InlineData(TwinFits, "UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
+    [InlineData(TwinFitsSwapped, "UnsatisfiedOriginRelation_Kd A5 return t", "")]
     [InlineData(TwinClauses, "UnsatisfiedOriginRelation_Kd A5 origin x.s outlives a", "UnprovenOriginRelation_Kd - origin x.s outlives b")]
-    [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "", "UnsatisfiedOriginRelation_Kd - func (x: i32) => x@ref")]
+    [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "UnsatisfiedOriginRelation_Kd A5 x@ref", "")]
     [InlineData(CallPositions, "", "UnprovenOriginRelation_Kd - t")]
     public void OnlyTwinsOfBindingsOriginRecordsAreCompared(string source, string compared, string passed)
     {
         var c = MirBuildTest.Compile(source);
         var (common, old, _, _) = MirDifferenceLedger.Sides(c, c.BuildMir());
         Assert.Equal(compared.Split('|', StringSplitOptions.RemoveEmptyEntries), OriginRecords(old));
-        Assert.Equal(passed.Split('|'), OriginRecords(common));
+        Assert.Equal(passed.Split('|', StringSplitOptions.RemoveEmptyEntries), OriginRecords(common));
 
         // Binding's Origin relation records, each `code analysis subject` by the subject's source text, in ordinal order.
         string[] OriginRecords(List<MirDifferenceLedger.Entry> entries) => [.. entries.Where(static x => x.Requirement == "Binding.OriginRelation")

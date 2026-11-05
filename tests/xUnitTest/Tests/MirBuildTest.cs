@@ -18,6 +18,16 @@ namespace XunitTest;
 /// builder builds: Values, Defaults, Cases (Semantics case views), Calls (reservations and evaluation order) and Places.</summary>
 public sealed partial class MirBuildTest(ITestOutputHelper output)
 {
+    // PLAN G308's forms over the compared Tuple of its DAG family P_n, each a format of the paths {0} = a.x…x and {1} = b.x…x: the tuple
+    // operator (S1), a generic equality whose T is the Tuple, its Contract mapping (S4), and a Dictionary keyed by the Tuple (S6).
+    internal const string DagOperator = "func f(a: ref/D1<i32>, b: ref/D1<i32>) -> bool => {0} == {1}\n";
+
+    internal const string DagContract = "func same<T>(a: ref/T, b: ref/T) -> bool\n    T is Equatable\n    return a == b\n" +
+        "func f(a: ref/D1<i32>, b: ref/D1<i32>) -> bool => same({0}, {1})\n";
+
+    internal const string DagKey = "func fill<K>(key: K)\n    K is Copy and Equatable\n    var table: Dictionary<K, i32> = [:]\n" +
+        "    _ = table.tryInsert(key, 1)\n    _ = table.tryGet(key)\nfunc f(a: ref/D1<i32>, b: ref/D1<i32>) => fill({0})\n";
+
     // A struct with an Array Field, an inspection of it and the start of a function f that binds a holder (SPEC 15.6.7).
     private const string Holder = "struct Holder\n    public var items: Array<i32>\n    public var count: i32\n    public init()\n" +
         "        self.items = []\n        self.count = 0\nfunc inspect(values: ref/Array<i32>) => ()\nfunc see(value: ref/i32) => ()\n" +
@@ -33,10 +43,18 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         "    public func put(a: i32, self: ref/Self) => ()\nstruct Gauge\n    public var level: i32 = 0\n        set(value: i32) -> ()\n" +
         "            storage = value\n    public init() => ()\nfunc f(x: i32, box: ref/Box)\n    var y: i32 = 0\n    var gauge = Gauge.init()\n";
 
+    // An unbuilt form of a valid program: a tuple operator over two values of Tuple, whose leaf's storage nests past Binding's bound, has
+    // no comparison (a Limit of TyCtxt.Comparison, DECISIONS R5-M75), so the MIR records one located Unsupported_Kd at the operator.
+    // Declarations declares the leaf's Type. Since PLAN G167 the other unbuilt form is the second limit past that bound, a default template
+    // the call's substitution cannot instantiate (MirBuilder.Defaults.cs, R4-M127); both are PD30's (e) row until R7.
+    internal static (string Declarations, string Tuple) Unbuilt { get; } = (
+        "struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n",
+        "(" + string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80) + ", i32)");
+
     // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
     // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
-    // case bound (plan 5.6.1), and every static a body reaches through staticEnsure, every Closure it creates and every default template it
-    // calls has its body (plan 5.6.2, 5.6.6).
+    // case bound (plan 5.6.1), and every Closure it creates and every default template it calls has its body (plan 5.6.2; each
+    // staticEnsure's initializer is the validator's, DECISIONS R4-M121).
     [Fact]
     public void CorpusBuildsValidBodies()
     {
@@ -54,9 +72,6 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             {
                 foreach (var block in body.Blocks)
                 {
-                    var ensured = block.Terminator is not { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } } ensure ||
-                        program.StaticInit(body, body.Operands[ensure.Start]) is not null;
-                    Assert.True(ensured, $"{name}: a static without its initializer");
                     var templated = block.Terminator is not { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Arg: > 0 } template } ||
                         program[new(template.Symbol, MirBodyKind.DefaultTemplate, template.Arg - 1)] is not null;
                     Assert.True(templated, $"{name}: a call of a default template without its body");
@@ -81,7 +96,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 }
             }
 
-            foreach (var record in program.Records.Where(x => x.Subject.Module == module.Syntax.Module))
+            foreach (var record in program.Records(MirRecordClass.Construction).Where(x => x.Subject.Module == module.Syntax.Module))
             {
                 counts[2]++;
                 var key = Key(c.SyntaxOf(record.Subject));
@@ -109,6 +124,63 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
         Assert.True(totals[0] > 500, $"{totals[0]} bodies");
         Assert.True(views.Keys.Max() <= 64, $"{views.Keys.Max()} views");
+    }
+
+    // SPEC 3.6, 16.2.1 (DECISIONS R4-M129): every temp with storage of its own, of a Type that may need drop and written whole, is made, so
+    // its body drops it (a held temp that no Made registered has no Drop, and its value would leak), over the goldens, the library and the
+    // milestone programs. A transfer's result temp has no storage of its own (DECISIONS R5-M50).
+    [Fact]
+    public void EveryWrittenTempIsMade()
+    {
+        var programs = MirDumpTest.Programs.Select(static x => ("golden/" + x.Data, MirDumpTest.Compile(x.Data)))
+            .Concat(HirColumnsTest.Corpus.Select(static x => (x.Data, SemanticSnapshotTest.Bind(x.Data).Compilation)));
+        foreach (var (name, c) in programs)
+        {
+            foreach (var body in c.BuildMir().Bodies)
+            {
+                var unmade = Unmade(body);
+                Assert.True(unmade is null, $"{name}: {body.Key.Decl?.Name}'s _{unmade} is never dropped");
+            }
+        }
+    }
+
+    // SPEC 16.2.2 (DECISIONS R5-M50, R4-M132): the temp a transfer delivers whole into _0 after the Scope Exit is the body's result in
+    // transit (MirLocalRole.Result): a return leaving a scope with a cleanup has one, a body's tail value writes _0 and has none, a
+    // constructor's return none (its target is a Unit temp), a default template whose tail construct a transfer leaves one, at the
+    // construct, and that template's copy in a caller none (it delivers into the caller's slot). Each is valid MIR.
+    [Fact]
+    public void TheResultInTransitIsTheTempDeliveredIntoTheResult()
+    {
+        var c = Compile("""
+            func leave(x: ref/i32, c: bool) -> ref/i32 during x
+                if c
+                    let local = 1
+                    var r = local@ref
+                    return r
+                return x
+            func plain(x: i32) -> i32 => x
+            struct Res
+                public var v: i32 = 0
+                public init(c: bool)
+                    if c
+                        let t = 1
+                        return
+                    self.v = 2
+            func evaluate<T>(sample: T, marker: i32 = label result: do
+                let pending: Option<T> = .None
+                match pending@move
+                    .Some(let value) => exit to result 1
+                    .None => exit to result 0
+            ) -> i32 => marker
+            func caller() -> i32 => evaluate("held")
+            """);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(
+            "DefaultTemplate evaluate 1, Fn caller 0, Fn evaluate 0, Fn init 0, Fn leave 1, Fn plain 0",
+            string.Join(", ", program.Bodies.ToArray().Where(static x => x.Source.Module == 0 && x.Key.Decl is not null)
+                .Select(static x => $"{x.Key.Kind} {x.Key.Decl!.Name} {x.Locals.ToArray().Count(static y => y.Role == MirLocalRole.Result)}")
+                .Order(StringComparer.Ordinal)));
     }
 
     // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone43
@@ -156,15 +228,87 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Equal((bodies, version + rebuilds), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
     }
 
+    // DECISIONS R5-M186 (review B3): a warm rebind and rebuild of a program whose failure bodies rest on guesses allocates nothing: the
+    // builder copies Binding's guessed nodes into the body's pooled sites at once. A guard: before R6-1 the builder asked no guess.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebuildOfGuessedFailureBodiesAllocatesNothing()
+    {
+        var c = Compile("func f(flag: bool)\n    require flag else => missing()\n    require flag else => missing()\n");
+        Assert.Equal(2, c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").GuessedSites.Length);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
+    }
+
+    // DECISIONS R5-M186 (review N6): the builder asks the guess rule only at a failure body that can complete, so N nested requires whose
+    // outer failure bodies return after the inner require, in a pass that left the innermost call unresolved, cost the guess walk work
+    // linear in N, and only the innermost row names a site. A guard: the guess walk never runs where the structural walk finds no
+    // completion, which the condition also saves and GuessCompletionWork does not count.
+    [Fact]
+    public void GuessedSitesOfNestedRequiresScaleLinearly()
+    {
+        long[] work = [Work(8), Work(16), Work(32)];
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"guess walk {string.Join(", ", work)}");
+
+        static long Work(int depth)
+        {
+            var text = new StringBuilder("func nest(flag: bool)\n");
+            for (var i = 1; i <= depth; i++)
+            {
+                text.Append(' ', 4 * i).Append("require flag else\n");
+            }
+
+            text.Append(' ', 4 * (depth + 1)).Append("missing()\n");
+            for (var i = depth; i > 1; i--)
+            {
+                text.Append(' ', 4 * i).Append("return\n");
+            }
+
+            var c = Compile(text.ToString());
+            var before = c.Binding.GuessCompletionWork;
+            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "nest");
+            Assert.Equal(1, body.GuessedSites.Length);
+            return c.Binding.GuessCompletionWork - before;
+        }
+    }
+
+    // G350: the process's one-time initialization on the check path stays small. A fresh process's first cold build allocates at most
+    // 64 KB more than a second cold build of the same text on a fresh Compilation: the class constructors of the rows and ABIs it reads
+    // and the runtime's first instantiations, measured about 21.5 KB on .NET 10, three times that being the margin. Before G350 the
+    // collector's IntrinsicRows built code generation's runtime texts there, 8.2 MB more. This test owns that one-time cost:
+    // AllocationMeasurement.MeasureSeries keeps it out of every cold scaling series.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public Task AFreshProcessPaysLittleOnceForItsFirstBuild()
+        => FreshProcess.RunExplicit(typeof(MirBuildTest), nameof(MirBuildTest.TheFirstBuildOfAFreshProcess));
+
+    // AFreshProcessPaysLittleOnceForItsFirstBuild's child: the first and a second cold build, each of a fresh Compilation of one text.
+    [Trait("Purpose", "Allocation")]
+    [Fact(Explicit = true)]
+    public void TheFirstBuildOfAFreshProcess()
+    {
+        var allocated = new long[2];
+        for (var i = 0; i < allocated.Length; i++)
+        {
+            var c = Compile("func work() -> i32 => 1\n");
+            allocated[i] = AllocationMeasurement.MeasureOnce(() => c.BuildMir());
+        }
+
+        output.WriteLine($"cold build allocation {allocated[0]}, then {allocated[1]}");
+        Assert.True(allocated[0] - allocated[1] <= 64 * 1024, $"cold build allocation {allocated[0]}, then {allocated[1]}");
+    }
+
     // V11, plan 5.6.4: N defers, then N returns that each leave all of them, build each defer once per target (one drop tree shared by
     // the returns, and the normal end), so the MIR and its cold build's allocation grow linearly with N, and a warm rebuild allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void DropTreesScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        Compilation c = null!;
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, compilations, bodies) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirBody[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func touch(n: i32) => ()\nfunc work(flag: bool) -> i32\n");
             for (var n = 0; n < sizes[i]; n++)
@@ -177,21 +321,24 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 text.Append("    if flag => return ").Append(n).Append('\n');
             }
 
-            c = Compile(text.Append("    return -1\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
-            work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.Equal(sizes[i] * 2, body.Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
+            var c = compilations[i] = Compile(text.Append("    return -1\n").ToString());
+            return () => bodies[i] = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
+            Assert.Equal(
+                sizes[i] * 2, bodies[i].Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        var last = compilations[^1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            last.Binding.Bind(BindingMode.Final);
+            last.BuildMir();
         }));
     }
 
@@ -203,9 +350,9 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     [Fact]
     public void BodiesScaleLinearly()
     {
-        var (sizes, work, allocated, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3], new long[3]);
-        Compilation c = null!;
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var (compilations, programs, bodies) = (new Compilation[3], new MirProgram[3], new MirBody[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("enum Shape\n    Dot\n    Line(i32)\nfunc touch(n: i32) -> i32 => n\nfunc work<s/T>(flag: bool, shape: Shape) -> i32\n");
             text.Append("    s is owner or ref\n    var total = 0\n");
@@ -215,13 +362,18 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 text.Append("    while total > 1000\n        total -= 1\n        if flag => exit\n    Console.writeLine(\"\\(total)\")\n");
             }
 
-            c = Compile(text.Append("    return total\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var program = c.BuildMir();
-            var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            var c = compilations[i] = Compile(text.Append("    return total\n").ToString());
+            return () =>
+            {
+                programs[i] = c.BuildMir();
+                bodies[i] = programs[i].Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (program, body) = (programs[i], bodies[i]);
             work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.True(!body.HasOpaque && program.Records.Count == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
+            Assert.True(!body.HasOpaque && program.Records(MirRecordClass.Construction).Count() == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
             var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
             flow.Begin(body);
             moves.Build(body, flow);
@@ -232,11 +384,32 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             $"A1 arena words {string.Join(", ", arena)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        var last = compilations[^1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            last.Binding.Bind(BindingMode.Final);
+            last.BuildMir();
         }));
+    }
+
+    // G308 S1 (==), S2 (<, >=; V16): the program of a comparison over P_n's Tuple at n = 8, 12, 16 has a MIR (Blocks + Statements of every
+    // body BuildMir returns) linear in n, the distinct Types (DropTreesScaleLinearly's ratio rule). Fails before G308: the comparison builds
+    // each of its 2^n leaves, so the second increment is about 16 times the first.
+    [Theory]
+    [InlineData("==")]
+    [InlineData("<")]
+    [InlineData(">=")]
+    public void ADagComparisonsMirGrowsWithItsDistinctTypes(string op)
+    {
+        var sizes = new[] { 8, 12, 16 };
+        var work = sizes.Select(n =>
+        {
+            var program = Compile(Dag(n, DagOperator.Replace("==", op, StringComparison.Ordinal))).BuildMir();
+            Assert.Empty(program.Findings);
+            return program.Bodies.ToArray().Sum(static x => (long)x.Blocks.Length + x.Statements.Length);
+        }).ToArray();
+        output.WriteLine($"{op} N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}");
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"{op}: MIR size {string.Join(", ", work)}");
     }
 
     // G136 N2: a malformed fixture must fail before Binding can silently change the program under test.
@@ -253,6 +426,21 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // A body's TestRecordValue calls, in block order.
     internal static MirTerminator[] Records(MirBody body) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
         .Where(static x => x is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.TestRecordValue } })];
+
+    // PLAN G308's DAG family P_n with a form: D1 to Dn, D_k<T>'s Field x a D_{k+1}<(T, T)> and Dn's the pair (T, T), so a.x…x (n steps)
+    // of a D1<i32> is a Tuple of 2^n leaves but n distinct composite Types; each init builds its value from one leaf.
+    internal static string Dag(int n, string form)
+    {
+        var text = new StringBuilder();
+        for (var k = 1; k <= n; k++)
+        {
+            var (field, value) = k < n ? ($"D{k + 1}<(T, T)>", $"D{k + 1}<(T, T)>.init((value, value))") : ("(T, T)", "(value, value)");
+            text.Append($"struct D{k}<T>\n    T is Copy\n    public var x: {field}\n    public init(value: T) => self.x = {value}\n");
+        }
+
+        var steps = string.Concat(Enumerable.Repeat(".x", n));
+        return text.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, form, "a" + steps, "b" + steps)).ToString();
+    }
 
     internal static Compilation Compile(string source, bool test = false)
     {
@@ -316,6 +504,42 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         var adjust = HirTables.AdjustOf(node);
         return adjust.Adaptation == HirAdaptation.None && adjust.Acquire is HirAcquire.Unset or HirAcquire.Copy or HirAcquire.Move or HirAcquire.Temporary or HirAcquire.None
             ? key : $"{key} {adjust.Acquire}/{adjust.Adaptation}";
+    }
+
+    // The first temp of a body with storage of its own, of a Type that may need drop, written whole and never dropped, or null.
+    private static int? Unmade(MirBody body)
+    {
+        var (live, written, dropped) = (new HashSet<int>(), new HashSet<int>(), new HashSet<int>());
+        foreach (var statement in body.Statements)
+        {
+            if (statement.Kind == MirStatementKind.StorageLive)
+            {
+                live.Add(statement.Place.Root);
+            }
+            else if (statement is { Kind: MirStatementKind.Assign, Place.Projection: 0 })
+            {
+                written.Add(statement.Place.Root);
+            }
+        }
+
+        foreach (var block in body.Blocks)
+        {
+            if (block.Terminator is { Kind: MirTerminatorKind.Call or MirTerminatorKind.Drop, Place.Projection: 0 } terminator)
+            {
+                (terminator.Kind == MirTerminatorKind.Call ? written : dropped).Add(terminator.Place.Root);
+            }
+        }
+
+        for (var local = 0; local < body.Locals.Length; local++)
+        {
+            if (body.Locals[local].Kind == MirLocalKind.Temp && live.Contains(local) && written.Contains(local) && !dropped.Contains(local) &&
+                MirTypes.MayNeedDrop(body.Locals[local].Type, []))
+            {
+                return local;
+            }
+        }
+
+        return null;
     }
 
     private static string Dump(Compilation c)

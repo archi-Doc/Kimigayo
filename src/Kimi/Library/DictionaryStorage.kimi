@@ -4,7 +4,8 @@ group DictionaryStorage
     // Private physical records shared with the backend; not a public collection ABI.
     #Layout("C")
     struct Handle
-        public var buffer: raw/u8
+        // The slot storage the Dictionary owns (SPEC 5.7): reads through a `raw/Handle` keep that pointer's Origin.
+        public var buffer: raw/u8 during self
         public var used: isize
         public var capacity: isize
         public var length: isize

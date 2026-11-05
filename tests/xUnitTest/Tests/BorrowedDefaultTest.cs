@@ -33,21 +33,25 @@ public class BorrowedDefaultTest
     public void NewPreparedLoansAreRejectedAtTheirDeclaration(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, issue => issue.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
+    // Binding's record and A5's twin at the same span: A5's records at Binding's twin rows stay until H11 (R6-check H0b §5.4,
+    // DECISIONS R4-M108; H3b T50, class 4).
     [Fact]
     public void APreparedSlotsBorrowCannotFitAnExternalOrigin()
     {
         const string Source = "func f(x: i32, y: ref/i32 during a = x@ref) => ()\npublic func main() => ()";
-        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
-        Assert.Equal("x@ref", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "x@ref")],
+            DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
+    // Since the MIR decides acceptance (R6-check H5), the record is A5's: it relates the borrow that created the Loan and the later use
+    // of the copy that retains it (H3b T49, class 3).
     [Fact]
     public void CopiedExternalLoansRemainLiveAfterTheCall()
     {
@@ -60,7 +64,9 @@ public class BorrowedDefaultTest
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
         Assert.Equal("n = 9", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        Assert.Contains(error.Related!, related => related.Role == "loan" && related.Span is { } span && Source.Substring(span.Start, span.Length) == "let r = f(n@ref)");
+        Assert.Equal(
+            [("borrow", "n@ref", "borrow that created the loan"), ("loan", "r@follow", "later use of the value retaining the conflicting loan")],
+            error.Related!.Select(static x => (x.Role, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(error.Message, console.Text, StringComparison.Ordinal);
@@ -86,10 +92,10 @@ public class BorrowedDefaultTest
         public void WarmReferenceDefaultsAllocateNothing()
         {
             var c = MinimalEmissionTest.Analyze(Nested);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
         }
     }

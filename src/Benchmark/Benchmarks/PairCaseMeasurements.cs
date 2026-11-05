@@ -28,8 +28,9 @@ internal static class PairCaseMeasurements
                 throw new InvalidOperationException("The workload must bind.");
             }
 
+            // The first analysis is the entry's own run; each later Analyze() runs the old analysis of this version again.
             var allocated = GC.GetAllocatedBytesForCurrentThread();
-            Analyze();
+            c.AnalyzeLegacyOwnership();
             allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
             for (var warm = 0; warm < 32; warm++)
             {
@@ -53,13 +54,13 @@ internal static class PairCaseMeasurements
 
             var places = 0;
             var operations = 0;
-            foreach (var body in c.Ownership.Bodies)
+            foreach (var body in c.AnalyzeLegacyOwnership().Bodies)
             {
                 places += body.Places.Count;
                 operations += body.Operations.Count;
             }
 
-            var bodies = c.Ownership.Bodies.Count;
+            var bodies = c.AnalyzeLegacyOwnership().Bodies.Count;
             for (var warm = 0; warm < 32; warm++)
             {
                 if (!c.Bind().IsComplete)
@@ -90,7 +91,7 @@ internal static class PairCaseMeasurements
 
             void Analyze()
             {
-                if (!c.Ownership.Analyze().IsVerified)
+                if (!c.AnalyzeLegacyOwnership().Analyze().IsVerified)
                 {
                     throw new InvalidOperationException("The workload must pass ownership verification.");
                 }

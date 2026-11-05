@@ -72,7 +72,7 @@ public class ElementComparisonTest
     public void AnOperandWithoutAnOwnedPathIsSharedBorrowed(string source, string operand)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single(x => x.ToString() == operand);
         Assert.True(c.Binding.TryGetAdaptation(node, out var adaptation));
         Assert.Equal(ExpectedAdaptationKind.SharedBorrow, adaptation.Kind);
@@ -84,7 +84,7 @@ public class ElementComparisonTest
     public void AnOwnedStaticPathIsInspectedWithoutAnAdaptation()
     {
         var c = MinimalEmissionTest.Analyze("let pair: (i32, string) = (1, \"a\")\nlet same = pair.1 == \"a\"");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.False(c.Binding.TryGetAdaptation(node, out _));
         Assert.True(c.Analysis.IsVerified);

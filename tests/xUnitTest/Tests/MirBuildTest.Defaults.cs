@@ -3,6 +3,7 @@
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -12,6 +13,20 @@ namespace XunitTest;
 /// <summary>Default templates and their copies in the MIR build (plan 5.6.2, SPEC 7.2.3): template calls, Inlined scopes, the expansion limit.</summary>
 public sealed partial class MirBuildTest
 {
+    // Generic defaults a call's substitution may not instantiate: an Option of T, a Tuple holding one and a call of h<T>; a Box to nest.
+    private const string DefaultsOver = "func f<T>(x: ref/T, k: Option<T> = .None) => ()\nfunc f3<T>(x: ref/T, k: (i32, Option<T>) = (0, .None)) => ()\n" +
+        "func h<T>() -> i32 => 0\nfunc f2<T>(x: ref/T, k: i32 = h<T>()) => ()\nstruct Bx<T>\n    public var v: T\n";
+
+    // Callers of DefaultsOver (ACopyOverRejectedStorageIsBuilt, ACopyTheCallDoesNotInstantiateIsAnOpaqueValue, MirBorrowsTest's
+    // AnUninstantiableDefaultHidesNoRecord), each
+    // holding a Loan across its omitting call that `v = 2` meets, over storage Binding rejected (Bad's Field) and its valid twin (Good).
+    internal static string RejectedCopies => DefaultsOver + "struct Bad\n    public var m: Missing\nstruct Good\n    public var m: i32\n" +
+        Caller("dep", "Bad", "f") + Caller("dep3", "Bad", "f3") + Caller("dep2", "Bad", "f2") + Caller("val", "Good", "f") + Caller("val2", "Good", "f2");
+
+    // The same in a complete program over a Box nested 65 times, 63 times (under the Option, past the storage depth) and 30 times.
+    internal static string LimitCopies => DefaultsOver + Caller("lim", Nested("Bx", 65), "f") + Caller("lim64", Nested("Bx", 63), "f") +
+        Caller("n30", Nested("Bx", 30), "f");
+
     // Plan 5.6.2: a default whose template reaches itself through the defaults its calls omit, alone (tests/mir/defaults) or with another
     // (a component of the omission graph), is a call of its template wherever it is omitted, never a copy. A default Binding rejected fails
     // its template, and a call that omits it takes an Opaque value at the call, reading the earlier slots, with no record of its own.
@@ -23,7 +38,7 @@ public sealed partial class MirBuildTest
             "let a = f(2)\nlet b = h(1)\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        Assert.Empty(program.Records);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
         var bodies = program.Bodies.ToArray();
         Assert.Equal(["g#1"], Templates(bodies.Single(static x => x.Key is { Kind: MirBodyKind.DefaultTemplate, Decl.Name: "f" })));
         Assert.Equal(["f#1"], Templates(bodies.Single(static x => x.Key is { Kind: MirBodyKind.DefaultTemplate, Decl.Name: "g" })));
@@ -140,7 +155,8 @@ public sealed partial class MirBuildTest
 
     // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
     // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
-    // calls that omit it take an Opaque value without another record.
+    // calls that omit it take an Opaque value without another record: the record marks the template it lies in alone, not a body whose
+    // Opaque value rests on it (MirBody.HasConstructionRecord; GR-1a, fail-before: none).
     [Fact]
     public void DefaultExpansionStopsAtTheLimit()
     {
@@ -153,11 +169,75 @@ public sealed partial class MirBuildTest
         var c = Compile(text.Append("let value = f16()\n").ToString());
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var record = Assert.Single(program.Records);
+        var record = Assert.Single(program.Records(MirRecordClass.Construction));
         Assert.Equal(DiagnosticCode.DefaultExpansionLimit_Kd, record.Code);
         Assert.Matches(@"^f\d+\(\)$", c.SyntaxOf(record.Subject).ToString());
         Assert.All(program.Bodies.ToArray(), static x => Assert.InRange(x.Statements.Length, 0, 65_536));
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0).HasOpaque);
+        Assert.Equal(MirBodyKind.DefaultTemplate, Assert.Single(program.Bodies.ToArray(), static x => x.HasConstructionRecord).Key.Kind);
+    }
+
+    // SPEC 23.1.1 (DECISIONS R4-M127): a copy is decided before it is written. A default whose template the call's substitution does not
+    // instantiate (a Type the copy folds or a callee substitution it composes: its storage a Limit) is no copy but an Opaque value at the
+    // call reading the earlier slots, with the call's Unsupported_Kd: in a complete program past the storage depth, also a closed Type
+    // there under a library group member's call (InstanceCollectorTest's former default; the collector then admits nothing of it). The
+    // twin copies. Before, the copy kept the template's own Type (a validator finding) or callee (h<T> in the caller), and over the closed
+    // Type the Opaque value overwrote a copy the collector still admitted. A literal default (f4's null) reports alike: a valid Literal is
+    // no rejection (PLAN G122); before, the builder read every Literal as rejected, and the call took a silent Opaque value.
+    [Fact]
+    public void ACopyTheCallDoesNotInstantiateIsAnOpaqueValue()
+    {
+        var complete = Compile(LimitCopies);
+        Assert.True(complete.Binding.Result.IsComplete);
+        Assert.Equal(
+            [
+                "lim: f; f(b) reads PendingSlot", "lim64: f; f(b) reads PendingSlot", "n30: Inlined f", "record f(b) Unsupported_Kd",
+                "record f(b) Unsupported_Kd",
+            ],
+            Callers(complete, "lim", "lim64", "n30"));
+        var literal = Compile(DefaultsOver + "func f4<T>(x: ref/T, k: raw/T = null) => ()\n" + Caller("lnull", Nested("Bx", 65), "f4"));
+        Assert.Equal(["lnull: f4; f4(b) reads PendingSlot", "record f4(b) Unsupported_Kd"], Callers(literal, "lnull"));
+        var api = "public group Api\n    public func probe<T>(value: T) -> i32 => 0\n" +
+            $"    public func take(x: i32, extra: i32 = probe<{Nested("Array", 65)}>([])) -> i32 => x + extra\n";
+        var library = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    return\n", api);
+        Assert.True(library.Bind().IsComplete);
+        Assert.True(library.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.Equal(["main: take; Lib.Api.take(1) reads PendingSlot", "record Lib.Api.take(1) Unsupported_Kd"], Callers(library, "main"));
+        var program = new MirBuilder(library).Build(); // Uncollected: the compilation's own collection roots both modules.
+        new InstanceCollector(library.Types, library.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+    }
+
+    // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139): a copy over storage Binding rejected is built in the call's instance, as every reader of an
+    // instance reads one (TyCtxt.ReadableInstance) and as a non-generic template over that storage is: dep, dep3 and dep2 copy like their twins
+    // with no builder record (BU-38's x3, `d(b)`, is dep's form); dep's copy holds `.None` of Option<Bad>, and dep2's calls `h<Bad>`.
+    // Before, the Rejected instance read as a limit: an Opaque value and the call's Unsupported_Kd. Such a copy in a confined witness is
+    // MirEffectsTest's ACopyInAConfinedWitnessOverRejectedStorageIsItsRepairs.
+    [Fact]
+    public void ACopyOverRejectedStorageIsBuilt()
+    {
+        var c = Compile(RejectedCopies);
+        Assert.Equal(
+            ["dep: Inlined f", "dep3: Inlined f3", "dep2: Inlined h f2", "val: Inlined f", "val2: Inlined h f2"],
+            Callers(c, "dep", "dep3", "dep2", "val", "val2"));
+        var bodies = c.BuildMir().Bodies.ToArray();
+        Assert.Contains(bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "dep" }).Locals.ToArray(), static x => TyCtxt.Name(x.Type) == "Option<Bad>");
+        var h = bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "dep2" }).Blocks.ToArray().Single(static x => x.Terminator.Callee.Symbol?.Name == "h");
+        Assert.Equal("Bad", h.Terminator.Callee.Subst!.Types[0]!.Symbol!.Name);
+    }
+
+    // A warm rebuild of copies over storage Binding rejected allocates nothing: Instantiates' maps keep their storage.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebuildOfRejectedCopiesAllocatesNothing()
+    {
+        var c = Compile(RejectedCopies);
+        _ = c.BuildMir();
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
     }
 
     // V11, plan 5.6.2: N calls that omit a generic default whose template holds a copy of another grow the body by two Inlined scopes each,
@@ -166,9 +246,8 @@ public sealed partial class MirBuildTest
     [Fact]
     public void DefaultCopiesScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
-        Compilation c = null!;
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, compilations, bodies) = (new[] { 16, 32, 64 }, new long[3], new Compilation[3], new MirBody[3]);
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func next(x: i32, y: i32 = x + 1) -> i32 => y\nfunc scale<T>(x: T, factor: i32 = next(2)) -> i32\n    T is Copy\n    return factor\n");
             text.Append("func work() -> i32\n    var total = 0\n");
@@ -177,21 +256,47 @@ public sealed partial class MirBuildTest
                 text.Append("    total += scale(").Append(n).Append(")\n");
             }
 
-            c = Compile(text.Append("    return total\n").ToString());
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
-            work[i] = body.Blocks.Length + body.Statements.Length;
-            Assert.Equal(sizes[i] * 2, body.Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
+            var c = compilations[i] = Compile(text.Append("    return total\n").ToString());
+            return () => bodies[i] = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            work[i] = bodies[i].Blocks.Length + bodies[i].Statements.Length;
+            Assert.Equal(sizes[i] * 2, bodies[i].Scopes.ToArray().Count(static x => x.Kind == MirScopeKind.Inlined));
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        var last = compilations[^1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            last.Binding.Bind(BindingMode.Final);
+            last.BuildMir();
         }));
     }
+
+    // Each caller's Inlined scopes and callees, then each Opaque site's syntax and the roles of the locals it reads; then the records.
+    private static string[] Callers(Compilation c, params string[] names)
+    {
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        return [.. names.Select(name =>
+        {
+            var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
+            var scopes = body.Scopes.ToArray().Where(static x => x.Kind == MirScopeKind.Inlined).Select(static x => $"{x.Kind} ");
+            var callees = body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call)
+                .Select(static x => x.Terminator.Callee.Symbol?.Name);
+            var sites = body.OpaqueSites.ToArray().Select(x =>
+                $"; {c.SyntaxOf(x.Source)} reads {string.Join(" ", body.OpaqueRoots.Slice(x.Start, x.Count).ToArray().Select(r => body.Locals[r].Role))}");
+            return $"{name}: {string.Concat(scopes)}{string.Join(" ", callees)}{string.Concat(sites)}";
+        }), .. program.Records(MirRecordClass.Construction).Where(static x => x.Subject.Module == 0).Select(x => $"record {c.SyntaxOf(x.Subject)} {x.Code}")];
+    }
+
+    // A caller of a default of DefaultsOver: v's Loan held across the omitting call, which `v = 2` then meets.
+    private static string Caller(string name, string parameter, string callee)
+        => $"func {name}(b: ref/{parameter})\n    var v = 1\n    let r = v@ref\n    {callee}(b)\n    v = 2\n    let k = r@follow\n";
+
+    // A generic Type nested n times around i32.
+    private static string Nested(string type, int n) => string.Concat(Enumerable.Repeat(type + "<", n)) + "i32" + new string('>', n);
 }

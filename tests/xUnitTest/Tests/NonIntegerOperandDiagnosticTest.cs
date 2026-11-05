@@ -144,8 +144,8 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
             public func main() => ()
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void AProvenRightIntegerSuppliesTheLiteralExpectation(string source)
     {
         var compilation = CompilationTestHelper.ParseSuccess(source);
-        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation, null));
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.Empty(compilation.Binding.Issues);
     }
 
@@ -198,8 +198,8 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
             Console.writeLine("\(shifted)")
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("IntegerOperandRepairs", Source, "magnitude\n8\n");
     }
 
@@ -474,7 +474,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.False(compilation.Binding.Result.IsComplete);
         Assert.Empty(compilation.Problems);
         using var output = new StringWriter();
-        Assert.False(compilation.WriteIr(output, out _));
+        Assert.False(compilation.Generate(output));
         Assert.Empty(output.ToString());
     }
 

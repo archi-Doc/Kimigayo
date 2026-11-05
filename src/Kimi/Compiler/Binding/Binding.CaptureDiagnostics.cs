@@ -10,12 +10,6 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-#pragma warning disable SA1402 // The capture list failure fact beside its publication.
-
-// The repeats of one capture list, and the first other entry that failed independently of them (SPEC 23.1.2): its failure, none
-// when every other entry is valid, and the Type its facts name, null for an entry without facts, such as an unresolved name.
-internal readonly record struct CaptureListFailure(CaptureRepeat[] Repeats, CaptureKoto Entry, BindingFailure Failure, BoundType? Type, BindingSymbol? Source);
-
 public sealed partial class Binding
 {
     private const string HelperBorrowNote = "the helper borrow may be passed to helpers but cannot be captured (SPEC 16.3.1)";
@@ -56,13 +50,23 @@ public sealed partial class Binding
         var source = capture.Source;
         switch (code)
         {
-            case DiagnosticCode.InvalidAssignment_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
+            case DiagnosticCode.InvalidAssignment_Kd when DefaultParameters.InLaterDefault(node, source):
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], span: capture.At);
                 break;
             case DiagnosticCode.InvalidAssignment_Kd:
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], span: capture.At);
                 break;
-            case DiagnosticCode.TransferRequired_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
+            case DiagnosticCode.TransferRequired_Kd when node is FunctionKoto { Captures: null }:
+                // SPEC 7.7.2 (R6-check H1, S3): the omitted list's capture, located at the Closure; no candidate is offered.
+                var omitted = $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow";
+                if (DefaultParameters.InLaterDefault(node, source))
+                {
+                    omitted += ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
+                }
+
+                node.Report(requirement, code, note: omitted, evidence: [name]);
+                break;
+            case DiagnosticCode.TransferRequired_Kd when DefaultParameters.InLaterDefault(node, source):
                 node.Report(
                     requirement,
                     code,
@@ -87,7 +91,7 @@ public sealed partial class Binding
                 // SPEC 7.7.2: an explicit capture of self obeys the construction and destruction restrictions.
                 node.Report(requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.7.2)", span: capture.At);
                 break;
-            case DiagnosticCode.InvalidCaptureBinding_Kd when source is not null && capture.Captured is { } captured:
+            case DiagnosticCode.InvalidCaptureBinding_Kd when capture.Helper is not null && capture.Captured is { } captured:
                 // SPEC 16.3.1, 15.6.5: a later value of a captured var brings the helper borrow; each capture and the declaration are related.
                 var reaches = $"This value carries the helper borrow of the whole destruction receiver (self@ref) into {name}, which a Closure captures; ";
                 node.Report(
@@ -98,7 +102,7 @@ public sealed partial class Binding
                     related: [("declaration", source.Declaration, null)],
                     relatedSpans: Array.ConvertAll(captured, span => ("capture", node, span, (string?)null)));
                 break;
-            case DiagnosticCode.InvalidCaptureBinding_Kd when source is not null:
+            case DiagnosticCode.InvalidCaptureBinding_Kd when capture.Helper is not null:
                 // SPEC 16.3.1: the helper borrow, or a value that carries it, captured; the captured binding's declaration is related, and
                 // the value that brought the helper borrow into its region when that is not its initializer.
                 (string Role, Koto At, string? Label)[] related = capture.Borrow is { } borrow
@@ -126,9 +130,9 @@ public sealed partial class Binding
                 BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
                 _ => DiagnosticCode.InvalidCaptureBinding_Kd,
             };
-            if (list.Type is { } type)
+            if (list.Entry is { } entry)
             {
-                this.ReportCaptureEntry(function, new(list.Entry.Span, list.Entry.Name, type, list.Source, null, null), entryRequirement, entryCode);
+                this.ReportCaptureEntry(function, entry, entryRequirement, entryCode);
             }
             else
             {
@@ -154,26 +158,24 @@ public sealed partial class Binding
         }
     }
 
-    // A capture entry that failed (its facts name the Type, or none for an unresolved name), or, in a list that repeats a name, the
-    // repeats with that entry's failure beside them.
-    private BoundType? FailCaptureEntry(FunctionKoto function, CaptureRepeat[]? repeats, CaptureKoto capture, BindingFailure failure, BoundType? type, BindingSymbol? source)
-        => repeats is not null ? this.FailExplained(ref this.captureRepeats, function, BindingFailure.Duplicate, new CaptureListFailure(repeats, capture, failure, type, source))
-            : type is not null
-                ? this.FailExplained(ref this.captureFailures, function, failure, new CaptureFailure(capture.Span, capture.Name, type, source, null, null))
-                : this.Fail(function, failure);
+    // A capture entry that failed with its facts (null for an entry without facts, such as an unresolved name), or, in a list that
+    // repeats a name, the repeats with that entry's failure and facts beside them, so it is published as in a list without repeats.
+    private BoundType? FailCaptureEntry(FunctionKoto function, CaptureRepeat[]? repeats, BindingFailure failure, CaptureFailure? fact)
+        => repeats is not null ? this.FailExplained(ref this.captureRepeats, function, BindingFailure.Duplicate, new CaptureListFailure(repeats, failure, fact))
+            : fact is { } entry ? this.FailExplained(ref this.captureFailures, function, failure, entry)
+            : this.Fail(function, failure);
 
     // SPEC 16.3.1: an explicit entry that captures a value carrying the helper borrow fails its Closure, as a capture of self does.
     private BoundType? FailHelperEntry(
         FunctionKoto function, CaptureRepeat[]? repeats, CaptureKoto capture, BindingSymbol source, (BoundOrigin Carrier, BoundOrigin Helper) helper)
-        => repeats is not null ? this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, source.Type, source)
-            : this.FailExplained(ref this.captureFailures, function, BindingFailure.Capture, this.HelperCaptureFact(capture.Span, source, helper));
+        => this.FailCaptureEntry(function, repeats, BindingFailure.Capture, this.HelperCaptureFact(capture.Span, source, helper));
 
-    // SPEC 16.3.1, 23.1: the facts of a capture site that captures the helper borrow (H) through `carrier`: the value that brought H into
-    // a local region the binding names (LocalRegionSourceUse), unless that value is the binding's own initializer, is the related borrow.
+    // SPEC 16.3.1, 23.1: the facts of a capture site that captures the helper borrow (H) through `carrier`: H, and the value that brought H
+    // into a local region the binding names (LocalRegionSourceUse), unless that value is the binding's own initializer, the related borrow.
     private CaptureFailure HelperCaptureFact(SourceSpan at, BindingSymbol source, (BoundOrigin Carrier, BoundOrigin Helper) helper)
     {
-        var use = this.LocalRegionSourceUse(helper.Carrier, helper.Helper);
-        return new(at, source.Name, source.Type!, source, ReferenceEquals(use, (source.Declaration as VariableKoto)?.InitializerKoto) ? null : use, null);
+        var use = this.LocalRegionSourceUse(helper.Carrier, helper.Helper)?.Value;
+        return new(at, source.Name, source.Type!, source, helper.Helper, ReferenceEquals(use, (source.Declaration as VariableKoto)?.InitializerKoto) ? null : use, null);
     }
 
     // SPEC 16.3.1, 15.6.5: a var a Closure captured before a later value bounding its region brought the helper borrow (H): that value
@@ -183,7 +185,7 @@ public sealed partial class Binding
     {
         var name = capture.Environment.Name;
         var captured = closure.Captures is not null ? CaptureEntryOf(closure, name)?.Span : CaptureUse.Of(closure, capture.Environment);
-        if (this.LocalRegionSourceUse(carrier, helper) is not { } late || captured is not { } at)
+        if (this.LocalRegionSourceUse(carrier, helper)?.Value is not { } late || captured is not { } at)
         {
             // The capture site judged every carrier but a region's later source, and CarrierOf found this one through the walk that finds
             // its use; the storage entry exists because of its entry or first occurrence. A broken contract, without recovery.
@@ -197,14 +199,22 @@ public sealed partial class Binding
             return;
         }
 
-        var fact = new CaptureFailure(late.Span, name, capture.Environment.Type!, capture.Source, null, [at]);
+        var fact = new CaptureFailure(late.Span, name, capture.Environment.Type!, capture.Source, helper, null, [at]);
         this.FailExplained(ref this.captureFailures, late, BindingFailure.Capture, fact);
     }
 
     // A capture a closure failed at: the written entry's span or the use that captures, its name, the Type its facts name, its outer
-    // binding when it has one, the value that brought the helper borrow into the binding's region, and, for a late source of a var's
-    // region, each capture it reaches.
-    private readonly record struct CaptureFailure(SourceSpan At, string Name, BoundType Type, BindingSymbol? Source, Koto? Borrow, SourceSpan[]? Captured);
+    // binding, and for a capture of the helper borrow (SPEC 16.3.1) its Origin H, which selects the publication (null for any other
+    // failure), the value that brought it into the binding's region and, for a late source of a var's region, each capture it reaches.
+    private readonly record struct CaptureFailure(SourceSpan At, string Name, BoundType Type, BindingSymbol Source, BoundOrigin? Helper, Koto? Borrow, SourceSpan[]? Captured)
+    {
+        // The facts of an entry that failed on its own: its binding and the Type that binding names (HelperCaptureFact gives a helper's).
+        internal static CaptureFailure Of(CaptureKoto entry, BindingSymbol source) => new(entry.Span, entry.Name, source.Type ?? BoundType.Unit, source, null, null, null);
+    }
+
+    // The repeats of one capture list, and the first other entry that failed independently of them (SPEC 23.1.2): its failure, none
+    // when every other entry is valid, and its facts, null for an entry without facts, such as an unresolved name.
+    private readonly record struct CaptureListFailure(CaptureRepeat[] Repeats, BindingFailure Failure, CaptureFailure? Entry);
 
     // The first occurrence of an environment binding in its omitted-list Closure, in source order: a name that resolves to it, or the
     // entry or first occurrence of the nested Closure's binding that it forwards.

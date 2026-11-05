@@ -17,9 +17,9 @@ public class ConstraintProjectionApiAccessBindingTest
     public void DeclarationConstraintsCannotHideRestrictedProjectionRequirements(string declaration)
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n" + declaration);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -160,7 +160,7 @@ public class ConstraintProjectionApiAccessBindingTest
         var replacement = ((IsKoto)valid.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single().TypeConstraints.Single()).Right;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingFailure.Access, clause.FailureOf());
@@ -189,11 +189,11 @@ public class ConstraintProjectionApiAccessBindingTest
     {
         var diagnostics = TestDiagnostics.Of(c, "Hello.kimi");
         Assert.DoesNotContain(diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 }

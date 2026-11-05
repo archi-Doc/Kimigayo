@@ -156,7 +156,7 @@ public enum DiagnosticCode
     UnreachablePattern_Kd,
     OuterCloserInBody_Kd,
 
-    GenerationFailed_Kd,
+    ArtifactPublicationFailed_Kd,
     GenerationResourceLimit_Kd,
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,
@@ -167,6 +167,7 @@ public enum DiagnosticCode
     CallReservationConflict_Kd,
     CallActivationConflict_Kd,
     PlacementActivationConflict_Kd,
+    OwnStepDeparture_Kd,
 
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,
@@ -236,6 +237,7 @@ public enum DiagnosticCode
     UnprovenOriginContract_Kd,
     InterpolationNestingLimit_Kd,
     DefaultExpansionLimit_Kd,
+    OwnershipDepthLimit_Kd,
 
     Count, // Last sentinel
 }

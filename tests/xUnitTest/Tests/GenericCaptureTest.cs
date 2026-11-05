@@ -82,7 +82,7 @@ public class GenericCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(Take + "require take(42) == 42 else => $abort(\"warm\")\nConsole.writeLine(take(\"string\"))");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

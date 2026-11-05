@@ -2,7 +2,7 @@
 
 // Capture formation (SPEC 7.7.2): which binding a capture entry or a use in an omitted-list Closure captures, the environment binding
 // it initializes and how (CaptureAcquisition), and the repeated names of a written list. A failed capture's facts and record belong to
-// Binding.CaptureDiagnostics; a Closure's conversion, signature and call receiver to Binding.Closures.
+// Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its call receiver to Binding.ClosureReceivers.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -70,7 +70,9 @@ public sealed partial class Binding
             _ => false,
         };
 
-    // An unsupported captured Type is reported at the written capture entry when there is one.
+    // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. An
+    // unsupported captured Type is reported at the written capture entry when there is one, resting on the projection use that formed
+    // it (BU-61).
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -95,19 +97,33 @@ public sealed partial class Binding
             this.BindVariable(variable, source.Scope);
         }
 
-        // Concrete environments preserve complete captured Types and dependencies.
-        // Common-function erasure retains its independent Owned requirement.
-        if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture) || source.Type is not { } type)
+        if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture))
         {
             return null;
         }
 
+        // SPEC 23.1.2: no environment holds a binding whose Type failed; a use of the source itself rests on its declaration.
+        if (source.Type is not { } type)
+        {
+            return source;
+        }
+
+        // Concrete environments preserve complete captured Types and dependencies.
+        // Common-function erasure retains its independent Owned requirement.
         // SPEC 7.7.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
         // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
                     ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
         {
+            // DECISIONS BU-61 (SPEC 23.1.2): a projection whose use's conformance check rejects it names no Type, so the failure rests
+            // on the use judged on the closure's own scope chain. Only the closure's first failure records it, so an earlier independent
+            // failure stays direct.
+            if (function.BindingFailure == BindingFailure.None && this.ProjectionUseOf(type, this.ConstraintScope(function)) is { } use)
+            {
+                this.AddPendingPrerequisite(function, use);
+            }
+
             if (entry is { } written)
             {
                 this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, written.Span);
@@ -153,7 +169,10 @@ public sealed partial class Binding
 
     // SPEC 7.7.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
     // A bare entry Copies a Copy binding and Reborrows a binding storing an exclusive reference; `x@ref` and `x@uniq`
-    // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot.
+    // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot. A bare entry that
+    // Reborrows, in every or some admitted case, an enclosing Closure's environment binding `u: uniq/T during o` is contained in that
+    // Closure's call receiver too, so its binding has `uniq/T during meet(o, ρ)`, a pair layer that meet on its outer-Origin slot
+    // (DECISIONS R4-M123's 7.7.2, R4-M126 P4); an enclosing local's or parameter's keeps its Type (BU-28).
     private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
     {
         var type = source.Type!;
@@ -171,6 +190,12 @@ public sealed partial class Binding
                 }
 
                 environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
+                if ((bare == HirAcquire.Reborrow || (bare == HirAcquire.ByCase && this.BareReborrows(type, function))) &&
+                    this.EnvironmentContainment(source) is { } receiver && this.OuterOrigin(type) is { } outer)
+                {
+                    environment.Type = this.types.Rebuild(type, (BoundType[])type.Components, this.Meet(outer, receiver), (BoundOrigin[])type.OriginArguments);
+                }
+
                 return null;
         }
 
@@ -188,7 +213,7 @@ public sealed partial class Binding
 
     // SPEC 7.7.2: a use, in an omitted-list Closure, of a binding of an enclosing activation captures it as the Closure's environment
     // binding; null when no environment holds it (a named function, an explicit list, a binding Capture refuses, or a value that carries
-    // the helper borrow, whose use fails as a contextual binding's does, SPEC 16.3.1).
+    // the helper borrow, whose use fails as a contextual binding's does, SPEC 16.3.1); the binding itself when its Type failed.
     private BindingSymbol? CaptureOuterUse(Koto use, BindingSymbol symbol, BindingScope scope)
         => scope.Function is { IsAnonymous: true, Captures: null } closure && !this.FailHelperUse(closure, symbol, use)
             ? this.Capture(closure, symbol, this.scopes[closure]) : null;

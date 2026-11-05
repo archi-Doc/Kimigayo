@@ -90,6 +90,8 @@ internal static partial class MirDump
                     MirCalleeKind.Virtual => $"virtual {callee.Symbol?.Name}",
                     MirCalleeKind.Intrinsic => $"intrinsic {(IntrinsicId)callee.Arg}",
                     MirCalleeKind.Requirement when callee.Contract is { } contract => $"requirement {callee.Symbol?.Name} of {contract.Name}",
+                    MirCalleeKind.Requirement when callee.Arg != 0
+                        => $"requirement {callee.Symbol?.Name} {((ComparisonMode)callee.Arg).ToString().ToLowerInvariant()}",
                     _ => $"{callee.Kind.ToString().ToLowerInvariant()} {callee.Symbol?.Name}",
                 });
 
@@ -146,7 +148,7 @@ internal static partial class MirDump
                         ((string?)constant.Value)?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(
                         "\n",
                         "\\n")).Append('"'),
-                    MirConstKind.Location => Source(text.Append("location"), new((ushort)(constant.Bits >> 32), (int)(constant.Bits & uint.MaxValue))),
+                    MirConstKind.Location => Source(text.Append("location"), constant.Site),
                     _ => text.Append(constant.Kind == MirConstKind.FnItem ? "fn " : "type ").Append(Type(constant.Type)),
                 };
             case MirOperandKind.PairAcquire:

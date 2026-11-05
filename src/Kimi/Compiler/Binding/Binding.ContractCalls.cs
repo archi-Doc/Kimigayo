@@ -12,46 +12,18 @@ public sealed partial class Binding
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 
-    private static bool HasUnsubstitutedOrigin(BoundType type, Koto binder)
+    // Whether a Type's Origins, its raw layers' included, name an Origin of `binder`: a test of its Origin summary's nodes
+    // (Binding.OriginSummaries).
+    private bool HasUnsubstitutedOrigin(BoundType type, Koto binder)
     {
-        if (!type.CarriesAnyOrigin)
-        {
-            return false;
-        }
+        var summary = this.SummaryOf(type);
+        return Names(summary.Nodes, binder) || Names(summary.RawNodes, binder);
 
-        if ((type.Origin ?? type.RawOrigin) is { } origin && HasOrigin(origin))
+        static bool Names(BoundOrigin[] nodes, Koto binder)
         {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (HasOrigin(type.OriginArguments[i]))
+            for (var i = 0; i < nodes.Length; i++)
             {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasUnsubstitutedOrigin(type.Components[i], binder))
-            {
-                return true;
-            }
-        }
-
-        return false;
-
-        bool HasOrigin(BoundOrigin origin)
-        {
-            if (ReferenceEquals(origin.Binder, binder))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (HasOrigin(origin.Operands[i]))
+                if (ReferenceEquals(nodes[i].Binder, binder))
                 {
                     return true;
                 }

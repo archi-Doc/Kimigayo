@@ -4,8 +4,10 @@ namespace Kimi.Compiler.Mir;
 
 // A5's check-set candidates (A3 5's check sets and mode, E13 (1), (5)): each Loan an element of a gather's pass finds, once per mode (a
 // two-phase Loan is shared only in its reservation holder), tagged with the passes, operands and holders that reached it, and listed by its
-// Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness). Which check sets hold a
-// candidate is Tags.Takes; the passes and the closure are the gather's (MirBorrows.CheckSets).
+// Place's root, so an access scans only its root's; a marker found, the holder it was first seen in (E7's witness); an own-step entry
+// found, its tag (MirBorrows.OwnSteps). What the drop tier finds is tagged apart (DECISIONS R4-M153): a candidate's Dropped tags, a
+// marker's drop stamp and an own-step entry's drop tag, each with the drop-live holder as via. Which check sets hold a
+// candidate is Tags.Takes, either tier's; the passes and the closure are the gather's (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
 internal sealed partial class MirBorrows
 {
@@ -17,26 +19,37 @@ internal sealed partial class MirBorrows
     private int[] rootLast = [];
     private int[] markSeen = []; // By marker (γ_H): the check that saw it in the Based or Stored passes.
     private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
+    private (int Stamp, int Via)[] markDropped = []; // By marker: the check whose drop tier first saw it, and that tier's holder.
     private int candidateCount;
 
-    // A set found in a holder (-1: a transit value) by the pass: its elements.
-    private void Scan(int set, int via)
+    // A Loan's mode in a holder (-1: a transit value) (A3 5's mode): unique, but a two-phase Loan shared in its reservation holder.
+    private static bool UniqueIn(in Loan loan, int via) => loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
+
+    // A state found in a holder (-1: a transit value, a state of one part) by the pass: its elements, in ascending order.
+    private void Scan(ulong found, int via)
     {
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        this.Work += this.Count(found);
+        foreach (var element in this.ElementsOf(found))
         {
-            this.Consider(element, via);
+            this.Consider(element, found, via);
         }
     }
 
     // An element found in a holder (-1: a transit value) by the pass: a Loan once per mode (A3 5's mode: a two-phase Loan is shared only in
-    // its reservation holder), its candidate tagged with the pass, whose named holder the closure reads; Φ_E makes E live. An activation
-    // keeps the first two holders the Based, Seeded and Valued passes find it in.
-    private void Consider(int element, int via)
+    // its reservation holder), its candidate tagged with the pass, whose named holder the closure reads; an address only its named holder;
+    // Φ_E makes E live. An activation keeps the first two holders the Based, Seeded and Valued passes find it in. A carrier that keeps a W
+    // element (MirBorrows.Causes' Kept) marks its candidate or guard marker kept. The drop tier tags its drop-live holder as the via.
+    private void Consider(int element, ulong found, int via)
     {
-        if (element == Escaped)
+        var kept = this.Kept(found, element, via);
+        var dropped = (this.pass & DropTier) != 0;
+        if (element <= Writable)
         {
-            this.Reach(Escaped, scan: true);
+            if (element == Escaped)
+            {
+                this.Reach(Escaped, scan: true); // Φ_W, always beside Φ_E, is rule W's alone (MirBorrows.Reach).
+            }
+
             return;
         }
 
@@ -48,12 +61,38 @@ internal sealed partial class MirBorrows
                 (this.markSeen[element], this.markVia[element]) = (this.stamp, via);
             }
 
+            if (dropped && this.markDropped[element].Stamp != this.stamp)
+            {
+                this.markDropped[element] = (this.stamp, this.dropVia);
+            }
+
+            if (this.pass is Based or Stored && kept)
+            {
+                this.markKept[element] = this.stamp;
+            }
+
             return;
         }
 
         var index = element - this.loanBase;
+        if (index >= this.loanCount)
+        {
+            // An address never conflicts (D19): it reaches the holder it names; an own-step entry is tagged for its departures.
+            if (this.loans[index].OwnStep)
+            {
+                this.Seen(index, via);
+            }
+
+            if (this.loans[index] is { Direct: true, Named: >= 0 } address)
+            {
+                this.Reach(address.Named, scan: true);
+            }
+
+            return;
+        }
+
         ref readonly var loan = ref this.loans[index];
-        var unique = loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
+        var unique = UniqueIn(loan, via);
         var key = (2 * index) + (unique ? 1 : 0);
         if (this.loanMarks[key] != this.stamp)
         {
@@ -64,7 +103,8 @@ internal sealed partial class MirBorrows
         }
 
         ref var candidate = ref this.candidates[this.candidateAt[key]];
-        candidate.Tag(this.pass, this.passIndex, via);
+        candidate.Tag(this.pass, this.passIndex, dropped ? this.dropVia : via);
+        candidate.Kept |= kept;
         if (loan is { Direct: true, Named: >= 0 })
         {
             this.Reach(loan.Named, scan: true);
@@ -89,11 +129,12 @@ internal sealed partial class MirBorrows
     // The first of a root's candidates at the check (None: none).
     private int First(int root) => this.rootMarks[root] == this.stamp ? this.rootFirst[root] : None;
 
-    /// <summary>A Loan of the check sets, once per mode: its index, whether its mode in the holders it was found in is unique, its tags and
-    /// its root's next candidate.</summary>
+    /// <summary>A Loan of the check sets, once per mode: its index, whether its mode in the holders it was found in is unique, its tags, the
+    /// drop tier's apart (Dropped), and its root's next candidate.</summary>
     private struct Candidate(int loan, bool unique)
     {
         private Tags tags = new();
+        private Tags dropped = new();
 
         internal readonly int Loan => loan;
 
@@ -101,12 +142,29 @@ internal sealed partial class MirBorrows
 
         internal readonly Tags Tags => this.tags;
 
+        internal readonly Tags Dropped => this.dropped;
+
         internal int Next { get; set; } = None;
 
-        // Whether a check set holds it (Tags.Takes).
-        internal readonly bool Takes(int taking) => this.tags.Takes(taking);
+        // Whether a carrier keeps it (rule W, MirBorrows.Causes): found in a transit value, a holder other than an escape holder, or an
+        // escape holder as no Copy of the borrow, in some pass.
+        internal bool Kept { get; set; }
 
-        internal void Tag(byte pass, int index, int via) => this.tags.Tag(pass, index, via);
+        // Whether a check set holds it (Tags.Takes), in either tier.
+        internal readonly bool Takes(int taking) => this.tags.Takes(taking) || this.dropped.Takes(taking);
+
+        // A tag of a pass, a drop-tier pass's into Dropped as its plain pass.
+        internal void Tag(byte pass, int index, int via)
+        {
+            if ((pass & DropTier) != 0)
+            {
+                this.dropped.Tag((byte)(pass & ~DropTier), index, via);
+            }
+            else
+            {
+                this.tags.Tag(pass, index, via);
+            }
+        }
     }
 
     /// <summary>What reached a candidate in some sets: the first holder (-1: a transit value), the passes, the first operand whose value

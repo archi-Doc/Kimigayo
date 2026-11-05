@@ -76,7 +76,7 @@ public class SignatureInputFormationBindingTest
     public void DependentInputsUseTheDefiningScope(string declaration)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + declaration);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

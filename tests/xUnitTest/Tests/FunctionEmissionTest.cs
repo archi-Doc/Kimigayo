@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -77,128 +75,6 @@ public class FunctionEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
-    [Fact]
-    public void ParametersUseSsaAndOnlyMainIsCalledAtStartup()
-    {
-        var c = MinimalEmissionTest.Analyze("func f(v3: i32, ignored: (), checked3: bool) -> i32 => if checked3 => v3 else => 0\npublic func main()\n    if f(3, (), true) == 3 => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Equal(3, module.FunctionCount);
-        var f = module.GetFunction(0);
-        Assert.Empty(f.Slots);
-        Assert.Equal(new[] { "a0", "a2" }, f.Abi.Parameters.Select(x => x.Name));
-        Assert.Same(module.GetFunction(1).Abi, module.GetFunction(2).Instructions[0].Callee);
-        using var writer = new StringWriter();
-        module.WriteIr(writer);
-        Assert.DoesNotContain("@__kimi_entry_body", writer.ToString());
-    }
-
-    // A Never call has no return edge and a cleanup that never completes reaches no delivery (their MIR: tests/mir/continuations.kimi
-    // `divergingArgument`; tests/mir/scopes.kimi `divergingDefer` and `divergentDeferHeld`).
-    [Fact]
-    public void NeverCallsAndDivergentCleanupHaveNoReturnDelivery()
-    {
-        var c = MinimalEmissionTest.Analyze("func spin() -> Never => loop => ()\nfunc take(x: i32) -> i32 => x\npublic func main()\n    take(spin())\n    Console.writeLine(\"bad\")");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        var main = module.GetFunction(2);
-        var call = Assert.Single(main.Instructions, x => x.Opcode == EmissionOpcode.Call);
-        Assert.True(call.Callee!.NoReturn);
-        Assert.Equal(EmissionOpcode.Unreachable, main.Instructions[^1].Opcode);
-        Assert.DoesNotContain(main.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar or EmissionOpcode.Phi);
-
-        c = MinimalEmissionTest.Analyze("func f() -> i32\n    defer => loop => ()\n    return 1\nf()");
-        Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        var f = module.GetFunction(1);
-        Assert.False(f.Abi.NoReturn); // A fixed i32 signature does not become Never.
-        Assert.DoesNotContain(f.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
-    }
-
-    [Theory]
-    [InlineData("delivery")]
-    [InlineData("write")]
-    [InlineData("value")]
-    [InlineData("parameter")]
-    [InlineData("call-result")]
-    [InlineData("argument-value")]
-    [InlineData("call-entry")]
-    [InlineData("mapping")]
-    public void MalformedFunctionPlansFailBeforeWritingAndRecover(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32) -> i32\n    var y = x\n    defer => y = 9\n    return y\nif f(3) == 3 => Console.writeLine(\"ok\")");
-        Assert.True(c.Validate(out var error), error);
-        var f = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
-        var caller = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var call = caller.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Place >= 0);
-        var entry = call - 1;
-        if (mutation == "delivery")
-        {
-            f.Deliveries.Clear();
-        }
-        else if (mutation == "write")
-        {
-            f.Deliveries[0] = f.Deliveries[0] with { Write = -1 };
-        }
-        else if (mutation == "value")
-        {
-            f.Deliveries[0] = f.Deliveries[0] with { Value = f.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 9) };
-        }
-        else if (mutation == "parameter")
-        {
-            var id = f.Values.FindIndex(x => x.Kind == OwnershipValueKind.Parameter);
-            f.Values[id] = f.Values[id] with { Constant = 1 };
-        }
-        else if (mutation == "call-result")
-        {
-            caller.Values[call] = default;
-        }
-        else if (mutation == "argument-value")
-        {
-            caller.ValueOperands[caller.Values[entry].Start] = call;
-        }
-        else if (mutation == "call-entry")
-        {
-            caller.OperationStorage[entry] = caller.Operations[entry] with { Kind = OwnershipOperationKind.Produce };
-        }
-        else
-        {
-            var plan = ((InvocationKoto)caller.Operations[call].Source).CallOf()!;
-            plan.Set(plan.Target, plan.ReturnType, null, [1], [], operations: plan.ArgumentOperations);
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out error));
-        Assert.NotNull(error);
-        Assert.Empty(writer.ToString());
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        Assert.True(c.Validate(out error), MinimalEmissionTest.Describe(c, error));
-    }
-
-    [Theory]
-    [InlineData("i32")]
-    [InlineData("string")]
-    public void AbiPoolReusesSignaturesWithoutRetainingSyntax(string type)
-    {
-        var pool = new FunctionAbiPool();
-        var old = RegisterTemporary(pool, type);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        Assert.False(old.Source.TryGetTarget(out _));
-
-        var c = MinimalEmissionTest.Analyze($"func renamed(x: {type}) -> {type} => x\n()");
-        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
-        var abi = pool.Get(0, function, c.Layout);
-        Assert.Same(old.Abi, abi);
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        Assert.Same(abi, pool.Get(0, function, c.Layout));
-        Assert.Equal("__kimi_f0", abi.Name);
-        var changed = MinimalEmissionTest.Analyze("func renamed(x: bool) -> bool => x\n()");
-        Assert.NotSame(abi, pool.Get(0, KotoTree.Walk(changed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed"), changed.Layout));
-    }
-
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
@@ -210,48 +86,10 @@ public class FunctionEmissionTest
         var allocated = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
-            valid &= c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Generate(TextWriter.Null);
         });
 
         Assert.Equal(0, allocated);
         Assert.True(valid);
-    }
-
-    // DECISIONS R5-M58: an import edited without changing its C signature (a parameter renamed) reuses its previous signature, without
-    // allocating; a changed one gets a new signature.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void AbiPoolReusesAnEditedImportWithoutAllocating()
-    {
-        var pool = new FunctionAbiPool();
-        var (c, touch) = Import("pointer: raw/i32");
-        var abi = pool.Import(null, touch, c.Layout, "touch");
-        var (edited, renamed) = Import("address: raw/i32");
-        FunctionAbi? reused = null;
-        var allocated = AllocationMeasurement.Measure(() => reused = pool.Import(abi, renamed, edited.Layout, "touch"));
-        Assert.Same(abi, reused);
-        Assert.Equal(0, allocated);
-        var (changed, widened) = Import("pointer: i64");
-        Assert.NotSame(abi, pool.Import(abi, widened, changed.Layout, "touch"));
-    }
-
-    // A compilation whose one import touch takes the parameter, and its declaration.
-    private static (Compilation Compilation, FunctionKoto Import) Import(string parameter)
-    {
-        var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var source = $"group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch({parameter}, value: uniq/i64, small: u8) -> ()\n";
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source + "public func main() => ()"));
-        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-        return (c, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "touch"));
-    }
-
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static (WeakReference<FunctionKoto> Source, FunctionAbi Abi) RegisterTemporary(FunctionAbiPool pool, string type)
-    {
-        var c = MinimalEmissionTest.Analyze($"func temporary(x: {type}) -> {type} => x\n()");
-        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "temporary");
-        return (new(function), pool.Get(0, function, c.Layout));
     }
 }

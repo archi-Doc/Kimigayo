@@ -93,7 +93,7 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
             Assert.Equal(new SourceSpan(source.IndexOf("value", StringComparison.Ordinal), 5), Assert.Single(error.Related!).Span);
         }
 
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));
@@ -151,7 +151,7 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal(["ParameterNameMarker_Kd", "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));

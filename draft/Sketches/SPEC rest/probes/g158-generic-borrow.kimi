@@ -1,0 +1,6 @@
+#Layout("C")
+struct Pair<T>
+    public var kind: u8
+    public var value: T
+func inspect(x: ref/Pair<()>) => ()
+Console.writeLine("ok")

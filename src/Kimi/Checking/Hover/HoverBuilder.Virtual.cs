@@ -70,9 +70,11 @@ internal sealed partial class HoverBuilder
             text.AppendLine().Append("Implicit result: ").Append(this.TypeName(result));
         }
 
-        // Binding correspondence and ownership completion are distinct; neither implies artifact publication.
+        // Binding correspondence and ownership completion are distinct; neither implies artifact publication. Ownership completion is the
+        // latest analysis's MIR verdict on the body; hover runs no analysis (DECISIONS R5-M185).
         text.AppendLine().Append("Binding checks: ").Append(query.FailureOf(function) != BindingFailure.None ? "rejected" : query.IsCurrent(function) ? "completed" : "pending");
-        text.AppendLine().Append("Ownership checks: ").Append(query.Compilation.Ownership.TemplateBody(function, false) is { IsVerified: true } ? "completed" : "pending");
+        var judged = query.SymbolOf(function) is { } symbol && query.Compilation.JudgedWithoutProblem(symbol);
+        text.AppendLine().Append("Ownership checks: ").Append(judged ? "completed" : "pending");
         return text.ToString();
     }
 }

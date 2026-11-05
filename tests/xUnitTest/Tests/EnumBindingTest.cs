@@ -135,6 +135,22 @@ public class EnumBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
 
+    // SPEC 6.5.2, 3.5, 8.14 (PLAN G252, DECISIONS BU-45): a payload Place is acquired by its bare acquisition, so a pair layer Copies or
+    // Reborrows by case, and only a case without a plan (an owner whose target is not proven Copy, the exclusive case through a shared
+    // path) fails. Each row: Binding's errors.
+    [Theory]
+    [InlineData("value: s/T", "s is owner or uniq\n    T is Copy", "s/T", "value", "")]
+    [InlineData("value: s/T", "s is ref or uniq", "s/T", "value", "")]
+    [InlineData("value: s/T", "s is owner or uniq", "s/T", "value", "TransferRequired_Kd value")]
+    [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "s/T during a", "x@follow", "TransferRequired_Kd x@follow")]
+    public void APairPayloadIsAcquiredByCase(string parameters, string constraints, string payloadType, string payload, string errors)
+    {
+        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    let o: Option<{payloadType}> = .Some({payload})\n    _ = o@move\n";
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
     [Theory]
     [InlineData("enum E<T>\n    Both(T, T)\nvar b: i8\nlet x = E.Both(1, b)")]
     [InlineData("enum E<T>\n    Both(T, T)\nvar b: i8\nlet x = E.Both(b, 1)")]
@@ -203,8 +219,11 @@ public class EnumBindingTest
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction takes the expected Type's slots first, then its payloads' evidence by kind,
     // element by element, then the Literal defaults; under the argument probe a construction with an unbound slot waits for its call.
     // An anonymous payload's written header is evidence at a callable position (SPEC 10.5.4), and a waiting callable at an F binds it and
-    // is completed once every other slot is bound (SPEC 10.5).
+    // is completed once every other slot is bound (SPEC 10.5). A Field's inferred Type, bound with its header, constructs a Case whose
+    // payload Types are bound before every header (G381), also of an enum declared later.
     [Theory]
+    [InlineData("struct S\n    public let x = Option.Some(1)")]
+    [InlineData("struct S\n    public var x = P.Pair(1, (2, 3))\nenum P<T>\n    Pair(T, (T, T))")]
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v) => v)")]
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: i64) -> i64 => v)")]
     [InlineData("enum F<T>\n    Pair(T, (T, (T) -> T))\nfunc f()\n    let x = F.Pair(1@i32, (2, func (v) => v))")]
@@ -247,10 +266,22 @@ public class EnumBindingTest
     [InlineData("func f()\n    let x = Option.Some(func (v) => v)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.Some(identity(1))")]
     [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "takeGeneric(Option.Some(1))")]
+    [InlineData("func f()\n    let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     public void ACaseConstructionReportsItsOwnFailure(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch. The MIR also records the
+    // Field its failed initializer leaves unset, at the struct (DECISIONS R5-M184; H3b T51, class 4: both reject, an added record, Q13).
+    [Fact]
+    public void ACaseConstructionInAFieldInitializerReportsItsOwnFailure()
+    {
+        const string Source = "struct S\n    public let x = Option<bool>.Some(1)\npublic func main() -> () => ()\n";
+        var errors = DiagnosticCorpus.Check(Source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.TypeMismatch_Kd), "1")];
+        Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 10.8, 3.8 (DECISIONS BU-2, R11): a Never element is no evidence, while a Never component of a typed part's Type is.

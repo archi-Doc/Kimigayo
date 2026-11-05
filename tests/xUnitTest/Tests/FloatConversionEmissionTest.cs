@@ -38,13 +38,6 @@ public class FloatConversionEmissionTest
     public void IdentityPreservesNonfiniteValuesAndHasNoConversionInstruction(string type)
     {
         var source = $"func id(x: {type}) -> {type} => x@{type}\nvar z: {type} = 0.0\nvar one: {type} = 1.0\nlet nan = id(z / z)\nlet zero = id(-0.0)\nlet inf = id(one / z)\nif nan != nan and 1.0 / zero < 0.0 and inf > 1.0 => Console.writeLine(\"ok\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        for (var i = 0; i < module.FunctionCount; i++)
-        {
-            Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);
-        }
-
         ScalarEmissionTest.EmitFixture("FloatConvertIdentity" + type, source, "ok\n");
     }
 
@@ -58,7 +51,7 @@ public class FloatConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // The Windows profile explicitly excludes typed 128-bit floating conversions.
@@ -72,35 +65,7 @@ public class FloatConversionEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Unsupported);
-        Assert.False(c.Validate(out _));
-    }
-
-    [Theory]
-    [InlineData("binding")]
-    [InlineData("target")]
-    public void CorruptWideningPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var x: f32 = 1.25\nlet y = x@f64");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
-        var operation = body.Operations[id];
-        if (defect == "binding")
-        {
-            Assert.IsType<ConversionKoto>(operation.Source).SetConversion(ConversionBinding.Integer);
-        }
-        else
-        {
-            body.PlaceStorage[operation.Place] = body.Places[operation.Place] with { Type = BoundType.Primitives["u64"] };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        c.Analyze();
-        Assert.True(c.Validate(out error), error);
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -109,13 +74,13 @@ public class FloatConversionEmissionTest
         const string Source = "let x = 1.00000005960464477539062500000000000000000000000000001@f32\nif x@f64 == 1.00000011920928955078125 => Console.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.WriteIr(writer, out error), error);
+        Assert.True(restored.Generate(writer), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("FloatConvertRoundTrip", writer.ToString(), "ok\n");
     }
@@ -126,10 +91,10 @@ public class FloatConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: f32) -> f64 => x@f64\nlet x = 1.25@f32\nlet y = if x > 0.0 => f(x) else => x@f64\nlet z = y@f64");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Float conversion analysis or emission failed.");
             }

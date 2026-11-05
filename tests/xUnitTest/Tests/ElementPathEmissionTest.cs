@@ -71,9 +71,9 @@ public class ElementPathEmissionTest
     public void RightSideOperandsPrecedeTheElementAccess(string expression)
     {
         var c = MinimalEmissionTest.Analyze("func get(a: [2 of i32]) -> i32 => a[0]\nvar a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -82,13 +82,13 @@ public class ElementPathEmissionTest
     public void AncestorReadsInTheRightSidePrecedeTheUpdate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // A Loan that outlives the RHS still conflicts with the exclusive element access, and the located
-    // receiver stays protected while its index operands evaluate (SPEC 4.6.3).
+    // receiver stays protected while its index operands evaluate (SPEC 4.7.4).
     [Theory]
     [InlineData("let r = a@ref\na[0] += r[1]\nlet n = r[0]")]
     [InlineData("let r = a@ref\na[i] += 1\nlet n = r[0]")]
@@ -98,50 +98,11 @@ public class ElementPathEmissionTest
     public void LoansOutlivingTheRightSideProduceNoIr(string expression)
     {
         var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
-    }
-
-    [Theory]
-    [InlineData("selector")]
-    [InlineData("path")]
-    [InlineData("depth")]
-    [InlineData("parent")]
-    [InlineData("operation")]
-    [InlineData("copy")]
-    [InlineData("store")]
-    [InlineData("location")]
-    public void CorruptedPathPlansFailBeforeOutputAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\na[0] += a[1]");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        // SPEC 13.7.2: the RHS read a[1] is located first, then the updated element a[0].
-        var plan = body.Projections[0];
-        var update = body.Projections[1];
-        switch (defect)
-        {
-            case "selector": body.Projections[0] = plan with { Selector = 0 }; break;
-            case "path": body.Projections[0] = plan with { Path = int.MaxValue }; break;
-            case "depth": body.Projections[0] = plan with { PathDepth = int.MaxValue }; break;
-            case "parent": body.Projections[0] = plan with { Parent = 1 }; break;
-            case "operation": body.OperationStorage[plan.Operation] = body.Operations[plan.Operation] with { Projection = 1 }; break;
-            case "copy": body.OperationStorage[plan.Output] = body.Operations[plan.Output] with { Projection = 1 }; break;
-            case "store": body.OperationStorage[update.Write] = body.Operations[update.Write] with { Projection = 0 }; break;
-            case "location":
-                var location = body.ComparisonLoans[plan.Loan].Read;
-                body.OperationStorage[location] = body.Operations[location] with { Kind = OwnershipOperationKind.Read };
-                break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -153,14 +114,14 @@ public class ElementPathEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);

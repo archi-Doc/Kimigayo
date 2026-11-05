@@ -38,7 +38,7 @@ public class GenericConstraintCertificateBindingTest
     {
         var source = "public struct Box<T>\n    T is i32\n    Self is Copy\npublic contract C\n    " + requirement + "\npublic struct S\n    Self is C\n    " + implementation;
         var valid = MinimalEmissionTest.Analyze(source.Replace("Box<string>", "Box<i32>", StringComparison.Ordinal));
-        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid, null));
+        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
@@ -86,7 +86,7 @@ public class GenericConstraintCertificateBindingTest
     public void DependentPropertyConstraintsUseDefinitionEvidence()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is Copy\nstruct S<U>\n    U is Copy\n    var value: Box<U>");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Property(c).SymbolOf()!.Property!.IsVerified);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }

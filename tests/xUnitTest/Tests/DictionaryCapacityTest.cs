@@ -102,16 +102,15 @@ public class DictionaryCapacityTest
         NativeAllocationAudit.WriteFixture("DictionaryCapacityHoles", source, 2, 2, 288, transferred: 96);
     }
 
-    // The compiled DictionaryStorage reserve and append, called with their private caller-location pair (SPEC 22.5.1).
+    // The compiled DictionaryStorage reserve and append, called with their private caller-location pair (SPEC 22.5.1): the program generated
+    // by MIR code generation, each function its body item's (DECISIONS R5-M145).
     private static (string Ir, string Reserve, string Append) Runtime()
     {
-        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var helpers = module.RuntimeHelpers;
-        var reserve = helpers.Callee(DictionaryCallee.Reserve)!;
-        var append = helpers.Callee(DictionaryCallee.Append)!;
-        Assert.True(reserve.CallerLocation && append.CallerLocation);
-        return (CompilationTestHelper.WriteIr(c), reserve.Name, append.Name);
+        var c = FunctionCodegenTest.GeneratedDefinitions("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)").C;
+        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.DictionaryStorage(DictionaryCallee.Reserve)));
+        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.DictionaryStorage(DictionaryCallee.Append)));
+        var ir = CompilationTestHelper.WriteIr(c);
+        return (ir, FunctionCodegenTest.BodyOf(c, "DictionaryStorage", "reserve"), FunctionCodegenTest.BodyOf(c, "DictionaryStorage", "append"));
     }
 
     private static string Handle(long length, long capacity) => $$"""

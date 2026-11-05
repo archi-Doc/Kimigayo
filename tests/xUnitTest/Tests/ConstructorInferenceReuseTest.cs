@@ -21,8 +21,8 @@ public class ConstructorInferenceReuseTest
         var reference = CompilationTestHelper.Parse(source);
         fast.Binding.MeasureCallInference = reference.Binding.MeasureCallInference = true;
         reference.Binding.UseConstructorReferenceCheck = true;
-        Assert.True(fast.Bind().IsComplete, MinimalEmissionTest.Describe(fast, null));
-        Assert.True(reference.Bind().IsComplete, MinimalEmissionTest.Describe(reference, null));
+        Assert.True(fast.Bind().IsComplete, MinimalEmissionTest.Describe(fast));
+        Assert.True(reference.Bind().IsComplete, MinimalEmissionTest.Describe(reference));
         Assert.Equal(0, fast.Binding.InferenceMetrics.FixedChecks);
         Assert.Equal(count, fast.Binding.InferenceMetrics.FixedReuses);
         Assert.Equal(count, reference.Binding.InferenceMetrics.FixedChecks);
@@ -64,11 +64,11 @@ public class ConstructorInferenceReuseTest
     {
         var c = CompilationTestHelper.Parse(ConstructorInferenceWorkloads.Create(axis, count));
         c.Binding.MeasureCallInference = true;
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var before = c.Binding.InferenceMetrics;
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
         Assert.Equal(before, c.Binding.InferenceMetrics);
         Assert.InRange(before.SlotWordCapacity, 0, 256);
         Assert.InRange(before.ContractCapacity, 0, 256);

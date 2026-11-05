@@ -57,7 +57,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     public void RepairedRangesRemainValid(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Empty(Errors(c));
     }
 

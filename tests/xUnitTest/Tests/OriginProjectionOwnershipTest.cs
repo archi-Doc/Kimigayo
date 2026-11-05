@@ -19,8 +19,8 @@ public class OriginProjectionOwnershipTest
     public void AResultBoundToAnOwnedInputSlotMayMoveTheInput(string function)
     {
         var c = MinimalEmissionTest.Analyze(View + function + "public func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // The caller still keeps the Loan the slot carries through the moved value.
@@ -30,7 +30,7 @@ public class OriginProjectionOwnershipTest
         const string Main = "func single<T>(value: View<T>) -> View<T> during value.source\n    return value@move\n" +
             "public func main()\n    var number = 1\n    let view = View<i32>.init(number@ref)\n    let moved = single(view@move)\n    number = 2\n    let n = moved.data@follow\n";
         var c = MinimalEmissionTest.Analyze(View + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd) && x.Text == "number = 2");
@@ -50,7 +50,7 @@ public class OriginProjectionOwnershipTest
         const string Main = "func single<T>(value: View<T>) -> View<T> during value.source\n    return value@move\n" +
             "public func main()\n    var number = 1\n    let view = View<i32>.init(number@ref)\n    let moved = single(view@move)\n    let n = moved.data@follow\n    number = 2\n";
         var c = MinimalEmissionTest.Analyze(View + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 }

@@ -40,7 +40,7 @@ public class DynamicArraySliceTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }

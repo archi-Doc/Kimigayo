@@ -92,7 +92,7 @@ public class TestAttributeCertificateBindingTest
     public void ProductExcludedFunctionsRemainExcluded()
     {
         var c = MinimalEmissionTest.Analyze("#Test\nfunc example()\n    missing()\ncontract C\nstruct S\n    Self is C");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         Assert.True(c.Bind().IsComplete);
     }
@@ -154,7 +154,7 @@ public class TestAttributeCertificateBindingTest
             Assert.Equal(markers.Length, errors.Length);
             Assert.All(errors, error => Assert.Equal(nameof(DiagnosticCode.InvalidTestDefinition_Kd), error.Code));
             Assert.Equal(markers.Select(x => x.Span).OrderBy(x => x.Start), errors.Select(x => x.Span).OrderBy(x => x.Start));
-            Assert.False(c.WriteIr(TextWriter.Null, out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 

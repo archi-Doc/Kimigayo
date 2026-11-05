@@ -63,6 +63,85 @@ public class ComparisonCompositionTest
         Assert.Null(error.Reason);
     }
 
+    // G308's native forms: say prints a bool; K's witnesses print their operands, e (equals) or c (compare) and the two values; pair builds
+    // the DAG ((K, K), (K, K)).
+    private const string Say = "func say(value: bool)\n    match value\n        true => Console.writeLine(\"true\")\n" +
+        "        false => Console.writeLine(\"false\")\n";
+
+    private const string Printing = """
+        struct K
+            Self is Comparable
+            public let v: i32
+            public init(v: i32) => self.v = v
+            public func equals(self: ref/Self, other: ref/Self) -> bool
+                Console.writeLine("e\(self.v)\(other.v)")
+                return self.v == other.v
+            public func compare(self: ref/Self, other: ref/Self) -> i32
+                Console.writeLine("c\(self.v)\(other.v)")
+                return self.v - other.v
+        func pair(a: i32, b: i32, c: i32, d: i32) -> ((K, K), (K, K)) => ((K.init(a), K.init(b)), (K.init(c), K.init(d)))
+
+        """ + Say;
+
+    // G308 N2: K values with the ids their drops print, in two DAG Tuples compared, then used.
+    private const string KeptSource = """
+        func make(v: i32, id: i32) -> K
+            var k = K.init(v)
+            k.id = id
+            return k@move
+        func run()
+            let a = ((make(1, 1), 2, "x"), (make(3, 2), 4, "y"))
+            let b = ((make(1, 3), 2, "x"), (make(3, 4), 4, "z"))
+            say(a == b)
+            say(a < b)
+            say(a.1.2 == "y" and b.1.2 == "z" and a.0.0.id == 1 and b.1.0.id == 4)
+            Console.writeLine("end")
+        run()
+        """;
+
+    // G308 N3: a generic equality and inequality over (T, f64) and the written (f64, f64), with a NaN at either leaf.
+    private const string GenericFloatingSource = """
+        func same<T>(a: (T, f64), b: (T, f64)) -> bool
+            T is Equatable
+            return a == b
+        func differ<T>(a: (T, f64), b: (T, f64)) -> bool
+            T is Equatable
+            return a != b
+        let nan: f64 = 0.0 / 0.0
+        say(same((nan, 1.0), (nan, 1.0)))
+        say(differ((nan, 1.0), (nan, 1.0)))
+        say(same((1.0, nan), (1.0, nan)))
+        say(differ((1.0, nan), (1.0, nan)))
+        let p = (nan, 1.0)
+        let q = (1.0, nan)
+        say(p == p)
+        say(p != p)
+        say(q == q)
+        say(q != q)
+        """;
+
+    // G308 N4: the four generic orderings over (T, f64), and a written ordering of a signed zero.
+    private const string GenericOrderingSource = """
+        func lt<T>(a: (T, f64), b: (T, f64)) -> bool
+            T is Comparable
+            return a < b
+        func le<T>(a: (T, f64), b: (T, f64)) -> bool
+            T is Comparable
+            return a <= b
+        func gt<T>(a: (T, f64), b: (T, f64)) -> bool
+            T is Comparable
+            return a > b
+        func ge<T>(a: (T, f64), b: (T, f64)) -> bool
+            T is Comparable
+            return a >= b
+        let nan: f64 = 0.0 / 0.0
+        say(lt((1, nan), (1, 2.0)))
+        say(le((1, nan), (1, 2.0)))
+        say(gt((1, nan), (1, 2.0)))
+        say(ge((1, nan), (1, 2.0)))
+        say((-0.0, 1.0) < (0.0, 2.0))
+        """;
+
     // A generic struct whose witness compares a tuple of its own borrowed instances.
     private const string RecursiveSource = """
         struct Key<T>
@@ -129,7 +208,7 @@ public class ComparisonCompositionTest
         struct Box<T>
             Self is Comparable when T is Comparable
             public let value: T
-            public init(value: T) => self.value = value
+            public init(value: T) => self.value = value@move
             public func equals(self: ref/Self, other: ref/Self) -> bool => true
             public func compare(self: ref/Self, other: ref/Self) -> i32 => 0
         func same<T>(left: T, right: T) -> bool
@@ -148,6 +227,75 @@ public class ComparisonCompositionTest
         require (a@ref, 0.5) < (b@ref, 0.5) and (1, (2.0, a@ref)) != (1, (2.0, b@ref)) and pair.equals(pair@ref) else => $abort("closed")
         require (held@ref, 1) == (held@ref, 1) and (box@ref, 0.5) <= (box@ref, 1.5) else => $abort("conditional")
         require same(3, 3) and before(4, 5) else => $abort("generic")
+        """;
+
+    // SPEC 13.4, 13.4.1, 12.4.3 (DECISIONS R5-M126, plan C8f's NaN and ±0 tuple fixture): the Contract's mapping on Tuples through a
+    // generic comparison, which MIR code generation runs as a Builtin shim: an equality NaN-reflexive whatever the NaN's payload and sign,
+    // both zeros equal, a later part deciding, nested Tuples, a ref layer and f32, while the built-in operators on the same Tuples stay IEEE
+    // (FloatingSource); a part that is not equal decides, so a later part's witness is not called (its Abort would end the run); a compare
+    // over integer, string and char parts; a Dictionary's key equality, the same mapping (SPEC 12.4.3), keeping one entry for NaNs of either
+    // sign and one for both zeros.
+    private const string ContractFloatingSource = """
+        struct Probe
+            Self is Equatable
+            public let number: i32
+            public init(number: i32) => self.number = number
+            public func equals(self: ref/Self, other: ref/Self) -> bool
+                require self.number >= 0 else => $abort("a decided comparison called a later witness")
+                return self.number == other.number
+        func equal<T>(left: ref/T, right: ref/T) -> bool
+            T is Equatable
+            return left == right
+        func same<T>(left: ref/T, right: ref/T) -> bool
+            T is Equatable
+            return left.equals(right)
+        func order<T>(left: ref/T, right: ref/T) -> i32
+            T is Comparable
+            return left.compare(right)
+        let nan: f64 = 0.0 / 0.0
+        let other: f64 = -nan
+        let zero: f64 = 0.0
+        let negativeZero: f64 = -0.0
+        let a = (nan, 1)
+        let b = (other, 1)
+        let c = (nan, 2)
+        require equal(a@ref, b@ref) and same(a@ref, b@ref) and not equal(a@ref, c@ref) else => $abort("NaN tuple")
+        require not (a == b) and a != b else => $abort("IEEE tuple")
+        let z = (zero, 1)
+        let n = (negativeZero, 1)
+        let d = (1.0, 1)
+        require equal(z@ref, n@ref) and z == n and not equal(z@ref, d@ref) and not equal(a@ref, z@ref) else => $abort("zero tuple")
+        let nested = ((nan, 1), zero)
+        let alike = ((other, 1), negativeZero)
+        require equal(nested@ref, alike@ref) and not (nested == alike) else => $abort("nested tuple")
+        let small: f32 = 0.0 / 0.0
+        let pair = (small, -small)
+        let flipped = (-small, small)
+        require equal(pair@ref, flipped@ref) else => $abort("f32 tuple")
+        let x = (nan@ref, 3)
+        let y = (other@ref, 3)
+        require equal(x@ref, y@ref) else => $abort("ref layer")
+        let first = (Probe.init(1), Probe.init(-1))
+        let second = (Probe.init(2), Probe.init(-1))
+        require not equal(first@ref, second@ref) else => $abort("early exit")
+        let low = (1, "b", 'c')
+        let high = (1, "b", 'd')
+        require order(low@ref, high@ref) < 0 and order(high@ref, low@ref) > 0 and order(low@ref, low@ref) == 0 else => $abort("order")
+        var keys: Dictionary<(f64, i32), i32> = [:]
+        var added = 0
+        match keys.tryInsert((nan, 1), 10)
+            .Ok(_) => added += 1
+            .Err(_) => ()
+        match keys.tryInsert((other, 1), 20)
+            .Ok(_) => added += 1
+            .Err(_) => ()
+        match keys.tryInsert((negativeZero, 2), 30)
+            .Ok(_) => added += 1
+            .Err(_) => ()
+        let hit = (zero, 2)
+        let found = (other, 1)
+        require added == 2 and keys.length == 2 and keys[hit] == 30 and keys[found] == 10 else => $abort("Dictionary keys")
+        Console.writeLine("Contract mapping on tuples kept.")
         """;
 
     [Trait("Purpose", "Allocation")]
@@ -174,6 +322,10 @@ public class ComparisonCompositionTest
     public void FloatingTupleOperatorsPreservePartialOrderingAndShortCircuit()
         => NativeAllocationAudit.WriteFixture("ComparisonCompositionFloating", FloatingSource, 0, 0, 0);
 
+    [Fact]
+    public void ContractMappingOnFloatingTuplesIsNaNReflexive()
+        => ScalarEmissionTest.EmitFixture("ComparisonCompositionContractFloating", ContractFloatingSource, "Contract mapping on tuples kept.\n");
+
     [Theory]
     [InlineData("let x = (1, true) < (1, false)")]
     [InlineData("let x = (1, 2) == (true, 2)")]
@@ -182,7 +334,7 @@ public class ComparisonCompositionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -195,6 +347,80 @@ public class ComparisonCompositionTest
             ? ReferenceSource.Replace("return left == right", "return match true\n        true => left == right\n        false => false", StringComparison.Ordinal)
             : ReferenceSource;
         NativeAllocationAudit.WriteFixture("ComparisonCompositionReferenceValues" + match, source, 0, 0, 0);
+    }
+
+    // G308 N1, SPEC 13.4, 13.4.1: over the DAG ((K, K), (K, K)), ==, !=, < and >= deciding at the first, the third and the last leaf run
+    // K's witnesses, which print their operands, left to right up to the deciding leaf, and give SPEC 13.4's results.
+    [Fact]
+    public void ADagComparisonRunsItsWitnessesUpToTheDecidingLeaf()
+    {
+        var source = new System.Text.StringBuilder(Printing + "func run()\n    let a = pair(1, 2, 3, 4)\n    let first = pair(9, 2, 3, 4)\n" +
+            "    let third = pair(1, 2, 9, 4)\n    let last = pair(1, 2, 3, 9)\n");
+        var expected = new System.Text.StringBuilder();
+        foreach (var (op, witness, decided) in new[] { ("==", 'e', "false"), ("!=", 'e', "true"), ("<", 'c', "true"), (">=", 'c', "false") })
+        {
+            foreach (var (name, calls) in new[] { ("first", "19"), ("third", "11 22 39"), ("last", "11 22 33 49") })
+            {
+                source.Append($"    say(a {op} {name})\n");
+                expected.Append(string.Concat(calls.Split(' ').Select(x => $"{witness}{x}\n"))).Append(decided).Append('\n');
+            }
+        }
+
+        ScalarEmissionTest.EmitFixture("ComparisonDagWitnessOrder", source.Append("run()\n").ToString(), expected.ToString());
+    }
+
+    // G308 N2, SPEC 13.4: comparing DAG Tuples with a K leaf that has drop, a Copy and a Non-Copy leaf neither moves nor destroys either
+    // operand: both are used after the comparisons and each K is dropped once at the end of their scope.
+    [Fact]
+    public void ADagComparisonKeepsItsOperands()
+    {
+        const string Init = "    public init(v: i32) => self.v = v\n";
+        const string Dropped = "    public var id: i32 = 0\n" + Init + "    drop => Console.writeLine(\"d\\(self.id)\")\n";
+        var source = Printing.Replace(Init, Dropped, StringComparison.Ordinal) + KeptSource;
+        ScalarEmissionTest.EmitFixture("ComparisonDagOperandsKept", source, "e11\ne33\nfalse\nc11\nc33\ntrue\ntrue\nend\nd4\nd3\nd2\nd1\n");
+    }
+
+    // G308 N3, SPEC 13.4: in a generic (T, f64) at T = f64, a NaN at the T leaf compares by T's NaN-reflexive Contract mapping (equal), one at
+    // the f64 leaf by IEEE (unequal); the written (f64, f64) of the same values compares IEEE at both leaves.
+    [Fact]
+    public void AGenericLeafKeepsItsContractMappingBesideAWrittenTuple()
+        => ScalarEmissionTest.EmitFixture("ComparisonDagGenericFloating", Say + GenericFloatingSource, "true\nfalse\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\n");
+
+    // G308 N4, SPEC 13.4: a generic ordering of (T, f64) at T = i32 whose f64 pair is unordered is false under <, <=, > and >=;
+    // (-0.0, 1.0) < (0.0, 2.0) is true, -0.0 == 0.0.
+    [Fact]
+    public void AGenericOrderingOfAnUnorderedPairIsFalse()
+        => ScalarEmissionTest.EmitFixture("ComparisonDagGenericOrdering", Say + GenericOrderingSource, "false\nfalse\nfalse\nfalse\ntrue\n");
+
+    // G308 N5, SPEC 13.4: S1's equality and S2's orderings over P_6's Tuple (MirBuildTest.Dag, 64 leaves) with a distinct value at the first,
+    // a middle (the 33rd) and the last leaf.
+    [Fact]
+    public void ADagComparisonDecidesAtAnyLeaf()
+    {
+        var operators = string.Concat(new[] { ("eq", "=="), ("lt", "<"), ("ge", ">=") }.Select(static x =>
+            MirBuildTest.DagOperator.Replace("f(", x.Item1 + "(", StringComparison.Ordinal).Replace("==", x.Item2, StringComparison.Ordinal)));
+        var source = MirBuildTest.Dag(6, operators) + Say + """
+            func check(a: ref/D1<i32>, b: ref/D1<i32>)
+                say(eq(a, b))
+                say(lt(a, b))
+                say(ge(a, b))
+            func run()
+                let a = D1<i32>.init(0)
+                var first = D1<i32>.init(0)
+                first.x.x.x.x.x.x.0.0.0.0.0.0 = 1
+                var middle = D1<i32>.init(0)
+                middle.x.x.x.x.x.x.1.0.0.0.0.0 = 1
+                var last = D1<i32>.init(0)
+                last.x.x.x.x.x.x.1.1.1.1.1.1 = 1
+                check(a, a)
+                check(a, first)
+                check(a, middle)
+                check(a, last)
+                check(last, a)
+            run()
+            """;
+        var expected = "true\nfalse\ntrue\n" + string.Concat(Enumerable.Repeat("false\ntrue\nfalse\n", 3)) + "false\nfalse\ntrue\n";
+        ScalarEmissionTest.EmitFixture("ComparisonDagLeaves", source, expected);
     }
 
     // DECISIONS R5-M68 (F package 4.6, 4.7): every comparison of the library, the milestones and this class's programs has, under its
@@ -216,7 +442,7 @@ public class ComparisonCompositionTest
         foreach (var source in new[] { RecursiveSource, FloatingSource, ReferenceSource, ViewSource })
         {
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
             Twin(c, c.Kotonoha, source[..source.IndexOf('\n')], direct, problems);
         }
 
@@ -273,7 +499,7 @@ public class ComparisonCompositionTest
         var donor = MinimalEmissionTest.Analyze(ViewSource.Replace("self.value - other.value", "other.value - self.value", StringComparison.Ordinal));
         var key = Container(c, "Key");
         Assert.True(KotoHelper.Replace(key, Compare(key), ParseTestHelper.Detach(Compare(Container(donor, "Key")), new CodeBlockKoto(key.CodeContext))));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         call = Comparisons(c.Kotonoha).First(x => ReferenceEquals(x.ConformingType, self));
         var after = View(c, call)!.Parts[0].Parts[0];
         Assert.Equal("Key.compare @Key", Show(after));

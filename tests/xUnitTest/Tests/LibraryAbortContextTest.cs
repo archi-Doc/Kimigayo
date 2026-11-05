@@ -44,9 +44,9 @@ public class LibraryAbortContextTest
     public void WarmSourceContextPreparationAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let r = 0..3\nvar total = 0\nfor value in r => total += value\nrequire total == 3 else => $abort(\"sum\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

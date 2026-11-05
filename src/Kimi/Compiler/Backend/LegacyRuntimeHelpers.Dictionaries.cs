@@ -9,14 +9,30 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum DictionaryHelperKind : byte
 {
-    CheckKey,
     Place,
     Drop,
 }
 
 /// <summary>The physical layout of a Dictionary entry: the key and value offsets and the entry stride.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct DictionaryEntryLayout(long KeyOffset, long ValueOffset, long Stride);
+internal readonly record struct DictionaryEntryLayout(long KeyOffset, long ValueOffset, long Stride)
+{
+    /// <summary>Gets the layout of an entry (IMPL 21.1.3, implementation-defined), the one rule code generation reads (PD2): its two links
+    /// first, then the key at the first offset from 16 aligned for it, the value after the key aligned for it, and the stride the value's
+    /// end aligned for the entry, whose alignment is at least the links' 8.</summary>
+    /// <param name="key">The key's layout.</param>
+    /// <param name="value">The value's layout.</param>
+    /// <returns>The entry layout.</returns>
+    internal static DictionaryEntryLayout Of(TypeLayout key, TypeLayout value)
+    {
+        var alignment = Math.Max(8, Math.Max(key.Alignment, value.Alignment));
+        var keyOffset = Align(16, key.Alignment);
+        var valueOffset = Align(keyOffset + key.Size, value.Alignment);
+        return new(keyOffset, valueOffset, Align(valueOffset + value.Size, alignment));
+    }
+
+    private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
+}
 
 /// <summary>The row of one Dictionary helper kind, readable by kind before any representation exists (X4): its ABI shape over the
 /// generator's name suffix (after the kind's name prefix) and the key and value descriptors, its body's writer over the helper and the ABIs of its Entries and
@@ -39,73 +55,39 @@ internal sealed record DictionaryHelperRow(
         => this.Entries != DictionaryCallee.None && (destroysEntries || (this.Needs & HelperNeeds.ElementGlue) == 0);
 }
 
-/// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI. Related indexes
-/// <see cref="LegacyRuntimeHelpers.FunctionReferences"/>, or is -1.</summary>
+/// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record DictionaryHelper(
-    DictionaryHelperKind Kind, FunctionAbi Abi, StoredValue Key, StoredValue Value, DictionaryEntryLayout Entry, int Related)
+    DictionaryHelperKind Kind, FunctionAbi Abi, StoredValue Key, StoredValue Value, DictionaryEntryLayout Entry)
 {
     /// <summary>Creates the helper of a kind for an entry, named and shaped by the kind's row.</summary>
     /// <param name="kind">The helper kind.</param>
     /// <param name="key">The key descriptor.</param>
     /// <param name="value">The value descriptor.</param>
     /// <param name="entry">The entry layout.</param>
-    /// <param name="related">The index of the helper's Entries instance in the function references, or -1.</param>
     /// <param name="suffix">The generator's name suffix, which follows the kind's name prefix.</param>
     /// <returns>The helper.</returns>
     internal static DictionaryHelper Create(
-        DictionaryHelperKind kind, StoredValue key, StoredValue value, DictionaryEntryLayout entry, int related, string suffix)
-        => new(kind, LegacyRuntimeHelpers.DictionaryRow(kind).Shape(suffix, key, value), key, value, entry, related);
+        DictionaryHelperKind kind, StoredValue key, StoredValue value, DictionaryEntryLayout entry, string suffix)
+        => new(kind, LegacyRuntimeHelpers.DictionaryRow(kind).Shape(suffix, key, value), key, value, entry);
 }
 
 /// <summary>SPEC 4.3, 4.9.6: the Dictionary runtime and the per-entry Dictionary helpers over the compiled DictionaryStorage sources
 /// (Windows x64 profile); the storage byte primitives they write first are the storage kernels' (LegacyRuntimeHelpers.Storage.cs).</summary>
-internal sealed partial class LegacyRuntimeHelpers
+internal static partial class LegacyRuntimeHelpers
 {
-    // The duplicate-key callback {environment, table}; its environment is the address of the caller's location record.
-    private const string DuplicateCallback = """
-          %origin = alloca { ptr, i64 }, align 8
-          store ptr %location, ptr %origin, align 8
-          %length_ptr = getelementptr i8, ptr %origin, i64 8
-          store i64 %location_length, ptr %length_ptr, align 8
-          %environment = ptrtoint ptr %origin to i64
-          %duplicate = alloca { i64, ptr }, align 8
-          store i64 %environment, ptr %duplicate, align 8
-          %duplicate_table = getelementptr i8, ptr %duplicate, i64 8
-          store ptr @__kimi_dictionary_duplicate_table, ptr %duplicate_table, align 8
+    /// <summary>The DictionaryStorage function a Dictionary's construction from none runs (SPEC 4.3, 4.9.5), the callee the Dictionary
+    /// runtime declares (X4; DECISIONS R5-M27, R5-M124): the instance collector targets its body for a Dictionary from none,
+    /// which MIR code generation calls.</summary>
+    internal const DictionaryCallee Construction = DictionaryCallee.Initialize;
 
-        """;
-
-    // The literal duplicate-key adapter keeps the later key's location; the capacity algorithms are DictionaryStorage source.
-    private static readonly string DuplicateAdapter = """
-        @__kimi_dictionary_duplicate_table = private constant { ptr, ptr, ptr } { ptr @__kimi_dictionary_duplicate, ptr null, ptr null }, align 8
-        define internal void @__kimi_dictionary_duplicate(i64 %environment, ptr %context) #0 {
-        entry:
-          %origin = inttoptr i64 %environment to ptr
-          %location = load ptr, ptr %origin, align 8
-          %length_ptr = getelementptr i8, ptr %origin, i64 8
-          %location_length = load i64, ptr %length_ptr, align 8
-          call void @__kimi_abort(i32 REASON_DUPLICATE, ptr %location, i64 %location_length, i64 -2)
-          unreachable
-        }
-
-        """.Replace("REASON_DUPLICATE", Number(AbortReasons.DuplicateKey), StringComparison.Ordinal);
-
-    // One row per kind, in DictionaryHelperKind order; a new kind adds a row. A request joins the row's needs to the module's:
-    // CheckKey's duplicate callback reports through the Dictionary runtime's adapter, Place copies its key and value through the
-    // memory declarations of the Array runtime, and Drop releases through the main runtime.
+    // One row per kind, in DictionaryHelperKind order; a new kind adds a row. Place copies its key and value through the memory
+    // declarations of the Array runtime, and Drop releases through the main runtime.
     private static readonly DictionaryHelperRow[] DictionaryRows =
     [
         new(
-            DictionaryHelperKind.CheckKey,
-            static (suffix, key, _) => Located("__kimi_dictionary_checkkey" + suffix, [Argument(key, "key")]),
-            static (output, helper, find, requireAbsent) => WriteKeyCheck(output, helper, find!, requireAbsent!),
-            DictionaryCallee.FindEntry,
-            DictionaryCallee.RequireAbsent,
-            HelperNeeds.DictionaryRuntime),
-        new(
             DictionaryHelperKind.Place,
-            static (suffix, key, value) => Located("__kimi_dictionary_place" + suffix, [Argument(key, "key"), Argument(value, "value")]),
+            static (suffix, key, value) => Located("__kimi_dictionary_place" + suffix, [Argument(key, "key", 1), Argument(value, "value", 2)]),
             static (output, helper, _, append) => WriteEntryPlacement(output, helper, append!),
             DictionaryCallee.None,
             DictionaryCallee.Append,
@@ -119,19 +101,6 @@ internal sealed partial class LegacyRuntimeHelpers
             HelperNeeds.ElementGlue),
     ];
 
-    // The module's resolved DictionaryStorage functions, indexed by DictionaryCallee (KimiLibrary's view, F2c); None and the
-    // generic ones stay null.
-    private readonly FunctionAbi?[] dictionaryCallees = new FunctionAbi?[(int)DictionaryCallee.Reserve + 1];
-
-    // The per-entry Dictionary helpers requested by lowered bodies, in first-request order.
-    private readonly List<DictionaryHelper> dictionaryHelpers = new();
-
-    internal IReadOnlyList<DictionaryHelper> DictionaryHelpers => this.dictionaryHelpers;
-
-    /// <summary>Gets or sets a value indicating whether the module holds the Dictionary runtime: a CheckKey request needs it, and the
-    /// old lowering requests it for a Dictionary's construction until the runtime declares its own needs (C8e).</summary>
-    internal bool NeedsDictionaryRuntime { get; set; }
-
     /// <summary>Gets the row of a Dictionary helper kind; a kind without a row is a broken contract.</summary>
     /// <param name="kind">The helper kind.</param>
     /// <returns>The kind's row.</returns>
@@ -140,92 +109,18 @@ internal sealed partial class LegacyRuntimeHelpers
             ? DictionaryRows[(int)kind]
             : throw new InvalidOperationException("A Dictionary helper kind has no row.");
 
-    /// <summary>Gets the module's ABI of a DictionaryStorage function, or null when it was not compiled.</summary>
-    /// <param name="callee">The function.</param>
-    /// <returns>Its compiled ABI.</returns>
-    internal FunctionAbi? Callee(DictionaryCallee callee) => this.dictionaryCallees[(int)callee];
-
-    /// <summary>Records the module's ABI of a DictionaryStorage function.</summary>
-    /// <param name="callee">The function.</param>
-    /// <param name="abi">Its compiled ABI, or null when it was not compiled as one function (absent, or generic over the entry
-    /// Types).</param>
-    internal void Resolve(DictionaryCallee callee, FunctionAbi? abi) => this.dictionaryCallees[(int)callee] = abi;
-
-    /// <summary>Registers a Dictionary helper a lowered body uses: each helper is written once per module, in first-request order,
-    /// and the runtimes its kind's row declares join the module's.</summary>
-    /// <param name="helper">The requested helper.</param>
-    internal void Request(DictionaryHelper helper)
-    {
-        this.JoinNeeds(DictionaryRow(helper.Kind).Needs);
-        if (!this.dictionaryHelpers.Contains(helper))
-        {
-            this.dictionaryHelpers.Add(helper);
-        }
-    }
-
-    /// <summary>Gets a value indicating whether a Dictionary helper's Related index or a callee its row declares is unresolved.</summary>
-    /// <returns>True when the requests cannot be written.</returns>
-    internal bool HasUnresolvedReference()
-    {
-        foreach (var helper in this.dictionaryHelpers)
-        {
-            var row = DictionaryRow(helper.Kind);
-            if (helper.Related < -1 || helper.Related >= this.FunctionReferences.Count ||
-                (helper.Related < 0 && row.CallsEntries(helper.Key.NeedsDestruction || helper.Value.NeedsDestruction)) ||
-                (row.Storage != DictionaryCallee.None && this.Callee(row.Storage) is null))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>Writes the storage byte primitives when a body uses them, the Dictionary runtime when the module needs it, then each
-    /// requested helper.</summary>
+    /// <summary>Writes one Dictionary helper's definition: its ABI and its kind row's writer over the ABIs of the row's Entries instance and
+    /// Storage callee (PD2).</summary>
     /// <param name="output">The module text.</param>
-    internal void WriteDictionaries(TextWriter output)
+    /// <param name="helper">The helper.</param>
+    /// <param name="entries">The ABI of the helper's Entries instance, or null when it calls none.</param>
+    /// <param name="storage">The ABI of its row's Storage callee, or null when its row declares none.</param>
+    internal static void WriteDictionary(TextWriter output, DictionaryHelper helper, FunctionAbi? entries, FunctionAbi? storage)
     {
-        this.WriteStorageBytes(output);
-        if (this.NeedsDictionaryRuntime)
-        {
-            output.Write(DuplicateAdapter);
-            this.WriteDictionaryInit(output);
-        }
-
-        foreach (var helper in this.dictionaryHelpers)
-        {
-            var row = DictionaryRow(helper.Kind);
-            output.Write(helper.Abi.GetDefinition(exported: false));
-            output.Write("entry:\n");
-            row.Write(output, helper, helper.Related < 0 ? null : this.FunctionReferences[helper.Related], this.Callee(row.Storage));
-            output.Write("}\n\n");
-        }
-    }
-
-    // SPEC 4.3: a literal key is looked up through findEntry, and requireAbsent Aborts at the literal's location when it is present.
-    private static void WriteKeyCheck(TextWriter output, DictionaryHelper helper, FunctionAbi find, FunctionAbi requireAbsent)
-    {
-        var scalar = helper.Key.IsScalar;
-        if (scalar)
-        {
-            output.Write("  %key_slot = alloca ");
-            output.Write(helper.Key.Value.Layout.StorageType);
-            output.Write(", align ");
-            WriteNumber(output, helper.Key.Value.Layout.Alignment);
-            output.Write('\n');
-            WriteStoredArgument(output, helper.Key, "%key", "%key_slot", "%key_input");
-        }
-
-        output.Write("  %link = call i64 @");
-        output.Write(find.Name);
-        output.Write("(ptr %handle, ptr ");
-        output.Write(scalar ? "%key_slot" : "%key");
-        output.Write(")\n");
-        output.Write(DuplicateCallback);
-        output.Write("  call void @");
-        output.Write(requireAbsent.Name);
-        output.Write("(i64 %link, ptr %duplicate)\n  ret void\n");
+        output.Write(helper.Abi.GetDefinition(exported: false));
+        output.Write("entry:\n");
+        DictionaryRow(helper.Kind).Write(output, helper, entries, storage);
+        output.Write("}\n\n");
     }
 
     // SPEC 4.9.6: typed placement only; the ordinary source append body owns growth, ordering and free-slot reuse, and reports
@@ -255,20 +150,5 @@ internal sealed partial class LegacyRuntimeHelpers
         }
 
         output.Write("  call void @__kimi_array_free(ptr %handle, ptr %location, i64 %location_length)\n  ret void\n");
-    }
-
-    // The empty-Dictionary initialization bridge; the ordered-link algorithms are compiled from DictionaryStorage.kimi, and the
-    // functions initialize calls compile with it.
-    private void WriteDictionaryInit(TextWriter output)
-    {
-        if (this.Callee(DictionaryCallee.Initialize) is not { } initialize)
-        {
-            throw new InvalidOperationException("Dictionary storage sources were not compiled.");
-        }
-
-        output.Write(RuntimeAbi.DictionaryInit.GetDefinition(exported: false));
-        output.Write("entry:\n  call void @");
-        output.Write(initialize.Name);
-        output.Write("(ptr %handle)\n  ret void\n}\n\n");
     }
 }

@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -9,7 +10,7 @@ namespace XunitTest;
 
 /// <summary>The shapes of the embedded Kimi library that the compiler and the static <c>.ll.in</c> runtime rely on (SPEC 22.1).
 /// A shape is the declaration's source header with its direct member lines; Binding gives the same text the same meaning.</summary>
-public class KimiLibraryShapeTest
+public partial class KimiLibraryShapeTest
 {
     // Read-only: no test changes the library or its Binding.
     private static readonly Lazy<Compilation> Library = new(() =>
@@ -19,7 +20,7 @@ public class KimiLibraryShapeTest
         return c;
     });
 
-    // Lowering and the runtime call these bodiless functions by position (BodyLowering, WindowsLowering): parameter order,
+    // Code generation and the runtime call these bodiless functions by position: parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
@@ -131,7 +132,7 @@ public class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(184, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(191, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -158,7 +159,7 @@ public class KimiLibraryShapeTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), c.SourceModules.Length + 1);
-        Assert.Empty(set.Records);
+        Assert.Empty(c.BuildMir().Records(Kimi.Compiler.Mir.MirRecordClass.Collection));
         Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
     }
 
@@ -267,8 +268,8 @@ public class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.2 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatHint and
-    // FormatFinish (owner approvals 2026-10-11) until R8.
+    // which carries a fixed SPEC 22.5.2 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatSegment and
+    // FormatFinish (owner approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133) until R8.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
@@ -323,23 +324,100 @@ public class KimiLibraryShapeTest
     }
 
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
-    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), and whether in place,
-    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan).
+    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), whether in place,
+    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan), and the
+    // by-value Callable parameter it calls, `removeAll`'s `matching` only (PLAN G264 U0′: `truncate` destroys as `clear` does); the
+    // Array mutation operations SPEC 4.9.6 gives None have that row (R6-check H4).
     [Fact]
     public void PublishedRowsAreFixed()
     {
         var c = Library.Value;
         var rows = KimiLibraryCatalog.Entries.ToArray().Where(static x => x.Row is not null)
-            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace}");
+            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace} {x.Row.Calls}");
         Assert.Equal(
             [
-                "Replace  -1 0 True", "ArrayClear  -1 0 False", "ArrayCapacityImplementation  -1 -1 False", "ArrayRepeatingImplementation  -1 -1 False",
-                "TextToString format 0 -1 False", "TextTryFormat format 0 -1 False", "WriterWrite format 1 -1 False", "DictionaryReserve  -1 -1 False",
-                "DictionaryTryInsert equals 1 -1 False", "DictionaryInsertOrReplace equals 1 1 False", "DictionaryRemove equals 1 -1 False",
-                "DictionaryTryGet equals 1 -1 False", "DictionaryClear  -1 0 False", "DictionaryShrinkToFit  -1 -1 False",
-                "DictionaryIndexUniq equals 1 -1 False", "DictionaryStorageFindEntry equals 1 -1 False",
+                "Replace  -1 0 True -1", "ArrayAppend  -1 -1 False -1", "ArrayInsert  -1 -1 False -1", "ArrayPop  -1 -1 False -1", "ArrayRemove  -1 -1 False -1",
+                "ArrayClear  -1 0 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
+                "TextToString format 0 -1 False -1", "TextTryFormat format 0 -1 False -1", "WriterWrite format 1 -1 False -1", "DictionaryReserve  -1 -1 False -1",
+                "DictionaryTryInsert equals 1 -1 False -1", "DictionaryInsertOrReplace equals 1 1 False -1", "DictionaryRemove equals 1 -1 False -1",
+                "DictionaryTryGet equals 1 -1 False -1", "DictionaryClear  -1 0 False -1", "DictionaryShrinkToFit  -1 -1 False -1",
+                "DictionaryIndexUniq equals 1 -1 False -1", "DictionaryStorageFindEntry equals 1 -1 False -1", "ArrayAppendCopies  -1 -1 False -1",
+                "ArrayTruncate  -1 0 False -1", "ArrayRemoveAll  -1 0 False 1", "ArrayInsertPosition  -1 -1 False -1", "ArrayAppendAll  -1 -1 False -1",
+                "ArrayRemovePosition  -1 -1 False -1", "ArraySwapPositions  -1 -1 False -1", "ArraySwapRemove  -1 -1 False -1", "ArrayReverse  -1 -1 False -1",
             ],
             rows);
+    }
+
+    // SPEC 4.9.6, 15.6.4 (DECISIONS BU-40): a 4.9 operation's added and replacing inputs (KimiLibraryCatalog.Added) are exactly its inputs,
+    // other than the receiver and not borrowed (a borrowed key is read, never stored), that its declared contract retains in the receiver's
+    // storage, and a member without a receiver (construction) has none, so an Array or Dictionary member that adds an input cannot miss its
+    // row and a row names no input it does not store.
+    [Fact]
+    public void AddedInputsAreTheInputsStoredInTheReceiver()
+    {
+        var c = Library.Value;
+        var added = new List<string>();
+        foreach (var id in new[] { KimiDeclarationId.Array, KimiDeclarationId.Dictionary })
+        {
+            var container = Assert.IsAssignableFrom<DeclarationContainerKoto>(c.Library.GetSymbol(id)!.Declaration);
+            foreach (var function in container.Members.OfType<FunctionKoto>())
+            {
+                var symbol = function.SymbolOf()!;
+                var writes = c.Types.Retains(symbol, null, null).Writes.ToArray();
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
+                        writes.Any(x => x.Output == symbol.ReceiverIndex && (x.Own.Kinds[i] | x.All.Kinds[i]) != RetentionKind.None);
+                    Assert.True(stored == KimiLibraryCatalog.Added(symbol, i), $"{Line(function)}: input {i}");
+                    if (stored)
+                    {
+                        added.Add($"{function.Name} {i}");
+                    }
+                }
+            }
+        }
+
+        Assert.Equal(["insert 2", "appendAll 1", "appendCopies 1", "append 1", "insertAt 2", "tryInsert 1", "tryInsert 2", "insertOrReplace 1", "insertOrReplace 2"], added);
+
+        static bool Borrowed(BoundType type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
+    }
+
+    // SPEC 4.9.6, 4.8 (DECISIONS BU-42): CallRetention.ReferentStores takes a 4.6 to 4.8 view's referent as its own handle, sound only
+    // while no 4.6 to 4.8 operation writes an element through a view. The 4.6 to 4.8 operations the fact covers (a library function with
+    // a referent store, not a member of Array, Dictionary or the fixed array) are exactly these, each lending or advancing its receiver,
+    // and none retains another input in its receiver's storage, so an operation that would store a value through a view, or a parameter
+    // added to one of these, fails here first.
+    [Fact]
+    public void ReferentStoresWriteNoElementThroughAView()
+    {
+        var c = Library.Value;
+        var covered = new List<string>();
+        foreach (var function in KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>())
+        {
+            var symbol = function.SymbolOf()!;
+            var retention = c.Types.Retains(symbol, null, null);
+            if (retention.ReferentStores.IsEmpty || ReferenceEquals(function.Parent, c.Library.FixedArrayMembers) ||
+                function.Parent?.SymbolOf()?.LibraryDeclaration is KimiDeclarationId.Array or KimiDeclarationId.Dictionary)
+            {
+                continue;
+            }
+
+            var receiver = Assert.Single(retention.ReferentStores.ToArray());
+            Assert.DoesNotContain(retention.Writes.ToArray(), x => x.Output == receiver &&
+                x.Own.Kinds.ToArray().Zip(x.All.Kinds.ToArray()).Where((_, i) => i != receiver).Any(static y => (y.First | y.Second) != RetentionKind.None));
+            covered.Add($"{Path(Container(function))}: {Line(function)}");
+        }
+
+        Assert.Equal(
+            [
+                "ResolvedRange: public func iterateUniq(self: uniq/Self during source) -> RangeIterator<isize>",
+                "Slice: public func iterateUniq(self: uniq/Self during handle) -> SliceIterator<T> during source",
+                "UniqSlice: public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self",
+                "UniqSlice: public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self",
+                "UniqSlice: public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self",
+                "UniqSlice: internal func indexPositionUniq<P>(self: uniq/Self, key: P) -> uniq/T during self",
+            ],
+            covered);
     }
 
     [Theory]
@@ -382,8 +460,8 @@ public class KimiLibraryShapeTest
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
-    // Lowering and the runtime address these records' stored Fields by name, in this order, and run their drop
-    // (BodyLowering, LlvmModuleWriter, Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
+    // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
+    // (Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
     [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
@@ -391,6 +469,7 @@ public class KimiLibraryShapeTest
     [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
     [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
     [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal let storage: raw/u8 during self\ninternal let stride: isize\ninternal var link: isize\ninternal var tail: isize\ninternal var count: isize\ndrop")]
+    [InlineData("DictionaryStorage.Handle", "struct Handle\npublic var buffer: raw/u8 during self\npublic var used: isize\npublic var capacity: isize\npublic var length: isize\npublic var head: isize\npublic var tail: isize\npublic var free: isize")]
     [InlineData("Storage.InlineStorage", "internal struct InlineStorage<A>\ninternal var value: A")]
     [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize\ninternal var count: isize\ndrop")]
     [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
@@ -404,7 +483,7 @@ public class KimiLibraryShapeTest
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic let written: isize\npublic let remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8\nlet kind: isize\nlet failed: bool\nlet hint: isize\nlet pending: raw/u8\nlet pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nlet failed: bool\nlet hint: isize\nlet pending: raw/u8 during static\nlet pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nlet data: raw/u8 during self\npublic let capacity: isize\npublic let length: isize\nlet validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
@@ -482,10 +561,10 @@ public class KimiLibraryShapeTest
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {
         var (layout, type) = Layout(path);
-        Assert.Equal(size, layout.Value.Layout.Size);
+        Assert.Equal(size, layout.Size);
         for (var i = 0; i < offsets.Length; i += 2)
         {
-            Assert.Equal((int)offsets[i + 1], layout.Offset(type, (string)offsets[i]));
+            Assert.Equal((int)offsets[i + 1], layout.FieldOffsets.Span[AdtDef.IndexOf(type, (string)offsets[i])]);
         }
     }
 
@@ -507,10 +586,10 @@ public class KimiLibraryShapeTest
             """;
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         var (writer, writerType) = Layout("Utf8Writer");
-        Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.Offset(writerType, "failed")}\n", ir, StringComparison.Ordinal);
+        Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.FieldOffsets.Span[AdtDef.IndexOf(writerType, "failed")]}\n", ir, StringComparison.Ordinal);
         foreach (var (path, initializer) in new[] { ("Text.FixedBuffer", "__kimi_text_fixed"), ("Text.HeapBuffer", "__kimi_text_heap") })
         {
-            Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Value.Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Value.Layout.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
+            Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
         }
     }
 
@@ -593,17 +672,10 @@ public class KimiLibraryShapeTest
         }
     }
 
-    private static (AggregateLayout Layout, BoundType Type) Layout(string path)
+    private static (TypeLayout Layout, BoundType Type) Layout(string path)
     {
-        var record = Record(path);
-        var type = Library.Value.Binding.SelfType(record.SymbolOf()!);
-        var pool = new AggregateLayoutPool(Library.Value.Layout);
-        if (AdtDef.Destructor(type) is { } destructor)
-        {
-            pool.RegisterDestructor(destructor, 0);
-        }
-
-        return (Assert.IsType<AggregateLayout>(pool.Get(type)), type);
+        var type = Library.Value.Binding.SelfType(Record(path).SymbolOf()!);
+        return (Library.Value.Layout.Of(type).Value!.Layout, type);
     }
 
     // The trimmed source line holding the node's start: a declaration header with its modifiers, or a Field.

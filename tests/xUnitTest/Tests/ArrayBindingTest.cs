@@ -40,10 +40,10 @@ public class ArrayBindingTest
     public void AggregatesHoldingHandlesHaveRecursiveDestruction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         using var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out var error), error);
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         Assert.NotEmpty(output.ToString());
     }
 
@@ -68,8 +68,8 @@ public class ArrayBindingTest
     public void ArrayTypesLiteralsAndMetadataBind(string source)
     {
         var c = MinimalEmissionTest.Analyze(Task + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -92,14 +92,22 @@ public class ArrayBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
+    // SPEC 4.3, 23.1.2: an independent literal binds every element after a failed one, as a Tuple or Dictionary literal does, so each
+    // element's own failure is reported: a second unresolved Name, and a second element that does not fit the established Type.
+    [Theory]
+    [InlineData("let a = [missing, missing2]\n", "UnresolvedBinding_Kd missing; UnresolvedBinding_Kd missing2")]
+    [InlineData("var k: i32 = 1\nlet a = [k, true, false]\n", "TypeMismatch_Kd true; TypeMismatch_Kd false")]
+    public void AnIndependentLiteralBindsEveryElementAfterAFailedOne(string source, string records)
+        => Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
+
     // Each inferred inner Array owns its own buffer, destroyed recursively with the outer Array.
     [Fact]
     public void NestedIndependentLiteralsHaveRecursiveStorage()
     {
         var c = MinimalEmissionTest.Analyze("let nested = [[1], [2]]");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified);
-        Assert.True(c.Validate(out _));
+        Assert.True(c.Generate(TextWriter.Null));
     }
 
     // SPEC 4.9.5: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.
@@ -114,12 +122,13 @@ public class ArrayBindingTest
     public void EmptyHandleIsZeroedAndReleasedThroughTheRuntime()
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nrequire values.length == 0 else => $abort(\"empty\")");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("call void @__kimi_array_init(ptr %", ir);
         Assert.Contains("call void @__kimi_array_free(ptr %", ir);
-        var free = ir.IndexOf("define internal void @__kimi_array_free", StringComparison.Ordinal);
-        Assert.DoesNotContain("@HeapAlloc(", ir[free..ir.IndexOf("\n}\n", free, StringComparison.Ordinal)]);
+        var module = GeneratedIr.Parse(ir);
+        var calls = module.Function("__kimi_array_free").Instructions.Where(static x => x.Opcode == "call");
+        Assert.Equal([module.Function("__kimi_free")], calls.Select(static x => x.Callee));
     }
 
     // SPEC 4.9.3, 4.9.5: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.
@@ -134,8 +143,8 @@ public class ArrayBindingTest
     public void MutationOperationsBindThroughAnExclusiveReceiver(string statement)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
     }
 
@@ -213,8 +222,8 @@ public class ArrayBindingTest
     {
         // SPEC 4.3: the literal is fitted to the candidate's Array, not first defaulted.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

@@ -26,7 +26,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameter + ") -> i32 => x\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Validate(out _));
+        Assert.Equal(accepted, c.Generate(TextWriter.Null));
         if (accepted)
         {
             Assert.Equal(defaults, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!.DefaultArguments.Length);
@@ -44,7 +44,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameter + ") -> i32 => local\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Validate(out _));
+        Assert.Equal(accepted, c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameters + ") -> i32 => a + b\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Validate(out _));
+        Assert.Equal(accepted, c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -197,7 +197,10 @@ public class ParameterNameDefaultTest
         void Verify()
         {
             Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            if (!c.Generate(TextWriter.Null))
+            {
+                Assert.Fail(MinimalEmissionTest.Describe(c)); // only on failure: the function is measured
+            }
         }
 
         Verify();

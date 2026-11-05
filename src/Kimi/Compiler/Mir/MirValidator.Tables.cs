@@ -3,14 +3,16 @@
 namespace Kimi.Compiler.Mir;
 
 // A body's tables and the Places that index them (plan 5.4).
-// - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed), the
-//   MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in range and each projection step admitted by
-//   the Type of the step it extends (Tables, Admits); and each Place MirUses reports (Place): in range (IsValid), its first step
-//   admitted by its root's Type.
+// - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed, a Result
+//   local a Temp of local 0's Type), the MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in range and
+//   each projection step admitted by the Type of the step it extends (Tables, Admits); and each Place MirUses reports (Place): in range
+//   (IsValid), its first step admitted by its root's Type, and a Result local read only by the whole Move that delivers it into _0
+//   (DECISIONS R4-M132).
 // - Inputs: the body's tables; each location's Places with their access. Outputs: Local, TargetRange, Scope, Opaque, Projection,
-//   UnknownKind and Place findings; a written root's write bits for G131 and G136 (MirValidator.Diverged, MirValidator.Inputs).
+//   UnknownKind and Place findings; a written root's write bits for G131 and G136 (MirValidator.Diverged, MirValidator.Inputs); a valid
+//   Place for G191's rule of its static root (MirValidator.Statics) and for the shared layers it passes (MirValidator.SharedPaths).
 // - Invariants: Tables returns false exactly when a projection chain or an Opaque site cannot be walked, and Validate then stops; a
-//   scope chain that cannot be walked marks the body Unscoped, so Validate runs every check but Entries.
+//   scope chain that cannot be walked marks the body Unscoped, so Validate runs every check but Entries and SharedPath.
 // - Prohibitions: no rule of the operation a location performs (MirValidator.Blocks, .Rvalues, .Calls) and no Type agreement.
 internal sealed partial class MirValidator
 {
@@ -23,6 +25,14 @@ internal sealed partial class MirValidator
             {
                 this.Report(MirViolation.Place);
                 return;
+            }
+
+            this.Accessed(place);
+            if (place.Root >= 0 && body.Locals[place.Root].Role == MirLocalRole.Result &&
+                (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse)) != 0 &&
+                !(this.delivering && place.Projection == 0 && (access & MirAccess.Moves) != 0))
+            {
+                this.Report(MirViolation.Local); // R4-M132: the body's result in transit is read only by its delivery into _0.
             }
 
             if ((access & MirAccess.Writes) != 0 && place.Root >= 0)
@@ -42,6 +52,8 @@ internal sealed partial class MirValidator
             {
                 this.Report(MirViolation.Projection);
             }
+
+            this.SharedPath(place, access, kind);
         }
 
         // Locals, MustNotComplete rows, scopes, Opaque sites and the projection table; false when a chain or site cannot be walked.
@@ -49,13 +61,17 @@ internal sealed partial class MirValidator
         {
             var locals = body.Locals;
             var arguments = true;
+            var constructor = body.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(body.Key.Decl); // Its _0 is the receiver (BU-48).
             for (var i = 0; i < locals.Length; i++)
             {
                 ref readonly var local = ref locals[i];
                 this.At(local.Source);
                 arguments &= i == 0 || local.Kind == MirLocalKind.Arg;
-                if (local.Type is null || local.Kind > MirLocalKind.DropFlag || (local.Kind == MirLocalKind.Return) != (i == 0) ||
-                    (local.Kind == MirLocalKind.Arg && !arguments))
+                var typed = local.Type is { } type && !TyCtxt.StatesUnstated(type, parts); // Unstated marks kept parts only (DECISIONS BU-46).
+                var placed = (local.Kind == MirLocalKind.Return) == (i == 0) && (local.Kind != MirLocalKind.Arg || arguments);
+                if (!typed || !placed || local.Kind > MirLocalKind.DropFlag ||
+                    (local.Role == MirLocalRole.Result && (local.Kind != MirLocalKind.Temp || !ReferenceEquals(local.Type, locals[0].Type))) ||
+                    (local.Role == MirLocalRole.Receiver) != (i == 0 && constructor))
                 {
                     this.Report(MirViolation.Local);
                 }
@@ -65,7 +81,7 @@ internal sealed partial class MirValidator
             foreach (var row in body.MustNotComplete)
             {
                 this.at = new(row.Subject, 0, StatementStart: false);
-                if ((uint)row.Entry >= (uint)blocks.Length || (uint)row.End >= (uint)blocks.Length ||
+                if ((uint)row.Entry >= (uint)blocks.Length || (uint)row.End >= (uint)blocks.Length || !InRange(row.Start, row.Count, body.GuessedSites.Length) ||
                     blocks[row.End].Terminator is not { Kind: MirTerminatorKind.Unreachable, CheckTarget: -1 })
                 {
                     this.Report(MirViolation.TargetRange);

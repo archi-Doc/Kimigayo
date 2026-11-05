@@ -169,6 +169,9 @@ public sealed partial class Binding
         return selected;
     }
 
+    // The symbol a Type name selects. It binds none of the name's syntax: a qualifier is bound once, in the role of the form its name
+    // selects, by BindContainerReference for a nested Type and by BindAssociatedProjection for a projection base, which the projection's
+    // position completes (SPEC 15.4.2).
     private BindingSymbol? TypeName(Koto syntax, BindingScope scope, bool core, int arity = 0)
     {
         while (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
@@ -228,9 +231,9 @@ public sealed partial class Binding
                 return target;
             }
 
+            // The declaration's own Type selects the inherited member: a qualifier's arguments and Origins never change the selection.
             if (qualifier?.Declaration is StructKoto && TypeSpelling(member.Right) is { } inheritedName &&
-                this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } declaring &&
-                this.LookupTypeMember(declaring, inheritedName, scope, typeRole: true) is { Member: { } inherited })
+                this.LookupTypeMember(this.SelfType(qualifier), inheritedName, scope, typeRole: true) is { Member: { } inherited })
             {
                 member.Left.BoundSymbol = qualifier;
                 member.Right.BoundSymbol = inherited;
@@ -325,11 +328,13 @@ public sealed partial class Binding
             if (IsRecovery(syntax, out _))
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
+                RestPendingOn(originDeclaration, syntax);
                 return Complete(syntax, null);
             }
 
             if (type is null)
             {
+                RestPendingOn(originDeclaration, syntax);
                 return null;
             }
 
@@ -380,7 +385,7 @@ public sealed partial class Binding
             case TypeSemanticsKoto semantics:
                 if (semantics.Type is not null)
                 {
-                    var transparent = semantics.IsTransparentWrapper || (semantics.SemanticsParameter is null && semantics.SemanticsKind == SemanticsKind.Owner);
+                    var transparent = TransparentInner(semantics) is not null;
                     var innerContext = transparent ? context with { SuppressOuter = true } : context.Nested;
                     // A pair target is a projection, not a complete value type until its role is proved.
                     BoundType? inner;
@@ -609,13 +614,7 @@ public sealed partial class Binding
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
-        var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
-        if (bound is not null && container is StructKoto { AttributeChain: not null } structure && HasCLayout(structure))
-        {
-            this.CheckCLayoutInstance(generic, bound);
-        }
-
-        return bound;
+        return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
     }
 
     private BoundType? BindTypeList(

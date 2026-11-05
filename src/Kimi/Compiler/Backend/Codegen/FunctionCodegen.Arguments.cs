@@ -34,7 +34,8 @@ internal sealed partial class FunctionCodegen
     /// <returns>The order.</returns>
     internal static ArgumentOrder OrderOf(MirBodyKind kind) => kind switch
     {
-        MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test or MirBodyKind.StaticInit => ArgumentOrder.Positions,
+        MirBodyKind.Fn or MirBodyKind.Test or MirBodyKind.StaticInit => ArgumentOrder.Positions, // Keyed by its own declaration.
+        MirBodyKind.Getter or MirBodyKind.Setter => ArgumentOrder.Positions, // An accessor's, keyed by the function its calls target.
         MirBodyKind.DefaultTemplate => ArgumentOrder.Slots,
         MirBodyKind.Closure => ArgumentOrder.Environment,
         _ => throw new InvalidOperationException($"The MIR body kind {kind} has no code generation row."),
@@ -55,19 +56,25 @@ internal sealed partial class FunctionCodegen
     };
 
     // Whether a parameter takes no operand but the next of the values its call writer is given (Pass, Forward): a runtime routine's
-    // slot-less value (a stride, a reason, a Value without a logical index), a Closure's environment or a context.
+    // slot-less value (a stride, a reason, a Value without a logical index), a Closure's environment or a context that names no parameter (a
+    // context naming one, a formatting row's capacity, is measured from it; FunctionCodegen.Formatting's Measure).
     private static bool Given(in AbiParameter parameter)
-        => parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment or AbiParameterKind.Context };
+        => parameter is { Kind: AbiParameterKind.Value or AbiParameterKind.Context, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment };
 
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory that a runtime-reached Call passes to a parameter by pointer,
     // which the callee owns from the call on, is copied into a copy slot of its own, so the callee never sees its source change; a string
-    // constant so passed is written into one as its record. One pass over the reached Calls' operands numbers the slots before the prologue
-    // allocates them; the call writer finds an operand's by its index. The pass covers the operands a reached Call passes to an OwnedSlot
-    // parameter (DECISIONS R5-M92 narrowed R5-M89's every operand): a body's callee takes a value in memory by pointer, so every in-memory
-    // operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine (Raw.release, $abort), so a Fail's
-    // code or Raw.initialize's value gets none. A Value call's callee operand passed by value is its environment, which a Consuming body
-    // owns (SPEC 7.7.3: a Consuming call Copies a Copy Closure; DECISIONS R5-M102): its slot is numbered after the body's operands by its
-    // block (CalleeCopy), since a block's terminator is its one call.
+    // constant so passed is written into one as its record. One pass over the reached blocks, their statements and then their Calls,
+    // numbers the slots before the prologue allocates them; the call writer finds an operand's by its index. The pass covers the operands a
+    // reached Call passes to an OwnedSlot parameter (DECISIONS R5-M92 narrowed R5-M89's every operand): a body's callee takes a value in
+    // memory by pointer, so every in-memory operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine
+    // (Raw.release, $abort) or a creation's factory (its payload, DECISIONS R5-M110), so a Fail's code or Raw.initialize's value gets none;
+    // a compiler function of the Body disposition, called directly or as an Item's Value call, by its legacy row (RowSlots; DECISIONS
+    // R5-M116); and the payload of a creating adaptation, a statement whose factory call passes it as a creation call does (CreationSlot;
+    // DECISIONS R5-M111). A Value call's callee operand passed by value is its environment, which a Consuming body owns (SPEC 7.7.3: a
+    // Consuming call Copies a Copy Closure; DECISIONS R5-M102): its slot is numbered after the body's operands by its block (CalleeCopy),
+    // since a block's terminator is its one call. The same pass gives an interpolation buffer its Region home when its estimate places it on
+    // the frame (FunctionCodegen.Interpolation's Region) and a segment step's non-empty literal text the slots of its record and of its
+    // write's result (TextSlots).
     private void Copies()
     {
         var count = this.body.Operands.Length + this.body.Blocks.Length;
@@ -80,32 +87,135 @@ internal sealed partial class FunctionCodegen
         this.copyCount = 0;
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
-            if (this.reach[block] && this.body.Blocks[block].Terminator is { Kind: MirTerminatorKind.Call } call)
+            if (!this.reach[block])
+            {
+                continue;
+            }
+
+            var (start, length, terminator) = this.body.Blocks[block];
+            foreach (var statement in this.body.Statements.Slice(start, length))
+            {
+                this.CreationSlot(statement);
+            }
+
+            if (terminator is { Kind: MirTerminatorKind.Call } call)
             {
                 this.CopySlots(call, block);
             }
         }
     }
 
-    // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand.
+    // A creating adaptation's payload slot (DECISIONS R5-M111): its factory's call passes the operand as a creation call's (Create below,
+    // FunctionCodegen.Objects' Creation), so the operand MirCases.Adapt's ObjectCreation uses has its copy slot.
+    private void CreationSlot(in MirStatement statement)
+    {
+        if (statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Adapt } &&
+            this.cases.Adapt(statement.Rvalue, out var operation) is { Start: var payload } && operation == ConversionBinding.ObjectCreation)
+        {
+            this.CopySlot(this.body.Operands[payload], payload);
+        }
+    }
+
+    // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand; an interpolation
+    // buffer's Region home (FunctionCodegen.Interpolation's Region) and a segment step's text slots (TextSlots).
     private void CopySlots(in MirTerminator call, int block)
     {
-        if (call.Callee.Kind != MirCalleeKind.Intrinsic)
+        if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)
         {
-            for (var i = call.Start; i < call.Start + call.Count; i++)
-            {
-                this.CopySlot(this.body.Operands[i], i);
-            }
-
-            if (call.Callee.Kind == MirCalleeKind.Value)
-            {
-                this.CopySlot(call.Operand, this.body.Operands.Length + block);
-            }
-
+            this.RowSlots(call, legacy, block);
             return;
         }
 
-        foreach (var parameter in IntrinsicRows.Of((IntrinsicId)call.Callee.Arg).Routine?.Parameters ?? [])
+        if (call.Callee.Kind != MirCalleeKind.Intrinsic)
+        {
+            this.OperandSlots(call, block);
+            return;
+        }
+
+        var row = IntrinsicRows.Of((IntrinsicId)call.Callee.Arg);
+        switch (row.Writer)
+        {
+            case IntrinsicWriter.Create:
+                // A creation's factory takes its payload at its kind, as a body callee does (ModuleCodegen.Factory; DECISIONS R5-M110).
+                var payload = call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0);
+                this.CopySlot(this.body.Operands[payload], payload);
+                return;
+            case IntrinsicWriter.Buffer:
+                this.Region(call); // An interpolation buffer's home: its frame's region when its estimate places it there (DECISIONS R5-M131).
+                return;
+            case IntrinsicWriter.Segment:
+                this.TextSlots(call, block); // A segment's literal text's record and its write's result (DECISIONS R5-M133).
+                return;
+            default:
+                this.RoutineSlots(call, row.Routine);
+                return;
+        }
+    }
+
+    // The compiler function a Call calls: a Fn callee's, or the function Item a Value callee's operand holds below its reference layer (the
+    // collector's Callable rule, FunctionCodegen.Closures' ValueCall); None for any other.
+    private CompilerFunctionKind CompilerFunction(in MirTerminator call)
+    {
+        if (call.Callee.Kind == MirCalleeKind.Fn)
+        {
+            return call.Callee.Symbol!.CompilerFunction;
+        }
+
+        if (call.Callee.Kind != MirCalleeKind.Value || this.InstanceType(call.Operand) is not { } type)
+        {
+            return CompilerFunctionKind.None;
+        }
+
+        _ = TyCtxt.Layer(type, out var callable, out _);
+        return callable is { Kind: BoundTypeKind.FunctionItem, Symbol: { } function } ? function.CompilerFunction : CompilerFunctionKind.None;
+    }
+
+    // The copy slots of a call whose callee takes its in-memory operands by pointer, a body's (Copies): each Copy or string constant operand's,
+    // and a Value callee's operand's.
+    private void OperandSlots(in MirTerminator call, int block)
+    {
+        for (var i = call.Start; i < call.Start + call.Count; i++)
+        {
+            this.CopySlot(this.body.Operands[i], i);
+        }
+
+        if (call.Callee.Kind == MirCalleeKind.Value)
+        {
+            this.CopySlot(call.Operand, this.body.Operands.Length + block);
+        }
+    }
+
+    // A legacy row's slots (DECISIONS R5-M116, R5-M121, R5-M124, R5-M128): a fixed-symbol routine's OwnedSlot parameters (LegacyRow.Fixed:
+    // writeLine's, a formatting routine's), as an intrinsic routine's; a row's in its function's instance (LegacyRow.InInstance) as a body
+    // callee's (OperandSlots), since its helper takes an element in memory by pointer and copies it after it grows (`a.append(a[0])`);
+    // a swap of a value in memory the one slot holding its first value (FunctionCodegen.Updates), numbered at its first operand, a reference,
+    // which has no copy slot of its own; none for the others, which read their operands in place, no callee seeing them.
+    private void RowSlots(in MirTerminator call, LegacyRow row, int block)
+    {
+        if (row.Fixed)
+        {
+            this.RoutineSlots(call, row.Routine);
+            return;
+        }
+
+        if (row.InInstance)
+        {
+            this.OperandSlots(call, block);
+            return;
+        }
+
+        var first = call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0);
+        if (row.Writer == LegacyWriter.Swap && this.ReferencedType(this.InstanceType(this.body.Operands[first])) is { } type &&
+            this.module.Layout.Of(type).Value is { Layout.Size: > 0 } lowering && InMemory(type, lowering))
+        {
+            this.AddSlot(first, lowering.Layout);
+        }
+    }
+
+    // The copy slots of the operands a routine's OwnedSlot parameters take.
+    private void RoutineSlots(in MirTerminator call, FunctionAbi? routine)
+    {
+        foreach (var parameter in routine?.Parameters ?? [])
         {
             if (parameter.Kind == AbiParameterKind.OwnedSlot)
             {
@@ -122,8 +232,7 @@ internal sealed partial class FunctionCodegen
     private void CopySlot(in MirOperand copy, int operand)
     {
         TypeLayout? layout = null;
-        if (copy.Kind == MirOperandKind.Const && this.body.Consts[copy.Arg] is { Kind: MirConstKind.String } constant &&
-            ReferenceEquals(constant.Type, BoundType.String))
+        if (this.TextOf(copy) is not null)
         {
             layout = RuntimeAbi.String.Layout;
         }
@@ -133,11 +242,15 @@ internal sealed partial class FunctionCodegen
             layout = lowering.Layout;
         }
 
-        if (layout is null)
+        if (layout is not null)
         {
-            return;
+            this.AddSlot(operand, layout);
         }
+    }
 
+    // A slot of the entry block numbered by an operand's index.
+    private void AddSlot(int operand, TypeLayout layout)
+    {
         if (this.copyCount == this.copies.Length)
         {
             Array.Resize(ref this.copies, Math.Max(4, 2 * this.copies.Length));
@@ -149,7 +262,8 @@ internal sealed partial class FunctionCodegen
 
     // An argument by its parameter's kind (IMPL 21.3.1): a Value or a string borrow its operand in its computation representation; an
     // OwnedSlot the address of storage the callee owns from the call on, a Move's Place itself (a string's too, whose Read is its record),
-    // or a Copy's copy or a string constant's record in its copy slot (Copies; -1: none). False for a form not covered yet.
+    // or a Copy's copy or a string constant's record in its copy slot (Copies; -1: none). False after a broken contract's record (the
+    // operand's, or a constant or pair acquisition without the copy slot Copies gives it; DECISIONS R5-M146).
     private bool Argument(in MirOperand operand, int copy, AbiParameterKind kind, out Value value)
     {
         value = default;
@@ -167,21 +281,14 @@ internal sealed partial class FunctionCodegen
                 }
 
                 return true;
-            case AbiParameterKind.OwnedSlot when copy >= 0 && operand.Kind == MirOperandKind.Const:
-                value = new('s', copy);
-                this.Text(value, (string)this.body.Consts[operand.Arg].Value!);
-                return true;
             case AbiParameterKind.OwnedSlot when copy >= 0:
-                if (!this.Read(operand.Place, out var source) || this.LoweringOf(operand.Place) is not { } copied)
-                {
-                    return false;
-                }
-
                 value = new('s', copy);
-                this.Put(value, this.InstanceType(operand.Place)!, copied, source);
-                return true;
+                return this.LoweringOf(operand) is { } copied && this.Put(value, this.InstanceType(operand)!, copied, operand);
+            case AbiParameterKind.OwnedSlot when operand.Kind is MirOperandKind.Copy or MirOperandKind.Move:
+                return this.Address(operand.Place, out value);
             case AbiParameterKind.OwnedSlot:
-                return operand.Kind is MirOperandKind.Copy or MirOperandKind.Move && this.Address(operand.Place, out value);
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A constant or a pair acquisition takes its copy slot (Copies).
+                return false;
             default:
                 throw new InvalidOperationException($"The parameter kind {kind} has no argument row.");
         }

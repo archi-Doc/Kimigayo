@@ -22,7 +22,7 @@ public class UniqSliceTest(ITestOutputHelper output)
         Assert.Equal(OriginVariance.Invariant, Assert.Single(symbol.Schema!.GenericSlots).OriginVariance);
         var source = Assert.Single(symbol.Schema.Origins);
         Assert.Equal(OriginVariance.Covariant, source.Variance);
-        Assert.Equal(LoanRequirement.Uniq, source.LoanRequirement);
+        Assert.Equal(new SlotRequirement(LoanRequirement.Uniq, default), source.Requirement);
         var view = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>(), static x => x.NameKoto.IdentifierName == "view");
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(view.TypeOf()!, view));
         // Ordinary local Origins are not proven to outlive static; the common Owned proof remains Unknown.
@@ -40,11 +40,17 @@ public class UniqSliceTest(ITestOutputHelper output)
         Assert.Equal(child, check.Diagnostics.Any(static x => x.Severity == DiagnosticSeverity.Error));
         if (child)
         {
-            var error = Assert.Single(check.Diagnostics);
-            Assert.Equal("UnsatisfiedOriginRelation_Kd", error.Code);
-            Assert.Equal("parent.sliceUniq()", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-            Assert.Null(error.Repairs);
-            DiagnosticOutputTestHelper.Single(check, "requires the borrow parent outlives values, which is false", output);
+            // A5's twin at the return beside Binding's record at the call: A5's records at Binding's twin rows stay until H11 (R6-check
+            // H0b §5.4, DECISIONS R4-M108; H3b T50, class 4). Each reaches the adapters with its label.
+            const string Label = "requires the borrow parent outlives values, which is false";
+            Assert.Equal(
+                [("UnsatisfiedOriginRelation_Kd", "return parent.sliceUniq()", Label), ("UnsatisfiedOriginRelation_Kd", "parent.sliceUniq()", Label)],
+                check.Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
+            foreach (var error in check.Diagnostics)
+            {
+                Assert.Null(error.Repairs);
+                DiagnosticOutputTestHelper.Single(check with { Diagnostics = [error] }, Label, output);
+            }
         }
     }
 
@@ -56,7 +62,7 @@ public class UniqSliceTest(ITestOutputHelper output)
         var source = "func consume<T>(value: T)\n    T is Owned\n    ()\nvar values = [1, 2]\n" +
             (view ? "var view = values.sliceUniq()\nconsume(view@move)" : "consume(values@move)");
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(!view, c.WriteIr(TextWriter.Null, out _));
+        Assert.Equal(!view, c.Generate(TextWriter.Null));
         if (view)
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
@@ -94,7 +100,7 @@ public class UniqSliceTest(ITestOutputHelper output)
     public void RegionsDoNotSplitAuthorityOrExposeWritableMetadata(string use)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1, 2]\nvar view = values.sliceUniq(..1)\n" + use + "\nrequire view.length == 1 else => $abort(\"view\")");
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -155,10 +161,10 @@ public class UniqSliceTest(ITestOutputHelper output)
     public void LiveViewsKeepTheirParentAndBackingLoans(string conflict, string child, string use)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1, 2]\nvar view = values.sliceUniq()\n" + child + "\n" + conflict + "\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -172,7 +178,7 @@ public class UniqSliceTest(ITestOutputHelper output)
     public void UnsupportedAcquisitionsDoNotGainAuthority(string use)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1, 2]\n" + use);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
@@ -180,7 +186,7 @@ public class UniqSliceTest(ITestOutputHelper output)
     public void EmptyViewsStillKeepExclusiveAuthority()
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nvar view = values.sliceUniq()\nvalues.append(1)\nrequire view.isEmpty else => $abort(\"empty\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
@@ -203,10 +209,10 @@ public class UniqSliceTest(ITestOutputHelper output)
         {
             valid &= c.Bind().IsComplete;
             c.Binding.CheckStartup(OutputKind.Application);
-            valid &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
+            valid &= c.Analyze().IsVerified && c.Generate(TextWriter.Null);
         });
         Assert.Equal(0, bytes);
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

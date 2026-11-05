@@ -1,0 +1,42 @@
+// SPEC session probe: owning iteration (items not behind a result borrow) over elements holding an unstated raw layer.
+func ownRaw()
+    var a: Array<raw/u8> = [null, null]
+    var it = a@move.intoIterator()
+    let first = it.next()
+    let second = it.next()
+    inspect(first)
+    inspect(second)
+func ownInt()
+    var a: Array<i32> = [1, 2]
+    var it = a@move.intoIterator()
+    let first = it.next()
+    let second = it.next()
+    inspect(first)
+    inspect(second)
+func ownBox()
+    var a: Array<Box> = [Box.init(p: null), Box.init(p: null)]
+    var it = a@move.intoIterator()
+    let first = it.next()
+    let second = it.next()
+    inspect(first)
+    inspect(second)
+func forMoveRaw()
+    let a: Array<raw/u8> = [null, null]
+    var kept: Array<raw/u8> = []
+    for p in a@move => kept.append(p)
+    inspect(kept)
+func forMoveBox()
+    let a: Array<Box> = [Box.init(p: null), Box.init(p: null)]
+    var kept: Array<Box> = []
+    for b in a@move => kept.append(b@move)
+    inspect(kept)
+func removeRaw()
+    var a: Array<raw/u8> = [null, null]
+    let x = a.remove(0)
+    a.append(null)
+    usep(x)
+func removeBox()
+    var a: Array<Box> = [Box.init(p: null), Box.init(p: null)]
+    let x = a.remove(0)
+    a.append(Box.init(p: null))
+    inspect(x)

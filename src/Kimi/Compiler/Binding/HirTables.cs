@@ -82,6 +82,14 @@ internal struct HirTables
 
     internal static HirPlace PlaceOf(Koto node) => node.SyntaxOwner?.Hir.Places is { } places && node.SyntaxId < places.Length ? places[node.SyntaxId] : default;
 
+    /// <summary>Gets the Type identity a member access or an element access was resolved through (SPEC 8.2.3; DECISIONS BU-72):
+    /// <c>P is U</c>, whose Subject P is the Type parameter its receiver's Type has through its Semantics layers and whose RequiredType U
+    /// is the identical complete Type Binding resolved the access on; null for any other node.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The interned identity, or null.</returns>
+    [Transitional("R4", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
+    internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
+
     /// <summary>Publishes the Op, Res, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>The pass the columns describe, 0 before the first.</returns>
@@ -200,10 +208,11 @@ internal struct PlanRow
     internal byte Mode;
     internal bool Flag;
 
-    /// <summary>The Adjust by which the earlier of two calls of one consumer takes the node where the two take it by different Adjusts, whose
-    /// later one the Adjust column keeps: a compound update's getter, beside its setter (SPEC 13.7.2, 11.3; DECISIONS R4-M109). Default
-    /// otherwise: the publisher writes it at each call input of each pass. A node three or more calls take (a <c>$tryWrite</c>'s storage) has
-    /// no defined value here (PLAN G103).</summary>
+    /// <summary>The node's Adjust that the Adjust column cannot hold (DECISIONS R4-M145): the earlier of two calls of one consumer that take
+    /// it by different Adjusts, whose later one the column keeps, a compound update's getter beside its setter (SPEC 13.7.2, 11.3; DECISIONS
+    /// R4-M109), written at each call input of each pass; or a Place in Discard Context's bare acquisition (SPEC 14.2.2), written at each such
+    /// Place of each pass, where the column's unset value is the container discarding its item. Default otherwise. A node three or more
+    /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
     // An Int128 would align the row to 16 bytes; two halves keep it at 48.

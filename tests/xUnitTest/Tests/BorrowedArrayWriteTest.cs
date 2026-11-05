@@ -41,7 +41,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -50,7 +50,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
             }
 
             c.Binding.CheckStartup(OutputKind.Application);
-            if (!c.Analyze().IsVerified || !c.Validate(out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Borrowed array pipeline failed.");
             }
@@ -70,7 +70,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
             c.Binding.ReportDiagnostics();
             c.ReportAnalysis();
             Assert.Contains(c.Diagnostics.Finalize(rejected: true).Diagnostics, x => x.Code == code.ToString());
-            Assert.False(c.Validate(out _));
+            Assert.False(c.Generate(TextWriter.Null));
         }
     }
 
@@ -106,7 +106,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
-        Assert.Equal(new SourceSpan(source.IndexOf("r[0] =", StringComparison.Ordinal), 4), error.Span);
+        Assert.Equal(new SourceSpan(source.IndexOf("r[0] = 42", StringComparison.Ordinal), 9), error.Span);
         Assert.Equal("This operation conflicts with an active loan", error.Message);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);

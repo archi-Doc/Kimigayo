@@ -31,7 +31,7 @@ public class ConditionalProjectionCertificateBindingTest
     public void ValidNestedPremisesKeepTheirEvidence(bool lateWitness)
     {
         var c = MinimalEmissionTest.Analyze(Prefix(lateWitness, true) + Consumer.Replace("T is Source.Origin.Item", "T is ([2 of Source.Origin.Item], i32)", StringComparison.Ordinal));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -132,7 +132,7 @@ public class ConditionalProjectionCertificateBindingTest
     {
         var conditions = reverse ? "U is Input<T>.Origin.Item, T is Copy" : "T is Copy, U is Input<T>.Origin.Item";
         var c = MinimalEmissionTest.Analyze("contract Origin\n    associate Item\nstruct Input<T>\n    T is Copy\n    Self is Origin\n    associate Origin.Item is i32\ncontract C\nstruct S<T, U>\n    Self is C when " + conditions);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);

@@ -35,7 +35,7 @@ public class FunctionItemResultTest
         var c = MinimalEmissionTest.Analyze("func inc(value: i32) -> i32 => value + 1\nfunc dec(value: i32) -> i32 => value - 1\n" + declaration);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.TypeMismatch_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class FunctionItemResultTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

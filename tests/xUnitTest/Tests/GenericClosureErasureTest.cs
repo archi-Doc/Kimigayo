@@ -36,7 +36,7 @@ public class GenericClosureErasureTest
         const string Source = "func invalid<T>(value: T) -> () -> i32\n    let action = func [value@move] () -> i32 => 7\n    return action@move\n_ = invalid(42)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.ReportDiagnostics();
         c.ReportAnalysis();
         // SPEC 15.2.3: the capture value of Type T is not proven Owned, an Unknown Constraint proof (it was TypeMismatch_Kd).
@@ -49,7 +49,7 @@ public class GenericClosureErasureTest
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let integer = keep(1)\nlet text = keep(\"owned\")\nrequire integer() == text() else => $abort(\"warm\")");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

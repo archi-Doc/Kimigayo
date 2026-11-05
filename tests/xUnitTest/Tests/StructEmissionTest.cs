@@ -66,7 +66,7 @@ public class StructEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified && !c.Diagnostics.HasErrors);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -82,17 +82,18 @@ public class StructEmissionTest
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
     }
 
-    // A missing field is one record per exit that completes construction: at the constructor's signature for the normal end,
-    // checked before and after the body's cleanup, and at an early return.
+    // A missing field is one record per exit that completes construction: at the constructor's declaration for the normal end (the
+    // MIR's span, H5), checked before and after the body's cleanup, and at an early return.
     [Theory]
     [InlineData("if false => self.value = 1")]
     [InlineData("defer => self.value = 1")]
     public void IncompleteConstructionIsReportedOncePerExit(string body)
     {
-        var source = "struct S\n    var value: i32\n    public init(flag: bool)\n        " + body + "\n        if flag => return\nlet s = S.init(true)\n";
+        var constructor = "init(flag: bool)\n        " + body + "\n        if flag => return";
+        var source = "struct S\n    var value: i32\n    public " + constructor + "\nlet s = S.init(true)\n";
         var records = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start).ToArray();
         Assert.Equal(["UninitializedPlace_Kd", "UninitializedPlace_Kd"], records.Select(static x => x.Code));
-        Assert.Equal("init(flag: bool)", source.Substring(records[0].Span!.Value.Start, records[0].Span!.Value.Length));
+        Assert.Equal(constructor, source.Substring(records[0].Span!.Value.Start, records[0].Span!.Value.Length));
         Assert.Equal("return", source.Substring(records[1].Span!.Value.Start, records[1].Span!.Value.Length));
     }
 
@@ -138,12 +139,12 @@ public class StructEmissionTest
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var allocated = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, allocated);

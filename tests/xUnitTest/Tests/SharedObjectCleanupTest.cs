@@ -79,10 +79,11 @@ public class SharedObjectCleanupTest
     [InlineData("arc")]
     public void RawStoredHandlesStillRequireExplicitMoves(string mode)
     {
+        // SPEC 3.5, 5.2.3 (R6-check H1, DECISIONS BU-84): the bare read of a stored handle is Binding's TransferRequired_Kd at the element.
         var c = MinimalEmissionTest.Analyze(Item + $"func bad(value: raw/({mode}/Item)) -> {mode}/Item\n    unsafe => return value[0]\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
-        Assert.False(c.Validate(out _));
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal((DiagnosticCode.TransferRequired_Kd, "value[0]"), (issue.Code, issue.Node.ToString()));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

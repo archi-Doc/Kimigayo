@@ -490,9 +490,6 @@
   + Name="Binding.SplitCLayoutStorage"
     Description="the C-layout storage lies in one fragment"
 
-  + Name="Binding.InvalidCLayout"
-    Description="the C layout is valid"
-
   + Name="Binding.InvalidInlineLayout"
     Description="the Type has a finite inline layout"
 
@@ -628,9 +625,6 @@
   + Name="Ownership.Internal"
     Description="the analysis keeps its invariants"
 
-  + Name="Ownership.TransferRequired"
-    Description="the transfer is written explicitly"
-
   + Name="Ownership.UnprovenOrigin"
     Description="the Origin obligation is proven"
 
@@ -648,6 +642,12 @@
 
   + Name="Ownership.StorageLimit"
     Description="ownership analysis storage stays within its resource limit"
+
+  + Name="Ownership.OwnStepDeparture"
+    Description="no pointer formed through an own step is used after its owning value may leave its holder"
+
+  + Name="Ownership.DepthLimit"
+    Description="ownership analysis stays within its Type nesting bound"
 
   + Name="Binding.CaseLimit"
     Description="the Semantics cases of the definition stay within the implementation bound"

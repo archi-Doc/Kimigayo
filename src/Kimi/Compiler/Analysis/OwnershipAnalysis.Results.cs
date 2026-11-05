@@ -7,8 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     private readonly List<int> resultHeads = new();
-    private readonly List<(int Join, int Place, int Declare)> resultJoins = new();
-    private readonly List<int> resultDeclarations = new();
+    private readonly List<int> resultJoins = new();
     private readonly List<PendingResult> pendingResults = new();
 
     private static bool ScalarResult(BoundType type) => ReferenceTypes.IsValue(type);
@@ -19,12 +18,8 @@ public sealed partial class OwnershipAnalysis
         if (place >= 0 && ScalarResult(this.body.Places[place].Type))
         {
             this.body.OperationStorage[join] = this.body.Operations[join] with { Place = place };
-        }
-
-        if (place >= 0 && (ScalarResult(this.body.Places[place].Type) || SlotTypes.IsResult(this.body.Places[place].Type)))
-        {
             this.resultHeads[join] = -1;
-            this.resultJoins.Add((join, place, this.resultDeclarations[place]));
+            this.resultJoins.Add(join);
         }
 
         return join;
@@ -43,7 +38,7 @@ public sealed partial class OwnershipAnalysis
         {
             this.body.PlaceStorage[place] = this.body.Places[place] with { Kind = OwnershipPlaceKind.Result };
             // A fresh result lifetime on every evaluation, including evaluations inside a loop.
-            this.resultDeclarations[place] = this.Emit(OwnershipOperationKind.Declare, source, place);
+            this.Emit(OwnershipOperationKind.Declare, source, place);
         }
 
         return place;
@@ -59,25 +54,17 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var write = input >= 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.Unit) ? this.Emit(OwnershipOperationKind.Write, source, place, input) : -1;
-        if (write >= 0 && SlotTypes.IsResult(this.body.Places[place].Type) && this.resultDeclarations[place] >= 0)
-        {
-            this.body.ResultWrites.Add(new(write, this.resultDeclarations[place]));
-        }
-
-        return write;
+        return input >= 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.Unit) ? this.Emit(OwnershipOperationKind.Write, source, place, input) : -1;
     }
 
-    private void Deliver(Koto source, int secured)
+    private void Deliver(Koto source)
     {
         if (this.body.DefaultParameter < 0)
         {
             this.CheckConstruction(source);
         }
 
-        var value = secured >= 0 && ScalarResult(this.body.Places[this.resultPlace].Type) && this.body.Values[secured].Kind == OwnershipValueKind.Alias ? this.body.ValueOperands[this.body.Values[secured].Start] : -1;
-        var delivery = this.Emit(OwnershipOperationKind.Deliver, source, this.resultPlace);
-        this.body.Deliveries.Add(new(delivery, value, secured));
+        this.Emit(OwnershipOperationKind.Deliver, source, this.resultPlace);
     }
 
     private void ConnectResult(int join, int operation)
@@ -107,22 +94,14 @@ public sealed partial class OwnershipAnalysis
 
     private void FinalizeResults()
     {
-        foreach (var result in this.resultJoins)
+        foreach (var join in this.resultJoins)
         {
-            var join = result.Join;
-            var scalar = ScalarResult(this.body.Places[result.Place].Type);
-            var start = scalar ? this.body.PhiInputs.Count : this.body.ResultArrivals.Count;
+            var start = this.body.PhiInputs.Count;
             for (var pending = this.resultHeads[join]; pending >= 0; pending = this.pendingResults[pending].Next)
             {
                 var input = this.pendingResults[pending];
                 if (!this.body.IsReachable(this.body.Edges[input.Edge].From))
                 {
-                    continue;
-                }
-
-                if (!scalar)
-                {
-                    this.body.ResultArrivals.Add(new(input.Edge, input.Write));
                     continue;
                 }
 
@@ -135,14 +114,7 @@ public sealed partial class OwnershipAnalysis
                 this.body.PhiInputs.Add(new(value, input.Edge, input.Write));
             }
 
-            if (scalar)
-            {
-                this.body.Values[join] = new(OwnershipValueKind.Phi, start, this.body.PhiInputs.Count - start);
-            }
-            else
-            {
-                this.body.SlotResults.Add(new(result.Place, result.Declare, join, start, this.body.ResultArrivals.Count - start));
-            }
+            this.body.Values[join] = new(OwnershipValueKind.Phi, start, this.body.PhiInputs.Count - start);
         }
     }
 

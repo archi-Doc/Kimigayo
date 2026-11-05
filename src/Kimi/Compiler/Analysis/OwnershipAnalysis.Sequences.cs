@@ -61,13 +61,9 @@ public sealed partial class OwnershipAnalysis
         {
             if (acquisition == AcquisitionKind.Move || this.Resolve(source.BoundType, this.Active) is not { } stored || !this.SupportsCopySnapshot(stored, source))
             {
-                if (acquisition is null && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven)
+                if (acquisition is not null || this.compilation.Binding.ProveCopy(source.BoundType!, source) == ConstraintProof.Proven)
                 {
-                    this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
-                }
-                else
-                {
-                    this.UnmovableElement(source, acquisition);
+                    this.UnmovableElement(source, acquisition); // A bare move is Binding's record (R6-check H1, DECISIONS BU-84).
                 }
 
                 return -1;
@@ -105,9 +101,8 @@ public sealed partial class OwnershipAnalysis
         {
             if (acquisition is null && source.BoundType is { } element && this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven)
             {
-                // Like a bare local, the rejected acquisition still yields its typed element: dropping it would invent an
-                // uninitialized use where the value arrives, such as a returned result.
-                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
+                // Like a bare local, the rejected acquisition, which Binding judges (R6-check H1, DECISIONS BU-84), still yields its
+                // typed element: dropping it would invent an uninitialized use where the value arrives, such as a returned result.
                 result = this.Temporary(source);
             }
             else

@@ -4,13 +4,16 @@ namespace Kimi.Compiler.Mir;
 
 // A5's transfer per statement kind (A3 5, Carrying, with E3): a location's effect planned on the state before it as entries, which the
 // checks replay reads, then committed (MirBorrows.Solve): a storage statement or EndBorrow clears its root, an Assign stores its value,
-// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, and a Call's are MirBorrows.Calls'. A store adds the
-// markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H (E7).
+// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, a Call's are MirBorrows.Calls' and a Drop's
+// MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
+// (MirBorrows.States, DECISIONS R4-M160). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued
+// into a guard candidate H (E7).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
     private const byte Replaced = 1;
     private const byte Joined = 2;
+    private const byte JoinedThrough = 3; // Joined into the Shared part: a store through a reference (P10, W).
 
     private Entry[] entries = [];
     private int entryCount;
@@ -19,19 +22,23 @@ internal sealed partial class MirBorrows
     // makes; a Call's.
     private void Plan(ulong[] state, int block, int index, bool checks)
     {
-        this.entryCount = 0;
-        foreach (var set in this.contentsRead)
+        (this.entryCount, this.planLocation) = (0, this.Location(block, index));
+        foreach (var set in this.read)
         {
-            this.contents[set] = 0;
+            this.reads[set] = default;
         }
 
-        this.contentsRead.Clear();
+        this.read.Clear();
         ref readonly var data = ref this.body.Blocks[block];
         if (index == data.Count)
         {
             if (data.Terminator.Kind == MirTerminatorKind.Call)
             {
-                this.Call(state, new(block, index), data.Terminator, checks);
+                this.Call(state, data.Terminator, checks);
+            }
+            else if (data.Terminator.Kind == MirTerminatorKind.Drop)
+            {
+                this.Destroyed(state, data.Terminator, block, checks);
             }
 
             return;
@@ -68,8 +75,9 @@ internal sealed partial class MirBorrows
             state[slot] = op switch
             {
                 Cleared => 0,
-                Replaced => (ulong)value,
-                _ => (ulong)this.sets.Union((int)state[slot], value),
+                Replaced => State(value, 0),
+                JoinedThrough => State(Placed(state[slot]), this.sets.Union(Shared(state[slot]), value)),
+                _ => State(this.sets.Union(Placed(state[slot]), value), Shared(state[slot])),
             };
         }
     }
@@ -89,8 +97,8 @@ internal sealed partial class MirBorrows
         this.entries[this.entryCount++] = new(slot, value, own, op, issue);
     }
 
-    // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k borrow Derefs every holder refs^k names joined
-    // (P10), through a raw pointer or into a static E joined.
+    // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k Derefs every holder refs^k names joined (P10; past a
+    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
         var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
@@ -99,32 +107,28 @@ internal sealed partial class MirBorrows
             last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
         }
 
+        var receiving = this.wCount == 0 ? null : cases.Type(this.body.TypeOf(place)!); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
-            if (place.Root < 0)
+            var slot = place.Root < 0 ? Escaped : this.slots[place.Root];
+            var whole = count == 0 && place.Root >= 0;
+            if (slot >= 0)
             {
-                this.AddSlot(Escaped, value, own, Joined, issue);
+                var (arrived, issued) = (this.Arrive(slot, receiving, whole, 0, value), this.Arrive(slot, receiving, whole, 0, own));
+                this.AddSlot(slot, arrived, issued, whole ? Replaced : Joined, issue);
             }
 
-            this.Add(place.Root, value, own, count == 0 ? Replaced : Joined, issue);
             return;
         }
 
-        var (layer, raw) = (this.Root(state, place.Root), this.walk[last].Class == MirStepClass.Raw);
-        for (var i = 0; i < last; i++)
-        {
-            layer = this.walk[i].Class switch
-            {
-                MirStepClass.Shared or MirStepClass.Uniq => this.Content(state, layer),
-                MirStepClass.Raw => this.escapedSet,
-                _ => layer,
-            };
-        }
-
-        this.Refs(raw ? this.escapedSet : layer);
+        var (layer, parents) = this.Prefix(state, place.Root, last);
+        var pointer = this.PointerOf(place.Root, layer, parents, last); // What its last Deref goes through.
+        var through = last == count - 1 ? pointer : 0; // A write of the whole referent (rule W's write-through).
+        this.Refs(pointer);
         foreach (var target in this.targets)
         {
-            this.AddSlot(target, value, own, Joined, issue);
+            var arrived = this.Arrive(target, receiving, false, through, value);
+            this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
         }
     }
 
@@ -141,6 +145,7 @@ internal sealed partial class MirBorrows
     }
 
     /// <summary>A planned change of a holder's state: cleared, replaced or joined with a value and the Loans issued with it (born at the
-    /// location, so in no state before it), from a Ref (Issue) or a flow.</summary>
+    /// location, so in no state before it), from a Ref (Issue) or a flow; joined into its Placed part, or through a reference into its
+    /// Shared part.</summary>
     private readonly record struct Entry(int Slot, int Value, int Own, byte Op, bool Issue);
 }

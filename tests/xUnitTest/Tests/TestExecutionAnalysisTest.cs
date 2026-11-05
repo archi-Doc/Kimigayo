@@ -15,15 +15,15 @@ public class TestExecutionAnalysisTest
     public void TestBodiesAreVerifiedWithoutSelectingProductStartup(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         c.Tests.Discover(c);
         Assert.Single(c.Tests.Cases);
         Assert.NotEmpty(c.Tests.Sites);
         Assert.Equal(StartupKind.Test, c.Binding.Startup.Kind);
         Assert.Null(c.Binding.Startup.Symbol);
         var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         Assert.Contains("@__kimi_test_observe", output.ToString());
     }
 
@@ -50,10 +50,10 @@ public class TestExecutionAnalysisTest
     public void VerificationPreservesBodiesAndTransfers(string body)
     {
         var c = Analyze("#Test\nfunc sample()\n    " + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         c.Tests.Discover(c);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -86,11 +86,11 @@ public class TestExecutionAnalysisTest
         c.IsTestBuild = true;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Helpers.kimi", "func helper<T>(x: T)\n    $expect(false, message: \"shared\")\n    $require(true)\n#Test\nfunc sample() => helper(1)", isTestOnly: true));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.CheckTestStartup();
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c.Tests.Discover(c);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -120,7 +120,7 @@ public class TestExecutionAnalysisTest
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
         var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain("__kimi_test_observe", output.ToString());
     }
 

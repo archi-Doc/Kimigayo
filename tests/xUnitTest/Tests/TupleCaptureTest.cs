@@ -21,7 +21,7 @@ public class TupleCaptureTest
     public void TupleEnvironmentsKeepTheirAcquisitionAndReceiver(string name, string source, string stdout, SemanticsKind receiver)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(receiver, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("TupleCapture" + name, CompilationTestHelper.WriteIr(c), stdout);
     }
@@ -37,7 +37,7 @@ public class TupleCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -82,9 +82,9 @@ public class TupleCaptureTest
     public void WarmTuplePlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("let pair = (\"owned\", 7)\nlet f: () -> i32 = func [pair@move] () => pair.1\nrequire f() == 7 else => $abort(\"call\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -94,8 +94,8 @@ public class TupleCaptureTest
     public void StoredObjectPayloadViewsUseTheOrdinaryBorrowPlan(string use)
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet pair = (owner@move, 1)\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

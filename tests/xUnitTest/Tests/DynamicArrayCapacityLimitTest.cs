@@ -44,10 +44,13 @@ public class DynamicArrayCapacityLimitTest
     }
 
     [Theory]
-    [InlineData("Append", "call void @__kimi_array_append_i8(ptr %handle, i8 1, ptr @probe_location, i64 5)")]
-    [InlineData("Insert", "call void @__kimi_array_insert_i8(ptr %handle, i64 0, i8 1, ptr @probe_location, i64 5)")]
-    public void IncreasedLengthIsCheckedBeforeBufferAccess(string name, string call)
-        => WriteProbe(name, RuntimeIr(), Handle(long.MaxValue, long.MaxValue) + "\n  " + call + "\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+    [InlineData("Append", "__kimi_array_append_", "(ptr %handle, i8 1, ptr @probe_location, i64 5)")]
+    [InlineData("Insert", "__kimi_array_insert_", "(ptr %handle, i64 0, i8 1, ptr @probe_location, i64 5)")]
+    public void IncreasedLengthIsCheckedBeforeBufferAccess(string name, string helper, string arguments)
+    {
+        var ir = RuntimeIr();
+        WriteProbe(name, ir, Handle(long.MaxValue, long.MaxValue) + "\n  call void @" + Helper(ir, helper) + arguments + "\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+    }
 
     [Fact]
     public void AnUnrepresentableMinimumStillAborts()
@@ -55,11 +58,17 @@ public class DynamicArrayCapacityLimitTest
 
     [Fact]
     public void InvalidInsertionPositionPrecedesTheAdditionLimit()
-        => WriteProbe("BoundsFirst", RuntimeIr(), Handle(long.MaxValue, long.MaxValue) + "\n  call void @__kimi_array_insert_i8(ptr %handle, i64 -1, i8 1, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    {
+        var ir = RuntimeIr();
+        WriteProbe("BoundsFirst", ir, Handle(long.MaxValue, long.MaxValue) + "\n  call void @" + Helper(ir, "__kimi_array_insert_") + "(ptr %handle, i64 -1, i8 1, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    }
 
     [Fact]
     public void CleanupFreeClearDoesNotWalkTheElements()
-        => WriteProbe("ConstantClear", RuntimeIr(), Handle(long.MaxValue, long.MaxValue) + "\n  call void @__kimi_array_clear_i8(ptr %handle, ptr @probe_location, i64 5)\n  %length = load i64, ptr %length_ptr, align 8\n  %empty = icmp eq i64 %length, 0\n  br i1 %empty, label %passed, label %failed\npassed:\n  call void @__kimi_exit(i32 0)\n  unreachable\nfailed:\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
+    {
+        var ir = RuntimeIr();
+        WriteProbe("ConstantClear", ir, Handle(long.MaxValue, long.MaxValue) + "\n  call void @" + Helper(ir, "__kimi_array_clear_") + "(ptr %handle, ptr @probe_location, i64 5)\n  %length = load i64, ptr %length_ptr, align 8\n  %empty = icmp eq i64 %length, 0\n  br i1 %empty, label %passed, label %failed\npassed:\n  call void @__kimi_exit(i32 0)\n  unreachable\nfailed:\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
+    }
 
     internal static string RuntimeIr()
     {
@@ -67,6 +76,11 @@ public class DynamicArrayCapacityLimitTest
         var ir = CompilationTestHelper.WriteIr(compilation);
         return ir;
     }
+
+    // The one Array helper of a kind the module defines, by its kind's prefix: its name is its generator's (the old one names it by its
+    // element, MIR code generation by its item; DECISIONS R5-M121), so the probe calls it whichever wrote the module.
+    internal static string Helper(string ir, string prefix)
+        => Assert.Single(Regex.Matches(ir, @"(?m)^define internal void @(" + Regex.Escape(prefix) + @"[A-Za-z0-9_]+)\(").Cast<Match>()).Groups[1].Value;
 
     internal static string ReplaceDefinition(string ir, string name, string replacement)
     {

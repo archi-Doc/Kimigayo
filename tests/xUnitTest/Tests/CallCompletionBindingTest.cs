@@ -41,7 +41,7 @@ public class CallCompletionBindingTest
     public void ValidProjectionApiRetainsCallPlan(string contractAccess, string apiAccess)
     {
         var c = MinimalEmissionTest.Analyze(Source(contractAccess, apiAccess));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);

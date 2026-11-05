@@ -71,10 +71,10 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             Console.writeLine("\(use(source@ref))")
             """;
         var definition = MinimalEmissionTest.Analyze(Source[..Source.IndexOf("struct Derived", StringComparison.Ordinal)] + "let present = 1");
-        Assert.False(definition.Binding.Result.IsComplete, MinimalEmissionTest.Describe(definition, null));
+        Assert.False(definition.Binding.Result.IsComplete, MinimalEmissionTest.Describe(definition));
         Assert.Contains(definition.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd);
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -107,7 +107,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     {
         const string Source = "contract P<E>\n    func read(self: ref/Self) -> i32\ncontract Q<U>: P<i32>, P<U>\nopen struct Base<U>\n    Self is Q<U>\n    public func read(self: ref/Self) -> i32 => 7\nstruct Derived: Base<i32>\nfunc probe<T>(source: ref/T)\n    T is P<i32>\n    ()\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var derived = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "Derived");
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         var p = ((IsKoto)probe.TypeConstraints[0]).ConstraintOf()!.Contract!;
@@ -119,7 +119,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             var donor = CompilationTestHelper.ParseSuccess("struct Derived: Base<" + argument + ">").Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single();
             Assert.True(KotoHelper.Replace(derived, derived.Bases[0], ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(derived.CodeContext))));
             Assert.False(mapping.IsVerified);
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
             Assert.Same(mapping, c.Binding.GetConformance(derived.TypeOf()!, p));
             Assert.Single(mapping.Witnesses);
             Assert.Equal(argument == "i32" ? 2 : 1, Assert.Single(mapping.Paths).InheritedSourceCount);
@@ -132,9 +132,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     {
         const string Source = "contract P<E>\n    func read(self: ref/Self) -> i32\ncontract Q<U>: P<i32>, P<U>\nopen struct Base<U>\n    Self is Q<U>\n    public func read(self: ref/Self) -> i32 => 7\nstruct Derived: Base<i32>\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]

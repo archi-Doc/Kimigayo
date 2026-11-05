@@ -189,7 +189,6 @@ internal enum BindingFailure : byte
     UnsafeFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
-    InvalidCLayout,
     InvalidInlineLayout,
 
     // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.
@@ -349,6 +348,15 @@ public sealed class BindingSymbol
 
     internal bool HeaderBound { get; set; }
 
+    /// <summary>Gets or sets a declaration container's published closed-clause check (Binding.SourceStates): Unknown while pending or under check.</summary>
+    internal ConstraintProof SourceState { get; set; }
+
+    /// <summary>Gets or sets what <see cref="SourceState"/> rests on (an Unknown's limit, an Error's cause).</summary>
+    internal ICheckCause? SourceCause { get; set; }
+
+    /// <summary>Gets or sets the U fact an Unknown <see cref="SourceState"/> rests on, stored with it (design-r2 Amendment 4).</summary>
+    internal Binding.CallableUnknown? SourceFact { get; set; }
+
     internal int Slot { get; set; }
 
     internal bool MutableCapture { get; set; }
@@ -386,9 +394,11 @@ public sealed record BoundType
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
+    private readonly bool containsClosure;
     private readonly bool hasAbstractPart;
+    private readonly int height;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null)
     {
         this.Name = name;
         this.Kind = kind;
@@ -396,8 +406,9 @@ public sealed record BoundType
         this.Semantics = semantics;
         this.Components = components ?? [];
         this.Length = length;
-        // DECISIONS BU-24: the slot's role is the layer's. Unstated is never stored; Holder only in the raw role.
-        if (origin?.Kind == OriginKind.Unstated || (semantics != SemanticsKind.Raw && origin?.Kind == OriginKind.Holder))
+        // DECISIONS BU-24, BU-46: the slot's role is the layer's. Holder and Unstated only in the raw role (Unstated, a kept part's mark
+        // of a layer its declaration writes without `during`, Binding.WithUnstatedOrigins).
+        if (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
         {
             throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }
@@ -406,6 +417,7 @@ public sealed record BoundType
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
+        this.ClosureContext = closureContext;
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
         this.underlying = this;
 
@@ -418,6 +430,8 @@ public sealed record BoundType
         var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
+        var closure = kind == BoundTypeKind.Closure;
+        var height = closureContext is null ? 0 : closureContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
@@ -426,7 +440,9 @@ public sealed record BoundType
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
+            closure |= components[i].containsClosure;
             abstractPart |= components[i].hasAbstractPart;
+            height = Math.Max(height, components[i].height + 1);
         }
 
         this.carriesOrigin = found;
@@ -438,9 +454,20 @@ public sealed record BoundType
             parameter |= argument is { IsConstant: false };
         }
 
+        // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
+        // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
+        if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))
+        {
+            parameter |= held.containsParameter;
+            pair |= held.containsPairLayer;
+            abstractPart |= held.hasAbstractPart;
+        }
+
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
+        this.containsClosure = closure;
         this.hasAbstractPart = abstractPart;
+        this.height = height;
     }
 
     // SPEC 3.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
@@ -530,13 +557,14 @@ public sealed record BoundType
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
-    // closures, even when none of its slots occupy capture storage.
-    internal Subst? ClosureContext { get; init; }
+    // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
+    internal Subst? ClosureContext { get; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
 
-    /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated); null on any other layer (DECISIONS BU-24).</summary>
+    /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated; Unstated only on a kept part's layer its declaration writes
+    /// without `during`, DECISIONS BU-46); null on any other layer (DECISIONS BU-24).</summary>
     internal BoundOrigin? RawOrigin => this.Semantics == SemanticsKind.Raw ? this.origin : null;
 
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin (<see cref="Origin"/>).</summary>
@@ -564,9 +592,18 @@ public sealed record BoundType
     /// may substitute (SPEC 8.2).</summary>
     internal bool ContainsParameter => this.containsParameter;
 
+    /// <summary>Gets the height of this Type as an interned term (DECISIONS BU-71): 0 for a leaf, else 1 + the greatest height of its
+    /// children, the parts its identity holds as Types: its components and a Closure's whole context (<see cref="Subst.Height"/>).</summary>
+    /// <remarks>SPEC-neutral: a measure of the term, which no language rule reads; the instance collector bounds Type growth by it (PLAN
+    /// G332). Its children are not <see cref="ContainsParameter"/>'s, which reads only a held context's instance (BU-60).</remarks>
+    internal int Height => this.height;
+
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
     /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
+
+    // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
+    internal bool ContainsClosure => this.containsClosure;
 
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3.1).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
@@ -735,6 +772,10 @@ internal enum ReferenceSlotFailure : byte
 // comparison, never a call-time Origin of the implementation.
 internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
 
+// SPEC 23.1.2: a record of a node beyond its first, of either Origin kind: a failed chain of an Origin relation (Relation) or a failed
+// condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind.
+internal readonly record struct OriginRecord(OriginRelationFact? Relation, OriginContractFact? Contract);
+
 // SPEC 15.2.3, 23.1: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
 // which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
 // capture entry and closure it belongs to, the Borrow that supplies a captured binding's Origin, and whether the failure is Refuted (a
@@ -763,4 +804,10 @@ internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
 // clause in `Clause` that is judged at the caller's input, where the caller's premises cannot remove it, and `FixedBy` is the input
 // whose equality made a fresh Origin of the call equal to a fixed one, related with the role `relation` (SPEC 15.6.1, Location).
 // `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
-internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);
+// `Supplier` is the atom (or meet operand) that supplied `Longer` at the use: the end after the Origin declarations and local initializers
+// and before any Closure's receiver resolution (Binding.SuppliedAtUse); the record's Borrow is the one whose Origin is it, by identity
+// (BorrowSource; DECISIONS R4-M133). `Condition` is the Semantics case a fit's position exists in (0: every case), which the
+// dependence query reads (DECISIONS BU-69).
+internal readonly record struct OriginRelationFact(
+    Koto At, BoundOrigin Longer, BoundOrigin Supplier, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null,
+    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false, ulong Condition = 0);

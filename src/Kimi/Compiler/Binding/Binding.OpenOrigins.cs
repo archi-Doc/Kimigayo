@@ -71,59 +71,6 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code, so two Types that differ only by open regions
-    // name one instance.
-    internal static bool SameModuloOpenOrigins(BoundType? left, BoundType? right)
-    {
-        if (ReferenceEquals(left, right))
-        {
-            return true;
-        }
-
-        if (left is null || right is null || !left.SameExceptOrigins(right) || !SameOrigin(left.Origin, right.Origin) || !(HasOpenOrigin(left) || HasOpenOrigin(right)))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.OriginArguments.Count; i++)
-        {
-            if (!SameOrigin(left.OriginArguments[i], right.OriginArguments[i]))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < left.Components.Count; i++)
-        {
-            if (!SameModuloOpenOrigins(left.Components[i], right.Components[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        static bool SameOrigin(BoundOrigin? a, BoundOrigin? b) => ReferenceEquals(a, b) || (a is { Open: true } && b is { Open: true });
-    }
-
-    internal static bool SameModuloOpenOrigins(ReadOnlySpan<BoundType?> left, ReadOnlySpan<BoundType?> right)
-    {
-        if (left.Length != right.Length)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.Length; i++)
-        {
-            if (!SameModuloOpenOrigins(left[i], right[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // An Origin that a known call signature's binder quantifies, or that a nested Function Type's own syntax binds per call.
     private static bool QuantifiedBy(BoundOrigin origin, Koto binder)
     {
@@ -193,11 +140,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.6: a callee's own Origin that no parameter Type and no relation clause mentions, such as the result-only `s` of
-    // `constant() -> ref/i32 during s`, has no bound at a call that no expected result fixes. It is a local region of the call, solved
-    // with the body's other local regions by its uses; it needs no annotation and is never replaced by static. No input supplies it,
-    // so the result holds no Loan through it: the call's open region (keyed apart from argument evidence by ResultOnlyKey).
-    private bool OpenResultOnlyOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins)
+    // SPEC 15.3.6, 15.6.4 step 1: a callee's own Origin that no supplied parameter's Type and no relation clause mentions, such as the
+    // result-only `s` of `constant() -> ref/i32 during s` or one only the Types of the `defaults` the call uses name (SPEC 10.1.1: a
+    // default gives no evidence), has no evidence at a call that no expected result fixes. It is a local region of the call, solved with
+    // the body's other local regions by its uses; it needs no annotation and is never replaced by static. The well-formedness obligation
+    // of a default naming it, judged at the call, keeps the region under the bounds that default's Type states, accepting what 15.3.6's
+    // meet of those bounds would. It is the call's open region, keyed apart from argument evidence by ResultOnlyKey.
+    private bool OpenResultOnlyOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, in SlotSet defaults)
     {
         var opened = false;
         var relations = this.originDeclarations.GetValueOrDefault(function)?.Relations;
@@ -211,7 +160,7 @@ public sealed partial class Binding
             var mentioned = false;
             for (var p = 0; p < function.Parameters.Count && !mentioned; p++)
             {
-                mentioned = function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i);
+                mentioned = !defaults.Contains(p) && (function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i));
             }
 
             for (var r = 0; relations is not null && r < relations.Count && !mentioned; r++)

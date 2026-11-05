@@ -456,6 +456,6 @@ public class ReferenceDiagnosticTest
     {
         const string Source = "func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    return T.compare(a, b)\nlet x = 1\nlet y = 2\nrequire order(x@ref, y@ref) < 0 else => $abort(\"order\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 }

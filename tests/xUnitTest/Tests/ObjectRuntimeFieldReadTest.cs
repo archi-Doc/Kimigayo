@@ -46,7 +46,7 @@ public class ObjectRuntimeFieldReadTest(ITestOutputHelper output)
         var path = Path.GetFullPath("object-field-write.kimi");
         var c = MinimalEmissionTest.Analyze(text, path);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
@@ -70,9 +70,9 @@ public class ObjectRuntimeFieldReadTest(ITestOutputHelper output)
     public void DirectReadsRespectAnOutstandingExclusiveView()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nvar owner = Kimi.Intrinsics.makeObj(Item.init())\nlet view = owner@objuniq\nrequire owner.id == 7 else => $abort(\"read\")\n_ = view@move");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -80,7 +80,7 @@ public class ObjectRuntimeFieldReadTest(ITestOutputHelper output)
     public void WarmOwnedFieldAnalysisAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nrequire owner.id == 7 else => $abort(\"id\")");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified)
@@ -94,8 +94,8 @@ public class ObjectRuntimeFieldReadTest(ITestOutputHelper output)
     public void AFieldBorrowProtectsTheOwnerFromTransfer()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet field = owner.id@ref\nlet moved = owner@move\nrequire field == 7 else => $abort(\"field\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

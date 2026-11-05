@@ -27,7 +27,9 @@ public sealed partial class DocumentationSource
     /// <summary>Gets the original source snapshot.</summary>
     public SourceDocument Source { get; }
 
-    /// <summary>Gets the logical source name, or null for generated source without a relative-link base.</summary>
+    /// <summary>Gets the logical source name its parse gave the source (<c>Kotonoha.LogicalName</c> at that parse, IMPL 20.1), or null
+    /// for generated source without a relative-link base. Every parse rebuilds a documentation source, and a later change of the project
+    /// directory does not rename a parsed one, whose name may then differ from hover's live name.</summary>
     public string? LogicalName { get; internal set; }
 
     /// <summary>Gets the producing Mod ID, or null for ordinary source.</summary>
@@ -131,8 +133,8 @@ public sealed partial class DocumentationSource
         this.comments.Add(new(this, SourceSpan.FromBounds(start, end), indent, recognized));
     }
 
-    internal void SetLocation(string projectDirectory, string? modId = null, int additionOrder = 0)
-        => this.Collect((projectDirectory, modId, additionOrder), static (source, value) => source.SetLocationCore(value.projectDirectory, value.modId, value.additionOrder));
+    internal void SetLocation(string logicalName, string? modId = null, int additionOrder = 0)
+        => this.Collect((logicalName, modId, additionOrder), static (source, value) => source.SetLocationCore(value.logicalName, value.modId, value.additionOrder));
 
     internal void Merge(DocumentationSource nested)
         => this.Collect(nested, static (source, value) => source.MergeCore(value));
@@ -187,36 +189,11 @@ public sealed partial class DocumentationSource
         this.optionalOwner!.RecordDocumentationFailure(this.Source, ex.Message);
     }
 
-    private void SetLocationCore(string projectDirectory, string? modId, int additionOrder)
+    private void SetLocationCore(string logicalName, string? modId, int additionOrder)
     {
         this.ModId = modId;
         this.AdditionOrder = additionOrder;
-        if (modId is null)
-        {
-            var path = this.Source.Path;
-            this.LogicalName = (Path.IsPathRooted(path) && projectDirectory.Length > 0 ? Path.GetRelativePath(projectDirectory, path) : path).Replace('\\', '/');
-        }
-    }
-
-    internal static string? PhysicalLogicalName(string path, string projectDirectory)
-    {
-        if (path.StartsWith(SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) || path.Contains("://", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        if (Path.IsPathFullyQualified(path))
-        {
-            if (!Path.IsPathFullyQualified(projectDirectory))
-            {
-                return null;
-            }
-
-            var relative = Path.GetRelativePath(projectDirectory, path);
-            return Path.IsPathRooted(relative) ? null : relative.Replace('\\', '/');
-        }
-
-        return Path.IsPathRooted(path) ? null : path.Replace('\\', '/');
+        this.LogicalName = modId is null ? logicalName : null;
     }
 
     private void MergeCore(DocumentationSource nested)

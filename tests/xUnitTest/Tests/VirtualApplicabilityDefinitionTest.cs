@@ -21,12 +21,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         var source = Program(block, type, "2") + "let owner = Derived.init()@obj\nrequire owner.first() == 1 and owner.last() == 3 else => $abort(\"slots\")\n" +
             (applicable ? "require owner.read() == 2 else => $abort(\"override\")" : "()");
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        var descriptor = Assert.Single(module.Objects);
-        Assert.Equal(3, descriptor.VirtualSlots.Length);
-        Assert.Equal(applicable, descriptor.VirtualSlots[1] is not null);
-        Assert.NotNull(descriptor.VirtualSlots[2]);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture($"VirtualClosedApplicability{block}{type}", source, string.Empty);
     }
 
@@ -37,8 +32,8 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
     [InlineData("let value = \"text\"\n        let copy = value\n        return 2", "TransferRequired_Kd")]
     public void InapplicabilityNeverSuppressesBodyDiagnostics(string body, string code)
     {
-        // A failed Binding is a prerequisite of ownership. Exercise acquisition failures in a
-        // bound program; Binding failures also retain an independent unresolved Name.
+        // A bare move is Binding's TransferRequired_Kd (R6-check H1, DECISIONS BU-84); other Binding failures also retain an independent
+        // unresolved Name.
         var ownership = code == "TransferRequired_Kd";
         var source = Program(false, "string", body, statement: body.Contains('\n')) + (ownership ? "()" : "let independent = absent\n");
         var c = MinimalEmissionTest.Analyze(source);
@@ -46,17 +41,13 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         c.ReportAnalysis();
         var records = TestDiagnostics.Of(c);
         Assert.Contains(records, x => x.Code == code);
-        if (ownership)
-        {
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        }
-        else
+        if (!ownership)
         {
             Assert.Contains(records, x => x.Code == "UnresolvedBinding_Kd" && x.Text == "absent");
         }
 
         Assert.DoesNotContain(records, x => x.Code is "Unsupported_Kd" or "CheckFaulted_Kd");
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -93,12 +84,12 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
     public void ReplacingTheBaseBindingRebuildsTheApplicability()
     {
         var c = MinimalEmissionTest.Analyze(Program(false, "string", "2"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var derived = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "Derived");
         var donor = MinimalEmissionTest.Analyze(Program(false, "i32", "2"));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "Derived");
         Assert.True(KotoHelper.Replace(derived, derived.Bases[0], ParseTestHelper.Detach(replacement.Bases[0], new CodeBlockKoto(derived.CodeContext))));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var implementation = derived.Members.OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var mapping));
         Assert.Equal(ConstraintProof.Proven, c.Binding.VirtualApplicability(mapping.Slot));
@@ -109,12 +100,12 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
     public void InapplicableDefinitionsReuseAllPhases()
     {
         var c = MinimalEmissionTest.Analyze(Program(false, "string", "2") + "let owner = Derived.init()@obj\nrequire owner.last() == 3 else => $abort(\"slot\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 

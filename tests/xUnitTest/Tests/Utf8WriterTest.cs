@@ -38,7 +38,7 @@ public class Utf8WriterTest
     public void AdapterBorrowsUntilLastUse(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("var destination = Text.heap(0)\nlet writer = Text.writer(destination@uniq)\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
@@ -46,7 +46,7 @@ public class Utf8WriterTest
     public void ErasureKeepsNestedExclusiveLoans()
     {
         var c = MinimalEmissionTest.Analyze("var bytes = [4 of 0@u8]\nvar destination = Text.fixed(bytes@uniq)\nlet writer = Text.writer(destination@uniq)\n_ = bytes[0]\n_ = writer.status()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 }

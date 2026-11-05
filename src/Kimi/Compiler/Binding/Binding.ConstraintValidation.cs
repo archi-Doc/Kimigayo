@@ -12,17 +12,6 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
 
-    // The first cause a check's Error rests on (ICheckCause): a conformance resting on its specification, or one limited by OCC-X outside
-    // conformance verification (ResolveConformance), or what a settled proof rested on (EndProof). A consumer clears it before its proof
-    // and takes it after (TakeFailedCause); each pass starts with it clear.
-    private ICheckCause? failedCause;
-
-    // The proof in progress (DECISIONS BU-22, N3-1): the first limit (L, an Unknown resting on a located Unsupported_Kd) and the first
-    // Error cause it read, of which a proof scope keeps the one its own answer rests on (BeginProof, EndProof).
-    private ICheckCause? limitRead;
-    private ICheckCause? errorRead;
-    private int proofNesting;
-
     // Conformance verifications and agreements in progress; inside them a conformance limited by OCC-X stays Unknown.
     private int conformanceChecks;
 
@@ -167,45 +156,6 @@ public sealed partial class Binding
         return node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration } ? enumeration : null;
     }
 
-    private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
-    {
-        if (type.Symbol is { } symbol && this.InvalidDeclarationContext(symbol.Declaration))
-        {
-            return ConstraintProof.Error;
-        }
-
-        var outer = this.BeginProof();
-        var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
-        proof = CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            proof = CombineProof(proof, this.CheckTypeConstraints(type.Components[i], scope), true);
-        }
-
-        if (type is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } &&
-            (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
-        {
-            for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
-            {
-                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, container, (BoundType[])type.Components, scope), true);
-            }
-        }
-
-        return this.EndProof(outer, proof);
-    }
-
-    private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
-    {
-        var scope = this.scopes[function];
-        var proof = function.BoundSymbol?.Type is { } result ? this.CheckTypeConstraints(result, scope) : ConstraintProof.Unknown;
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            proof = CombineProof(proof, function.Parameters[i].Type.BoundType is { } parameter ? this.CheckTypeConstraints(parameter, scope) : ConstraintProof.Unknown, true);
-        }
-
-        return proof;
-    }
-
     private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
     {
         // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
@@ -337,38 +287,6 @@ public sealed partial class Binding
     private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope)
         => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope), true);
 
-    private ConstraintProof CheckClosedDeclarationConstraints(DeclarationContainerKoto container)
-    {
-        var outer = this.BeginProof();
-        var proof = ConstraintProof.Proven;
-        for (var i = 0; i < container.ConstraintNodes.Count; i++)
-        {
-            var clause = container.ConstraintNodes[i];
-            if (clause.IsAssociatedConstraint || IsSelfConstraint(clause))
-            {
-                continue;
-            }
-
-            if (clause.BoundConstraint is not { } constraint)
-            {
-                proof = CombineProof(proof, ConstraintProof.Unknown, true);
-                continue;
-            }
-
-            if (DependentConstraint(constraint, contractSelf: container is ContractKoto))
-            {
-                continue;
-            }
-
-            var scope = this.scopes[container];
-            var subject = clause.Left.BoundType;
-            var formation = subject is null ? ConstraintProof.Unknown : this.CheckTypeConstraints(subject, scope);
-            proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope), true), true);
-        }
-
-        return this.EndProof(outer, proof);
-    }
-
     private bool ValidateClosedTypeConstraints(BindingMode mode)
     {
         var changed = false;
@@ -402,7 +320,7 @@ public sealed partial class Binding
                 if (shape.HasUnresolvedParents)
                 {
                     var previous = contract.BindingState;
-                    this.RequireConstraint(contract, ConstraintProof.Unknown, mode);
+                    this.RequireUnproven(contract, mode);
                     changed |= previous != contract.BindingState;
                 }
 
@@ -419,13 +337,15 @@ public sealed partial class Binding
                     if (UnresolvedTypeDeclarationContext(shape.Ancestors[a].Declaration))
                     {
                         var previous = contract.BindingState;
-                        this.RequireConstraint(contract, ConstraintProof.Unknown, mode);
+                        this.RequireUnproven(contract, mode);
                         changed |= previous != contract.BindingState;
                     }
                 }
             }
 
-            if (this.nodes[i] is not IsKoto { Parent: DeclarationContainerKoto container, IsAssociatedConstraint: false, BoundConstraint: { } constraint, Left.BoundType: { } subject } clause || container is not (StructKoto or EnumKoto or ContractKoto) || IsSelfConstraint(clause) || DependentConstraint(constraint, contractSelf: container is ContractKoto))
+            if (this.nodes[i] is not IsKoto { Parent: DeclarationContainerKoto container, IsAssociatedConstraint: false, BoundConstraint: { } constraint, Left.BoundType: { } subject } clause ||
+                container is not (StructKoto or EnumKoto or ContractKoto) || IsSelfConstraint(clause) ||
+                this.DependentConstraint(constraint, contractSelf: container is ContractKoto))
             {
                 continue;
             }
@@ -591,107 +511,67 @@ public sealed partial class Binding
     {
         if (proof == ConstraintProof.Error)
         {
-            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedCause());
+            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedCause().Use);
         }
         else if (proof == ConstraintProof.Refuted)
         {
             this.Fail(use, BindingFailure.UnsatisfiedConstraint);
         }
+        else if (proof == ConstraintProof.Unknown && mode == BindingMode.Final)
+        {
+            this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: false);
+        }
         else if (proof == ConstraintProof.Unknown)
         {
-            // The provisional pass can gain bindings/conformance evidence across the Mod boundary.
-            if (mode == BindingMode.Final)
-            {
-                this.Fail(use, BindingFailure.UnprovenConstraint);
-            }
-            else if (use.BindingState != BindingState.Invalid)
-            {
-                use.BindingState = BindingState.Unresolved;
-            }
+            this.RequireUnproven(use, mode); // The provisional pass leaves the U fact to the next judgment.
         }
+    }
+
+    // An Unknown Constraint that no judgment of its own proved (an unresolved parent; r2-6, BU's P1) takes no proof's fact: the final
+    // pass records the Constraint alone; the provisional pass, which can gain bindings/conformance evidence across the Mod boundary,
+    // only marks the use unresolved.
+    private void RequireUnproven(Koto use, BindingMode mode)
+    {
+        if (mode == BindingMode.Final)
+        {
+            this.FailUnprovenConstraint(use, null, unresolved: false);
+        }
+        else if (use.BindingState != BindingState.Invalid)
+        {
+            use.BindingState = BindingState.Unresolved;
+        }
+    }
+
+    // The one record of a Constraint proven Unknown (census #25): with the U fact its judgment left (TakeUnknownFact), the clause and its
+    // comparison's failing condition (design-r2 Amendments 4 and 5); without one, the Constraint alone; a foreign fact is a broken
+    // contract. RequireConstraint, RequireUnproven and the direct sites that settle a clause list themselves (Enums, Specializations)
+    // record through it.
+    private BoundType? FailUnprovenConstraint(Koto use, CallableUnknown? fact, bool unresolved)
+    {
+        if (!this.OwnFrame(use, fact?.Epoch))
+        {
+            return null;
+        }
+
+        if (fact is not { Clause: { } clause } || !fact.Failure.IsCondition)
+        {
+            return this.Fail(use, BindingFailure.UnprovenConstraint, unresolved);
+        }
+
+        var record = new CallableConstraintFact(use, clause, fact.Subject, this.ContractFact(use, fact.Failure, use));
+        return this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
 
     // A proof of a proposition, settled where it is no longer combined (EndProof).
     private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope)
     {
-        var outer = this.BeginProof();
-        return this.EndProof(outer, this.ProveProposition(proposition, scope));
-    }
-
-    // Opens a proof scope: a connective's operand, a clause list, a disjunction of conformance paths, a capability request.
-    private (ICheckCause? Limit, ICheckCause? Error) BeginProof()
-    {
-        var outer = (this.limitRead, this.errorRead);
-        this.limitRead = null;
-        this.errorRead = null;
-        this.proofNesting++;
-        return outer;
-    }
-
-    // SPEC 8.3.3, 23.1.1, 23.1.2 (DECISIONS BU-22): closes a proof scope with its answer. Inside another scope or the capability engine,
-    // the cause the answer rests on joins the enclosing proof, so L combines as P < U < L < R < E; where the answer is no longer combined,
-    // an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes it (TakeFailedCause),
-    // which publishes a site.
-    private ConstraintProof EndProof((ICheckCause? Limit, ICheckCause? Error) outer, ConstraintProof proof)
-    {
-        this.proofNesting--;
-        var cause = proof == ConstraintProof.Unknown ? this.limitRead : proof == ConstraintProof.Error ? this.errorRead : null;
-        this.limitRead = outer.Limit;
-        this.errorRead = outer.Error;
-        if (this.proofNesting != 0 || this.capabilityConsumer is not null)
-        {
-            return this.ReadVerdict(proof, cause);
-        }
-
-        if (cause is null)
-        {
-            return proof;
-        }
-
-        this.failedCause ??= cause;
-        return ConstraintProof.Error;
-    }
-
-    // A read of an answer joins the proof in progress with what it rests on: an Unknown's limit, an Error's cause.
-    private ConstraintProof ReadVerdict(ConstraintProof proof, ICheckCause? cause)
-    {
-        if (proof == ConstraintProof.Unknown)
-        {
-            this.limitRead ??= cause;
-        }
-        else if (proof == ConstraintProof.Error)
-        {
-            this.errorRead ??= cause;
-        }
-
-        return proof;
-    }
-
-    private void ClearProofScopes()
-    {
-        this.failedCause = null;
-        this.limitRead = null;
-        this.errorRead = null;
-        this.proofNesting = 0;
-    }
-
-    // SPEC 23.1.2: the Use of the cause that the Error a check just consumed rests on; a limit a failing check needs is published by
-    // Binding.Check.
-    private Koto? TakeFailedCause()
-    {
-        if (this.failedCause is not { } cause)
-        {
-            return null;
-        }
-
-        this.failedCause = null;
-        cause.Rest();
-        return cause.Use;
+        this.BeginProof();
+        return this.EndProof(this.ProveProposition(proposition, scope));
     }
 
     // SPEC 23.1.1: each conformance limit a failing check rested on, reported once at its location: an inherited conformance limited by
-    // OCC-X at the derived Type's base clause (an explicit one was reported at its declaration, ValidateConformances). A component
-    // summary's sites are published after Binding.Check's loop (PublishSites), which can still need one.
+    // OCC-X at the derived Type's base clause (an explicit one was reported at its declaration, ValidateConformances). Runs in
+    // Binding.Check's Final prologue, before the summaries' sites (FailNeededSites) and the derived uses resting on either (BU-76).
     private void PublishNeededLimits()
     {
         for (var i = 0; i < this.activeConformancePaths.Count; i++)

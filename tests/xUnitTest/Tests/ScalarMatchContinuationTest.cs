@@ -15,7 +15,7 @@ public class ScalarMatchContinuationTest
         var source = "func choose(flag: bool, value: i32 = (match flag\n    true => 7\n    false => 11\n)) -> i32 => value\n" +
             "if choose(" + arguments + ") != " + expected + " => $abort(\"default mismatch\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 }

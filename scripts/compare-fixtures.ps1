@@ -3,17 +3,18 @@
 # and the native steps' native*-fixtures/results.json. Output: fixture-comparison.json and fixture-comparison.txt in
 # -Output (default: the candidate run). It compares the set and bytes of every file in fixtures-<Configuration> (the
 # .ll files, their expectation sidecars and any other fixture output) and the per-fixture native outcomes (result and
-# completed levels; a passing level matched its sidecars). Between runs of different code generators (summary.json's
-# codegen), a fixture deviating by a decided item (both runs carry the same .deviation sidecar and each run's .stdout, .exit
-# and .stderr are its side's; DECISIONS R5-M85, R5-M106, until G4) is listed apart, and only those three outcome sidecars
-# are not differences. Fixture IR records no checkout path, so runs from any worktree compare byte for byte; nothing is
-# normalized. Exit code 1 when anything differs; a failed run or missing evidence throws.
-# -O2Metrics also writes o2-metrics.json (R5's MIR/legacy measurement, information only: the exit code stays the
-# comparison's): instructions and blocks per define of each natively run fixture's optimized IR, the first native step's
-# <work>/native*/<stem>.O2.ll (summary.json workDirectory), totalled over the runtime helpers (this checkout's runtime
-# template) and over the generated bodies; fixtures with one in both runs ranked by candidate/baseline body instruction
-# growth, then by the difference, then by name; the others listed as unpaired. Generated bodies are not paired across
-# runs: both generators name them __kimi_f<n>, each by its own numbering.
+# completed levels; a passing level matched its sidecars). Fixture IR records no checkout path, so runs from any worktree
+# compare byte for byte; nothing is normalized. Exit code 1 when anything differs; a failed run or missing evidence throws.
+# -O2Metrics also writes o2-metrics.json (information only: the exit code stays the comparison's): instructions and
+# blocks per define of each natively run fixture's optimized IR, the first native step's <work>/native*/<stem>.O2.ll
+# (summary.json workDirectory), totalled over the whole module and, as information, over the runtime helpers (this
+# checkout's runtime template) and the generated bodies; fixtures with one in both runs ranked by candidate/baseline
+# whole-module instruction growth, then by the difference, then by name; the others listed as unpaired. The module is
+# the measure because at O2 the runtime helpers are not the same text in both runs: inlining and interprocedural
+# constant propagation move code between them and the bodies (G182; before 2026-10-31 growth was body growth, and an
+# earlier o2-metrics.json keeps each fixture's instructions). A fixture whose program folds to constants keeps
+# __kimi_start as its only body, so it measures the runtime helpers alone. Generated bodies are not paired across runs:
+# each run names them __kimi_f<n> by its own numbering.
 #   ./scripts/compare-fixtures.ps1 -Baseline artifacts/verify/<parent run> -Candidate artifacts/verify/<run> [-O2Metrics]
 [CmdletBinding()]
 param(
@@ -63,7 +64,7 @@ function Read-Run([string] $path) {
     $files = @(Get-ChildItem -LiteralPath $fixtures -File -Name | Sort-Object)
     [pscustomobject]@{
         directory = $directory; head = $summary.head; configuration = $summary.configuration; pipeline = $summary.pipeline
-        codegen = $summary.codegen; fixtures = $fixtures; names = $files; outcomes = $outcomes; logs = $logs; o2 = $o2
+        fixtures = $fixtures; names = $files; outcomes = $outcomes; logs = $logs; o2 = $o2
         files = [Collections.Generic.HashSet[string]]::new([string[]]$files, [StringComparer]::Ordinal)
     }
 }
@@ -98,35 +99,14 @@ foreach ($fixture in $nativeFixtures) {
         baselineLogs = @($baseRun.logs[$fixture] | Where-Object { $_ }); candidateLogs = @($candidateRun.logs[$fixture] | Where-Object { $_ })
     })
 }
-# DECISIONS R5-M85, R5-M106 (removed at G4): only when the runs' code generators differ (summary codegen), a fixture whose runs carry
-# byte-equal .deviation sidecars, each run's .stdout, .exit and .stderr equal to its side's (codegen mir: the target; otherwise the
-# legacy outcome), deviates by a decided item, and only those three sidecars of it are not differences. Its .ll and its native outcomes
-# stay compared: each run's result is judged against its own sidecars, so a failure stays visible. Within one generator nothing
-# deviates and .deviation compares like any other file.
-$deviating = @(if ($baseRun.codegen -cne $candidateRun.codegen) {
-    foreach ($name in @($common -clike '*.deviation')) {
-        if ($differing -ccontains $name) { continue }
-        $stem = $name.Substring(0, $name.Length - '.deviation'.Length)
-        $entry = [IO.File]::ReadAllText([IO.Path]::Combine($baseRun.fixtures, $name)) | ConvertFrom-Json
-        $sides = foreach ($run in @($baseRun, $candidateRun)) {
-            $side = if ($run.codegen -ceq 'mir') { $entry.target } else { $entry.legacy }
-            $outcome = foreach ($kind in @('stdout', 'exit', 'stderr')) { [IO.File]::ReadAllText([IO.Path]::Combine($run.fixtures, "$stem.$kind")) -ceq [string]$side.$kind }
-            -not ($outcome -contains $false)
-        }
-        if (-not ($sides -contains $false)) { $stem }
-    }
-})
-$outcomeFiles = @(foreach ($stem in $deviating) { foreach ($kind in @('stdout', 'exit', 'stderr')) { "$stem.$kind" } })
-$differing = @($differing | Where-Object { $outcomeFiles -cnotcontains $_ })
 $identical = $missing.Count + $added.Count + $differing.Count + $differingNative.Count -eq 0
 $runs = foreach ($run in @($baseRun, $candidateRun)) {
-    [ordered]@{ directory = $run.directory; head = $run.head; configuration = $run.configuration; pipeline = $run.pipeline; codegen = $run.codegen }
+    [ordered]@{ directory = $run.directory; head = $run.head; configuration = $run.configuration; pipeline = $run.pipeline }
 }
 $report = [ordered]@{
     identical = $identical; baseline = $runs[0]; candidate = $runs[1]
     files = [ordered]@{
         identical = $common.Count - $differing.Count; ir = $irCount; irIdentical = $irIdentical; differing = $differing; missing = $missing; added = $added
-        deviating = $deviating
     }
     native = [ordered]@{ equal = $equalNative; differing = @($differingNative) }
 }
@@ -138,11 +118,10 @@ foreach ($run in @(@('Baseline: ', $baseRun), @('Candidate:', $candidateRun))) {
     $text.Add("$($run[0]) $($run[1].directory) ($($run[1].head), $($run[1].configuration), $($run[1].pipeline))")
 }
 $text.Add("Files: $($report.files.identical) identical, $($differing.Count) differing, $($missing.Count) missing, $($added.Count) added")
-$text.Add("Deviating: $($deviating.Count) fixtures (decided deviations)")
 $text.Add("IR: $irIdentical of $irCount common .ll identical")
 $text.Add("Native: $equalNative equal, $($differingNative.Count) differing")
 $text.Add("Result: $(if ($identical) { 'IDENTICAL' } else { 'DIFFERENT' })")
-foreach ($section in @(@('Differing', $differing), @('Missing', $missing), @('Added', $added), @('Deviating', $deviating))) {
+foreach ($section in @(@('Differing', $differing), @('Missing', $missing), @('Added', $added))) {
     if ($section[1].Count -gt 0) { $text.Add("$($section[0]):"); foreach ($name in $section[1]) { $text.Add("  $name") } }
 }
 if ($differingNative.Count -gt 0) {
@@ -150,10 +129,10 @@ if ($differingNative.Count -gt 0) {
     foreach ($item in $differingNative) { $text.Add("  $($item.fixture): $(if ($item.baseline) { $item.baseline } else { 'not run' }) -> $(if ($item.candidate) { $item.candidate } else { 'not run' })") }
 }
 if ($O2Metrics) {
-    # The runtime helpers are the functions LlvmModuleText.WriteRuntime writes in both generators: the runtime template's, each
+    # The runtime helpers are the functions LlvmModuleText.WriteRuntime writes: the runtime template's, each
     # named on the line before its body's entry: label, by a define line or by the {{name}} marker ExpandRuntime replaces with
     # that definition. Every other define is a generated body.
-    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Emission/WindowsRuntime.ll.in'))
+    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Backend/WindowsRuntime.ll.in'))
     $runtime = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     for ($i = 1; $i -lt $template.Count; $i++) {
         if ($template[$i] -ceq 'entry:') { $null = $runtime.Add(($template[$i - 1] -creplace '^\{\{(.+)\}\}$|^[^@]*@([^(]+)\(.*$', '$1$2')) }
@@ -199,28 +178,28 @@ if ($O2Metrics) {
     function Add-Counts($sum, $counts) {
         foreach ($count in @('instructions', 'blocks')) { $sum[$count] += $counts[$count]; $sum.runtime[$count] += $counts.runtime[$count]; $sum.bodies[$count] += $counts.bodies[$count] }
     }
-    # Fixtures rank by the growth of their generated bodies: the runtime helpers are the same text in both generators.
+    # Fixtures rank by the growth of their whole module (above).
     foreach ($fixture in $nativeFixtures) {
         $before = $baseRun.o2[$fixture]
         $after = $candidateRun.o2[$fixture]
         if ($null -eq $before -or $null -eq $after) { $unpaired.Add([ordered]@{ fixture = $fixture; baseline = $before; candidate = $after }); continue }
-        $growth = [Math]::Round($after.bodies.instructions / [double]$before.bodies.instructions, 4)
-        $ranked.Add([ordered]@{ fixture = $fixture; growth = $growth; difference = $after.bodies.instructions - $before.bodies.instructions; baseline = $before; candidate = $after })
+        $growth = [Math]::Round($after.instructions / [double]$before.instructions, 4)
+        $ranked.Add([ordered]@{ fixture = $fixture; growth = $growth; difference = $after.instructions - $before.instructions; baseline = $before; candidate = $after })
         Add-Counts $sides[0] $before
         Add-Counts $sides[1] $after
     }
     $ranked = @($ranked | Sort-Object @{ Expression = { $_.growth }; Descending = $true }, @{ Expression = { $_.difference }; Descending = $true }, @{ Expression = { $_.fixture } } -CaseSensitive)
-    $growth = if ($ranked.Count -gt 0) { [Math]::Round($sides[1].bodies.instructions / [double]$sides[0].bodies.instructions, 4) } else { $null }
+    $growth = if ($ranked.Count -gt 0) { [Math]::Round($sides[1].instructions / [double]$sides[0].instructions, 4) } else { $null }
     $o2Report = [ordered]@{
         baseline = $runs[0]; candidate = $runs[1]; runtime = @($runtime | Sort-Object -CaseSensitive)
         totals = [ordered]@{ fixtures = $ranked.Count; baseline = $sides[0]; candidate = $sides[1]; growth = $growth }; ranked = $ranked; unpaired = @($unpaired)
     }
     $o2Report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Output 'o2-metrics.json')
-    $o2Line = "O2: $($ranked.Count) paired, body instructions $($sides[0].bodies.instructions) -> $($sides[1].bodies.instructions) (growth $growth), " +
-        "runtime $($sides[0].runtime.instructions) -> $($sides[1].runtime.instructions), all $($sides[0].instructions) -> $($sides[1].instructions), $($unpaired.Count) unpaired"
+    $o2Line = "O2: $($ranked.Count) paired, instructions $($sides[0].instructions) -> $($sides[1].instructions) (growth $growth), " +
+        "runtime $($sides[0].runtime.instructions) -> $($sides[1].runtime.instructions), bodies $($sides[0].bodies.instructions) -> $($sides[1].bodies.instructions), $($unpaired.Count) unpaired"
     $text.Add($o2Line)
-    if ($ranked.Count -gt 0) { $text.Add('Largest O2 body instruction growth (baseline -> candidate):') }
-    foreach ($item in @($ranked | Select-Object -First 10)) { $text.Add("  $($item.fixture): $($item.baseline.bodies.instructions) -> $($item.candidate.bodies.instructions) ($($item.growth))") }
+    if ($ranked.Count -gt 0) { $text.Add('Largest O2 instruction growth (baseline -> candidate):') }
+    foreach ($item in @($ranked | Select-Object -First 10)) { $text.Add("  $($item.fixture): $($item.baseline.instructions) -> $($item.candidate.instructions) ($($item.growth))") }
     if ($unpaired.Count -gt 0) { $text.Add('Unpaired O2 fixtures:') }
     foreach ($item in $unpaired) { $text.Add("  $($item.fixture): none in $(@(foreach ($side in @('baseline', 'candidate')) { if ($null -eq $item[$side]) { $side } }) -join ' and ')") }
 }

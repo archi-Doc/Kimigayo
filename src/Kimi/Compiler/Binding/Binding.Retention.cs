@@ -1,13 +1,29 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The computation behind TyCtxt.Retains, under its contract (TyCtxt.Retention.cs): a contract's Origin atoms and carriers, the premises
-// its callee's body is checked under in one premise environment (its instantiated own part, then the premise catalog's walk outward
-// from its binder's parent), the relations of its erased callables, and the rows (Binding.Retention.Rows.cs).
+// The computation behind TyCtxt.Retains, under its contract (TyCtxt.Retention.cs): a contract's Origin atoms and carriers
+// (Binding.Retention.Atoms.cs), the premises its callee's body is checked under in one premise environment (its instantiated own part,
+// then the premise catalog's walk outward from its binder's parent), the relations of its erased callables, and the rows
+// (Binding.Retention.Rows.cs). Each entry point, Retains for a callee's contract and RetainsErased for an erased callable's, runs its
+// own steps between BeginRetention and EndRetention; the premise scope TyCtxt read an instance under is RetentionRows' parameter.
+// The erased signature (ErasedSignature; DECISIONS R4-M154, Revision 9) is the one representation of a callable whose implementation the
+// call cannot see:
+// - Responsibility: what such a callable relates, read from its signature alone (AddErasedRelations): each fixed Origin of an input
+//   outlives each fixed Origin of an output.
+// - Inputs: the instantiated signature Type and the declaration whose syntax binds its per-call Origins, its Binder: a Function Type's
+//   FunctionTypeKoto (FunctionTypeBinder, null where it binds none), a requirement's or a Virtual's own declaration, a Property
+//   accessor's Binder (BoundAccessor.Binder: its declaration, else its Property's), never the accessor's FunctionKoto. TyCtxt.ErasedCallee
+//   gives one for a requirement or Virtual callee on an abstract Self, TyCtxt.Retains for a
+//   Value callee's signature, and HandedSignatures (with TyCtxt.RequirementSignatures) and HandedCallables for each callable a contract
+//   hands its body.
+// - Outputs: the relations (premise edges) the contract's environment takes.
+// - Invariants: an Origin is per-call exactly when it is an input or parameter Origin whose binder is the signature's Binder (IsFixed);
+//   any other Origin but `static` (a contract Type argument's, the calling contract's own) and a carrier's hidden Origins are fixed.
+// - Prohibitions: no reader decides by a declaration's kind (IsRequirement, IsVirtual, a MIR callee kind or the syntax) whether a callee
+//   is erased or an Origin per-call; each reads the pair.
 public sealed partial class Binding
 {
     // The occurrences in the contract being computed (RetentionAtom), the erased callable Types it names and each carrier's node,
@@ -16,36 +32,127 @@ public sealed partial class Binding
     private readonly List<BoundType> retentionCallables = new();
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
+    // Each carrier's ReachedNode (DECISIONS R4-M154, Revision 3): the storage a value of it may refer to that the body does not own, reached
+    // only by a relation whose output is a writable carrier position (an erased writer's, AddErasedRelations), which fills the Abstract
+    // entry (the storage walk's Abstract positions); a carrier's own node (retentionCarriers) is its value's. Reused.
+    private readonly Dictionary<BoundType, int> retentionReachedNodes = new(ReferenceEqualityComparer.Instance);
+
+    // The Origins the call's Type arguments, Self and declaring Type bring (Instantiation), reused.
+    private readonly HashSet<BoundOrigin> retentionInstantiated = new(ReferenceEqualityComparer.Instance);
+
+    // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where every raw source's own value may be held, each a
+    // carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the computation's own
+    // erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
+    private readonly List<BoundType?> retentionFills = new();
+
+    // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract's own Types
+    // reach (Reach), reused.
+    private readonly HashSet<(BoundType Subject, BindingSymbol Contract)> retentionContracts = new();
+    private readonly HashSet<BoundType> retentionReached = new(ReferenceEqualityComparer.Instance);
+
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
     // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
     // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
-    // in a function's own signature); the (Origin, input) pairs whose content that walk has added, so each is walked once; whether a member
-    // walk was incomplete (CallRetention.Limit); and whether its result has a raw layer without an Origin (SPEC 5.7 Calls, D6).
-    private readonly List<BoundType> retentionScope = new();
+    // in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
+    // (RetentionWalk), so each is walked once; and whether a member walk was incomplete (CallRetention.Limit).
+    private readonly List<BoundType> retentionErasedScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
+    private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
+    private List<BoundType> retentionScope = new();
     private int retentionInputs;
     private bool retentionLimit;
-    private bool retentionUnstatedResult;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
     // and the catalog's walk from its binder's parent outward. An output retains an input when the premises entail that an atom of the
-    // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (CallableBoundSignatures), instantiated as its
-    // inputs, are erased callables its body may call.
-    internal CallRetention Retains(FunctionKoto callee, ReadOnlySpan<BoundType> inputs, BoundType result, BoundType? declaring, ReadOnlySpan<BoundType> bounds)
-        => this.RetentionOf(callee.Accessor?.Binder ?? callee, callee, inputs, result, declaring, bounds);
-
-    // An erased callable's retention, one whose implementation the call cannot see (a Function Type value, or a value of a Callable-bounded
-    // Type parameter): it reads no declaration's premises, only its own well-formedness and the relations of its fixed Origins
-    // (AddErasedRelations), which make the premises of `use`, the calling definition, redundant except for its pair layers' admitted cases.
-    internal CallRetention RetainsErased(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result)
-        => this.RetentionOf(use, null, inputs, result, null, default);
-
-    // SPEC 8.10: the signatures of the Callable bounds among the premises at `use`, in its constraint scope and those enclosing it.
-    internal void CallableBoundSignatures(Koto use, List<BoundType> bounds)
+    // input outlives an atom of the output, or when both name one carrier. Its Callable bounds (HandedSignatures), instantiated as its
+    // inputs, are erased callables its body may call. `types`: the call's Subst (null: a Value callee's declared signature), whose Type
+    // arguments, Self and declaring Type bring the Origins a fit may relate under the call's solved Origins (Instantiation). `premises`:
+    // the scope TyCtxt read an instance with an abstract part under (null: none), which the transfer rule's Iterator key reads
+    // (Binding.Retention.Transfers.cs).
+    internal CallRetention Retains(
+        FunctionKoto callee,
+        ReadOnlySpan<BoundType> inputs,
+        BoundType result,
+        Subst? types,
+        ReadOnlySpan<ErasedSignature> bounds,
+        BindingScope? premises)
     {
-        bounds.Clear();
-        for (var current = this.ConstraintScope(use); current is not null; current = current.Parent)
+        var use = callee.Accessor?.Binder ?? callee;
+        var declaring = types?.Declaring;
+        var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
+        try
+        {
+            this.retentionParts.Clear();
+            foreach (var type in types is null ? [] : types.Types)
+            {
+                this.Instantiation(type);
+            }
+
+            this.Instantiation(types?.Self);
+            this.Instantiation(declaring);
+            this.CollectOriginResolvers(environment);
+            this.RetentionPremises(environment, callee, inputs, result, declaring, bounds);
+            if (this.retentionLimit)
+            {
+                return CallRetention.Limit;
+            }
+
+            var nodes = this.RetentionNodes(environment);
+            this.ExtractOriginPremises(environment, use.Parent);
+            return this.RetentionRows(environment, nodes, inputs, result, callee, premises);
+        }
+        finally
+        {
+            this.EndRetention(environment);
+        }
+    }
+
+    // An erased signature's retention (its instantiated inputs and result, and `binder`, the Binder of its per-call Origins): it reads no
+    // declaration's premises, only its own well-formedness and the relations of its fixed Origins (AddErasedRelations), which make the
+    // premises of `use`, the calling definition, redundant except for its pair layers' admitted cases. Its implementation is unknown, so
+    // any abstract part of its outputs may hold each raw source's own value (rule 3, the owner's reading of SPEC 15.6.4; DECISIONS BU-66).
+    internal CallRetention RetainsErased(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, Koto? binder)
+    {
+        var environment = this.BeginRetention(use, inputs, result, null, 0);
+        try
+        {
+            this.RetentionPremises(environment, null, inputs, result, null, default);
+            if (this.retentionLimit)
+            {
+                return CallRetention.Limit;
+            }
+
+            var nodes = this.RetentionNodes(environment);
+            this.AddErasedRelations(environment, 0, binder);
+            this.retentionFills.Add(null);
+            return this.RetentionRows(environment, nodes, inputs, result, null, null);
+        }
+        finally
+        {
+            this.EndRetention(environment);
+        }
+    }
+
+    // SPEC 8.10, 8.4, 15.6.4 (β′; DECISIONS R4-M52, R4-M154): the callables the premises at `use` hand its body, in its constraint scope and
+    // those enclosing it, each one erased callable: each Callable bound's signature, and each requirement signature of each Contract premise
+    // on its subject (TyCtxt.RequirementSignatures, a refinement's inherited requirements included), then of the Contract premises its
+    // supply states on the subject's associated Types (ContractSupply, as a requirement call's resolution adds them, AddContractPremises)
+    // that the contract's own Types reach (`signature`, its declared inputs and result: a projection
+    // occurring in them or its base; a recursive clause, `associate Child is Branch`, grows no further), each (subject, Contract) once;
+    // whether each substitutes (false: CallRetention.Limit).
+    internal bool HandedSignatures(Koto use, ReadOnlySpan<BoundType> signature, List<ErasedSignature> handed)
+    {
+        handed.Clear();
+        this.retentionContracts.Clear();
+        this.retentionReached.Clear();
+        foreach (var type in signature)
+        {
+            this.Reach(type);
+        }
+
+        var scope = this.ConstraintScope(use);
+        for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } constraints)
             {
@@ -56,239 +163,139 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Callable && this.AvailableConstraintFact(constraints, fact))
                 {
-                    bounds.Add(fact.RequiredType!);
+                    handed.Add(new(fact.RequiredType!, FunctionTypeBinder(fact.RequiredType!)));
+                }
+                else if (fact is { Kind: ConstraintKind.Contract, Subject: { } subject, Contract: { } contract } &&
+                    this.AvailableConstraintFact(constraints, fact) && !this.HandedContract(subject, contract, scope, handed))
+                {
+                    return false;
                 }
             }
         }
+
+        return true;
     }
 
-    // A fixed Origin of an erased callable: a carrier's hidden Origins (R4-M36), or an Origin neither `static` nor one of its per-call
-    // Origins, which only its own syntax binds and no nested signature names (SPEC 8.10, 15.3.4).
-    private static bool IsFixed(in RetentionAtom atom)
-        => atom.Carrier is not null || atom.Origin is { Kind: not OriginKind.Static } and not { Kind: OriginKind.Input, Binder: FunctionTypeKoto };
+    // A fixed Origin of an erased signature (Revision 9): a carrier's hidden Origins (R4-M36), or an Origin neither `static` nor one of its
+    // per-call Origins, an input or parameter Origin its own syntax binds (`binder`, the signature's Binder; SPEC 8.10, 15.3.4).
+    private static bool IsFixed(in RetentionAtom atom, Koto? binder)
+        => atom.Carrier is not null || (atom.Origin is { Kind: not OriginKind.Static } origin &&
+            !(origin.Kind is OriginKind.Input or OriginKind.Parameter && binder is not null && ReferenceEquals(origin.Binder, binder)));
 
-    // A borrow of storage a value of the Type refers to, with its outer Origin and referent: a ref, uniq, objref or objuniq layer; a
-    // pair layer whose binder admits only those, a borrow in each admitted case, its slot the outer Origin (SPEC 8.1.2) and exclusive when
-    // an exclusive borrow is admitted (DECISIONS BU-3); a Slice, a shared borrow of its elements (SPEC 4.8.1); a UniqSlice, an exclusive
-    // one, its `source` the outer Origin (SPEC 4.8.2).
-    private BoundType? BorrowReferent(BoundType type, out BoundOrigin? outer, out bool exclusive)
+    // A Contract premise's requirement signatures (HandedSignatures), then those of the Contract premises its supply states on its subject's
+    // associated Types that the contract's own Types reach (ContractSupply); whether each substitutes.
+    private bool HandedContract(BoundType subject, BindingSymbol contract, BindingScope scope, List<ErasedSignature> handed)
     {
-        (outer, exclusive) = (type.Origin, IsExclusive(type.Semantics));
-        if (type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } && IsBorrow(type.Semantics))
+        if (contract.Contract is not { } shape || !this.retentionContracts.Add((subject, contract)))
         {
-            return referent;
+            return true;
         }
 
-        if (this.LayerAdmitted(type) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0 &&
-            TryPairLayer(type, out _, out var target))
+        if (!this.types.RequirementSignatures(subject, contract, handed))
         {
-            (outer, exclusive) = (this.OuterOrigin(type), (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0);
-            return target;
+            return false;
         }
 
-        if (type is { Kind: BoundTypeKind.Slice, Components: [var elements] })
+        foreach (var (_, _, premise) in new ContractSupply(this, shape, subject, scope))
         {
-            return elements;
+            if (premise is not { Kind: ConstraintKind.Contract, Subject: { } associated, Contract: { } required })
+            {
+                continue;
+            }
+
+            var reached = ReferenceEquals(associated, subject) || this.retentionReached.Contains(associated);
+            if (reached && !this.HandedContract(associated, required, scope, handed))
+            {
+                return false;
+            }
         }
 
-        if (type is { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice, Components: [var exclusiveElements], OriginArguments: [var source] })
-        {
-            (outer, exclusive) = (source, true);
-            return exclusiveElements;
-        }
-
-        return null;
+        return true;
     }
 
-    private CallRetention RetentionOf(
-        Koto use,
-        FunctionKoto? callee,
-        ReadOnlySpan<BoundType> inputs,
-        BoundType result,
-        BoundType? declaring,
-        ReadOnlySpan<BoundType> bounds)
+    // Begins a retention computation at `use`: resets the per-computation fields, registers each input's atoms and the result's atoms,
+    // over the scope of the inputs and declaring Type, of which `signatureInputs` are a callee's own signature inputs (none for an erased
+    // signature), then rents the premise environment, which EndRetention returns.
+    private OriginPremiseEnvironment BeginRetention(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, BoundType? declaring, int signatureInputs)
     {
         this.retentionAtoms.Clear();
         this.retentionCallables.Clear();
         this.retentionCarriers.Clear();
+        this.retentionReachedNodes.Clear();
+        this.retentionRawSources.Clear();
+        this.retentionFills.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
-        this.retentionInputs = callee is null ? 0 : inputs.Length;
+        this.retentionInputs = signatureInputs;
         if (declaring is not null)
         {
             this.retentionScope.Add(declaring);
         }
 
         this.retentionRawVisits.Clear();
+        this.retentionPositions.Clear();
         this.retentionLimit = false;
-        this.retentionUnstatedResult = false;
         for (var i = 0; i < inputs.Length; i++)
         {
             this.RetentionInput(inputs[i], i);
         }
 
-        this.RetentionWalk(result, new(Retention.Result, RetentionKind.Value, Writable: false, null, null, null), OriginVariance.Covariant, callable: false);
-        var environment = this.RentPremises(use) ??
+        var atom = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
+        this.RetentionWalk(result, atom, OriginVariance.Covariant, callable: false);
+        return this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of a retention at `{use}` is not ready: it depends on itself (PLAN G74).");
-        try
-        {
-            if (callee is not null)
-            {
-                this.CollectOriginResolvers(environment);
-            }
-
-            this.RetentionPremises(environment, callee, inputs, result, declaring, bounds);
-            if (this.retentionLimit)
-            {
-                return CallRetention.Limit;
-            }
-
-            var nodes = this.RetentionNodes(environment);
-            if (callee is null)
-            {
-                this.AddErasedRelations(environment, 0);
-            }
-            else
-            {
-                this.ExtractOriginPremises(environment, use.Parent);
-            }
-
-            return this.RetentionRows(environment, nodes, inputs.Length);
-        }
-        finally
-        {
-            this.ReturnPremises(environment);
-            this.retentionAtoms.Clear();
-            this.retentionCallables.Clear();
-            this.retentionCarriers.Clear();
-        }
     }
 
-    // An input's atoms: a borrowed input (BorrowReferent) gives Value through its outer Origin and Content through its referent (SPEC
-    // 15.6.4 step 4), which an exclusive one lets the call write, its referent invariant there (SPEC 15.3.5), and a shared one's lies
-    // past a shared layer (SPEC 5.7, 8.11.4 rule 1).
-    private void RetentionInput(BoundType input, int index)
+    // Ends a retention computation, from each entry point's `finally`: returns its premise environment and clears what it registered.
+    private void EndRetention(OriginPremiseEnvironment environment)
     {
-        if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent)
-        {
-            this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
-            var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer, Shared: !exclusive);
-            this.RetentionWalk(referent, content, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant, callable: false);
-        }
-        else
-        {
-            this.RetentionWalk(input, new(index, RetentionKind.Value, Writable: true, null, null, null), OriginVariance.Covariant, callable: false);
-        }
+        this.ReturnPremises(environment);
+        this.retentionAtoms.Clear();
+        this.retentionCallables.Clear();
+        this.retentionCarriers.Clear();
+        this.retentionReachedNodes.Clear();
+        this.retentionRawSources.Clear();
+        this.retentionFills.Clear();
+        this.retentionInstantiated.Clear();
     }
 
-    // The atoms and carriers of a Type at a position of `variance` within its input (OwnedOrigins and the outer Origin, SPEC 15.2.3): a pair
-    // layer's slot and target; a Type parameter or a pair's target as a carrier; the Origin, Origin arguments and components of any other,
-    // so a projection or a dependent Semantics term is its parts and joins its base. An occurrence is writable storage of its input when
-    // the walk has reached an invariant position through storage the call may write (`at.Writable`: an exclusive referent, the pointee
-    // of a raw layer without an Origin or with `static`, or a value the call may write, whose nominal Type may hide an exclusive layer)
-    // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer
-    // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
-    // the callee's own signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
-    // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
-    // pair layer whose binder admits no exclusive Semantics. A raw layer with another Origin addresses what each borrow its Origin
-    // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; a raw result layer without one reaches every input (D6).
-    // A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3).
-    private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
+    // The Origins a Type of the call's Subst brings (retentionInstantiated; DECISIONS R4-M154, Revision 2): the caller's, whose relations
+    // its solved Origins hold, each part once (retentionParts).
+    private void Instantiation(BoundType? type)
     {
-        var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
-        if (TryPairLayer(type, out _, out var target))
-        {
-            var exclusive = IsInvariantLayer(type, this);
-            var slot = this.OuterOrigin(type);
-            this.AddRetentionAtom(here with { Origin = slot }, callable);
-            var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);
-            this.RetentionWalk(target, at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer }, inner, callable);
-            return;
-        }
-
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
-        {
-            this.retentionAtoms.Add(here with { Carrier = type });
-        }
-        else if (type.Kind == BoundTypeKind.Function)
-        {
-            this.retentionCallables.Add(type);
-        }
-
-        this.AddRetentionAtom(here with { Origin = OwnedOrigin(type) }, callable);
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            var position = ComposeVariance(variance, type.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant);
-            this.AddRetentionAtom(at with { Origin = type.OriginArguments[i], Writable = at.Writable && position == OriginVariance.Invariant }, callable);
-        }
-
-        var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
-        var inside = callable || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;
-        var shared = type.Kind == BoundTypeKind.Slice ||
-            (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
-        var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
-        var rawOrigin = type.RawOrigin;
-        var step = raw && !inside ? this.SignatureStep(rawOrigin, CollectionsMarshal.AsSpan(this.retentionScope)[..this.retentionInputs]) : RawStep.Unstated;
-        var past = at.Shared || shared || step == RawStep.Shared;
-        var through = raw ? !past && step is RawStep.Unstated or RawStep.Static : at.Writable && !shared;
-        var below = at with { Layer = layer, Writable = !inside && (through || here.Writable), Shared = past };
-        if (raw && !inside && !past && step == RawStep.Exclusive && at.Input >= 0)
-        {
-            this.RawContent(rawOrigin!, at.Input);
-        }
-
-        this.retentionUnstatedResult |= raw && !inside && rawOrigin is null && at.Input == Retention.Result;
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, this.ComponentVariance(type, i)), inside);
-        }
-    }
-
-    // SPEC 5.7 Calls (D15; design-final §6.2): a raw parameter layer whose Origin steps Exclusive lets the call write what each borrow the
-    // Origin belongs to admits (RawMembers: the referent of each input whose outer Origin it is, the keepers of each slot it binds in a
-    // nominal Type of the contract, substituted by that Type), walked as input `index`'s writable content. Each (Origin, input) is walked
-    // once per contract or erased signature, which loses nothing: its members and its content atom are the same each time. An incomplete
-    // member walk makes the contract CallRetention.Limit.
-    private void RawContent(BoundOrigin origin, int index)
-    {
-        if (!this.retentionRawVisits.Add((origin, index)))
+        if (type is null || !(type.CarriesOrigin || type.CarriesRawOrigin) || !this.retentionParts.Add(type))
         {
             return;
         }
 
-        var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, origin);
-        var start = this.rawMembers.Count;
-        this.retentionLimit |= !this.RawMembers(origin, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
-        var end = this.rawMembers.Count;
-        for (var i = start; i < end && !this.retentionLimit; i++)
+        if (OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) } origin)
         {
-            this.RetentionWalk(this.rawMembers[i].Referent, content, OriginVariance.Invariant, callable: false);
+            this.retentionInstantiated.Add(origin);
         }
 
-        this.rawMembers.RemoveRange(start, end - start);
-    }
-
-    // An Origin occurrence; a Function Type's per-call Origin, bound by its own syntax, belongs to no value of it (SPEC 15.3.4).
-    private void AddRetentionAtom(RetentionAtom atom, bool callable)
-    {
-        if (atom.Origin is { } origin && !(callable && origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto }))
+        foreach (var argument in type.OriginArguments)
         {
-            this.retentionAtoms.Add(atom);
+            this.retentionInstantiated.Add(argument);
+        }
+
+        foreach (var part in type.Components)
+        {
+            this.Instantiation(part);
         }
     }
 
     // The contract's own premises (SPEC 15.6.4 step 3): each input's well-formedness and Types' relations (R2), the declaring Type's
     // relations, the result's well-formedness (R3) and the callee's declared relations (R1) under its declaring Type, its own Origins
-    // kept as the call's fresh regions; then the relations of each erased callable it may call, its Callable bounds and the callable
-    // Types the contract names, nested ones included as the list grows. The enclosing declarations' premises follow from the catalog's
-    // walk (ExtractOriginPremises).
+    // kept as the call's fresh regions; then the relations of each erased callable it may call, its Callable bounds and the callables its
+    // inputs and result hand it (TyCtxt.HandedCallables, nested ones included). The enclosing declarations' premises follow from the
+    // catalog's walk (ExtractOriginPremises).
     private void RetentionPremises(
         OriginPremiseEnvironment environment,
         FunctionKoto? callee,
         ReadOnlySpan<BoundType> inputs,
         BoundType result,
         BoundType? declaring,
-        ReadOnlySpan<BoundType> bounds)
+        ReadOnlySpan<ErasedSignature> bounds)
     {
         foreach (var input in inputs)
         {
@@ -311,55 +318,97 @@ public sealed partial class Binding
             }
         }
 
+        foreach (var input in inputs)
+        {
+            this.Handed(input, null);
+        }
+
+        this.Handed(result, null);
+        if (declaring is not null)
+        {
+            this.Handed(declaring, null);
+        }
+
         foreach (var bound in bounds)
         {
             this.AddErasedSignature(environment, bound);
+            this.Handed(bound.Signature, bound.Signature);
         }
 
         for (var i = 0; i < this.retentionCallables.Count; i++)
         {
-            this.AddErasedSignature(environment, this.retentionCallables[i]);
+            this.AddErasedSignature(environment, new(this.retentionCallables[i], FunctionTypeBinder(this.retentionCallables[i])));
         }
     }
 
-    // An erased callable signature's own atoms, walked after the contract's, its relations added, then dropped.
-    private void AddErasedSignature(OriginPremiseEnvironment environment, BoundType signature)
+    // The callables a contract's Type hands its body (TyCtxt.HandedCallables) into the computation's erased callables, each once; a Callable
+    // bound (`self`), whose own relations RetentionPremises adds, only for the callables its signature names.
+    private void Handed(BoundType type, BoundType? self)
     {
-        var atoms = this.retentionAtoms;
-        var start = atoms.Count;
+        foreach (var callable in this.types.HandedCallables(type))
+        {
+            if (!ReferenceEquals(callable, self) && !this.retentionCallables.Contains(callable))
+            {
+                this.retentionCallables.Add(callable);
+            }
+        }
+    }
+
+    // The Types a contract's Type reaches, each component at any depth (a projection's base among them), into retentionReached.
+    private void Reach(BoundType type)
+    {
+        if (this.retentionReached.Add(type))
+        {
+            foreach (var component in type.Components)
+            {
+                this.Reach(component);
+            }
+        }
+    }
+
+    // An erased signature's own atoms, walked after the contract's in its own scope (retentionErasedScope, the contract's restored after
+    // it, which the storage walk reads), its relations added, then dropped with its raw sources, which are no inputs of the contract.
+    private void AddErasedSignature(OriginPremiseEnvironment environment, ErasedSignature erased)
+    {
+        var (atoms, signature) = (this.retentionAtoms, erased.Signature);
+        var (start, raws) = (atoms.Count, this.retentionRawSources.Count);
         var inputs = signature.Components[0];
-        var unstated = this.retentionUnstatedResult;
+        var (contract, signatureInputs) = (this.retentionScope, this.retentionInputs);
+        (this.retentionScope, this.retentionInputs) = (this.retentionErasedScope, 0);
         this.retentionScope.Clear();
         if (!ReferenceEquals(inputs, BoundType.Unit))
         {
             this.retentionScope.AddRange(inputs.Components);
         }
 
-        this.retentionInputs = 0;
         this.retentionRawVisits.Clear();
-
+        this.retentionPositions.Clear();
         for (var i = 0; !ReferenceEquals(inputs, BoundType.Unit) && i < inputs.Components.Count; i++)
         {
             this.RetentionInput(inputs.Components[i], i);
         }
 
-        var result = new RetentionAtom(Retention.Result, RetentionKind.Value, Writable: false, null, null, null);
+        var result = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
         this.RetentionWalk(signature.Components[1], result, OriginVariance.Covariant, callable: false);
-        this.AddErasedRelations(environment, start);
+        this.AddErasedRelations(environment, start, erased.Binder);
+        this.ErasedFills(start, raws);
         atoms.RemoveRange(start, atoms.Count - start);
-        this.retentionUnstatedResult = unstated;
+        this.retentionRawSources.RemoveRange(raws, this.retentionRawSources.Count - raws);
+        (this.retentionScope, this.retentionInputs) = (contract, signatureInputs);
     }
 
     // An erased callable's relations (owner decision 2026-10-17, DECISIONS R4-M52): its implementation was compared where it was
     // converted, under premises no view reads, so no absence of a relation among its fixed Origins is proven (SPEC 15.6.4): each fixed
     // Origin of an input, among the atoms from `start`, outlives each fixed Origin of an output, its result's or one its inputs let it
-    // write. Its per-call Origins keep only its own premises.
-    private void AddErasedRelations(OriginPremiseEnvironment environment, int start)
+    // write, and, where it writes an abstract part (a writer: `absorb(self: uniq/Self, r: E)`), that carrier's ReachedNode, the storage its
+    // implementation may write through the part's exclusive layers; a result it returns replaces a part and reaches none (DECISIONS
+    // R4-M154). Its per-call Origins (IsFixed, its Binder's) keep only its own premises.
+    private void AddErasedRelations(OriginPremiseEnvironment environment, int start, Koto? binder)
     {
         var atoms = this.retentionAtoms;
         for (var i = start; i < atoms.Count; i++)
         {
-            if (atoms[i].Input < 0 || !IsFixed(atoms[i]))
+            if (atoms[i].Input < 0 || !IsFixed(atoms[i], binder))
             {
                 continue;
             }
@@ -367,10 +416,38 @@ public sealed partial class Binding
             var longer = this.AtomNode(environment, atoms[i]);
             for (var j = start; j < atoms.Count; j++)
             {
-                if ((atoms[j].Input == Retention.Result || atoms[j].Writable) && IsFixed(atoms[j]))
+                if ((atoms[j].Input == CallRetention.ResultOutput || atoms[j].Writable) && IsFixed(atoms[j], binder))
                 {
                     AddPremiseEdge(environment, longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
                 }
+
+                if (atoms[j] is { Input: >= 0, Writable: true, Carrier: { } carrier } && IsFixed(atoms[j], binder))
+                {
+                    AddPremiseEdge(environment, longer, this.ReachedNode(environment, carrier), OriginPremiseRule.Input);
+                }
+            }
+        }
+    }
+
+    // SPEC 15.6.4's abstract-Type sentence (rule 3; DECISIONS BU-66): where an erased signature handed to the body (its atoms from `start`,
+    // its raw sources from `raws`) may retain every contract raw source (retentionFills): at each carrier its result holds or it writes (the
+    // atoms AddErasedRelations reads, R4-M154 Revision 3) through one of its raw sources, whatever their pointee Types (a raw cast keeps the
+    // address and provenance, SPEC 5.4; a pointer to a local holding the input is read through), but in that source's input (a pointer is
+    // never part of its own pointee; rows are per input).
+    private void ErasedFills(int start, int raws)
+    {
+        var (atoms, raw) = (this.retentionAtoms, this.retentionRawSources);
+        for (var j = start; j < atoms.Count; j++)
+        {
+            var stored = false;
+            for (var k = raws; !stored && k < raw.Count; k++)
+            {
+                stored = atoms[j] is { Carrier: not null } atom && (atom.Input == CallRetention.ResultOutput || (atom.Writable && atom.Input != raw[k].Input));
+            }
+
+            if (stored)
+            {
+                this.retentionFills.Add(atoms[j].Carrier);
             }
         }
     }
@@ -388,6 +465,18 @@ public sealed partial class Binding
         {
             node = environment.Closure.Node();
             this.retentionCarriers.Add(carrier, node);
+        }
+
+        return node;
+    }
+
+    // A carrier's ReachedNode (retentionReachedNodes), one per carrier for the computation.
+    private int ReachedNode(OriginPremiseEnvironment environment, BoundType carrier)
+    {
+        if (!this.retentionReachedNodes.TryGetValue(carrier, out var node))
+        {
+            node = environment.Closure.Node();
+            this.retentionReachedNodes.Add(carrier, node);
         }
 
         return node;
@@ -411,9 +500,6 @@ public sealed partial class Binding
         return nodes;
     }
 
-    // An Origin atom or a carrier of an input or of the result (Retention.Result): the kind it gives the input, whether it is writable
-    // storage of the input (RetentionWalk), the Origin of the nearest borrow, Slice or pair layer above it, which a carrier's hidden
-    // Origins outlive (SPEC 15.6.1), and whether a shared layer or a raw layer whose step is Shared lies above it.
-    private readonly record struct RetentionAtom(
-        int Input, RetentionKind Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, bool Shared = false);
+    // An erased signature (the head's contract): the instantiated signature Type and the Binder of its per-call Origins.
+    internal readonly record struct ErasedSignature(BoundType Signature, Koto? Binder);
 }

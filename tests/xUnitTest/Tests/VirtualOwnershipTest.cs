@@ -19,20 +19,20 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     public void SharedBodiesReachOrdinaryOwnershipChecking()
     {
         var c = MinimalEmissionTest.Analyze(Shared);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var mir = c.BuildMir();
         var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
         Assert.NotNull(mir[new(Assert.Single(functions, static x => x.IsVirtual).SymbolOf(), MirBodyKind.Fn)]);
         Assert.NotNull(mir[new(Assert.Single(functions, static x => x.IsOverride).SymbolOf(), MirBodyKind.Fn)]);
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void UnusedOverrideBodiesKeepTheirOrdinaryOwnershipErrors()
     {
         var c = MinimalEmissionTest.Analyze(Shared.Replace("-> i32 => 2", "-> i32\n        let text = \"value\"\n        let moved = text@move\n        Console.writeLine(text)\n        return 2", StringComparison.Ordinal));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(DiagnosticCode.MovedPlace_Kd, Assert.Single(c.Problems).Code);
     }
 
@@ -45,13 +45,18 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var implementation = inOverride ? "        _ = Noisy.init()\n        return 2" : "        return 2";
         var source = "struct Noisy\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + original + "\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32\n" + implementation + "\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
+        Assert.Equal("UnsatisfiedEffectBound_Kd " + (inOverride ? "override" : "public virtual") + " func read(self: objref/Self) -> i32", MinimalEmissionTest.Problems(c));
+
+        // A4's record at the implementation (H0b §5.4) has no label or Note yet (H0a §4.1): Binding's "confined" label naming the
+        // destruction's external operation is lost until A4 publishes the violating effect.
         c.ReportAnalysis();
-        Assert.Contains("confined", Assert.Single(TestDiagnostics.Of(c)).Label!, StringComparison.Ordinal);
+        var shown = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Null(shown.Label);
+        Assert.Null(shown.Note);
         var quiet = MinimalEmissionTest.Analyze(source.Replace("Console.writeLine(\"drop\")", "()", StringComparison.Ordinal));
-        Assert.True(quiet.Analysis.IsVerified, MinimalEmissionTest.Describe(quiet, null));
+        Assert.True(quiet.Analysis.IsVerified, MinimalEmissionTest.Describe(quiet));
     }
 
     [Theory]
@@ -61,7 +66,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     {
         var source = "open struct Base\n    public var value: i32 = 1\n    public virtual func view(self: objref/Self) -> ref/i32 => self.value@ref\nstruct Derived : Base\n    public var tail: i32 = 2\n    public init() => ()\nvar owner = Derived.init()@obj\nlet borrowed = owner.view()\n" + update + "\n_ = borrowed";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(!conflict, c.Analysis.IsVerified);
         Assert.Equal(conflict, c.Problems.Any(x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
 
@@ -73,37 +78,42 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         Assert.Equal(conflict, mir.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
+    // A conditional slot that nothing references generates nothing: the module writes only the startup body and no virtual table.
     [Fact]
     public void UnreferencedConditionalSlotsNeedNoGeneratedBody()
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    Self is Marker when T is Copy\n        public virtual func read(self: objref/Self) -> i32 => 1\n()");
-        Assert.True(c.Emission.TryPrepare(out var module, out var failure), failure);
-        Assert.Empty(module.Objects);
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(ir, @"define internal \S+ @__kimi_f\d+\("));
+        Assert.DoesNotContain("@__kimi_object_virtuals", ir, StringComparison.Ordinal);
         Assert.Empty(TestDiagnostics.Of(c));
     }
 
+    // A4's record at the virtual function (H0b §5.4) has no label, Note or related location yet (H0a §4.1): Binding's "confined" label
+    // and message text and its bound role are lost until A4 publishes them.
     [Fact]
     public void CleanupFailuresClearAfterAnEditAndKeepTheirPublicEvidence()
     {
         const string Source = "struct Noisy\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        _ = Noisy.init()\n        return 1\n()";
         var path = Path.GetFullPath("virtual-cleanup-bound.kimi");
         var c = MinimalEmissionTest.Analyze(Source, path);
-        Assert.Single(c.Problems);
+        Assert.Equal("UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32", MinimalEmissionTest.Problems(c));
         c.ReportAnalysis();
         var shown = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("UnsatisfiedEffectBound_Kd", shown.Code);
-        Assert.Contains("confined", shown.Label!, StringComparison.Ordinal);
+        Assert.Null(shown.Label);
+        Assert.Null(shown.Note);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
-        Assert.Contains(record.Related!, x => x.Role == "bound");
+        Assert.Null(record.Related);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
         Assert.Equal(record.Display!.Range, sent.Range);
-        Assert.Contains("confined", sent.Message, StringComparison.Ordinal);
+        Assert.Equal(record.Message, sent.Message);
         output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         var drop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsDestructor);
         var donor = MinimalEmissionTest.Analyze(Source.Replace("Console.writeLine(\"drop\")", "()", StringComparison.Ordinal));
@@ -111,7 +121,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         Assert.True(KotoHelper.Replace(drop, drop.ExpressionBody!, ParseTestHelper.Detach(changed.ExpressionBody!, new CodeBlockKoto(drop.CodeContext))));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         Assert.Empty(TestDiagnostics.Of(c));
     }
@@ -134,7 +144,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     public void WarmSharedBodyCheckingReusesOwnershipStorage()
     {
         var c = MinimalEmissionTest.Analyze(Shared);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var verified = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified));
         Assert.True(verified);

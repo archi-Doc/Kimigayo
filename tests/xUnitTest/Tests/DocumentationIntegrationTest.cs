@@ -71,10 +71,13 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
         context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated2\npublic struct S"), "b", 2);
         context.Parse(tree.RootKoto, new SourceDocument("a.kimi", "/// a\npublic struct S"));
         context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated1\npublic struct S"), "b", 1);
+        // SPEC 6.2.1 (DECISIONS R5-M176): names order as UTF-8 bytes, so U+FF21 before U+1F600, which UTF-16 orders first.
+        context.Parse(tree.RootKoto, new SourceDocument("\U0001F600.kimi", "/// smile\npublic struct S"));
+        context.Parse(tree.RootKoto, new SourceDocument("\uFF21.kimi", "/// wide\npublic struct S"));
         ParseTestHelper.AssertValid(tree);
         Assert.True(c.Bind().IsComplete);
         var target = tree.DocumentationSources.First().Comments[0].Declaration!;
-        Assert.Equal(new[] { "a", "z", "generated1", "generated2" }, c.Binding.GetDocumentation(target, true).Select(x => x.GetText().Text));
+        Assert.Equal(new[] { "a", "z", "wide", "smile", "generated1", "generated2" }, c.Binding.GetDocumentation(target, true).Select(x => x.GetText().Text));
         Assert.All(tree.DocumentationSources.Where(x => x.ModId is not null), x => Assert.Null(x.LogicalName));
     }
 
@@ -159,7 +162,7 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
             c.Binding.CheckStartup(OutputKind.Application);
             Assert.True(c.Analyze().IsVerified);
             using var writer = new StringWriter();
-            Assert.True(c.WriteIr(writer, out var error), error);
+            Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
             return writer.ToString();
         }
     }

@@ -25,7 +25,7 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "MissingOverrideTarget_Kd");
         Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), Assert.Single(record.Reason!));
         Assert.Equal(source.LastIndexOf("override", StringComparison.Ordinal), record.Span!.Value.Start);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         Assert.Equal("Base", selected.Slot.DeclaringType.Symbol!.Name);
         Assert.Same(BoundType.I32, selected.Slot.DeclaringType.Components[0]);
         Assert.NotNull(selected.Path?.Parent);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var rebound));
         Assert.Equal(selected.Slot, rebound.Slot);

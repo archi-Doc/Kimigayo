@@ -1,0 +1,22 @@
+// Final-review probes (frev): the scope of exchange's result clause. No raw layer: today's Origin rules retain value in the result.
+func exchangeRefValue()
+    var a: i32 = 1
+    var b: i32 = 2
+    var slot = a@ref
+    let old = Kimi.Intrinsics.exchange(slot@uniq, with: b@ref)
+    b = 3
+    inspect(old)
+func exchangeRefTarget()
+    var a: i32 = 1
+    var b: i32 = 2
+    var slot = a@ref
+    let old = Kimi.Intrinsics.exchange(slot@uniq, with: b@ref)
+    a = 3
+    inspect(old)
+func exchangePairValue()
+    var a: i32 = 1
+    var b: i32 = 2
+    var slot = (a@ref, 0)
+    let old = Kimi.Intrinsics.exchange(slot@uniq, with: (b@ref, 1))
+    b = 3
+    inspect(old)

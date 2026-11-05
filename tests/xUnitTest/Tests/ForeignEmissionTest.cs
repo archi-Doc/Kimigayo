@@ -29,8 +29,8 @@ public class ForeignEmissionTest
         var ir = ScalarEmissionTest.EmitFixture("ForeignLastError", LastError, "same\n");
         Assert.Single(Regex.Matches(ir, @"declare [^\n]*@GetLastError\("));
         Assert.Contains("declare dllimport i32 @GetLastError()\n", ir);
-        var body = ir[ir.IndexOf("define internal void @__kimi_f0(", StringComparison.Ordinal)..];
-        Assert.Equal(2, Regex.Matches(body[..body.IndexOf("\n}\n", StringComparison.Ordinal)], @"= call i32 @GetLastError\(\)").Count);
+        var module = GeneratedIr.Parse(ir);
+        Assert.Equal(2, module.Startup.Instructions.Count(x => x.Callee == module.Function("GetLastError")));
     }
 
     [Theory]
@@ -101,17 +101,22 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerSignaturesDeclareOpaquePointers()
     {
-        var ir = Emit("group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch(value: raw/i32, other: raw/f64) -> raw/u8\npublic func main() => ()", "static");
+        var ir = Emit(
+            "group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch(value: raw/i32, other: raw/f64) -> raw/u8\n" +
+            "public func main()\n    unsafe => _ = Native.touch(null, null)",
+            "static");
         Assert.Contains("declare ptr @touch(ptr, ptr)\n", ir);
     }
 
     [Fact]
     public void RebindingWithoutTheImportForgetsItsDeclaration()
     {
-        var c = Analyze("group Native\n    #LibraryImport(\"codec\", \"gone\")\n    public unsafe func gone() -> i32\npublic func main() => ()", "static");
+        var c = Analyze(
+            "group Native\n    #LibraryImport(\"codec\", \"gone\")\n    public unsafe func gone() -> i32\npublic func main()\n    unsafe => _ = Native.gone()",
+            "static");
         using (var writer = new StringWriter())
         {
-            Assert.True(c.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
             Assert.Contains("declare i32 @gone()\n", writer.ToString());
         }
 
@@ -122,7 +127,7 @@ public class ForeignEmissionTest
         Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha);
         using (var writer = new StringWriter())
         {
-            Assert.False(c.WriteIr(writer, out _));
+            Assert.False(c.Generate(writer));
             Assert.Equal(string.Empty, writer.ToString());
         }
     }
@@ -149,8 +154,9 @@ public class ForeignEmissionTest
         Assert.Contains("declare dllimport ptr @VirtualAlloc(ptr, i64, i32, i32)\n", ir);
         Assert.Contains("declare dllimport i32 @VirtualFree(ptr, i64, i32)\n", ir);
         Assert.Matches(@"= call ptr @VirtualAlloc\(ptr null, i64 4096, i32 12288, i32 4\)", ir);
-        Assert.Matches(@"= icmp ne ptr %v\d+, null", ir);
-        Assert.Matches(@"= icmp eq ptr %v\d+, %v\d+", ir);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape == "icmp ne ptr %, null");
+        Assert.Contains(body, static x => x.Shape == "icmp eq ptr %, %");
     }
 
     [Theory]
@@ -162,7 +168,7 @@ public class ForeignEmissionTest
         var c = MinimalEmissionTest.Analyze(body);
         Assert.Equal(codes, c.Binding.Issues.Select(static x => x.Code));
         using var writer = new StringWriter();
-        Assert.Equal(codes.Length == 0, c.WriteIr(writer, out _));
+        Assert.Equal(codes.Length == 0, c.Generate(writer));
     }
 
     [Theory]
@@ -171,7 +177,7 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(body);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
     }
 
@@ -205,8 +211,9 @@ public class ForeignEmissionTest
                 Console.writeLine("cast ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerCast", source, "cast ok\n");
-        Assert.Matches(@"= ptrtoint ptr %v\d+ to i64", ir);
-        Assert.Matches(@"= inttoptr i64 %v\d+ to ptr", ir);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape == "ptrtoint ptr % to i64");
+        Assert.Contains(body, static x => x.Shape == "inttoptr i64 % to ptr");
         Assert.Matches(@"= inttoptr i64 0 to ptr", ir);
     }
 
@@ -223,7 +230,7 @@ public class ForeignEmissionTest
         var c = MinimalEmissionTest.Analyze(body);
         Assert.Equal(mismatch, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TypeMismatch_Kd));
         using var writer = new StringWriter();
-        Assert.Equal(!mismatch, c.WriteIr(writer, out _));
+        Assert.Equal(!mismatch, c.Generate(writer));
     }
 
     [Fact]
@@ -260,7 +267,7 @@ public class ForeignEmissionTest
                 Console.writeLine("arithmetic ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerArithmetic", source, "arithmetic ok\n");
-        Assert.Matches(@"= getelementptr i8, ptr %v\d+, i64 %", ir);
+        Assert.Contains(GeneratedIr.Parse(ir).Startup.Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 %");
         Assert.DoesNotContain("getelementptr inbounds i8", ir);
     }
 
@@ -277,7 +284,7 @@ public class ForeignEmissionTest
         c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == code.ToString());
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
     }
 
     [Theory]
@@ -291,12 +298,12 @@ public class ForeignEmissionTest
         }
         else
         {
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
             Assert.Single(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Equal(string.Empty, writer.ToString());
     }
 
@@ -304,7 +311,7 @@ public class ForeignEmissionTest
     public void DereferenceRequiresAnUnsafeContext()
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\nvar v: i32 = 0\nv = *p");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
     }
@@ -338,9 +345,10 @@ public class ForeignEmissionTest
                 Console.writeLine("read ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerRead", source, "read ok\n");
-        Assert.Matches(@"= load i64, ptr %v\d+, align 8\n", ir);
-        Assert.Matches(@"= load ptr, ptr %v\d+, align 8\n", ir);
-        Assert.Matches(@"\n  store i64 1234567890123, ptr %v\d+, align 8\n", ir);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape == "load i64, ptr %, align 8");
+        Assert.Contains(body, static x => x.Shape == "load ptr, ptr %, align 8");
+        Assert.Contains(body, static x => x.Shape == "store i64 1234567890123, ptr %, align 8");
     }
 
     [Fact]
@@ -476,7 +484,7 @@ public class ForeignEmissionTest
                 Console.writeLine("bool ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerBool", source, "bool ok\n");
-        Assert.Contains(" = trunc i8 %storage", ir);
+        Assert.Contains(GeneratedIr.Parse(ir).Startup.Instructions, static x => x.Shape == "trunc i8 % to i1");
         Assert.Contains(" = zext i1 ", ir);
         Assert.DoesNotContain("load i1,", ir);
     }
@@ -497,13 +505,13 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
 
         var success = true;
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bytes);
@@ -588,7 +596,7 @@ public class ForeignEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -600,7 +608,7 @@ public class ForeignEmissionTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
         Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -611,11 +619,11 @@ public class ForeignEmissionTest
     public void PointerIndexingRequiresAnUnsafeContext(string body)
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
     }
 
     [Theory]
@@ -626,11 +634,11 @@ public class ForeignEmissionTest
     public void BoundPointerArithmeticRequiresAnUnsafeContext(string body)
     {
         var c = MinimalEmissionTest.Analyze("var p: raw/i32 = null\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
     }
 
     [Fact]
@@ -694,7 +702,7 @@ public class ForeignEmissionTest
         var c = MinimalEmissionTest.Analyze($"var p: raw/{type} = null\nunsafe => {operation}");
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -836,7 +844,7 @@ public class ForeignEmissionTest
                 Console.writeLine("subplace ok")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerSubplace", source, "pick\nkept\nsubplace ok\n");
-        Assert.Matches(@"= getelementptr i8, ptr %v\d+, i64 8\n", ir);
+        Assert.Contains(GeneratedIr.Parse(ir).Startup.Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 8");
     }
 
     [Fact]
@@ -926,50 +934,13 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("position", false)]
-    [InlineData("constant", true)]
-    [InlineData("container", false)]
-    [InlineData("index", true)]
-    public void IncompletePointerProjectionPlansRejectBeforeWriting(string mutation, bool computed)
-    {
-        var place = computed ? "(*p).1[i]" : "(*p).1[1]";
-        var c = MinimalEmissionTest.Analyze($"func update(p: raw/(u8, [2 of i16]), i: isize)\n    unsafe => {place} = 1\npublic func main() => ()");
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
-        var projection = body.Values.FindLastIndex(x => x.Kind == OwnershipValueKind.PointerProject);
-        var outer = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.PointerProject);
-        Assert.True(projection > outer && outer >= 0);
-        if (mutation == "position")
-        {
-            body.Values[projection] = body.Values[projection] with { Constant = 2 };
-        }
-        else if (mutation == "constant")
-        {
-            body.Values[projection] = body.Values[projection] with { Constant = 0 };
-        }
-        else if (mutation == "container")
-        {
-            // The array element's container must be the array, not the enclosing Tuple.
-            body.ValueOperands[body.Values[projection].Start] = body.ValueOperands[body.Values[outer].Start];
-        }
-        else
-        {
-            body.ValueOperands[body.Values[projection].Start + 1] = body.ValueOperands[body.Values[projection].Start];
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-    }
-
-    [Theory]
     [InlineData("ref/i32 during static")]
     [InlineData("(ref/i32 during static, i32)")]
     public void DependentPointerReadsPreserveTheirCompleteType(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func read(p: raw/({type}))\n    unsafe\n        let value = *p\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         CompilationTestHelper.WriteIr(c);
     }
 
@@ -1018,7 +989,11 @@ public class ForeignEmissionTest
         var name = consume ? "ForeignPointerString" : "ForeignPointerStringRetained";
         var stdout = consume ? "second\nthird\ndone\n" : "second\ndone\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, "=0;first=1;second=1;third=1;compare=2;skip=0;done=1");
+        StringEmissionTest.WriteAuditedFixture(
+            name,
+            ir,
+            stdout,
+            "=0;first=1;second=1;third=1;compare=1;skip=0;done=1");
     }
 
     [Theory]
@@ -1029,7 +1004,7 @@ public class ForeignEmissionTest
         // SPEC 5.2: the handle is inspected in place; no temporary owner, Move or cleanup (its MIR: tests/mir/raw.kimi `derefCompare`,
         // `indexCompare`).
         var c = MinimalEmissionTest.Analyze($"func compare(p: raw/string)\n    unsafe\n        let equal = {expression} == \"text\"\npublic func main() => ()");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
     }
 
@@ -1068,7 +1043,11 @@ public class ForeignEmissionTest
                 Console.writeLine("done")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerStringCompare", source, "alpha\nbeta\nkept\ndone\n");
-        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", ir, "alpha\nbeta\nkept\ndone\n", "=0;alpha=3;beta=2;kept=2;done=1");
+        StringEmissionTest.WriteAuditedFixture(
+            "ForeignPointerStringCompare",
+            ir,
+            "alpha\nbeta\nkept\ndone\n",
+            "=0;alpha=1;beta=1;kept=1;done=1");
     }
 
     [Fact]
@@ -1246,11 +1225,11 @@ public class ForeignEmissionTest
     [Fact]
     public void MovingAPointerReadValuePreventsItsReuse()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: raw/R)\n    unsafe\n        let value = *p\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: raw/R)\n    unsafe\n        let value = (*p)@move\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.ErrorCount > 0);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -1258,10 +1237,10 @@ public class ForeignEmissionTest
     public void PointerReplacementConsumesTheSourceOwner()
     {
         var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: raw/R, value: R)\n    unsafe => *p = value@move\n    let again = value@move\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.ErrorCount > 0);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -1364,46 +1343,14 @@ public class ForeignEmissionTest
         ScalarEmissionTest.EmitFixture("ForeignPointerZeroSize", source, "target\nvalue\ntarget\nzero size ok\n");
     }
 
-    [Theory]
-    [InlineData("address")]
-    [InlineData("source")]
-    [InlineData("acquisition")]
-    [InlineData("operation")]
-    public void IncompletePointerAggregatePlansRejectBeforeWriting(string mutation)
-    {
-        var c = MinimalEmissionTest.Analyze("func update(p: raw/(i32, i64))\n    unsafe => *p = (1, 2)\npublic func main() => ()");
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
-        var store = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.PointerStore);
-        Assert.True(store >= 0);
-        if (mutation == "address")
-        {
-            body.ValueOperands[body.Values[store].Start] = body.Values.Count;
-        }
-        else if (mutation == "acquisition")
-        {
-            body.OperationStorage[store] = body.Operations[store] with { Acquisition = AcquisitionKind.None };
-        }
-        else if (mutation == "operation")
-        {
-            body.OperationStorage[store] = body.Operations[store] with { Kind = OwnershipOperationKind.Produce };
-        }
-        else
-        {
-            body.Values[store] = body.Values[store] with { Constant = -1 };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-    }
-
     [Fact]
     public void PointerTransfersUseTheCLayoutRepresentation()
     {
-        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct Pair\n    Self is Copy\n    public var a: u8\n    public var b: u64\nfunc read(p: raw/Pair)\n    unsafe\n        let value = *p\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var c = MinimalEmissionTest.Analyze(
+            "#Layout(\"C\")\nstruct Pair\n    Self is Copy\n    public var a: u8\n    public var b: u64\n" +
+            "func read(p: raw/Pair)\n    unsafe\n        let value = *p\npublic func main()\n    let p: raw/Pair = null\n    read(p)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("{ i8, i64 }", ir);
     }
@@ -1467,14 +1414,14 @@ public class ForeignEmissionTest
     public void NonzeroPointerStrideIsNotRejected(string type)
     {
         var c = MinimalEmissionTest.Analyze($"open struct Base\n    public var value: i32\nstruct Derived: Base\nstruct Box<T>\n    public var value: T\nfunc test(p: raw/{type})\n    unsafe\n        let next = p + 1\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void SymbolicArrayLengthIsNotMistakenForZeroStride()
     {
         var c = MinimalEmissionTest.Analyze("func test<length N>(p: raw/[N of i32])\n    unsafe\n        let next = p + 1\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -1557,17 +1504,23 @@ public class ForeignEmissionTest
         Assert.Contains("{ i8, i64, i8 }", ir);
     }
 
+    // SPEC 6.7.1, 8.15.3 (DECISIONS BU-48): a raw read by value of a struct whose C layout is unavailable (empty, open or storing a
+    // zero-sized Field) needs its layout, so check rejects it at the read (InvalidCLayout_Kd) and generation writes nothing; the declaration
+    // alone is no error.
     [Theory]
     [InlineData("struct S")]
     [InlineData("open struct S\n    var n: i32")]
     [InlineData("struct S\n    var empty: ()")]
     [InlineData("struct S\n    var empty: [0 of i32]")]
     [InlineData("struct S\n    var empty: [2 of ()]")]
-    public void InvalidCLayoutsCannotGenerate(string declaration)
+    public void ARawReadOfAnUnavailableCLayoutCannotGenerate(string declaration)
     {
-        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\n" + declaration + "\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\npublic func main() => ()");
+        // The read takes the value (SPEC 3.5 row 3; a raw Place offers Take, 5.2.3), so the layout is what the program fails on.
+        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\n" + declaration + "\nfunc read(p: raw/S)\n    unsafe\n        let value = (*p)@move\npublic func main() => ()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 

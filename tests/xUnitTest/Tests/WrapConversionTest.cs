@@ -15,7 +15,7 @@ public class WrapConversionTest
     {
         const string source = "let x: u64 = 1\nlet a = x@wrap<u32>\nlet b = x@wrap<Wrapping<u8>>\nlet w: Wrapping<i16> = 1\nlet c = w@wrap<u64>\nlet d = w@wrap<Wrapping<i16>>\nlet e = x@wrap<u64>\nlet f = x@wrap<i128>";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
         Assert.Same(BoundType.Primitives["u32"], variables["a"].NameKoto.TypeOf());
         Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u8"]), variables["b"].NameKoto.TypeOf());
@@ -38,7 +38,7 @@ public class WrapConversionTest
     public void DirectLiteralsAreWrappedAtCompileTime(string expression, string type, long payload)
     {
         var c = MinimalEmissionTest.Analyze($"let w = {expression}");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
         Assert.Same(expected, conversion.TypeOf());
@@ -53,14 +53,14 @@ public class WrapConversionTest
             Assert.Equal((Int128)payload, folded);
         }
 
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void GenericTargetsTakeTheGenericLiterals()
     {
         var c = MinimalEmissionTest.Analyze("func f<T>(x: T) -> Wrapping<T>\n    T is PrimitiveInteger\n    return 127@wrap<Wrapping<T>> + x@wrap<Wrapping<T>>\nlet r = f(1@u8)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(MinimalEmissionTest.Analyze("func f<T>(x: T) -> Wrapping<T>\n    T is PrimitiveInteger\n    return 128@wrap<Wrapping<T>>").Binding.Result.IsComplete);
     }
 
@@ -86,13 +86,12 @@ public class WrapConversionTest
     public void WrappingConversionsEmitNoChecks()
     {
         var ir = ScalarEmissionTest.EmitFixture("WrapInstructions", "var x: u64 = 5\nlet a = x@wrap<u32>\nvar b: i8 = -1\nlet c = b@wrap<u64>\nvar d: u8 = 1\nlet e = d@wrap<u64>\nlet f = x@wrap<i64>\nlet g = 7@wrap<u8>\nConsole.writeLine(\"ok\")", "ok\n");
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.Contains(" = trunc i64 ", body);
-        Assert.Contains(" = sext i8 ", body);
-        Assert.Contains(" = zext i8 ", body);
-        Assert.DoesNotContain("icmp", body);
-        Assert.DoesNotContain("br i1", body);
+        var body = GeneratedIr.Parse(ir).Startup.Instructions;
+        Assert.Contains(body, static x => x.Shape.StartsWith("trunc i64 ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("sext i8 ", StringComparison.Ordinal));
+        Assert.Contains(body, static x => x.Shape.StartsWith("zext i8 ", StringComparison.Ordinal));
+        Assert.DoesNotContain(body, static x => x.Opcode == "icmp");
+        Assert.DoesNotContain(body, static x => x.Shape.StartsWith("br i1 ", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -111,7 +110,7 @@ public class WrapConversionTest
     public void InvalidFormsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]

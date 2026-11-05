@@ -20,14 +20,14 @@ public class FreshProcessTest
             ["https_proxy"] = "lower",
             ["DOTNET_GCHighMemPercent"] = "0xA",
             ["Kimigayo"] = "outside the namespace",
-            ["KIMI_PIPELINE"] = "mir",
-            ["kimi_codegen"] = "mir",
+            ["kimi_pipeline"] = "mir",
+            ["KIMI_CODEGEN"] = "legacy", // No selection since G4 (DECISIONS R5-M160): another KIMI_ variable.
             ["KIMI_MIR_DIFF"] = "directory",
             ["KIMI_FIXTURE_DIRECTORY"] = "directory",
             ["KIMI_UNRELATED"] = "1",
         };
         var child = FreshProcess.ChildEnvironment(parent);
-        string[] kept = ["DOTNET_GCHighMemPercent", "HTTPS_PROXY", "https_proxy", "Kimigayo", "PATH", "KIMI_PIPELINE", "kimi_codegen"];
+        string[] kept = ["DOTNET_GCHighMemPercent", "HTTPS_PROXY", "https_proxy", "Kimigayo", "PATH", "kimi_pipeline"];
         Assert.Equal(kept.Order(StringComparer.Ordinal), child.Keys.Order(StringComparer.Ordinal));
         Assert.All(child, x => Assert.Equal(parent[x.Key], x.Value));
     }

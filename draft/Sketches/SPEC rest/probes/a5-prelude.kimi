@@ -1,0 +1,6 @@
+struct Guard {a}
+    public let r: ref/i32 during a
+    public init(r: ref/i32 during a) => self.r = r
+    public func get(self: ref/Self) -> i32 => self.r@follow
+    drop => ()
+func both(n: i32, u: uniq/i32) -> i32 => n

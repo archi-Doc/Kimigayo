@@ -21,9 +21,8 @@ public sealed partial class OwnershipAnalysis
         return source is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } written ? KotoHelper.UnwrapParentheses(written.Left) : source;
     }
 
-    private int InspectString(Koto source, out int loan, out int reference)
+    private int InspectString(Koto source, out int reference)
     {
-        loan = -1;
         reference = -1;
         if (ElementAccess.IsRawPlace(KotoHelper.UnwrapParentheses(source)))
         {
@@ -44,7 +43,7 @@ public sealed partial class OwnershipAnalysis
 
         if (KotoHelper.UnwrapParentheses(source) is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
-            var borrowed = this.BorrowStringElement(element, null, null, out loan);
+            var borrowed = this.BorrowStringElement(element, null, null, out _);
             reference = ReferenceTypes.IsStringReference(source.BoundType) ? this.Value(borrowed) : -1;
             return borrowed;
         }
@@ -56,7 +55,7 @@ public sealed partial class OwnershipAnalysis
             return place;
         }
 
-        loan = this.BeginSharedLoan(place);
+        this.BeginSharedLoan(place);
         return place;
     }
 
@@ -121,15 +120,13 @@ public sealed partial class OwnershipAnalysis
     private int StringComparison(BinaryKoto comparison)
     {
         var depth = this.comparisonDepth++;
-        var left = this.InspectString(comparison.Left, out var leftLoan, out var leftValue);
-        var right = this.InspectString(comparison.Right, out var rightLoan, out var rightValue);
+        var left = this.InspectString(comparison.Left, out var leftValue);
+        var right = this.InspectString(comparison.Right, out var rightValue);
         var result = -1;
         if ((left >= 0 || leftValue >= 0) && (right >= 0 || rightValue >= 0) && this.flow!.Nodes[comparison].CanCompleteNormally)
         {
             result = this.Temporary(comparison);
-            var operation = this.Value(result);
-            this.SetValue(operation, OwnershipValueKind.StringComparison, [], comparison.Akind);
-            this.body.StringComparisons.Add(new(operation, left, right, leftLoan, rightLoan, leftValue, rightValue));
+            this.SetValue(this.Value(result), OwnershipValueKind.StringComparison, [], comparison.Akind);
         }
 
         this.EndComparisonLoans(depth, comparison);

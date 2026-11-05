@@ -48,14 +48,19 @@ public class TypeArgumentOriginEvidenceTest
     }
 
     // g1/g2: an invariant binding wins over a covariant one in either argument order, so the borrow of the local is the value that does
-    // not fit; it was a meet `x == (x and local)` reported at the borrow.
+    // not fit; it was a meet `x == (x and local)` reported at the borrow. Since H5 A5 also publishes the Loan conflict at `local`'s
+    // declaration, since `slot` is read after `local` ends (SPEC 15.6.5 rule W; H3b T51, R4's F-b ruling: class 4). It is pinned by code
+    // and location only: its `loan` related is missing (U-T2).
     [Theory]
     [InlineData(Put, "put(slot@uniq, local@ref)")]
     [InlineData(PutReversed, "put(local@ref, slot@uniq)")]
     public void AnInvariantBindingWinsOverACovariantOne(string declaration, string call)
     {
         var source = declaration + "func use(x: ref/i32) -> i32\n    var slot: ref/i32 during x = x\n    if x@follow > 0\n        let local: i32 = 5\n        " + call + "\n    return slot@follow\n" + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], errors.Select(static x => x.Code));
+        Assert.Equal("let local: i32 = 5", Text(source, errors[0].Span));
+        var error = errors[1];
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives x, which is false"), (error.Code, Text(source, error.Span), error.Label));
     }
 
@@ -104,7 +109,7 @@ public class TypeArgumentOriginEvidenceTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

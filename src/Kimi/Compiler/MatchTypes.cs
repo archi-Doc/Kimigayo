@@ -69,7 +69,7 @@ internal static class MatchTypes
         {
             for (var i = 0; i < cases.Length; i++)
             {
-                if (!SupportsOwnedPatternValue(cases[i], cache))
+                if (cases[i] is not { } payload || !SupportsOwnedPatternValue(payload, cache))
                 {
                     return false;
                 }

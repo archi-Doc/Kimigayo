@@ -16,13 +16,13 @@ public sealed partial class MirDifferenceLedger
 {
     // R4-M4: the compared old records, by requirement and each code it reports (OwnershipIssue.Code, Binding's code of the failure), with
     // the analysis that owns them and the requirement a MIR problem of that code names (R4-M67; none for the old expansion limit). Every
-    // other old record passes through: TransferRequired and Internal, control flow's other codes and Binding's other failures, CaseLimit
+    // other old record passes through: Internal, control flow's other codes and Binding's other failures (TransferRequired among them since
+    // H1, DECISIONS BU-84; IncompatibleImplementation and Unsupported since H5, whose old effect checks no longer run), CaseLimit
     // included. Where an analysis owns only some of Binding's records of a pair, the subset column names them as their producer
-    // publishes it: IncompatibleImplementation and Unsupported records where an effect check made them (Binding.IsEffectRecord, R4-M23),
-    // Origin relation records where they are twins, the records of a node whose relation is also a row A5 judges (Binding.IsTwinRecord,
-    // R4-M108, R4-M111). The MIR names the Ownership requirement of each decision the old path reports under Binding (DIAGNOSTICS rule 1;
-    // renamed at H5). The MIR pairs are the consistency set of PLAN10 §7: a MIR problem outside it is a recording rule's defect, ledgered
-    // as a contract break (B), as is MirReport.Add's disagreement record (Ownership.Internal).
+    // publishes it: Origin relation records where they are twins, the records of a node whose relation is also a row A5 judges
+    // (Binding.IsTwinRecord, R4-M108, R4-M111). The MIR names the Ownership requirement of each decision the old path reports under
+    // Binding (DIAGNOSTICS rule 1; renamed at H5). The MIR pairs are the consistency set of PLAN10 §7: a MIR problem outside it is a
+    // recording rule's defect, ledgered as a contract break (B), as is MirReport.Add's disagreement record (Ownership.Internal).
     internal static readonly ComparedPair[] Compared =
     [
         Same(Ownership(OwnershipRequirement.UninitializedUse), DiagnosticCode.UninitializedPlace_Kd, "A1"),
@@ -36,10 +36,6 @@ public sealed partial class MirDifferenceLedger
         Same(Ownership(OwnershipRequirement.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
         (DiagnosticRequirement.Binding(BindingFailure.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4",
             Ownership(OwnershipRequirement.VirtualEffectBound), null),
-        (DiagnosticRequirement.Binding(BindingFailure.IncompatibleImplementation), DiagnosticCode.IncompatibleContractImplementation_Kd, "A4",
-            Ownership(OwnershipRequirement.EffectBound), Effect),
-        (DiagnosticRequirement.Binding(BindingFailure.Unsupported), DiagnosticCode.Unsupported_Kd, "U", Ownership(OwnershipRequirement.Unsupported),
-            Effect),
         Same(Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.ComparisonLoanConflict_Kd, "A5"),
         Same(Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallReservationConflict_Kd, "A5"),
         Same(Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallActivationConflict_Kd, "A5"),
@@ -48,13 +44,14 @@ public sealed partial class MirDifferenceLedger
         Same(Ownership(OwnershipRequirement.DefaultArgumentBorrow), DiagnosticCode.DefaultArgumentBorrow_Kd, "A5"),
         Same(Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5"),
         Same(Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenOriginRelation_Kd, "A5"),
-        Same(Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenConstraint_Kd, "A5"),
         (DiagnosticRequirement.Binding(BindingFailure.OriginRelation), DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5",
             Ownership(OwnershipRequirement.UnprovenOrigin), Twin),
         (DiagnosticRequirement.Binding(BindingFailure.OriginRelation), DiagnosticCode.UnprovenOriginRelation_Kd, "A5",
             Ownership(OwnershipRequirement.UnprovenOrigin), Twin),
         Same(Ownership(OwnershipRequirement.StorageLimit), DiagnosticCode.OwnershipStorageLimit_Kd, "A5"),
+        Same(Ownership(OwnershipRequirement.OwnStepDeparture), DiagnosticCode.OwnStepDeparture_Kd, "A5"),
         Same(Ownership(OwnershipRequirement.Unsupported), DiagnosticCode.Unsupported_Kd, "U"),
+        Same(Ownership(OwnershipRequirement.DepthLimit), DiagnosticCode.OwnershipDepthLimit_Kd, "U"),
         (Ownership(OwnershipRequirement.ExpansionLimit), DiagnosticCode.DeferredExpansionLimit_Kd, "-", null, null),
     ];
 
@@ -110,9 +107,10 @@ public sealed partial class MirDifferenceLedger
 
     /// <summary>Lists an analyzed compilation's records by side: Binding's records outside the compared set (R4-M4), which both paths
     /// publish; the old path's A-owned records (only its subset of a pair that names one), which the ledger compares; the old analyses'
-    /// other records, which pass through; and the MIR's construction records, validator findings (as <c>InternalInvariant_Kd</c>) and
-    /// problems, one entry each (MirReport.Add keeps one per code and subject, R4-M67) with its requirement and its pair's analysis in the
-    /// compared set, or B for a pair outside it, a recording rule's defect such as MirReport's disagreement record.</summary>
+    /// other records, which pass through; and the MIR's construction records (<see cref="MirProgram.Records"/>; not its collection records),
+    /// validator findings (as <c>InternalInvariant_Kd</c>) and analysis problems, one entry each (MirReport.Add keeps one per code and subject, R4-M67) with its requirement and its pair's analysis in the
+    /// compared set, or B for a pair outside it, a recording rule's defect such as MirReport's disagreement record. A derived problem, one
+    /// with Cause facts (rule W, DECISIONS R4-M132), is not compared: publication suppresses it while its causes publish.</summary>
     /// <param name="compilation">The compilation after <see cref="Compilation.Analyze"/>.</param>
     /// <param name="program">Its MIR (<see cref="Compilation.BuildMir"/>).</param>
     /// <returns>The common, old, passed and MIR records.</returns>
@@ -126,10 +124,16 @@ public sealed partial class MirDifferenceLedger
             (analysis is not null ? old : requirement.Partition == DiagnosticPartition.Binding ? common : passed).Add(new(code, requirement.Name, analysis ?? "-", node));
         }
 
-        var mir = program.Records.Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
+        var mir = program.Records(MirRecordClass.Construction).Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
             .Concat(program.Findings.Select(x => new Entry(DiagnosticCode.InternalInvariant_Kd, "-", "B", compilation.SyntaxOf(x.Subject)))).ToList();
-        foreach (var problem in program.Problems.All)
+        for (var i = 0; i < program.Problems.All.Length; i++)
         {
+            var problem = program.Problems.All[i];
+            if (problem.IsRecord || program.Problems.Facts(i) is [.., { Kind: MirFactKind.Cause }])
+            {
+                continue; // A record (above, or a collection record, not compared), or derived (R4-M132): its Cause facts come last.
+            }
+
             var analysis = MirAnalysisOf(problem.Requirement, problem.Code) ?? "B";
             mir.Add(new(problem.Code, problem.Requirement.Name, analysis, compilation.SyntaxOf(problem.Subject)));
         }
@@ -147,9 +151,7 @@ public sealed partial class MirDifferenceLedger
     private static ComparedPair Same(DiagnosticRequirement requirement, DiagnosticCode code, string analysis)
         => (requirement, code, analysis, requirement, null);
 
-    // The subsets of Binding's records an analysis owns: an effect check's (R4-M23) and the twins (R4-M111).
-    private static bool Effect(Binding binding, Koto node) => binding.IsEffectRecord(node);
-
+    // The subset of Binding's records an analysis owns: the twins (R4-M111).
     private static bool Twin(Binding binding, Koto node) => binding.IsTwinRecord(node);
 
     /// <summary>A record of either side: its code, its requirement's name (- for a MIR construction record or validator finding), the

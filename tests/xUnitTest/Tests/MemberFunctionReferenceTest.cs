@@ -30,7 +30,7 @@ public class MemberFunctionReferenceTest
     public void TypeQualifiedReferencesTakeTheReceiverAsAnArgument(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("MemberReference" + name, source, string.Empty);
     }
 
@@ -79,7 +79,7 @@ public class MemberFunctionReferenceTest
     {
         var source = Box + body;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("MemberReferenceContainer" + name, source, string.Empty);
     }
 
@@ -87,7 +87,7 @@ public class MemberFunctionReferenceTest
     public void AContainerMemberItemRecordsItsDeclaringType()
     {
         var c = MinimalEmissionTest.Analyze(Box + "let pair = Box<i32>.pair<bool>");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.GenericsKoto>().Single(x => x.TypeOf()?.Kind == BoundTypeKind.FunctionItem).TypeOf()!;
         Assert.Equal(2, item.Components.Count);
         Assert.Same(BoundType.Boolean, item.Components[0]);
@@ -99,7 +99,7 @@ public class MemberFunctionReferenceTest
     {
         var source = Box + "let box = Box<i32>.init(item: 5)\nlet get = Box<i32>.get\nlet r = get(box@ref)\nrequire r == 5 else => $abort(\"get\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("MemberReferenceContainerGet", source, string.Empty);
     }
 }

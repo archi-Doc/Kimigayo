@@ -69,7 +69,7 @@ public class DeclarationContextCertificateBindingTest
         Assert.False(definition.IsVerified);
         Assert.False(property.IsVerified);
         Assert.True(outer.RemoveAttribute(Assert.IsType<AttributeKoto>(outer.AttributeChain)));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(definition.IsVerified);
         Assert.True(property.IsVerified);
     }

@@ -41,7 +41,7 @@ public class Utf8TryWriteTest
     public void RootBorrowIsActiveBeforeTheFirstEmbeddedExpression(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Setup + "_ = $tryWrite(writer@uniq, \"\\(" + expression + ")\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
@@ -149,14 +149,21 @@ public class Utf8TryWriteTest
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.ExpectedSyntax_Kd));
     }
 
-    [Fact]
-    public void DeadEmbeddedValuesStillRequireFormattingConformance()
+    // A Never writer operand, which acquires no writer, still binds its writes (PLAN G410's invalid twin).
+    [Theory]
+    [InlineData("writer@uniq")]
+    [InlineData("$abort(\"w\")")]
+    public void DeadEmbeddedValuesStillRequireFormattingConformance(string first)
     {
-        var c = MinimalEmissionTest.Analyze("struct Missing\n    public init() => ()\n" + Setup + "_ = $tryWrite(writer@uniq, \"large\\(Missing.init())\")");
+        var c = MinimalEmissionTest.Analyze("struct Missing\n    public init() => ()\n" + Setup + "_ = $tryWrite(" + first + ", \"large\\(Missing.init())\")");
         Assert.False(c.Binding.Result.IsComplete);
     }
 
-    [Trait("Purpose", "Allocation")]
+    // SPEC 15.6.4 (H3b T30, F15): the acquired writer keeps the direct Loans naming its own target past layer 1, so the MIR rejects this
+    // valid program by the SPEC's letter (at the ends of `bytes` and `buffer` and at `buffer.text()`) and generation refuses it; the old
+    // analysis accepted it, and the fixture's native audit ran it with no allocation ("acquire\n42true\n"). A refused program has no run
+    // to audit, so the audit and the Allocation purpose wait with it. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1):
+    // PLAN G148 (2), GXS adopted with its extension, restores the acceptance and re-points this test back to its zero-allocation audit.
     [Fact]
     public void BorrowedWriterExpressionEvaluatesOnce()
     {
@@ -169,7 +176,13 @@ public class Utf8TryWriteTest
         var source = Prefix + "\n" + Setup + "_ = $tryWrite(acquire(writer@uniq), \"\\(42)\\(true)\")\n" + Print;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        NativeAllocationAudit.WriteFixture("Utf8TryWriteAcquire", source, 0, 0, 0, "acquire\n42true\n");
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var bytes = [64 of 0@u8]")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var buffer = Text.fixed(bytes@uniq)")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("match buffer.text()", "buffer")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]

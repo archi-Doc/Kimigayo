@@ -23,7 +23,7 @@ public class ConstantLengthBindingTest
     public void ConstantReadableBindingsFormLengths(string source, long expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         Assert.Equal(expected, array.TypeOf()!.Length);
     }
@@ -53,7 +53,7 @@ public class ConstantLengthBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, issue => issue.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -71,7 +71,7 @@ public class ConstantLengthBindingTest
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -91,7 +91,7 @@ public class ConstantLengthBindingTest
     public void SymbolicLengthsRetainExpandedPrivateConstants()
     {
         var c = MinimalEmissionTest.Analyze("group Dimensions\n    private let Width: isize = 4\n    public func f<length N>(row: [(N + Width) of u8]) => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         var expression = array.TypeOf()!.LengthExpression!;
         Assert.Equal(KotoKind.Plus, expression.Operation);
@@ -121,7 +121,7 @@ public class ConstantLengthBindingTest
         var max = (System.Numerics.BigInteger.One << (width - (ScalarTypes.Signed(type) ? 1 : 0))) - 1;
         var declaration = $"let Max: {name} = {max}\n";
         var valid = MinimalEmissionTest.Analyze(declaration + "let row: [(Max - Max) of u8]");
-        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid, null));
+        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid));
         foreach (var expression in new[] { "(Max + 1) - Max", "(Max * 2) - Max" })
         {
             var invalid = MinimalEmissionTest.Analyze(declaration + $"let row: [({expression}) of u8]");
@@ -152,13 +152,13 @@ public class ConstantLengthBindingTest
     {
         var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of string] = [\"one\", \"two\"]\nConsole.writeLine(row[1])");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.WriteIr(writer, out error), error);
+        Assert.True(restored.Generate(writer), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("ConstantLengthReload", writer.ToString(), "two\n");
 

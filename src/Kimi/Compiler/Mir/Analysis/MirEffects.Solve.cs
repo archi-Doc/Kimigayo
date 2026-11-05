@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -12,8 +13,8 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
-    private readonly HashSet<BoundType> glued = new(ReferenceEqualityComparer.Instance); // The Types one evaluation's destruction walks met.
     private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
+    private readonly Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths).
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
     private int[] atomCounts = [];
@@ -33,6 +34,10 @@ internal sealed partial class MirEffects
 
     /// <summary>Gets the node evaluations of the last <see cref="Run"/>, linear in the program's calls (V16).</summary>
     internal int Evaluations { get; private set; }
+
+    // The current evaluation's classes: what it found, with Deep where its destruction walks met a part past the bound whose Type they
+    // never entered within it (MirDepths: a slot left Past).
+    private byte Found => (byte)(this.found | (this.glued.ContainsValue(MirDepths.Past) ? Deep : 0));
 
     /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3) and judges each <c>confined</c> obligation:
     /// per view of its target an environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the
@@ -93,17 +98,24 @@ internal sealed partial class MirEffects
         this.Obligations(report);
     }
 
-    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71).
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer (Outcome): decided (an
+    // Environment or Unknown effect) fails it; a Limit is the located Unsupported_Kd and Deep the depth limit (R4-M153).
     private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
     {
-        if ((found & (Environment | Unknown)) != 0)
+        var outcome = Outcome(found);
+        if (outcome.IsDecided)
         {
             report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
         }
-        else if ((found & Limit) != 0)
+        else if (outcome.IsLimit)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
             report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+        }
+        else if (outcome.IsDeep)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
+            report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
@@ -116,14 +128,15 @@ internal sealed partial class MirEffects
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
         this.glued.Clear();
         this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
-        if (this.found == this.classes[node] && this.scratchCount == this.atomCounts[node])
+        var found = this.Found;
+        if (found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
             return false; // The summary only grows, so equal counts are equal sets.
         }
 
         MirDataflow.Grow(ref this.atoms, this.atomCount + this.scratchCount);
         this.scratch.AsSpan(0, this.scratchCount).CopyTo(this.atoms.AsSpan(this.atomCount));
-        (this.classes[node], this.atomStarts[node], this.atomCounts[node]) = (this.found, this.atomCount, this.scratchCount);
+        (this.classes[node], this.atomStarts[node], this.atomCounts[node]) = (found, this.atomCount, this.scratchCount);
         this.atomCount += this.scratchCount;
         return true;
     }
@@ -133,7 +146,8 @@ internal sealed partial class MirEffects
     {
         for (var i = item; i < itemEnd; i++)
         {
-            this.Process(this.items[i].Type, this.items[i].Kind, this.items[i].Requirement);
+            var local = this.items[i];
+            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Reference);
         }
 
         for (var e = edge; e < edgeEnd; e++)
@@ -162,8 +176,10 @@ internal sealed partial class MirEffects
             for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
             {
                 var atom = this.atoms[a];
-                var type = subst is null ? atom.Type : types.Apply(atom.Type, subst);
-                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement);
+                // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
+                // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
+                var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
+                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Reference);
             }
         }
     }
@@ -171,11 +187,11 @@ internal sealed partial class MirEffects
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
     // (Require), or a call through a Callable value (SPEC 8.11.4): a Closure's or a function item's body entered through its substitution,
     // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
-    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null)
+    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, BoundType? reference = null)
     {
         if (type is not null && kind == Requires)
         {
-            this.Require(type, requirement!);
+            this.Require(type, requirement!, contract, reference);
             return;
         }
 
@@ -237,12 +253,19 @@ internal sealed partial class MirEffects
         {
             if (row.Runs is { } requirement)
             {
-                this.Process(this.Below(symbol, subst, row.On), Requires, requirement);
+                this.Process(this.Below(symbol, subst, row.On), Requires, requirement, TyCtxt.Contract(requirement));
             }
 
             if (row.Destroys >= 0)
             {
                 this.Process(this.Below(symbol, subst, row.Destroys), Drop);
+            }
+
+            if (row.Calls >= 0)
+            {
+                var callable = this.Below(symbol, subst, row.Calls); // SPEC 4.9.6, 8.11.4: its Callable input, called then destroyed.
+                this.Process(callable, Shared);
+                this.Process(callable, Drop);
             }
 
             return;
@@ -254,40 +277,52 @@ internal sealed partial class MirEffects
             return;
         }
 
-        this.Compose(body.Ordinal, cases.Views(body, subst), subst);
+        this.Compose(body.Ordinal, this.Views(body, subst), subst);
     }
 
-    // SPEC 4.9.6, 8.11.3: a published requirement on a Type. An abstract Type has no implementation: the requirement is nothing where
-    // the definition's premises declare it confined, else the summary's atom, composed at the callers (unknown at the top). Any other Type
-    // runs each target Binding resolves under those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's leaf
-    // witnesses, a witness body as a dynamic edge), and none resolving (a composite with an abstract part) is a limit.
-    private void Require(BoundType type, BindingSymbol requirement)
+    // SPEC 4.9.6, 8.11.3: a published requirement on a Type under the Contract reference its call recorded. An abstract Type has no
+    // implementation: the requirement is nothing where the definition's premises declare it confined, else the summary's atom, composed at
+    // the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a conformance only of a closed Self; a
+    // built-in target's requirement, the one a Terminator records on an abstract Self, resolves without it). Any other Type runs each
+    // target Binding resolves under that reference and those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's
+    // leaf witnesses, a witness body or an accessor as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in
+    // target keeps its requirement's declaration), and none resolving (a composite with an abstract part, a standard Property witness) is a
+    // limit.
+    private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, BoundType? reference)
     {
         if (type.IsAbstract)
         {
             if (types.DispatchBounds(this.definition, requirement, type, null) != true)
             {
-                this.AddAtom(type, Requires, requirement);
+                this.AddAtom(type, Requires, requirement, contract);
             }
 
             return;
         }
 
         var start = this.targets.Count;
-        this.found |= types.Witnesses(requirement, type, this.definition, this.targets) ? (byte)0 : Limit;
+        this.found |= types.Witnesses(requirement, type, contract, reference, this.definition, this.targets) ? (byte)0 : Limit;
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, declaring) = this.targets[i];
-            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+            if (target.CompilerFunction == CompilerFunctionKind.None && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
+            {
+                this.found |= dispatched ? (byte)0 : Unknown; // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
+            }
+            else
+            {
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+            }
         }
 
         this.targets.RemoveRange(start, this.targets.Count - start);
     }
 
     // SPEC 16.3, 8.11.3 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's
-    // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3), walked on below the handle so
-    // that a growing recursive Type (SPEC 15.3.5) meets the walk's bound, else any more-derived destructor may run; a struct's destructor
-    // runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
+    // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3, MirTypes.SealedPayload, the one
+    // test A5 reads too), walked on below the handle so that a growing recursive Type (SPEC 15.3.5) meets the walk's bound, else any
+    // more-derived destructor may run; a struct's destructor runs; a string's, an Array's or a Dictionary's storage is released (its
+    // elements are parts of their own).
     private void Destroy(BoundType type, int depth)
     {
         if (type.IsAbstract)
@@ -301,9 +336,9 @@ internal sealed partial class MirEffects
         else if (type.Kind == BoundTypeKind.Semantics)
         {
             var glue = new Glue(this);
-            var proven = types.Sealed(this.definition, type.Components[0]);
-            this.found |= proven ? (byte)0 : Unknown;
-            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue, depth + 1);
+            var payload = MirTypes.SealedPayload(type, types, this.definition);
+            this.found |= payload is null ? Unknown : (byte)0;
+            MirTypes.Destruction(payload, ref glue, depth + 1);
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
@@ -315,15 +350,15 @@ internal sealed partial class MirEffects
     // Type is a projection with a recursive base, which a summary never keeps (SPEC 15.6.4; TyCtxt.RecursiveBase): a destroyed abstract part
     // proven Copy does nothing (SPEC 16.3.3 "unless the Type is Copy", 8.11.2 "not proven Copy"), any other is unknown (a call through an
     // input reaches here only without confined).
-    private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null)
+    private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null)
     {
         if (this.reader < 0 || types.RecursiveBase(this.definition, type))
         {
-            this.found |= kind == Drop && types.Copy(this.definition, type) ? (byte)0 : Unknown;
+            this.found |= kind == Drop && types.Copies(this.definition).Copy(type) ? (byte)0 : Unknown;
             return;
         }
 
-        var atom = new Atom(type, kind, requirement);
+        var atom = new Atom(type, kind, requirement, contract);
         for (var i = 0; i < this.scratchCount; i++)
         {
             if (ReferenceEquals(this.scratch[i].Type, type) && this.scratch[i] == atom)
@@ -359,7 +394,7 @@ internal sealed partial class MirEffects
                     this.Process(callable, Drop);
                 }
 
-                Verdict(report, row, this.found, ulong.MaxValue);
+                Verdict(report, row, this.Found, ulong.MaxValue);
             }
             else if (row.Definition is not { } target)
             {
@@ -381,7 +416,7 @@ internal sealed partial class MirEffects
     {
         var body = this.program.Callee(new(MirCalleeKind.Fn, implementation));
         var perView = own && body is not null;
-        for (var mask = perView ? cases.Views(body!, null) : 1UL; mask != 0; mask &= mask - 1)
+        for (var mask = perView ? this.Views(body!, null) : 1UL; mask != 0; mask &= mask - 1)
         {
             var view = perView ? 1UL << BitOperations.TrailingZeroCount(mask) : ulong.MaxValue;
             (this.found, this.scratchCount) = (0, 0);
@@ -395,14 +430,14 @@ internal sealed partial class MirEffects
                 this.Enter(body, null, implementation);
             }
 
-            Verdict(report, row, this.found, view);
+            Verdict(report, row, this.Found, view);
         }
     }
 
-    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
+    // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow (Deep).
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
-        public bool First(BoundType type) => owner.glued.Add(type);
+        public bool First(BoundType type, int depth) => MirDepths.Enter(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _), depth);
 
         public bool Visit(BoundType type, int depth)
         {
@@ -410,9 +445,9 @@ internal sealed partial class MirEffects
             return false;
         }
 
-        public bool Deep()
+        public bool Deep(BoundType type)
         {
-            owner.found |= Limit;
+            MirDepths.Meet(ref CollectionsMarshal.GetValueRefOrAddDefault(owner.glued, type, out _));
             return false;
         }
     }

@@ -106,7 +106,6 @@ public class DereferenceUpdateTest
         { "ZeroSize", ZeroSize, "ok\n" },
         { "LengthItem", LengthItem, "ok\n" },
         { "ErasedProjection", ErasedProjection, "ok\n" },
-        { "NestedReference", NestedReference, "ok\n" },
         { "UpdateOrder", UpdateOrder, "rhs\ncall\n" },
     };
 
@@ -118,6 +117,23 @@ public class DereferenceUpdateTest
     [MemberData(nameof(Fixtures))]
     public void ReturnedReferencesAreFollowed(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ReturnedReference" + name, source, stdout);
+
+    // H3b F13: the nested reference Function Type `ref/(ref/i32 during a)`, written in `f`'s annotation and in its Closure's result, gets
+    // A5's located Unsupported_Kd at each, so the MIR rejects this valid program and generation refuses it (the old analysis accepted it
+    // and it printed "ok"). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1; PLAN G216 (b)): U-O3 (BU's R7-O3) restores
+    // the acceptance and moves this program back to ReturnedReferencesAreFollowed's fixtures.
+    [Fact]
+    public void ANestedReferenceResultIsRefusedPendingG216b()
+    {
+        var c = MinimalEmissionTest.Analyze(NestedReference);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.Unsupported_Kd, MirTargetSide.At("-> ref/(ref/i32 during a) = func", "ref/(ref/i32 during a)")),
+            (DiagnosticCode.Unsupported_Kd, MirTargetSide.At("(v) -> ref/(ref/i32 during a)", "ref/(ref/i32 during a)")));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
 
     // A followed referent keeps the capability of the returned reference and never offers Take; an assignment target is never
     // redirected to the referent (SPEC 3.5.3).
@@ -157,10 +173,10 @@ public class DereferenceUpdateTest
     {
         var source = Slot + declaration + "\nvar a: Array<i32> = [1]\nlet view = f(a@uniq)@follow@ref\nf(a@uniq)@follow = 42\nConsole.writeLine(\"\\(view@follow)\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -171,12 +187,12 @@ public class DereferenceUpdateTest
     {
         var declaration = erased ? "let f: (uniq/Array<i32>) -> uniq/i32 = func (a) -> uniq/i32 => a[0]@uniq" : "let f = slot";
         var c = MinimalEmissionTest.Analyze(Slot + declaration + "\nvar a: Array<i32> = [1]\nf(a@uniq)@follow += 2");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

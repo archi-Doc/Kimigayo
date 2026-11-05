@@ -15,7 +15,7 @@ public class PairGroupingBindingTest
     [InlineData("s/((T))")]
     public void OriginalPairGroupingPreservesTheWholeType(string type)
     {
-        var c = Parse($"func identity<s/T>(value: {type}) -> {type} => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
+        var c = Parse($"func identity<s/T>(value: {type}) -> {type} => value@move\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var identity = Function(c, "identity");
         Assert.Same(identity.SymbolOf()!.Schema!.GenericSlots[0].Symbol.WholeType, identity.Parameters[0].Type.TypeOf());
@@ -35,7 +35,7 @@ public class PairGroupingBindingTest
     [InlineData("Box<s/(T)>")]
     public void NestedWholeTypesRemainValidAcrossReloadAndWriting(string type)
     {
-        var source = $"struct Box<U>\n    var value: U\nfunc identity<s/T>(value: {type}) -> {type} => value";
+        var source = $"struct Box<U>\n    var value: U\nfunc identity<s/T>(value: {type}) -> {type} => value@move";
         var c = Parse(source);
         Verify(c);
         Verify(CompilationTestHelper.Reload(c));
@@ -131,16 +131,16 @@ public class PairGroupingBindingTest
     [Fact]
     public void GenericGenerationStillRequiresItsOwnImplementation()
     {
-        var c = Parse("func identity<s/T>(value: s/(T)) -> s/(T) => value\nidentity(1)");
+        var c = Parse("func identity<s/T>(value: s/(T)) -> s/(T) => value@move\nidentity(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGroupedPairBindingAllocatesNothing()
     {
-        var c = Parse("func identity<s/T>(value: s/((T))) -> s/(T) => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
+        var c = Parse("func identity<s/T>(value: s/((T))) -> s/(T) => value@move\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

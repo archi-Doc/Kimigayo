@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -42,19 +42,6 @@ public class GenericCompositeValueTest
         => ScalarEmissionTest.EmitFixture("GenericComposite" + name, source, stdout);
 
     [Fact]
-    public void ZeroSizeDestructionRetainsAnAddressWithoutChangingLayout()
-    {
-        var source = Fixtures.Single(x => x.Data.Item1 == "ZeroSizePayload").Data.Item2;
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        var place = Assert.Single(body.SymbolPlaces, x => x.Key.Name == "items").Value;
-        var function = Assert.Single(Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction), x => ReferenceEquals(x.Abi, RuntimeAbi.Entry));
-        var slot = Assert.Single(function.Slots, x => x.Place == place);
-        Assert.Equal(0, slot.Value.Layout.Size);
-    }
-
-    [Fact]
     public void AbortingPayloadDestructorStopsRemainingCleanup()
         => ScalarEmissionTest.EmitFixture(
             "GenericCompositeAbortPayload",
@@ -77,47 +64,25 @@ public class GenericCompositeValueTest
     [InlineData(Resource + Delivery + "let value: Delivery<Resource> = .Ready(Resource.init(1))\nmatch value@move\n    .Ready(let item) => ()\n    .Missing => ()\nlet invalid = value@move")]
     [InlineData("func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)\nlet value = duplicate<i32>(1)")]
     [InlineData("func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)\nConsole.writeLine(\"unused definition\")")]
-    [InlineData("func duplicate<T>(value: T) -> (T, T) => (value, value)\nConsole.writeLine(\"unused definition\")")]
     [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n    drop => ()\nConsole.writeLine(\"unused definition\")")]
     [InlineData("func observe<T>(value: ref/T) => ()\nfunc relay<T>(value: T) -> T\n    let pending = value@move\n    defer => observe<T>(pending@ref/T)\n    return pending@move\nConsole.writeLine(\"unused definition\")")]
     public void RejectsInvalidOwnershipUniversally(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
-    [Theory]
-    [InlineData("acquisition")]
-    [InlineData("payload")]
-    [InlineData("cleanup")]
-    public void RejectsCorruptOwnershipPlansAndRecovers(string defect)
+    // A bare duplicate of an unconstrained T is SPEC 3.5's error at each element, Binding's TransferRequired_Kd (R6-check H1).
+    [Fact]
+    public void ABareDuplicateIsBindingsRecordUniversally()
     {
-        var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        if (defect == "acquisition")
-        {
-            var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.AcquirePattern);
-            body.OperationStorage[id] = body.Operations[id] with { Acquisition = AcquisitionKind.Copy };
-        }
-        else if (defect == "payload")
-        {
-            body.DecompositionStorage[0] = body.Decompositions[0] with { PayloadStart = 0 };
-        }
-        else
-        {
-            body.CleanupStepStorage.Clear();
-        }
-
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.Validate(out error), error);
+        var c = MinimalEmissionTest.Analyze("func duplicate<T>(value: T) -> (T, T) => (value, value)\nConsole.writeLine(\"unused definition\")");
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "value"), (DiagnosticCode.TransferRequired_Kd, "value")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -125,11 +90,7 @@ public class GenericCompositeValueTest
     {
         var other = Resource.Replace("Resource", "Other").Replace("one", "other one").Replace("two", "other two");
         var source = Resource + other + Relay + "do\n    let result = relay<[2 of Resource]>([Resource.init(1), Resource.init(2)])\ndo\n    let result = relay<[2 of Other]>([Other.init(1), Other.init(2)])\nlet source: [2 of i32] = [5, 8]\nlet copied = relay(source)\nrequire source[0] == 5 and copied[1] == 8 else => $abort(\"copy\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         // Equal-size substitutions still get separate bodies; the native run checks Copy and each destructor.
-        Assert.True(module.IsComplete);
-        Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
         ScalarEmissionTest.EmitFixture("GenericCompositePolicies", source, "secured\ntwo\none\nsecured\nother two\nother one\nsecured\n");
     }
 
@@ -138,7 +99,7 @@ public class GenericCompositeValueTest
     {
         var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
         using var before = new StringWriter();
-        Assert.True(c.WriteIr(before, out var error), error);
+        Assert.True(c.Generate(before), MinimalEmissionTest.Describe(c));
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -149,7 +110,7 @@ public class GenericCompositeValueTest
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
         using var after = new StringWriter();
-        Assert.True(restored.WriteIr(after, out error), error);
+        Assert.True(restored.Generate(after), MinimalEmissionTest.Describe(restored));
         Assert.Equal(before.ToString(), after.ToString());
         ScalarEmissionTest.WriteFixture("GenericCompositeReload", after.ToString(), "received\ntwo\none\n");
     }

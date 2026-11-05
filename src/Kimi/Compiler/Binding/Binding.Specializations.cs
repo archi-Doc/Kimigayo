@@ -34,8 +34,6 @@ public sealed partial class Binding
     private readonly Dictionary<FunctionKoto, Specialization> specializationStorage = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<List<FunctionKoto>> siblingPool = new();
 
-    internal bool IsVerifiedSpecialization(FunctionKoto function) => this.specializations.ContainsKey(function);
-
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
 
@@ -218,8 +216,6 @@ public sealed partial class Binding
     /// <param name="original">The original generic function.</param>
     /// <returns>The specializations, or null when it has none.</returns>
     internal List<FunctionKoto>? Specializations(BindingSymbol original) => this.specializationsByOriginal.GetValueOrDefault(original);
-
-    internal FunctionKoto? SelectSpecialization(CallPlan call) => this.SelectSpecialization(call.Target, call.TypeArguments, call.LengthArguments);
 
     // SPEC 8.13, 8.13.3: a body a call of a function under its substitution may run, by index, null past the last: the specialization a
     // closed key selects, else the function itself and each specialization an open key may still select (no substitution: every one).
@@ -480,7 +476,8 @@ public sealed partial class Binding
             var constraints = this.CheckConstraints(definition.TypeConstraints, definition, arguments, scope, null, null, lengths);
             if (constraints != ConstraintProof.Proven)
             {
-                this.Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : constraints == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, constraints == ConstraintProof.Unknown);
+                _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true)
+                    : this.Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnsatisfiedConstraint);
                 continue;
             }
 

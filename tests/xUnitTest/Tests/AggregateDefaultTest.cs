@@ -27,10 +27,11 @@ public class AggregateDefaultTest
     public void OwnedExpressionsExecute(string name, string source, string output)
         => ScalarEmissionTest.EmitFixture("AggregateDefault" + name, source, output);
 
+    // The abandoned argument's component is a call's result, which has a destruction to audit; a constant has none (PLAN G157 (45)).
     [Theory]
     [InlineData("TupleCleanup", "func f(x: (string, string) = (\"first\", \"second\")) => ()\nf()", "first=1;second=1", new[] { 1, 0 })]
     [InlineData("LocalCleanup", "func f(x: string = label work: do\n    let unused = \"local\"\n    exit to work \"result\"\n) => ()\nf()", "local=1;result=1", new[] { 0, 1 })]
-    [InlineData("Abandoned", "func f(x: (string, string) = (\"first\", \"second\")) => ()\nlabel done: do => f(x: (\"first\", (exit to done)))", "first=1", new[] { 0 })]
+    [InlineData("Abandoned", "func echo(text: string) -> string => text@move\nfunc f(x: (string, string) = (\"first\", \"second\")) => ()\nlabel done: do => f(x: (echo(\"first\"), (exit to done)))", "first=1", new[] { 0 })]
     public void AggregateAcquisitionHasExactCleanup(string name, string source, string destructions, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("AggregateDefault" + name, source, string.Empty);
@@ -50,10 +51,10 @@ public class AggregateDefaultTest
         public void WarmFunctionFactoryDefaultsAllocateNothing()
         {
             var c = MinimalEmissionTest.Analyze(FunctionFactory);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
         }
 
@@ -61,10 +62,10 @@ public class AggregateDefaultTest
         public void WarmAggregateCopiesAllocateNothing()
         {
             var c = MinimalEmissionTest.Analyze(Point + "func f(p: Point, action: () -> i32 = func [p] () => p.x + p.y) -> i32 => action()\nrequire f(Point.init(2, 3)) == 5 else => $abort(\"copy\")");
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
         }
     }

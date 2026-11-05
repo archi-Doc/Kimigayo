@@ -115,7 +115,7 @@ public class LexicalRecoveryTest(ITestOutputHelper output)
         Assert.Equal(code, error.Code);
         Assert.Equal(opening, error.Text);
         Assert.Equal(new SourceSpan(source.IndexOf(opening, StringComparison.Ordinal), opening.Length), error.Span);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, TestDiagnostics.Of(c));

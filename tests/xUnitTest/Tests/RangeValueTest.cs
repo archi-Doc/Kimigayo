@@ -73,7 +73,7 @@ public class RangeValueTest
         // SPEC 4.6.4, 14.6.2: the conditional entry conformances need `S is PrimitiveInteger` and `E is S`; a refuted
         // condition supplies no conformance, so the Subject refutes the loop's requirement.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(DiagnosticCode.UnsatisfiedConstraint_Kd, issue.Code);
         Assert.Same(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single().Iterable, issue.Node);

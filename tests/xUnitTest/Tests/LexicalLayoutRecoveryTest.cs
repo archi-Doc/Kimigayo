@@ -28,7 +28,7 @@ public class LexicalLayoutRecoveryTest(ITestOutputHelper output)
         var function = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single();
         Assert.Equal(2, function.Body!.Items.Count);
         Assert.Equal("n", Assert.IsType<FieldKoto>(function.Body.Items[0]).NameKoto.IdentifierName);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         c.Bind();
         c.Binding.ReportDiagnostics();
@@ -37,7 +37,7 @@ public class LexicalLayoutRecoveryTest(ITestOutputHelper output)
 
     [Theory]
     [InlineData("func f() -> i32\n    if true\n        return 1\n    return 2\nlet n = f()")]
-    [InlineData("func take<T>(value: T) -> T => value\nfunc f() -> i32\n    let n = take<\n        i32\n    >(1)\n    return n\nlet n = f()")]
+    [InlineData("func take<T>(value: T) -> T => value@move\nfunc f() -> i32\n    let n = take<\n        i32\n    >(1)\n    return n\nlet n = f()")]
     [InlineData("func f() -> i32\n    let n = (if true\n        yield 1\n    else\n        yield 2\n    )\n    return n\nlet n = f()")]
     [InlineData("func take(value: i32) -> i32 => value\nlet n = take(\n    match true\n        _\n            let value = 7\n            yield value\n)")]
     public void LookaheadUsesTheSameRecoveredIndentation(string validSource)

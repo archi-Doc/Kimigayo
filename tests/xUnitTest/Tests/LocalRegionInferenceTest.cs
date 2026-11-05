@@ -141,7 +141,7 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     }
 
     // SPEC 15.3.6: a body variable of a local whose row has no candidate is a local region of the local, never invented as static, so each
-    // program is valid on both pipelines (DECISIONS R4-M112): an initializer's call qualifier slot outside the local's Type, a variable
+    // program is valid (DECISIONS R4-M112): an initializer's call qualifier slot outside the local's Type, a variable
     // bounded only by variables, and a contravariant slot with no principal lower bound, whose bounds hold through the region's one
     // source, the call's argument.
     [Theory]
@@ -151,12 +151,8 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     public void AVariableWithNoCandidateIsALocalRegion(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
-        {
-            c.Pipeline = pipeline;
-            var verified = c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze() is { IsVerified: true, ErrorCount: 0 };
-            Assert.True(verified, $"{pipeline}: {MinimalEmissionTest.Describe(c, null)}");
-        }
+        var verified = c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze() is { IsVerified: true, ErrorCount: 0 };
+        Assert.True(verified, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 15.3.6, 15.4.4, 15.6.5 (BU's review of 2a0-3b, B1; PLAN G225; DECISIONS R4-M112, BU-28): a call-local borrow stored through a
@@ -194,16 +190,20 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
 
     // SPEC 15.6.5 (DECISIONS R4-M112, BU-28): PLAN G65's h2, a `let` local's region captured `[var o@move]` and assigned a call-local
     // borrow, is Refuted at the store whether or not a later call reads it (h2b), since the Closure body fixes its captures' Origins
-    // (G227); it was accepted, then pinned as a recorded difference, before G227.
+    // (G227); it was accepted, then pinned as a recorded difference, before G227. Since H5 A5 also publishes the Loan conflict at
+    // `local`'s declaration, since the captured `o` receives the Loan through the aggregate `.Some(inner@move)` (SPEC 15.6.5 rule W;
+    // H3b T51, R4's F-b ruling: class 4). It is pinned by code and location only: its `loan` related names the conflict's own site (R4's
+    // open issue E1).
     [Theory]
     [InlineData("")]
     [InlineData(H2bRead)]
     public void ACallLocalBorrowStoredIntoACapturedRegionIsRefutedAtTheStore(string read)
     {
         var source = H2.Replace("READ", read, StringComparison.Ordinal);
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
-        Assert.StartsWith("inner@move", source[error.Span!.Value.Start..], StringComparison.Ordinal);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], errors.Select(static x => x.Code));
+        Assert.Equal("let local: i32 = n", source.Substring(errors[0].Span!.Value.Start, errors[0].Span!.Value.Length));
+        Assert.StartsWith("inner@move", source[errors[1].Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 15.3.6: the principal lower bound is chosen after every bound is seen, whatever the clause order, so both orders keep the one
@@ -253,8 +253,8 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }
 }

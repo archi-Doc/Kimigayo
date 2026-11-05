@@ -127,11 +127,17 @@ public class QualificationRequiredTest
     public void ABaseDependencyCycleTerminatesWithARejection()
         => Assert.NotEmpty(DiagnosticCorpus.Check("struct S: S.N\n    open struct N: S\npublic func main() => ()").Diagnostics);
 
+    // Since the MIR decides acceptance (R6-check H5), the constructor whose write Binding rejects also has A1's UninitializedPlace_Kd,
+    // since the rejected write initializes nothing (PLAN G105): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
     [Fact]
     public void AnOwnStoredFieldCanBeQualifiedInAConstructorBody()
     {
         const string source = "struct Item\n    var value: i32\n    public init() => value = 1\npublic func main() => ()";
-        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(
+            [(nameof(DiagnosticCode.UninitializedPlace_Kd), "init() => value = 1"), (nameof(DiagnosticCode.QualificationRequired_Kd), "value")],
+            records.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
+        var record = records[1];
         Assert.Equal(["value", "Item", "Value", "Receiver", "true"], record.Reason!.Select(static x => x.Value));
         Assert.Equal("declaration", Assert.Single(record.Related!).Role);
         var repair = Assert.Single(record.Repairs!);

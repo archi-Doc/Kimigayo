@@ -205,7 +205,6 @@ internal static class DiagnosticMeasurements
                 sourcePath,
                 sourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text))),
                 pipeline = compilation.Pipeline.ToString(),
-                codegen = compilation.Codegen.ToString(),
                 retainedBytes = retained,
                 medianRetainedBytes = retained.Order().ElementAt(3),
                 cold,
@@ -293,9 +292,9 @@ internal static class DiagnosticMeasurements
 
     private static CheckOutput Check(string project)
     {
-        if (!Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure))
+        if (!Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures))
         {
-            throw new InvalidOperationException(failure);
+            throw new InvalidOperationException(string.Join(Environment.NewLine, failures));
         }
 
         return CheckService.Run(loaded, Target, CheckMode.Product, false, CheckInputSource.Disk, CancellationToken.None);

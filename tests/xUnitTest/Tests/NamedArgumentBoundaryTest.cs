@@ -80,7 +80,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("func f" + parameters + " -> i32 => a + b + c\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Validate(out _));
+        Assert.Equal(accepted, c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -112,7 +112,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("func f(self: i32 ! other: i32) -> i32 => self + other\nfunc g(a => b: i32 ! b => a: i32) -> i32 => a + b\nf(1, other: 2)\ng(1, b: 2)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Validate(out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.False(MinimalEmissionTest.Analyze("func f(! self: i32) => ()\nf(1)").Binding.Result.IsComplete);
     }
 
@@ -144,7 +144,7 @@ public class NamedArgumentBoundaryTest
     public void InheritedLookupKeepsTheStaticDeclarationsNamesAndDefaults()
     {
         var c = MinimalEmissionTest.Analyze("open struct B\n    public func f(! external => x: i32 = 1) -> i32 => x\nstruct D: B\nfunc fromBase() -> i32 => B.f()\nfunc fromDerived() -> i32 => D.f()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.Equal(2, calls.Length);
         for (var i = 0; i < calls.Length; i++)

@@ -16,7 +16,7 @@ public class OriginSchemaEditTest
     public void ReplacingASignatureOriginRebuildsItsNameAndLocation(string before, string after)
     {
         var c = MinimalEmissionTest.Analyze(Source(before));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var function = Function(c);
         var previous = Assert.Single(function.SymbolOf()!.Schema!.Origins);
         var donor = Function(MinimalEmissionTest.Analyze("\n" + Source(after)));
@@ -25,7 +25,7 @@ public class OriginSchemaEditTest
         Assert.True(KotoHelper.Replace(function, function.ReturnType!, replacement));
         Assert.False(c.Binding.Result.IsComplete);
 
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var current = Assert.Single(function.SymbolOf()!.Schema!.Origins);
         Assert.Equal(after, current.Name);
         Assert.Equal(after, current.Origin.Name);
@@ -45,14 +45,14 @@ public class OriginSchemaEditTest
     public void ReplacingAGenericSlotRebuildsTheSchema(string parameter, GenericSlotKind kind)
     {
         var c = MinimalEmissionTest.Analyze("func f<T>() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var function = Function(c);
         var donor = Function(MinimalEmissionTest.Analyze($"func f<{parameter}>() => ()"));
         var replacement = donor.GenericArguments[0];
         var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
         ParseTestHelper.Detach(replacement, new GenericParameterKoto(ref reader, default, "Placeholder", null));
         Assert.True(KotoHelper.Replace(function, function.GenericArguments[0], replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var slot = Assert.Single(function.SymbolOf()!.Schema!.GenericSlots);
         Assert.Equal(kind, slot.Kind);
         Assert.Same(replacement.SymbolOf(), slot.Symbol);
@@ -68,7 +68,7 @@ public class OriginSchemaEditTest
         var donor = Function(MinimalEmissionTest.Analyze(Source("after")));
         var replacement = ParseTestHelper.Detach(donor.ReturnType!, new CodeBlockKoto(donor.CodeContext));
         Assert.True(KotoHelper.Replace(function, function.ReturnType!, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var schema = function.SymbolOf()!.Schema;
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
@@ -81,7 +81,7 @@ public class OriginSchemaEditTest
     public void NestedSchemasFollowEditedOuterSlots()
     {
         var c = MinimalEmissionTest.Analyze("struct Outer<T> {a, b}\n    struct Inner\n        let value: ref/i32 during a");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var outer = c.Kotonoha.RootKoto.NestedContainers.Single();
         var inner = outer.NestedContainers.Single();
         var previous = inner.SymbolOf()!.Schema!;
@@ -91,7 +91,7 @@ public class OriginSchemaEditTest
         Assert.True(KotoHelper.Replace(outer, outer.GenericParameterNodes[0], replacement));
         outer.Origins[0] = "b";
         outer.Origins[1] = "a";
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var current = inner.SymbolOf()!.Schema!;
         Assert.Equal(["b", "a"], current.Origins.Select(x => x.Name));
         Assert.Equal(GenericSlotKind.Pair, Assert.Single(current.GenericSlots).Kind);

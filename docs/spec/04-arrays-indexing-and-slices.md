@@ -558,11 +558,11 @@ The exclusive receiver is reserved before later arguments and activated at entry
 | Operation | User-code effects inside the operation |
 | --- | --- |
 | Array `clear`, `truncate`, destruction, Array and fixed-array owning-iterator destruction and indexed replacement | Destruction of the relevant `T` |
-| Array `removeAll` | Calls of `matching`; destruction of the removed `T` |
+| Array `removeAll` | Calls of `matching`; destruction of the removed `T` and of `matching` |
 | Array `sort()` | `T`'s `compare` |
-| Array `sort(by:)` | Calls of `by` |
+| Array `sort(by:)` | Calls of `by`; destruction of `by` |
 | Slice `contains`, `firstIndex(of:)` | `T` equality |
-| Slice `firstIndexWhere` | Calls of `predicate` |
+| Slice `firstIndexWhere` | Calls of `predicate`; destruction of `predicate` |
 | Dictionary `tryGet` / `tryInsert` / `remove` and indexing (`index`, `indexUniq`) | `K` equality |
 | Dictionary `insertOrReplace` | `K` equality and destruction of the unused input `K` |
 | Dictionary indexed replacement | `K` equality and destruction of the old `V` |

@@ -31,7 +31,7 @@ public class StaticElementUpdateTest
         var c = MinimalEmissionTest.Analyze(ExchangeSource(first, second));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.ExclusiveBorrowRequired);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -80,7 +80,7 @@ public class StaticElementUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(Resource + source);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, source);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class StaticElementUpdateTest
     {
         var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [1, 2]\nKimi.Intrinsics.swap(a[0]@uniq, a[1]@uniq)");
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
@@ -96,7 +96,7 @@ public class StaticElementUpdateTest
             Assert.True(restored.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(restored.Analyze().IsVerified);
             using var output = new StringWriter();
-            Assert.True(restored.WriteIr(output, out error), error);
+            Assert.True(restored.Generate(output), MinimalEmissionTest.Describe(restored));
             Assert.Equal(original.ToString(), output.ToString());
         }
     }

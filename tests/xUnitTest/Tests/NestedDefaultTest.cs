@@ -36,27 +36,27 @@ public class NestedDefaultTest
     {
         const string Source = "func bad(x: string, y: string = x@move) -> string => y@move\nfunc outer(x: string, y: string = bad(Text.toString(x))) => ()\nouter(\"a\", \"supplied\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var issue = Assert.Single(c.Problems);
         Assert.Equal(DiagnosticCode.DefaultArgumentMove_Kd, issue.Code);
         Assert.Equal("x", c.SyntaxOf(issue.Subject).ToString());
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void RebindingAndReloadRestoreFrames()
     {
         var c = MinimalEmissionTest.Analyze(Scalar);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
         Assert.True(restored.Analyze().IsVerified);
-        Assert.True(restored.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
+        Assert.True(restored.Generate(TextWriter.Null), MinimalEmissionTest.Describe(restored));
     }
 
     [Collection<AllocationIsolationCollection>]
@@ -67,10 +67,10 @@ public class NestedDefaultTest
         public void NestedFramesReuseStorage()
         {
             var c = MinimalEmissionTest.Analyze(Scalar);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
             var valid = true;
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
             Assert.True(valid);
         }
     }

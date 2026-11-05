@@ -972,7 +972,7 @@ The owner's instruction of 2026-10-21, after R4's list of SPEC improvement candi
 Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the second proposal's round 2 is reviewed in
 `review-2.md`.
 
-- [Closure Calls as Receiver Calls](Proposals/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
+- [Closure Calls as Receiver Calls](Changes/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
   intake only); adopted by the owner (OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99). One sentence in §15.8.2: a Closure body is checked
   against its call receiver as an instance function's body is, its environment bindings being Fields of the receiver's referent,
   so results, containment and retention follow the receiver rules; the five-row table becomes a restatement. §7.7.2, §7.7.3 and
@@ -980,14 +980,16 @@ Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the se
   D.2. Meant to change no verdict. The owner answered on the round-1 text; the review's narrower formulation, used now, keeps
   option A's intent and removes two verdict changes the round-1 definition had (its §9). Planned mapping (its §5): §15.8.2,
   §15.6.5, §7.7.4. The SPEC text lands only after 2x-P7's derivation column agrees (its §8), before 2c-D's design review.
-- [Failures Caused Only by Other Failures](Proposals/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
+  (Superseded: integrated and closed as 取り込み済み on 2026-10-25, below.)
+- [Failures Caused Only by Other Failures](Changes/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
   一部取り込み (open, intake only), candidate 3. Round 1 ("Escapes and Derived Failures", not kept) and round 2 (a general
   definition of "caused only by" in §23.1.2) were not accepted by their reviews. After two rounds on one family the owner chooses
   between W, one concrete §15.6.5 sentence for a Loan conflict on the Loan of a Borrow refuted to a fixed Origin, R, the same rule
   as an implementation contract of A6, and H, 2a0-D §7 as approved; the owner chose W (2026-10-22, 「P2は、W：個別規則に決定します」).
   Round 3 writes W out; it passed its review with fixes, a re-check and a confirmation
   (`Sketches/R4 Proposals 2026-10-21/review-p2r3.md`), and DECISIONS R4-M104 adopts it. Planned mapping, after the prototype round
-  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied.
+  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied. (Superseded: integrated and closed
+  as 取り込み済み on 2026-10-24, below.)
 - Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
 
 ## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
@@ -1185,3 +1187,130 @@ the current AGENTS (1 and 2 are the two corrections below).
     "(AGENTS, `8071549f`)" → DECISIONS Q3.
   - Correction (the file is frozen): after the move, its header link to the PLAN Size Budget proposal resolves at
     `../Proposals/2026-10-12%20PLAN%20Size%20Budget%20and%20Issue%20Register.md`. That proposal, this one's precondition, stays open.
+
+## 2026-10-24 — Failures caused only by other failures integrated (rule W; R4 unit spec-w)
+
+The owner, 2026-10-24, verbatim answers to the R4 planning session's questions after the prototype round that DECISIONS R4-M104
+ordered: 「(a) 今、W だけで開く (推奨)」 and 「(a) SPEC の W の文に書く (推奨)」 (DECISIONS R4-M122).
+
+- `Changes/2026-10-21 Failures Caused Only by Other Failures.md`: 取り込み済み (closed 2026-10-24); the file moved from `Proposals/`
+  with only its status sentence replaced. Mapping:
+  - §2's sentence → SPEC §15.6.5, a paragraph after the sentence on locals, unchanged, with the owner's clause appended ("and a read
+    through a reference to a whole value counts as a Copy of that value", the prototype round's item 6). §8's citations → §14.8.3 (one
+    sentence in Candidates) and §15.8.2 (its sentence on a returned body-local borrow). Example: §15.6.5's `store` and `keep` (§3's
+    m-write4 and m-write rows), registered in `tests/diagnostics/spec-cases.json` as `15.6.5-derived-conflict`.
+  - §1, §2's explanation and bullets, §5 and §7 → DECISIONS R4-M104 and R4-M122 (rationale, Principles, what the sentence leaves
+    unchanged, and which supersessions take effect now and which with 2a-2 and 2g-5).
+  - §3 and §6 item 1 → the prototype round of 2026-10-24 (every row that reaches a reading matches; no acceptance change). §4
+    (implementation direction, H), §6 item 3 (R5's review of the publication part) and §9 → 2a-2's full-process design and R5's H3
+    (R4-M104's order). Nothing is rejected and nothing stays open.
+  - Corrections (the file is frozen), from the prototype round: §3's m-36f row is vacuous (P12 was deleted by Abstract Calls Reach by
+    Paths, DECISIONS R4-M106, so the program has no conflict); the note after §3 expects m-write3's storage-end conflict to be derived,
+    but there is none (the write `x = 2` ends x's Loans first, SPEC §15.6.3), only the independent write conflict; round 3's B1 (b) row
+    (keepA) lists one conflict, but the program has a second, at local's storage end, derived from the relation at `v` (`p.*` receives
+    v's value, a Copy of `local@ref`, at `a`); review-2's B1 (a) row lists one conflict, but the program has a second, at local's storage
+    end, which the sentence derives per part (`p.*.0` receives a Copy of `local@ref` at `a`) and the prototype, without per-part facts,
+    reads independent (SPEC-legal); §4 does not state the read-through rule SPEC now has. The prototype round's record:
+    `Sketches/A5 Step 2/W prototype round/`.
+  - Not implemented: A5's derivation is 2a-2's. No verdict changes, so STATUS is unchanged (its Diagnostics row already states that a
+    Binding Origin failure stops ownership, the example's (a) difference). SPECJ and GUIDE are not refreshed.
+
+## 2026-10-25 — Closure calls as receiver calls integrated (R4 unit spec-closure)
+
+The owner, 2026-10-25, verbatim answers to the R4 planning session's questions after the 2x-P7 derivation round that DECISIONS R4-M99
+ordered: 「(a) §7.7.2 の許可で決める (推奨)」 (D1), 「(a) 本体局所の源に限る (推奨)」 (D2), 「(a) 今開き、2c-D の設計と並行 (推奨)」 (timing) and,
+on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みにする（元の Origin）: 借り直しの子が親と同じ長さを持てる、と SPEC を直します。」
+(DECISIONS R4-M123).
+
+- `Changes/2026-10-21 Closure Calls as Receiver Calls.md`: 取り込み済み (closed 2026-10-25); the file moved from `Proposals/` with only
+  its status sentence replaced. Mapping:
+  - §2's sentence → SPEC §15.8.2, a paragraph before the table, its §15.6.5 citation dropped (the Fields statement is made there and
+    §15.6.5 cites it), followed by the permissions and retention sentence (§2's first bullet, worded by 2x-P7's m-rc1 and m-rc2 and by
+    D1). §2's bullets: §7.7.2's permissions and §7.7.3's receiver unchanged; the Closure Type unchanged; "per the table" → "by the
+    receiver rules" (§15.8.2's second paragraph); the third paragraph kept with its reason and elision stated without the hidden
+    receiver (§15.4.3; OQ-C2 (a)).
+  - §3 → the table as a restatement; its last row (the catch-all) → D2's derived statement, merged into the second paragraph's sentence
+    on a returned body-local borrow. §3's other bullets → §15.6.5 (the fixed-Origin sentence deleted, the body-local sentence citing
+    §15.8.2) and §7.7.4 ("its result contract does not depend on its receiver"), as §5 maps them.
+  - §4: option A adopted; B rejected (OQ-C2 (a)); C and D rejected (DECISIONS R4-M99). §6 and §8's step 2 → 2c-D's design (A5 step 2
+    plan §4.5) and DECISIONS R4-M123's "2c-D implements". §7 → R4-M123's Principles. §8's step 1 → the 2x-P7 round
+    (`Sketches/A5 Step 2/2x-P7 round/p7-round.md`): no difference but D1 and D2, both answered. §9 answered; §10 → p7-round §8.
+  - Examples: §15.8.2's `update` (D1) and `take` (F3 and §3's Consuming row), registered in `tests/diagnostics/spec-cases.json` as
+    `15.8.2-environment-retention` (the old path's conflict, (a)) and `15.8.2-bare-entry-origin` (R1's `Unsupported_Kd`, (b)).
+  - Not the proposal's: F3 → SPEC §3.5.1 ("possibly the parent's own") and §7.7.2 (a bare entry's child has the meet of the Origins
+    that contain it), DECISIONS R4-M123 and BU-28's note.
+  - Corrections (the file is frozen): §5's "No example changes (H)" — two examples were added; §6's 2c-2 Exclusive row "the
+    environment and captured exclusive referents" reads, by D1, `var` bindings and captured exclusive referents, since no Closure body
+    can replace its environment; §3's catch-all row "is an error" holds only for a source whose Origin is body-local (D2); after the
+    move, the links to the A5 step 2 plan and the S3 plan resolve at `../Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md`
+    and `../Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md`.
+  - Not implemented: 2c-D (A5-F7). STATUS records the default pipeline's rejection of D1's `let`-binding form as an old-path limit until
+    R6-check. SPECJ and GUIDE are not refreshed.
+
+## 2026-11-03 — R7, R8 and R9 implementation plan
+
+- [R7, R8 and R9 Implementation Plan](Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md): 一部取り込み (open). The owner
+  adopted it on 2026-11-03 as the formal plan for R7 (Binding consolidation), R8 (library algorithms in Kimigayo, 28 intrinsics) and R9
+  (the front-end remainder, the Documentation and toolchain moves, the final documents), with its exit gates and its three-session
+  arrangement, and answered its questions RQ1–RQ17 as recommended (verbatim 「RQ1〜RQ17 を推奨どおりで承認します」; its status line, §0 and
+  §2.2 record the outcomes; DECISIONS R7-M1–R7-M3). It is a working plan: no section is integrated into SPEC or IMPL, and no text is frozen.
+- Its specification work goes separately, each as an explicit revision recorded here when it lands, its text shown to the owner first
+  (RQ10): R7-SP1 (SPEC §10.1 step 5 or §8.1.3, §10.8, §15.3.4: Origins out of applicability, T1–T4), R7-SP2 (SPEC 8.2.3, only if C3 finds
+  a gap), R8-SP1 (SPEC §22.1, §22.7, §22.9.1, §22.10.5, IMPL §21.1.3 and §21.4.4, the sections after the 72fb4b791 rewrite: the representation structs,
+  the private primitives and intrinsics, `writeLine` as a body), R8-SP2 (§6.7 and §22.1: the lang attributes as identification), R8-SP3
+  (§15.7 and §15.7.1: the whole-value updates as bodies), R8-SP4 (SETTLED's entry on representation structs), R9-B1 (IMPL §20.8.3's
+  manifest); SPEC §8.4.4's OCC revision is proposed at R9's exit (RQ14). Adoption implies no implementation support.
+- Revision 1 (2026-11-03, plan §14): R8-L0a's census corrected §5.2's unit parts and `.ll.in` dispositions, the allocation inventory and
+  SP1–SP4's citations; the plan stays 一部取り込み (open), nothing frozen.
+
+## 2026-11-03 — G216 (a) position rows
+
+- [G216 (a) Position Rows](Proposals/2026-11-03%20G216%20%28a%29%20Position%20Rows.md): 一部取り込み (open). The owner approved the design
+  and its two SPEC readings in the G216 planning session (verbatim 「推奨の内容でOKです。」), fixed the policy (「その方針で確定します。」:
+  start after the flip group's sweep, this session leads the design and U0, R4 reviews, DECISIONS under BU numbers, U0 before H5) and
+  chose its placement (「設計書はdraft/Proposalsに保存してください。健全性優先の計画でお願いします。」: option A, the R7 plan's revision 2,
+  I3's content and I1's G216 (a) part). It is an implementation design: no section is integrated into SPEC or IMPL, and no text is
+  frozen. The two readings (SPEC 15.6.4 step 3 with 10.3: Result exempts only a position whose instantiated sub-Type is a slot the
+  expected result solved; SPEC 10.5.1 with 14.9.2 step 2: a control-flow argument supplies child positions by structure whether or not
+  the join waited) are readings of the current text; if U6 finds that 10.5.1 needs a sentence for the second, that revision is proposed
+  separately and recorded here. Adoption implies no implementation support.
+- Revision 1 (2026-11-03, U0's review B1 by the middle): §3.1's mk2 record is `UnprovenOriginRelation_Kd` (two fixed ends, Unknown), not
+  Unsatisfied; the oracle and the U2 rows follow. No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 2 (2026-11-03, U0's re-review R1 by the middle): rule 6 (§3) covers well-formedness rows; a fit relation keeps DIAGNOSTICS'
+  site, the result's fit at the call (BU-51's pin). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 3 (2026-11-05, U2's design by the planning session, `artifacts/verify/g216a-oracle/U2-design.md`): the Result per position
+  is the premise visits' stop at a slot pattern (the pattern beside the instantiated Type; a layer's stored premise ranges over the
+  slot's solution), so the Result column value and `ResultSolved` are superseded (§4, §5, §6's U2 row). No other text changed; the
+  proposal stays 一部取り込み (open), nothing frozen.
+
+## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
+
+- [Published Copy Verdicts Plan](Proposals/2026-11-03%20Published%20Copy%20Verdicts%20Plan.md): 一部取り込み (open). A working plan, not a
+  specification proposal: the owner decided Q8-3's cost, verbatim 「Binding の判定結果を公開して、検証器はそれを読むだけにする」, and then, verbatim
+  「R9後でもいい？そしたら、draft/Proposalに計画書を書いて、今後の予定としてください。」. Binding publishes its Copy verdicts and the MIR validator,
+  MirEffects, MirTypes.Destruction and code generation read them (units U0–U3b, after R9). No SPEC or IMPL mapping; nothing frozen; PLAN G406.
+  Adoption implies no implementation support.
+
+## 2026-11-04 — Abstract-part reach integrated (G264 (S) S0)
+
+- No proposal file: the owner's instruction (R4's dialog, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」, the plan
+  「抽象部分の到達規則（(S)）」) maps to SPEC 15.6.4 (a value of an abstract Type reaches what its holder's Loans and addresses
+  reach, writing by provenance, never through a shared Loan, an untied result's E included (the owner's 「Yes, writable」); examples
+  `count<S>`, `later<T>`, `laterAlloc<T>` and `chain<T>`), 16.3.3 (such a part's destruction
+  stores within that reach; a handle payload whose View Target is an abstract Type is erased unless proven Sealed, Copy not emptying
+  it) and 5.7 (an access through a hidden raw layer beyond that reach is the declaring code's, 5.2.1); DECISIONS R4-M170, which
+  overrides Q1 (a) by (S), neither (a) nor (b). SPECJ follows in this unit (RQ10 (a)); GUIDE is not refreshed. Integration implies no
+  implementation support (S1′, S2). Revised after the one SPEC review's REVISE (B1–B5, N1) and its re-check (B6), with the owner's answer on untied results, and its re-check 2 (B7). Round 4 adds the owner's 15.6.4 sentence on raw layers an argument holds by value (the Q11 ruling on S1′'s
+  B2′, verbatim 「この方針で」; DECISIONS R4-M170), and `chain<T>` shows B7's reach through retention (its store
+  while another Loan lives is 5.2.1's raw access). The owner read the text (RQ10 (a)), verbatim 「SPEC改訂、推奨どおりでOKです」
+  (2026-11-04); round 5's alignments change no meaning.
+
+## 2026-11-05 — docs/dev reduction (PLAN G420)
+
+- Correction (the files are frozen): the owner's 「Q-a： 削除して」「Q-c： promptsも削除して」 deleted `G55_G60.md`,
+  `BINDING_REVIEW.md`, `PARSING_REVIEW.md`, `P34_REMAINING.md` and `prompts/` from docs/dev; their text is in git history at
+  4fb6fcdb1. 「Q-b： draft に移して」 moved `LLVM_OPTIMIZATION.md` from docs/dev to [Design](Design/LLVM_OPTIMIZATION.md). The links,
+  paths and item citations to them in `Changes/2026-10-09 G34 G73 G80 Fix Plan.md`, `Design/2026-09-29 Diagnostics.md`,
+  `Obsolete/2026-10-12 AGENTS Restructuring and Workflow Document.md`, `Proposals/2026-10-12 Pre-R5 Work Items.md`,
+  `Proposals/2026-10-12 Post-Reduction Work Items.md` (P34_REMAINING's R3, now in PLAN's U7 row), `Sketches/R5 Step 0/C-design-2.md`,
+  `C-package.md`, `deep-dives/q2-codegen-shape.md` and `Sketches/R6-gen/G8-design.md`, and the older entries above, are unchanged and read at that commit or at the new path.

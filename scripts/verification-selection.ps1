@@ -23,12 +23,6 @@ function Get-KimiTestAlternatives([string] $Pattern, [switch] $Method) {
     }
 }
 
-# The compiler configuration of a run (R5 PD4, until G4): MIR code generation needs the mir pipeline, as KIMI_CODEGEN does, so the
-# combination is rejected before building rather than by every compiler process.
-function Assert-KimiCompilerConfiguration([string] $Pipeline, [string] $Codegen) {
-    if ($Codegen -eq 'mir' -and $Pipeline -ne 'mir') { throw '-Codegen mir needs -Pipeline mir (MIR code generation runs on the mir pipeline only, R5 PD4).' }
-}
-
 # The common compiler checks every Unit test selection includes (docs/dev/VERIFICATION.md, verification scope).
 $KimiCommonTestClasses = @('XunitTest.ArchitectureRulesTest')
 

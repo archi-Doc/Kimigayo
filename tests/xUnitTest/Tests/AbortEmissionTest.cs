@@ -41,9 +41,9 @@ public class AbortEmissionTest
     public void ExplicitAbortPassesEveryCompilerStage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         Assert.Contains("@__kimi_abort_message", writer.ToString());
     }
 
@@ -64,7 +64,7 @@ public class AbortEmissionTest
     public void RejectsInvalidInput(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -75,19 +75,20 @@ public class AbortEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Problems, x => x.Code == failure);
         Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // Code after $abort is unreachable: its first use of a Local is one location-only Unsupported at that use.
+    // SPEC 14.10.3: code after $abort is unreachable and checked in the assumed-path state, where $abort completes after its operands: a
+    // use of a Local Moved by its operand or never initialized is that Language error at the use (R6-check H5; class 3, R4's verdict).
     [Theory]
-    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", "text")]
-    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", "x")]
-    public void UnreachableLocalUseIsUnsupported(string source, string at)
+    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", "text", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", "x", DiagnosticCode.UninitializedPlace_Kd)]
+    public void AnUnreachableLocalUseIsCheckedOnTheAssumedPath(string source, string at, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var issue = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
-        Assert.False(c.Validate(out _));
+        Assert.Equal((code, source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -117,6 +118,50 @@ public class AbortEmissionTest
         Assert.Equal(location, c.Locations.Text(SourceRef.Of(Abort(c))));
     }
 
+    // IMPL 20.1 (DECISIONS R5-M175): a dependency's source is named relative to its own project, not to the root's.
+    [Fact]
+    public void ADependencysLocationNamesItsOwnProjectsSource()
+    {
+        var directory = Path.GetFullPath("location-dependency");
+        var c = ModuleBindingTest.Prepared(Path.Combine(directory, "App"), Path.Combine(directory, "Lib"));
+        c.SourceModules[0].AddSource(new SourceDocument(Path.Combine(directory, "App", "App.kimi"), "public func main() => ()\n"));
+        c.SourceModules[1].AddSource(new SourceDocument(Path.Combine(directory, "Lib", "Lib.kimi"), "public func fail() => $abort(\"x\")\n"));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var abort = KotoTree.Walk(c.SourceModules[1].RootKoto).OfType<MacroKoto>().Single();
+        Assert.Equal("Lib.kimi:1:23", c.Locations.Text(SourceRef.Of(abort)));
+    }
+
+    // IMPL 20.1 (DECISIONS R5-M175): a function moved into another module (the public AddLast) keeps its document's location name,
+    // asked of the module the document came from (CodeContext.SourceName), not of the module it moved into.
+    [Fact]
+    public void AMovedFunctionsLocationKeepsItsDocumentsName()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Project.Directory = Path.GetFullPath("location-moved-root");
+        var library = Path.GetFullPath("location-moved-library");
+        var other = new Kotonoha(c, "Other", Path.Combine(library, "Other.kimiproj"));
+        other.AddSource(new SourceDocument(Path.Combine(library, "src", "Moved.kimi"), "func fail() => $abort(\"x\")\n"));
+        var moved = KotoTree.Walk(other.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "fail");
+        c.Kotonoha.AddSource(new SourceDocument(Path.Combine(c.Project.Directory, "Main.kimi"), "fail()\n"));
+        c.Kotonoha.RootKoto.AddLast(moved);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal("src/Moved.kimi:1:16", c.Locations.Text(SourceRef.Of(KotoTree.Walk(moved).OfType<MacroKoto>().Single())));
+    }
+
+    // IMPL 20.1, 21.4.2 (PLAN G346): a NUL inside the project is a name's character: the source checks, and its location is relative
+    // with the NUL escaped.
+    [Fact]
+    public void ANulInsideTheProjectIsEscapedInItsRelativeLocation()
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.Directory = Path.GetFullPath("location-nul");
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(Path.Combine(c.Project.Directory, "a\0b.kimi"), "$abort(\"x\")"));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal("a\\u{0}b.kimi:1:1", c.Locations.Text(SourceRef.Of(Abort(c))));
+    }
+
     // The location memo holds the current program only: an edit releases the texts of the documents it replaced.
     [Fact]
     public void AnEditReleasesTheReplacedLocationTexts()
@@ -125,7 +170,7 @@ public class AbortEmissionTest
         var replaced = LocationText(c);
         c.Kotonoha.RootKoto.Clear();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "\n$abort(\"after\")");
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.EndsWith(":2:1", c.Locations.Text(SourceRef.Of(Abort(c))));
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -153,13 +198,13 @@ public class AbortEmissionTest
         Assert.Same(Assert.IsType<InvocationKoto>(Abort(c).Operand).CallOf(), CallPlan.Of(Abort(c)));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out _));
+        Assert.True(c.Generate(TextWriter.Null));
 
         var success = true;
         var allocated = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, allocated);

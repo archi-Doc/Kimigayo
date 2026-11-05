@@ -29,7 +29,7 @@ public class FunctionItemCallableTest
         var c = MinimalEmissionTest.Analyze("func inc(value: i32) -> i32 => value + 1\nfunc accept<F>(f: ref/F)\n    F is Callable<" + signature + ">\n    return\naccept(inc)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Failure == BindingFailure.NoApplicableCandidate);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -39,7 +39,7 @@ public class FunctionItemCallableTest
     {
         var c = MinimalEmissionTest.Analyze("func inc(value: i32) -> i32 => value + 1\nfunc invoke<F>(f: uniq/F) -> i32\n    F is Callable<uniq, (i32) -> i32>\n    return f(41)\n" + call);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -52,7 +52,7 @@ public class FunctionItemCallableTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

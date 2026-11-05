@@ -47,17 +47,17 @@ public class ObjectFieldUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(Item + declaration + "\nowner.id = 9");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
     public void AFieldLoanPreventsReplacement()
     {
         var c = MinimalEmissionTest.Analyze(Item + "var owner = Kimi.Intrinsics.makeObj(Item.init())\nlet borrowed = owner.id@ref\nowner.id = 9\nrequire borrowed == 7 else => $abort(\"live\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -65,10 +65,10 @@ public class ObjectFieldUpdateTest
     public void WarmFieldUpdatesAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Item + "var owner = Kimi.Intrinsics.makeObj(Item.init())\nowner.id = owner.id + 2\nowner.id++");
-        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

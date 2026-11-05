@@ -8,7 +8,7 @@ using Xunit;
 namespace XunitTest;
 
 // Abi.Of and Abi.Matches (IMPL 21.3.1, SPEC 22.6; R5 P8, DECISIONS R5-M58): the internal convention's order, kinds, zero-sized
-// omission, result slot and flags; no gate; #LibraryImport's C convention. The old pool's reuse is FunctionEmissionTest's.
+// omission, result slot and flags; no gate; #LibraryImport's C convention.
 public class AbiTest
 {
     private const string Probe = "func probe(a: i32, b: (), c: string, d: (i32, i64), e: ref/string) -> i32 => a\n";
@@ -63,14 +63,12 @@ public class AbiTest
     [Fact]
     public void AbiHasNoGate()
     {
-        // IMPL 21.1.3: Never is zero-sized, so a Never parameter has no slot, and a Never result returns void and does not return,
-        // while the old pool's gate (until R6-gen) still refuses Never.
+        // IMPL 21.1.3: Never is zero-sized, so a Never parameter has no slot, and a Never result returns void and does not return.
         var layout = new Layout();
         var i32 = BoundType.Primitives["i32"];
         var abi = Abi.Of(layout, Abi.Convention.Internal, Abi.Flags.None, BoundType.Never, [BoundType.Never, i32]);
         Assert.Equal("void (i32 a1 Value 1) noreturn", Describe(abi));
         Assert.True(Abi.Matches(abi, layout, Abi.Convention.Internal, Abi.Flags.None, BoundType.Never, [BoundType.Never, i32]));
-        Assert.False(FunctionAbiPool.Supports(BoundType.Never));
     }
 
     [Fact]

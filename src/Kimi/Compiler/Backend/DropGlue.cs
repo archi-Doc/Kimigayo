@@ -4,14 +4,16 @@
 // R5-M95): what destroying a value of a closed Type destroys directly, in destruction order, the one enumeration (Parts) the instance
 // collector's DropGlue items target and FunctionCodegen writes their functions from, so the two cannot disagree; and the row of a Type's
 // glue function (Row), which FunctionCodegen writes through its call writer (PD3): a string's calls the runtime release (PD18's string
-// row, C0c); a struct's, Tuple's, enum's, fixed array's or Closure environment's destroys its parts (C4a, C5a); the other rows are their
-// units'.
+// row, C0c); a struct's, Tuple's, enum's, fixed array's or Closure environment's destroys its parts (C4a, C5a); an erased function's
+// calls its drop entry (C5b), an owning handle's releases its object (C6b); an Array's and a Dictionary's are their legacy Drop rows'
+// (C8d, C8e), one row each.
 // Input: a closed Type of a compilation and its TyCtxt (Sealed). Output: a Type's row, the string row's routine and a glue function's
 // parameters; the Type's direct parts in destruction order, each with its position in its aggregate: a declared destructor alone for a
 // struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in reverse logical declaration order,
 // then its base; a Tuple's elements in decreasing index; a fixed array's element (each element, from the last); an enum's Case payload
 // elements, each Case's in reverse declaration order; a Closure environment's captures in reverse initialization order (X23); an Array's
-// or Dictionary's element Types, which its legacy Drop row destroys (its ElementGlue need, X4) and lays out (X34); an owning handle's
+// or Dictionary's element Types, which its legacy Drop row destroys (its ElementGlue need, X4; a Dictionary's through the clearEntries
+// instance its Drop row declares, its glue's one target, DECISIONS R5-M124) and lays out (X34); an owning handle's
 // payload when the payload is proven Sealed (else the object descriptor's finalizer runs the actual Type's glue, K8). Strings, scalars,
 // references, raw pointers, Slices, Function values (their environment's destruction is erased) and InlineStorage, whose owner destroys
 // its contents, have none.
@@ -42,8 +44,9 @@ internal enum DropGlueRow : byte
     Parts, // A struct, Tuple, enum, fixed array or Closure environment: its parts' glue, one level, in destruction order (a Closure's captures
     // in reverse initialization order, X23); a declared destructor alone (R4-M6b).
     Function, // An erased function value's environment, through its table's drop entry: C5b.
-    Handle, // An obj, rc or arc release through ObjectRuntime, a Sealed payload's glue called directly: C6b.
-    Collection, // An Array's or Dictionary's legacy row with its element glue: C8d, C8e.
+    Handle, // An obj, rc or arc release through ObjectRuntime, a Sealed payload's glue called directly (DECISIONS R5-M112).
+    Array, // An Array's legacy Drop row, which destroys its elements by their glue (DECISIONS R5-M121).
+    Dictionary, // A Dictionary's legacy Drop row, which calls the clearEntries instance its glue targets (DECISIONS R5-M124).
 }
 
 /// <summary>A direct part of a destroyed value.</summary>
@@ -58,10 +61,14 @@ internal readonly record struct DropPart(DropPartKind Kind, BoundType Type, int 
 /// <summary>The drop glue of the Backend (SPEC 16.3.2).</summary>
 internal static class DropGlue
 {
-    /// <summary>The parameters of a glue function (package C 3.6, as the old generator's glue), named as a function's arguments
-    /// (<c>%a</c> and the position): the value's address, then the location a failure inside a release reports (SPEC 22.5.1).</summary>
+    /// <summary>The parameters of a glue function (package C 3.6, as the old generator's glue), named as the old generator's glue names
+    /// them, <c>slot</c>, <c>location</c> and <c>length</c>, which ObjectRuntime's release text reads (DECISIONS R5-M112): the value's
+    /// address, then the location a failure inside a release reports (SPEC 22.5.1).</summary>
     internal static readonly AbiParameter[] Parameters =
-        [new("ptr", "a0", AbiParameterKind.OwnedSlot, 0), new("ptr", "a1", AbiParameterKind.Location), new("i64", "a2", AbiParameterKind.LocationLength)];
+    [
+        new("ptr", "slot", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location),
+        new("i64", "length", AbiParameterKind.LocationLength),
+    ];
 
     /// <summary>Gets the runtime routine of the string row (<see cref="DropGlueRow.Release"/>), which its glue calls with its own parameters
     /// (the string representation and its release kind, IMPL 21.1.3; PD18).</summary>
@@ -79,10 +86,12 @@ internal static class DropGlue
 
         return type.Kind switch
         {
-            BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => DropGlueRow.Parts,
+            BoundTypeKind.Nominal or BoundTypeKind.Constructed => DropGlueRow.Parts, // A struct or an enum.
+            BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => DropGlueRow.Parts, // A structural aggregate.
             BoundTypeKind.Function => DropGlueRow.Function,
             BoundTypeKind.Semantics => DropGlueRow.Handle,
-            BoundTypeKind.Array or BoundTypeKind.Dictionary => DropGlueRow.Collection,
+            BoundTypeKind.Array => DropGlueRow.Array,
+            BoundTypeKind.Dictionary => DropGlueRow.Dictionary,
             _ => null,
         };
     }
@@ -127,7 +136,10 @@ internal static class DropGlue
         var cases = AdtDef.CaseTypes(type) ?? [];
         for (var ordinal = 0; ordinal < cases.Length; ordinal++)
         {
-            Reversed(cases[ordinal].Components, DropPartKind.Part, ordinal, into);
+            if (cases[ordinal] is { } payload)
+            {
+                Reversed(payload.Components, DropPartKind.Part, ordinal, into);
+            }
         }
 
         var parent = AdtDef.Base(type);

@@ -3,6 +3,7 @@
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -205,7 +206,6 @@ public class AbstractCallReachTest
     [InlineData(Through)]
     [InlineData(NextPair)]
     [InlineData(SumTwo)]
-    [InlineData(Pairs)]
     [InlineData(TakeLate)]
     [InlineData(Zip)]
     [InlineData(Both)]
@@ -214,8 +214,26 @@ public class AbstractCallReachTest
     public void AcceptsLaterCallsThatReachNoKeptLoan(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 15.6.4 (R4-M170): pairs is valid, but since G264 (S) S2 A5 errs twice at each `for` (the lent item's composed erased destruction
+    // stores next()'s Loan into the iterator, a self-row; ledger 7f5e32eec17f). H5's (e) list, row "S2's self-row family" (the owner's O-9,
+    // 「(a) 加えて着地」): PLAN G416 restores the acceptance and moves Pairs back to AcceptsLaterCallsThatReachNoKeptLoan.
+    [Fact]
+    public void PairsOverOneIterableIsRefusedPendingG416()
+    {
+        var c = MinimalEmissionTest.Analyze(Source + Pairs + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        var (outer, inner) = (new SyntaxLocation("for a in values\n        for b in values\n            count += 1"), new SyntaxLocation("for b in values\n            count += 1"));
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, outer),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, outer),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, inner),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, inner));
     }
 
     // An implementation body is an ordinary body: its abstract calls on stored values, of one requirement or of a Callable, reach their
@@ -231,11 +249,11 @@ public class AbstractCallReachTest
     public void AnImplementationBodyReachesByPaths(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    // The old Emission generates the abstract calls the adoption accepts (the proposal's section 6 forms): a Take-only takeTwo over a
+    // The abstract calls the adoption accepts (the proposal's section 6 forms) generate and run: a Take-only takeTwo over a
     // Merge of two iterators, and zip, each keeping its first result across the second call.
     [Fact]
     public void AcceptedAbstractCallsRunNatively()
@@ -262,22 +280,24 @@ public class AbstractCallReachTest
         var start = source.LastIndexOf(write, StringComparison.Ordinal);
         Assert.True(start >= 0, write);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         var errors = TestDiagnostics.Of(c);
         Assert.Contains(errors, x => x.Code is nameof(DiagnosticCode.ComparisonLoanConflict_Kd) or nameof(DiagnosticCode.CallActivationConflict_Kd) &&
             x.Span.Start >= start && x.Span.End <= start + write.Length);
     }
 
-    // A lending item keeps the receiver borrow itself; the existing activation check reports it once.
+    // A lending item keeps the receiver borrow itself; the second receiver Borrow meets it once (the MIR's ComparisonLoanConflict_Kd at
+    // the second `source`, H5).
     [Fact]
-    public void ALendingItemKeepsItsActivationDiagnostic()
+    public void ALendingItemKeepsItsReceiverConflict()
     {
         var c = MinimalEmissionTest.Analyze(LendingTwice + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
-        Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        Assert.Equal(new Kimi.Diagnostics.SourceSpan(LendingTwice.IndexOf("second = source", StringComparison.Ordinal) + "second = ".Length, "source".Length), error.Span);
     }
 
     // SPEC 8.15.1, 15.3.7 (L1 of the adopted proposal Abstract Calls Reach by Paths, its 4.1): a generic body is checked at least as
@@ -303,7 +323,7 @@ public class AbstractCallReachTest
     public void WarmRequirementCallAnalysisDoesNotAllocate()
     {
         var c = MinimalEmissionTest.Analyze(Source + TakeTwo + Main);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var verified = true;
         var allocated = AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified);
         Assert.True(verified);
@@ -352,11 +372,12 @@ public class AbstractCallReachTest
     private static ((int Owner, int Line, string Text)[] Mir, (int Owner, int Line, string Text)[] Old) Records(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var old = LegacyRecords.Of(c).Where(static x => x.Node.CodeContext?.SourceDocument?.Path == "Hello.kimi").Select(static x => (x.Code, x.Node));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var mir = program.Records.Concat(program.Problems.All.ToArray().Select(static x => new Problem(x.Code, x.Subject)))
+        var mir = program.Records(MirRecordClass.Construction)
+            .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(static x => new Problem(x.Code, x.Subject)))
             .Where(static x => x.Subject.Module == 0).Select(x => (x.Code, c.SyntaxOf(x.Subject)));
         var lines = source.Split('\n');
         return ([.. Sites(mir)], [.. Sites(old)]);

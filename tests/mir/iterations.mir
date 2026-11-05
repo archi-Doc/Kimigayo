@@ -5,8 +5,8 @@ fn top-level#0 @2
       _0 = const () @3 s1
       return @3
 fn sum @4
-  _0: i32 return @4
-  _1: ref/Array<i32> arg values @4
+  _0: i32 return @9
+  _1: ref/Array<i32> arg values @5
   _2: i32 var mut total @11 s1
   _3: () temp @14 s1
   _4: ArrayIterator<i32> temp @14 s1
@@ -22,7 +22,7 @@ fn sum @4
   _14: uniq/i32 temp @24 s3
   _15: isize temp @92 s1
   _16: i32 temp @28 s1
-  _17: i32 temp @4
+  _17: i32 temp (Result) @4
   s1: lexical in s0 @10
   s2: lexical in s1 @14
   s3: lexical in s2 @17
@@ -114,8 +114,8 @@ fn sum @4
   bb18:
       return @4
   bb19:
-      _0 = move _17 @27 s1
-      goto bb18 @27 s1
+      _0 = move _17 @4
+      goto bb18 @4
   bb20:
       StorageDead(_2) @11 s1
       goto bb19 @4
@@ -130,8 +130,8 @@ fn sum @4
       StorageDead(_2) @11 s1
       unreachable @10
 fn positions @29
-  _0: isize return @29
-  _1: [4 of i32] arg values @29
+  _0: isize return @33
+  _1: [4 of i32] arg values @30
   _2: isize var mut total @35 s1
   _3: () temp @39 s1
   _4: Kimi.ResolvedRange temp @41 s1
@@ -148,7 +148,7 @@ fn positions @29
   _15: isize temp @53 s3
   _16: uniq/isize temp @51 s3
   _17: isize temp @55 s1
-  _18: isize temp @29
+  _18: isize temp (Result) @29
   s1: lexical in s0 @34
   s2: lexical in s1 @39
   s3: lexical in s2 @44
@@ -217,8 +217,8 @@ fn positions @29
       _11 = const () @45 s3
       goto bb6 @45 s3
   bb9:
-      _3 = move _13 @50 s4
-      goto bb4 @50 s4
+      _3 = move _13 @39 s1
+      goto bb4 @39 s1
   bb10:
       StorageDead(_9) @40 s2
       goto bb9 @29
@@ -239,8 +239,8 @@ fn positions @29
   bb16:
       return @29
   bb17:
-      _0 = move _18 @54 s1
-      goto bb16 @54 s1
+      _0 = move _18 @29
+      goto bb16 @29
   bb18:
       StorageDead(_2) @35 s1
       goto bb17 @29
@@ -255,8 +255,8 @@ fn positions @29
       StorageDead(_2) @35 s1
       unreachable @34
 fn pairs @56
-  _0: i32 return @56
-  _1: Dictionary<i32, bool> arg entries @56
+  _0: i32 return @62
+  _1: Dictionary<i32, bool> arg entries @57
   _2: i32 var mut hits @64 s1
   _3: () temp @67 s1
   _4: DictionaryIterator<i32, bool> temp @67 s1
@@ -274,7 +274,7 @@ fn pairs @56
   _16: uniq/i32 temp @75 s4
   _17: isize temp @105 s1
   _18: i32 temp @79 s1
-  _19: i32 temp @56
+  _19: i32 temp (Result) @56
   s1: lexical in s0 @63
   s2: lexical in s1 @67
   s3: lexical in s2 @71
@@ -365,10 +365,10 @@ fn pairs @56
   bb15:
       return @56
   bb16:
-      _0 = move _19 @78 s1
-      goto bb15 @78 s1
+      _0 = move _19 @56
+      goto bb15 @56
   bb17:
-      drop _1 -> bb18 [keep] @56
+      drop _1 -> bb18 [keep] @57
   bb18:
       goto bb16 @56
   bb19:
@@ -383,6 +383,6 @@ fn pairs @56
   bb22:
       StorageDead(_18) @79 s1
       StorageDead(_2) @64 s1
-      drop _1 -> bb23 @56
+      drop _1 -> bb23 @57
   bb23:
       unreachable @63

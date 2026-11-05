@@ -26,7 +26,7 @@ public class ScalarResultUnificationTest
     public void OnlyDifferingLayersUnifyToTheScalar(string source, string name, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var local = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == name);
         var type = local.SymbolOf()!.Type!;
         Assert.Equal(expected, type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Ref ? "ref" : type.Name);

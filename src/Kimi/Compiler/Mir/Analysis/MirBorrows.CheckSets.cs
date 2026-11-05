@@ -10,10 +10,13 @@ namespace Kimi.Compiler.Mir;
 // live), in passes: the live holders (Based); the location's stores into a holder live after it or made live by the closure, or into E,
 // and E5's seeds (Stored); a borrow's R2 parents (Parented); an observing destruction's value (Observed); an activation holder's seed
 // (Seeded); then each operand's value in operand order, so a Loan keeps the first operand that reaches it, and each operand's root in
-// reverse, so it keeps the last. A pass scans a holder's state once and a value it takes once per holder it is found under (a later take
+// reverse, so it keeps the last. A pass scans a holder's state once (its Shared set until two vias read it, MirBorrows.States' Scanned)
+// and a value it takes once per holder it is found under (a later take
 // tags nothing more; Took finds it by scanning the values taken under that holder at the location, so a take costs that list's length),
 // and the location's entries are listed by holder, so a holder's lookup reads only its own entries (E13 (5)); each access then scans its
-// root's Loans. The elements a pass finds become candidates in MirBorrows.Candidates.
+// root's Loans. After every pass, the drop tier (DECISIONS R4-M153): from each holder live after the location only through its drop slot
+// (MirBorrows.Liveness), its Based and Stored passes again, marked DropTier, with that holder as their via; a slot an earlier pass read is
+// not read again. The elements a pass finds become candidates in MirBorrows.Candidates.
 internal sealed partial class MirBorrows
 {
     private const byte Based = 1;
@@ -23,6 +26,7 @@ internal sealed partial class MirBorrows
     private const byte Seeded = 16;
     private const byte Valued = 32;
     private const byte Rooted = 64;
+    private const byte DropTier = 128; // A Based or Stored pass of the drop tier, from a holder live only through its drop slot.
     private const int None = int.MinValue; // No via, operand or candidate.
     private const int Taken = -2; // A witness: the access's own location, whose operation uses the value that carries the Loan.
 
@@ -51,12 +55,13 @@ internal sealed partial class MirBorrows
     private int stamp;
     private byte pass;
     private int passIndex; // A Valued or Rooted pass's operand.
+    private int dropVia; // A drop-tier pass's holder, the via of what it finds.
 
     // The check set of an activation in a holder.
     private static int Activation(int holder) => Activating - holder;
 
-    // Restarts the checks' stamps for the view: those of its slots, Loans, roots and markers are cleared, so a view's cost is its own
-    // (markVia, candidateAt and the root, entry and taken lists are read only where their stamps hold the check's).
+    // Restarts the checks' stamps for the view: those of its slots, Loans, roots, markers and own-step entries are cleared, so a view's cost
+    // is its own (markVia, candidateAt and the root, entry and taken lists are read only where their stamps hold the check's).
     private void Restamp()
     {
         this.stamp = 0;
@@ -72,6 +77,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.rootLast, keys);
         MirDataflow.Grow(ref this.markSeen, this.loanBase);
         MirDataflow.Grow(ref this.markVia, this.loanBase);
+        MirDataflow.Grow(ref this.markKept, this.loanBase);
         MirDataflow.Grow(ref this.listed, this.holderCount + 1);
         MirDataflow.Grow(ref this.entryFirst, this.holderCount + 1);
         MirDataflow.Grow(ref this.takenFirst, this.holderCount + 1);
@@ -79,13 +85,26 @@ internal sealed partial class MirBorrows
         this.loanMarks.AsSpan(0, 2 * this.loanCount).Clear();
         this.rootMarks.AsSpan(0, keys).Clear();
         this.markSeen.AsSpan(0, this.loanBase).Clear();
+        this.markKept.AsSpan(0, this.loanBase).Clear();
         this.listed.AsSpan(0, this.holderCount + 1).Clear();
-        this.Work += (2 * this.holderCount) + 1 + (2 * this.loanCount) + keys + this.loanBase;
+        this.Work += (2 * this.holderCount) + 1 + (2 * this.loanCount) + keys + (2 * this.loanBase);
+        if (this.ownEntries > 0)
+        {
+            this.RestampOwnSteps(keys);
+        }
+
+        if (this.drops.Count > 0)
+        {
+            MirDataflow.Grow(ref this.markDropped, this.loanBase);
+            this.markDropped.AsSpan(0, this.loanBase).Clear();
+            this.Work += this.loanBase;
+        }
     }
 
     // The gather of a location's check sets: its entries listed by holder, the Based pass from E and the live holders (an overwritten one
     // is reached for its stores but not read), the Stored pass from the stores into the holders those passes reach, then the passes of the
-    // location's accesses and activations, and the operands' values and roots where an access or an activation takes them.
+    // location's accesses and activations, and the operands' values and roots where an access or an activation takes them; last the drop
+    // tier.
     private void Gather(ulong[] state, MirLocation at, int stores)
     {
         this.stamp++;
@@ -99,7 +118,16 @@ internal sealed partial class MirBorrows
 
         this.Work += stores;
         this.BasePass(state);
-        this.Pass(Stored);
+        this.StoredPass(state, Stored);
+        this.TakenValues(state, at);
+        this.DropPasses(state);
+    }
+
+    // A Stored pass (plain or of the drop tier): the stores into each holder an earlier pass of the gather reached and has not yet read
+    // them for.
+    private void StoredPass(ulong[] state, byte pass)
+    {
+        this.Pass(pass);
         while (this.pending.Count > 0)
         {
             var slot = this.pending[^1];
@@ -115,8 +143,27 @@ internal sealed partial class MirBorrows
 
             this.Drain(state);
         }
+    }
 
-        this.TakenValues(state, at);
+    // The drop tier (DECISIONS R4-M153): from each holder live after the location only through its drop slot, the Based pass (overwritten,
+    // it is reached for its stores but not read) and the Stored pass, marked DropTier, with that holder as their via.
+    private void DropPasses(ulong[] state)
+    {
+        foreach (var (drop, local) in this.drops)
+        {
+            var holder = this.slots[local];
+            this.Work++;
+            if ((this.live[drop >> 6] & (1UL << drop)) == 0 || (this.live[holder >> 6] & (1UL << holder)) != 0)
+            {
+                continue;
+            }
+
+            this.dropVia = holder;
+            this.Pass(Based | DropTier);
+            this.Reach(holder, scan: !this.Overwritten(holder));
+            this.Drain(state);
+            this.StoredPass(state, Stored | DropTier);
+        }
     }
 
     // The Based pass from E and the live holders (an overwritten one is reached for its stores but not read), each holder's state read and
@@ -159,7 +206,7 @@ internal sealed partial class MirBorrows
         this.Pass(Seeded);
         foreach (var (local, _, _) in this.reserving)
         {
-            this.Seed((int)state[this.slots[local]]);
+            this.Seed(this.Set(state[this.slots[local]]));
             this.Drain(state);
         }
 
@@ -228,7 +275,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        this.Scan(value, via);
+        this.Scan(State(value, 0), via);
         this.Drain(state);
     }
 
@@ -263,16 +310,16 @@ internal sealed partial class MirBorrows
         return slot + 1;
     }
 
-    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex) = (pass, index);
+    private void Pass(byte pass, int index = 0) => (this.pass, this.passIndex, this.instance) = (pass, index, this.instance + 1);
 
-    // A holder reached at the check: in the Based and Stored passes its stores count, and its state is read where the pass reads it first
-    // (a Based read stands for every pass, a Valued one for the later operands and a Rooted one for the earlier).
+    // A holder reached at the check: in the Based and Stored passes, the drop tier's included, its stores count, and its state is read where
+    // the pass reads it first (a Based read stands for every pass, a Valued one for the later operands and a Rooted one for the earlier).
     private void Reach(int slot, bool scan)
     {
         if (this.reached[slot] != this.stamp)
         {
             (this.reached[slot], this.slotFlags[slot], this.slotValue[slot], this.slotRoot[slot]) = (this.stamp, 0, int.MaxValue, -1);
-            if (this.pass is Based or Stored)
+            if ((this.pass & ~DropTier) is Based or Stored)
             {
                 this.pending.Add(slot);
             }
@@ -300,7 +347,7 @@ internal sealed partial class MirBorrows
         {
             var slot = this.scanning[^1];
             this.scanning.RemoveAt(this.scanning.Count - 1);
-            this.Scan((int)state[slot], slot);
+            this.Scan(this.Scanned(state[slot], slot), slot);
             this.Work++;
         }
     }
@@ -325,7 +372,7 @@ internal sealed partial class MirBorrows
     {
         if (!entry.Issue && !this.Took(entry.Value, -1))
         {
-            this.Scan(entry.Value, -1);
+            this.Scan(State(entry.Value, 0), -1);
         }
 
         this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own);

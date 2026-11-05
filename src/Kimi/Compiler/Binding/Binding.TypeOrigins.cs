@@ -6,19 +6,21 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, OriginParameter>? invalidStaticOriginSlots;
+    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, PairCase[] Cases)>? invalidStaticOriginSlots;
 
-    // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
+    // Complete stored Origin identity, including declared slots and intersections: the old analysis's walk (its three calls); Binding reads
+    // MentionsOrigin, a test of the Type's Origin summary (DECISIONS BU-63).
+    [Transitional("R6-check", Reason = "The old analysis's copy of MentionsOrigin goes with the old analysis (DECISIONS BU-63, PLAN G309).")]
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
     {
-        if (Contains(type.Origin, origin))
+        if (type.Origin is { } own && ContainsOrigin(own, origin))
         {
             return true;
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (Contains(type.OriginArguments[i], origin))
+            if (ContainsOrigin(type.OriginArguments[i], origin))
             {
                 return true;
             }
@@ -33,24 +35,6 @@ public sealed partial class Binding
         }
 
         return false;
-
-        static bool Contains(BoundOrigin? expression, BoundOrigin atom)
-        {
-            if (ReferenceEquals(expression, atom))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < (expression?.Operands.Count ?? 0); i++)
-            {
-                if (Contains(expression!.Operands[i], atom))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     internal BoundType SelfType(BindingSymbol symbol)
@@ -86,6 +70,25 @@ public sealed partial class Binding
         }
     }
 
+    // Whether an Origin expression names an atom, itself or through a meet's operands.
+    private static bool ContainsOrigin(BoundOrigin expression, BoundOrigin atom)
+    {
+        if (ReferenceEquals(expression, atom))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < expression.Operands.Count; i++)
+        {
+            if (ContainsOrigin(expression.Operands[i], atom))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static Koto OriginFormationSite(Koto node, BoundType type)
     {
         var declaration = node is VariableKoto ? node : node.BoundSymbol?.Declaration;
@@ -103,6 +106,15 @@ public sealed partial class Binding
 
         return site;
     }
+
+    // The node whose Type a transparent wrapper returns: a parenthesized Type's, or a Semantics layer's that adds no Semantics; null for
+    // any other node.
+    private static Koto? TransparentInner(Koto node) => node switch
+    {
+        ParenthesizedTypeKoto p => p.Type,
+        TypeSemanticsKoto s when s.Type is not null && (s.IsTransparentWrapper || (s.SemanticsParameter is null && s.SemanticsKind == SemanticsKind.Owner)) => s.Type,
+        _ => null,
+    };
 
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)
@@ -174,14 +186,20 @@ public sealed partial class Binding
                 return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
-            if (!ReferenceEquals(origin, type.Origin))
+            var supplied = !ReferenceEquals(origin, type.Origin);
+            if (supplied)
             {
                 type = this.WithOrigins(type, origin, (BoundOrigin[])type.OriginArguments);
             }
 
             // A conditional pair slot exists only in admitted borrow cases. Its payload keeps its own Origins
-            // in every case, but value/object cases impose no outlives relation to an inactive outer slot.
-            if (origin is not null && type.Components.Count != 0 && !InactiveOuterOrigin(type, this, use))
+            // in every case, but value/object cases impose no outlives relation to an inactive outer slot. A nested signature's input (an
+            // anonymous function's or a Function Type's parameter) forms none: its well-formedness is a premise of that signature (R2) and
+            // an obligation of each call (RequireInputPremises), never a relation of the body it is written in (SPEC 15.3.4, 15.6.1).
+            // A transparent wrapper returns its inner node's Type, whose well-formedness that node formed: it forms the relation only
+            // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record).
+            if (origin is not null && type.Components.Count != 0 && (supplied || TransparentInner(use) is null) && !InactiveOuterOrigin(type, this, use) &&
+                context is not { Position: TypePosition.Parameter, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
                 // binding, guarantees its own stored Origins outlive the borrow: each call judges them as the instantiated input's
@@ -254,7 +272,8 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false }, schema!.Origins[i].LoanRequirement, i);
+                        var requirement = this.RequirementAt(schema!.Origins[i], target).Strongest;
+                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false }, requirement, i);
                         if (bound is null)
                         {
                             return null;
@@ -274,26 +293,15 @@ public sealed partial class Binding
         }
 
         // Transparent syntax must expose the same completed type as its normalized owner.
-        for (var node = use; ;)
+        for (var node = use; TransparentInner(node) is { } inner; node = inner)
         {
-            Koto? inner = node switch
-            {
-                ParenthesizedTypeKoto p => p.Type,
-                TypeSemanticsKoto s when s.Type is not null && (s.IsTransparentWrapper || (s.SemanticsParameter is null && s.SemanticsKind == SemanticsKind.Owner)) => s.Type,
-                _ => null,
-            };
-            if (inner is null)
-            {
-                break;
-            }
-
             Complete(inner, type);
-            node = inner;
         }
 
         return type;
     }
 
+    // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value.
     // `discharge` applies to the Origins stored directly in `inner`; those of its components are judged. `condition` is the Semantics
     // case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o` of an original `s/T` included, is stored only in
     // its binder's borrow cases (SPEC 15.6.5).
@@ -306,7 +314,7 @@ public sealed partial class Binding
 
         if (this.StoredSlot(inner, use, out var slot) is { } origin && !OriginOutlives(origin, outer))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, WellFormed: true, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
         }
 
         for (var i = 0; i < inner.OriginArguments.Count; i++)
@@ -314,7 +322,7 @@ public sealed partial class Binding
             var argument = inner.OriginArguments[i];
             if (!OriginOutlives(argument, outer))
             {
-                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, Discharge: discharge, Condition: condition));
+                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, WellFormed: true, Discharge: discharge, Condition: condition));
             }
         }
 
@@ -324,7 +332,14 @@ public sealed partial class Binding
         }
     }
 
+    // One query of the requirement fixed point's visit of a declared Type: each distinct part once per polarity (visitedParts' state, one
+    // bit per polarity). A part met again at a polarity repeats its joins and keepers, duplicates only; a join a revisit would have made
+    // after this visit changed a slot the part reads is made when the declaration is visited again (its self-edge, CollectRequirementEdges,
+    // queues it as its own dependent), so the least fixed point is the same (DECISIONS BU-19, PLAN G309).
     private void AccumulateRequirements(BoundType type, DeclarationSchema schema, int polarity, ref bool changed)
+        => this.RequirementPart(type, schema, polarity, ref changed, this.visitedParts.Begin(this.storageVersion));
+
+    private void RequirementPart(BoundType type, DeclarationSchema schema, int polarity, ref bool changed, uint query)
     {
         // Only Origins and Type Parameter slots contribute; other subtrees cannot change a summary.
         if (!type.CarriesOriginOrSlot)
@@ -354,14 +369,22 @@ public sealed partial class Binding
 
         if (type.Origin is { } origin)
         {
-            this.AccumulateOrigin(origin, schema, polarity, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref, ref changed);
-            this.Keep(schema, origin, type, null);
+            // SPEC 15.3.5 (DECISIONS BU-44): a pair layer's slot is a conditional use (ConditionalUse), kept by its target in those cases;
+            // a use of none still counts toward variance.
+            var conditional = TryPairLayer(type, out var whole, out var target);
+            var loan = IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref;
+            var use = conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, default);
+            this.AccumulateOrigin(origin, schema, polarity, use, ref changed);
+            if (use != default)
+            {
+                this.Keep(schema, origin, conditional ? target : this.BorrowReferent(type, out _, out _), null, use.Binders);
+            }
         }
 
         if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
         {
             // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
-            this.AccumulateOrigin(raw, schema, polarity, LoanRequirement.None, ref changed);
+            this.AccumulateOrigin(raw, schema, polarity, default, ref changed);
         }
 
         // A Type may carry fewer or more arguments than its declaration while a pass is
@@ -376,8 +399,12 @@ public sealed partial class Binding
             }
 
             var sign = source.Variance == OriginVariance.Invariant ? 0 : source.Variance == OriginVariance.Contravariant ? -polarity : polarity;
-            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, source.LoanRequirement, ref changed);
-            this.Keep(schema, type.OriginArguments[i], type, source);
+            var use = this.NestedUse(source.Requirement, type, schema);
+            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, use, ref changed);
+            if (use != default)
+            {
+                this.Keep(schema, type.OriginArguments[i], type, source, default);
+            }
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -394,17 +421,20 @@ public sealed partial class Binding
                 sign = variance == OriginVariance.Invariant ? 0 : variance == OriginVariance.Contravariant ? -polarity : polarity;
             }
 
-            this.AccumulateRequirements(type.Components[i], schema, sign, ref changed);
+            if (this.FirstVisit(type.Components[i], query, (byte)(2 << (sign + 1))))
+            {
+                this.RequirementPart(type.Components[i], schema, sign, ref changed, query);
+            }
         }
     }
 
-    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, LoanRequirement loan, ref bool changed)
+    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, SlotRequirement use, ref bool changed)
     {
         if (origin.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                this.AccumulateOrigin(origin.Operands[i], schema, polarity, loan, ref changed);
+                this.AccumulateOrigin(origin.Operands[i], schema, polarity, use, ref changed);
             }
 
             return;
@@ -426,11 +456,7 @@ public sealed partial class Binding
                 changed = true;
             }
 
-            if (loan > parameter.LoanRequirement)
-            {
-                parameter.LoanRequirement = loan;
-                changed = true;
-            }
+            changed |= parameter.Absorb(use);
         }
     }
 
@@ -454,12 +480,16 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
                 {
-                    if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
+                    if (type.OriginArguments[i].Kind == OriginKind.Static &&
+                        this.RequirementAt(schema.Origins[i], type).Strongest == LoanRequirement.Uniq)
                     {
                         // A late storage summary may establish uniq after this Type was completed. The written
                         // annotation owns formation; its declaration and names only repeat the already invalid Type.
+                        // SPEC 15.3.5: uniq in some case the Type selects, the record naming those cases (DECISIONS BU-44).
                         var site = OriginFormationSite(node, type);
-                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, schema.Origins[i]);
+                        var slot = schema.Origins[i];
+                        var cases = this.FailingCase(slot, type, LoanRequirement.Uniq);
+                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
                         if (!ReferenceEquals(site, node))
                         {
                             this.CompleteDependent(node, site);

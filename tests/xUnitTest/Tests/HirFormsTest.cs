@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 using static XunitTest.HirColumnsTest;
@@ -14,6 +16,36 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
+    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the MIR
+    // accepts too (Binding records none), the library and the milestone programs.
+    public static TheoryData<string> AcceptedPrograms
+    {
+        get
+        {
+            var data = new TheoryData<string>();
+            foreach (var example in DiagnosticCorpus.SpecCases)
+            {
+                for (var i = 0; i < example.Variants.Length; i++)
+                {
+                    if (example.Variants[i] is { Expected.Length: 0 } variant && (variant.Mir?.Records.Length ?? 0) == 0)
+                    {
+                        data.Add($"spec/{example.Name}/{i}");
+                    }
+                }
+            }
+
+            foreach (var name in SemanticSnapshotTest.CaseNames())
+            {
+                if (name == "library" || name.StartsWith("milestone/", StringComparison.Ordinal))
+                {
+                    data.Add(name);
+                }
+            }
+
+            return data;
+        }
+    }
+
     // SPEC 7.2.3: a later default reads the slot its call prepared for an earlier parameter; a closure there reads its capture.
     [Fact]
     public void ParametersReadInLaterDefaultsAreThePreparedSlots()
@@ -36,7 +68,7 @@ public sealed partial class HirFormsTest
     {
         var c = MinimalEmissionTest.Analyze("func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
             "require f(7) == 7 and f(true) else => $abort(\"call\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
@@ -57,7 +89,7 @@ public sealed partial class HirFormsTest
     public void AbortCallsArePublishedAtTheirMacros(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var macros = Reachable(c.Kotonoha).OfType<MacroKoto>().ToArray();
@@ -80,7 +112,7 @@ public sealed partial class HirFormsTest
     public void VirtualBodiesArePublished()
     {
         var c = MinimalEmissionTest.Analyze(VirtualSource);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var functions = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsVirtual || x.IsOverride).ToArray();
@@ -98,7 +130,7 @@ public sealed partial class HirFormsTest
             "func spin() -> i32\n    var i: i32 = 0\n    loop\n        i = i + 1\n" +
             "func count() -> i32\n    var i: i32 = 0\n    loop\n        require i < 3 else => exit\n        i = i + 1\n    return i\n" +
             "require choose(true) == 1 and pick(0) == 1 and count() == 3 else => $abort(\"completion\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var nodes = Reachable(c.Kotonoha);
@@ -127,7 +159,7 @@ public sealed partial class HirFormsTest
     public void ADefaultHasItsOwnCompletion(string expression, bool completes)
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = (" + expression + ")) => ()\nf(3)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var function = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
@@ -140,7 +172,7 @@ public sealed partial class HirFormsTest
     public void AYieldInAMatchArmTargetsItsSelection()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: bool) -> i32 => match x\n    true => (if x\n        yield 1\n    else\n        yield 2\n    )\n    false => 0");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
@@ -162,11 +194,11 @@ public sealed partial class HirFormsTest
         var c = MinimalEmissionTest.Analyze(source);
         HirTables.Publish(c);
         var jump = Assert.Single(Reachable(c.Kotonoha).OfType<JumpKoto>());
-        Assert.True(HirTables.Op(jump) is HirOp.Jump or HirOp.Continue, MinimalEmissionTest.Describe(c, null));
+        Assert.True(HirTables.Op(jump) is HirOp.Jump or HirOp.Continue, MinimalEmissionTest.Describe(c));
         Assert.Null(HirTables.PlanOf(jump).Plan);
         Assert.True(HoldsItsTarget(jump));
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code && x.Span == jump.Span);
-        Assert.DoesNotContain(c.BuildMir().Records, x => x.Subject == SourceRef.Of(jump));
+        Assert.DoesNotContain(c.BuildMir().Records(MirRecordClass.Construction), x => x.Subject == SourceRef.Of(jump));
     }
 
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
@@ -179,7 +211,7 @@ public sealed partial class HirFormsTest
             "var number: i32 = 1\nlet owned = \"owned\"\ntwice(number@uniq)\nlet copied = number\n" +
             "require read(number) == 2 and count(owned@move) == 1 and copied == 2 and pick(.Some(5)) == 5 else => $abort(\"adjust\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var adjusted = Reachable(c.Kotonoha).Where(static x => HirTables.AdjustOf(x).Acquire != HirAcquire.Unset)
@@ -201,17 +233,48 @@ public sealed partial class HirFormsTest
         Assert.Equal(expected, adjusted);
     }
 
-    // SPEC 3.5, 8.14: a bare Place whose Type's Copy is unproven needs a Move (the ownership analysis reports TransferRequired), and a pair
-    // layer whose every admitted case Copies or Reborrows is acquired by case.
+    // SPEC 3.5, 8.14: a bare Place whose Type's Copy is unproven needs a Move, Binding's TransferRequired_Kd (R6-check H1, DECISIONS
+    // BU-84), and a pair layer whose every admitted case Copies or Reborrows is acquired by case.
     [Fact]
     public void ABarePlaceIsAcquiredAsBindingDecides()
     {
         var c = MinimalEmissionTest.Analyze("func keep<T>(x: T) -> T\n    T is Owned\n    return x\nfunc pass<s/T>(value: s/T) -> s/T\n    s is owner or uniq\n    T is Copy\n" +
             "    return value\nrequire keep(1) == 1 else => $abort(\"bare\")\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "x")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        HirTables.Publish(c);
+        Assert.Equal(HirAcquire.ByCase, HirTables.AdjustOf(Reachable(c.Kotonoha).OfType<JumpKoto>().Last().Expression!).Acquire);
+    }
+
+    // SPEC 3.5, 3.5.1, 8.15.2 (R6-check (b2)): a pair layer's owner case acquires its target by SPEC 3.5's rows: a Copy target Copies, an
+    // exclusive reference Reborrows unless a shared layer is on its path (the binder's own layers are owners there), a nested pair layer
+    // acquires by its own cases; a target without a plan is SPEC 3.5's error there (TransferJudgmentTest, R6-check H1).
+    [Theory]
+    [InlineData("s/T", "value: s/T", "s is owner or uniq\n    T is Copy", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: s/(uniq/i32 during a)", "s is owner or uniq", "value", nameof(HirAcquire.ByCase))]
+    [InlineData("s/T", "value: s/(s/(uniq/i32 during a) during b)", "s is owner or ref", "value@follow", nameof(HirAcquire.ByCase))]
+    [InlineData("t/U, s/T", "value: s/t/U", "s is owner or uniq\n    t is owner or uniq\n    U is Copy", "value", nameof(HirAcquire.ByCase))]
+    public void APairLayersOwnerCaseAcquiresItsTargetByItsPlan(string generics, string parameters, string constraints, string place, string acquire)
+    {
+        var c = MinimalEmissionTest.Analyze($"func f<{generics}>({parameters}) -> ()\n    {constraints}\n    let local = {place}\n    _ = local@move\n");
+        HirTables.Publish(c);
+        var local = Reachable(c.Kotonoha).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "local");
+        Assert.Equal(acquire, HirTables.AdjustOf(local.InitializerKoto!).Acquire.ToString());
+    }
+
+    // SPEC 13.5.6 (R6-check Q14 (b); DECISIONS R4-M142): a case adaptation's operand is used as the builder's Adapt reads it, a Place in
+    // place and a value through a Temporary, never acquired by Move.
+    [Fact]
+    public void ACaseAdaptationUsesItsOperandInPlace()
+    {
+        var c = MinimalEmissionTest.Analyze("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
+            "func widen<s/T>(value: s/Derived) -> s/Base\n    s is object\n    return value@move@s/Base\n" +
+            "func inspect<s/T>(value: s/Derived) -> i32\n    s is object\n    let view = value@objref/Base\n    return view.value\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
-        Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
+        var operands = Reachable(c.Kotonoha).OfType<ConversionKoto>().Where(static x => x.ToString()!.EndsWith("/Base", StringComparison.Ordinal))
+            .Select(static x => $"{x.Left} {HirTables.AdjustOf(x.Left).Acquire}/{HirTables.AdjustOf(x.Left).Adaptation}");
+        Assert.Equal(["value@move Temporary/None", "value None/None"], operands);
     }
 
     // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
@@ -229,7 +292,7 @@ public sealed partial class HirFormsTest
             "var pts = Pair<Point>.init(Point.init(1), Point.init(2))\npts[0].x = 5\nlet fixed: [3 of i32] = [1, 2, 3]\nlet i: isize = 2\nlet p = Point.init(3)\nlet r = p@ref\n" +
             "require through(r@ref) == 3 and pick(.Some(Point.init(4))) == 4 and pts[1].x == 5 and fixed[1] + (fixed)[i] == 5 else => $abort(\"place\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("func through", StringComparison.Ordinal);
@@ -255,7 +318,7 @@ public sealed partial class HirFormsTest
         const string Source = "struct Point\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
             "let t = (1, 3)\nlet fixed: [3 of i32] = [1, 2, 3]\nlet p = Point.init(3)\nrequire t.1 + fixed[2] + p.x + t.0 == 10 else => $abort(\"rows\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("require", StringComparison.Ordinal);
@@ -279,7 +342,7 @@ public sealed partial class HirFormsTest
             "Console.writeLine(\"n=\\(total)\")\nlet text = \"\\(pts[1])\"\n" +
             "require m.level == 4 and view[range][1] == 2 and values[tail] == 2 and text == \"6\" else => $abort(\"expansion\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("var m = ", StringComparison.Ordinal);
@@ -391,7 +454,7 @@ public sealed partial class HirFormsTest
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("func write", StringComparison.Ordinal);
@@ -463,7 +526,7 @@ public sealed partial class HirFormsTest
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner", "entries[1].name", "entries[1].inner.name"];
@@ -500,7 +563,7 @@ public sealed partial class HirFormsTest
             "let capacity = values.capacity\nlet span = values[0..2]\nvar total: isize = 0\nfor i in values.indices\n    total += i\nConsole.writeLine(\"n=\\(capacity)\")\n" +
             "let some: Option<i32> = .Some(5)\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var nodes = Reachable(c.Kotonoha);
@@ -516,24 +579,136 @@ public sealed partial class HirFormsTest
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
-    // stands: failed (an Error: its inferred result names its parameter), inside a replaced parent (a let Binding rejected) or rejected
-    // with an expression body, whose result its own Consume takes, or the kept operand of a failed Index, whose creation is evaluated there
-    // (a Closure, in place); a closure whose capture list failed was never bound, so its body stays replaced.
+    // stands: inside a parent Binding rejects for its own reason (a let whose Type annotation fails, the parent replaced), or the
+    // kept operand of a failed Index, whose creation is evaluated there (a Closure, in place); a closure whose capture list failed was
+    // never bound, so its body stays replaced. An inferred result over the call's own storage keeps the Closure's
+    // Type and fails only the returned value (DECISIONS R4-M152): the `return` statement, or an expression body, which its own Consume
+    // takes.
     [Fact]
     public void AClosureDefinitionIsPublishedWhereverItsCreationStands()
     {
         const string Source = "func take(a: string, b: string) -> i32 => 1\nfunc f(m: i32)\n" +
             "    _ = func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n" +
-            "    let g = func (k: i32)\n        return k@ref\n    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n" +
+            "    let g = func (k: i32)\n        return k@ref\n    let h: Missing = func (k: i32)\n        return k\n" +
+            "    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n" +
             "    _ = m[func (k: i32) -> i32 => k]\n";
         var c = MinimalEmissionTest.Analyze(Source);
         HirTables.Publish(c);
         var closures = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var rows = closures.Select(static x => (Koto?)x.Body ?? x.ExpressionBody!)
             .Select(static x => $"{HirTables.Op(x.Parent!)} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["Error Block Unset", "Syntax Block Unset", "Error Borrow Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
+        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Syntax Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
-        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Jump], statements);
+        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Error], statements);
     }
+
+    // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, as at a value position, and
+    // discarded. Its plan row's Adjust is that acquisition (a pair layer by case, a Copy, a stored exclusive reference's Reborrow; a bare
+    // Non-Copy Place is Binding's TransferRequired_Kd since R6-check H1, published Error, so it has no row), while its Adjust column keeps its reading: unset, the
+    // container discarding its item, or a group's in-place take of its operand. A Place a consumer takes (an initializer, `_ = k`'s
+    // operand) has the take in its column and no such row. Each row: the node, its column, its plan row's Adjust.
+    [Fact]
+    public void ADiscardedPlaceIsTakenByItsBareAcquisitionInItsPlanRow()
+    {
+        const string Source = "func f<s/T>(value: s/T, count: i32, r: uniq/i32, items: [2 of i32], title: string, c: bool)\n    s is owner or uniq\n" +
+            "    T is Copy\n    value\n    count\n    r\n    (r)\n    items[1]\n    title\n    if c\n        count\n    let k = count\n    _ = k\n" +
+            "public func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "title")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        HirTables.Publish(c);
+        var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var rows = Reachable(c.Kotonoha)
+            .Where(x => IsWithin(x, f) && x.Parent is CodeBlockKoto or ParenthesizedKoto or VariableKoto or DiscardKoto &&
+                HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value))
+            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {Adjust(HirTables.AdjustOf(x))} {Adjust(HirTables.PlanOf(x).Adjust)}");
+        Assert.Equal(
+            [
+                "value Unset/None ByCase/None", "count Unset/None Copy/None", "r Unset/None Reborrow/None", "(r) Unset/None Reborrow/None",
+                "r None/None Reborrow/None", "items[1] Unset/None Copy/None", "count Unset/None Copy/None",
+                "count Copy/None Unset/None", "k Copy/None Unset/None",
+            ],
+            rows);
+
+        static string Adjust(HirAdjust adjust) => $"{adjust.Acquire}/{adjust.Adaptation}";
+    }
+
+    // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare acquisition Reborrows a stored exclusive reference, or a pair layer in
+    // its exclusive case, only where the path grants exclusive access in that case; through a shared layer (a `ref` follow, a Slice
+    // element, a `let`-owned Array element, a Field through `ref`, another binder's pair layer) it has no plan: Binding's TransferRequired_Kd
+    // (R6-check H1, DECISIONS BU-84). An exclusive path, a `var` Array element and the acquiring binder's own layers keep the Reborrow or
+    // the acquisition by case. Each row: the Place, its Adjust (the plan row's for the discarded one).
+    [Fact]
+    public void ABareAcquisitionReborrowsOnlyThroughAnExclusivePath()
+    {
+        const string Source = "struct Holder {source}\n    public var link: uniq/i32 during source\nstruct Box<s/T>\n    public var v: s/T\n" +
+            "func f(r: ref/(uniq/i32 during a) during b, u: uniq/(uniq/i32 during c) during d, s: Slice<uniq/i32 during e> during g, h: ref/(Holder during k) during m, n: uniq/i32, o: uniq/i32)\n" +
+            "    let shared = r@follow\n    _ = r@follow\n    r@follow\n    let element = s[0]\n    let field = h.link\n    let exclusive = u@follow\n" +
+            "    let values: Array<uniq/i32> = [n@move]\n    let denied = values[0]\n    var owned: Array<uniq/i32> = [o@move]\n    let granted = owned[0]\n" +
+            "func p<s/T, t/U>(x: ref/(s/T during a) during b, w: t/(s/T during c) during d, z: s/(s/T during e) during g, bx: s/Box<s/T>, q: uniq/(s/T during h) during k)\n" +
+            "    s is ref or uniq\n    t is ref or uniq\n    let pair = x@follow\n    let other = w@follow\n    let own = z@follow\n    let part = bx.v\n    let through = q@follow\n" +
+            "public func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.Equal(
+            new[] { "r@follow", "r@follow", "r@follow", "s[0]", "h.link", "values[0]", "x@follow", "w@follow" }.Select(static x => (DiagnosticCode.TransferRequired_Kd, x)),
+            c.Binding.Issues.OrderBy(static x => x.Node.Span.Start).Select(static x => (x.Code, x.Node.ToString())));
+        var failed = c.Binding.Issues.Select(static x => x.Node).ToHashSet();
+        HirTables.Publish(c);
+        var rows = Reachable(c.Kotonoha)
+            .Where(x => !failed.Contains(x) && ((x.Parent is VariableKoto { InitializerKoto: { } initializer } && ReferenceEquals(initializer, x) && x is not ArrayLiteralKoto) ||
+                x.Parent is DiscardKoto || (x.Parent is CodeBlockKoto && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value))))
+            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(x.Parent is CodeBlockKoto ? HirTables.PlanOf(x).Adjust : HirTables.AdjustOf(x)).Acquire}");
+        Assert.Equal(["u@follow Reborrow", "owned[0] Reborrow", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase"], rows);
+    }
+
+    // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan
+    // row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, so the builder's
+    // derived reading of an unset row arises only beside a Binding error (MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError).
+    // The forms below each discard a Place; a group's operand is a parenthesized one (a label wraps only a control-flow construct, never
+    // a Place: Parser's label rule).
+    [Theory]
+    [InlineData("func f(count: i32, r: uniq/i32, items: [2 of i32])\n    count\n    r\n    (r)\n    ((count))\n    items[1]\n")]
+    [InlineData("func f<s/T>(value: s/T, c: bool)\n    s is owner or uniq\n    T is Copy\n    value\n    if c\n        value\n    match c\n        true => value\n        false => ()\n")]
+    [InlineData("struct P\n    public var x: i32 = 0\n    public init() => ()\nfunc f(p: ref/P, q: uniq/(uniq/i32 during a) during b, d: ref/Dictionary<i32, i32>)\n    p.x\n    q@follow\n    d[1]\n")]
+    [InlineData("func f(value: uniq/i32)\n    var h = func [value] () -> ()\n        value\n        (value)\n    h()\n")]
+    public void EveryDiscardedPlaceHasItsAcquisition(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var built = BuiltByTheirRow(c.Kotonoha).ToArray();
+        Assert.NotEmpty(built);
+        Assert.All(built, static x => Assert.NotEqual(HirAcquire.Unset, HirTables.PlanOf(x).Adjust.Acquire));
+    }
+
+    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
+    [Theory]
+    [MemberData(nameof(AcceptedPrograms))]
+    public void AnAcceptedProgramLeavesNoDiscardRowUnset(string name)
+    {
+        Kotonoha module;
+        if (name.StartsWith("spec/", StringComparison.Ordinal))
+        {
+            var example = DiagnosticCorpus.SpecCases.Single(x => x.Name == name[5..name.LastIndexOf('/')]);
+            var variant = example.Variants[int.Parse(name[(name.LastIndexOf('/') + 1)..], CultureInfo.InvariantCulture)];
+            var c = VerifiedSpecExampleTest.Bind(DiagnosticCorpus.Source(example, variant));
+            Assert.True(c.Binding.Result.IsComplete, name);
+            module = c.Kotonoha;
+        }
+        else
+        {
+            module = SemanticSnapshotTest.Bind(name).Module;
+        }
+
+        HirTables.Publish(module.Compilation);
+        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Unset);
+        Assert.Empty(unset.Select(static x => $"{x.Span.Start} {x}"));
+    }
+
+    // The Places the MIR builder acquires by their plan row (MirBuilder.Into's Place case): a Place no consumer's Adjust takes (a
+    // discarded item, or an item no consumer took), or a group's operand in Discard Context, as the publisher writes them.
+    private static IEnumerable<Koto> BuiltByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
+        HirTables.Op(x) is HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call &&
+        HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset ||
+        (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !KotoHelper.IsValueContext(x))));
 }

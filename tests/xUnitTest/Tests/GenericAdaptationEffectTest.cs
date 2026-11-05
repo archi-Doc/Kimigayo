@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
-using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -22,20 +20,15 @@ public class GenericAdaptationEffectTest
             $"struct Worker\n    Self is Runner\n    public func run(self: ref/Self, value: {mode}/Payload)\n        Helpers.discard(value@move)\n" +
             "func later<u/U>(value: u/U)\n    u is ref or obj\n    return\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (valid)
         {
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
         else
         {
             MinimalEmissionTest.AssertEffectBoundRejected(c);
         }
-
-        // The first body is the ref case, and later reused side bodies must not erase the obj case's facts.
-        var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "discard");
-        Assert.Equal(SemanticsKind.Ref, body.Cases.Span[0].Semantics);
-        Assert.Contains(body.CaseDestructions, static x => x.Type?.Semantics == SemanticsKind.Obj && (x.Cases & 2UL) != 0 && (x.Cases & 1UL) == 0);
     }
 
     [Theory]
@@ -48,10 +41,10 @@ public class GenericAdaptationEffectTest
         var source = Destruction + $"contract Runner\n    func run<s/T>(self: ref/Self, value: s/{payload})\n        s is {admitted}\n        effect confined\n" +
             $"struct Worker\n    Self is Runner\n    public func run<s/T>(self: ref/Self, value: s/{payload})\n        s is {admitted}\n        Helpers.discard(value@move)\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (valid)
         {
-            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
         else
         {
@@ -77,7 +70,7 @@ public class GenericAdaptationEffectTest
         }
         else
         {
-            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         }
     }
 }

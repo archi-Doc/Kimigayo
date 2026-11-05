@@ -1,20 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns an item's targets (R5 package K 4.3, K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102): a body item's template replayed
-// under its representative (Replay), each site's edge row in the item's instance: for a call, a Drop or a statement of the item's body, the
-// row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a Value callee's body, an intrinsic's
-// target column, a dropped value's glue; an aggregate's, a function item constant's or an erasure's) and its target under the item's
-// representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after an owner Value call's body, the operand's
-// glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets from its representative Type by its kind's
-// row (Expand).
+// Owns an item's targets (R5 package K 4.3, K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102, R5-M111): a body item's template
+// replayed under its representative (Replay), each site's edge row in the item's instance: for a call, a Drop or a statement of the item's
+// body, the row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a Value callee's body, an
+// intrinsic's target column, a dropped value's glue; a case adaptation's creation, an aggregate's, a function item constant's or an
+// erasure's) and its target under the item's representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after
+// an owner Value call's body, the operand's glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets
+// from its representative Type by its kind's row (Expand).
 // Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Compose, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
 // Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
 // without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
 // site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a substitution TyCtxt cannot compose is the storage-nesting gap at the site; a kind without a row is a
-// fault.
+// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault.
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
 // (InstanceCollector.Witnesses.cs) itself.
 
@@ -48,6 +47,7 @@ internal sealed partial class InstanceCollector
 
         var body = program.Bodies[set.Items[item].BodyOrdinal];
         this.LayOutLocals(item, body);
+        this.LayOutNeeds(item, body);
         for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
         {
             this.Work++;
@@ -70,8 +70,9 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
-    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
-    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
+    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts and a
+    // LegacyRow item's declared needs (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a
+    // fault.
     private void Expand(MirProgram program, int item)
     {
         var key = this.Set.Items[item].Key;
@@ -88,6 +89,9 @@ internal sealed partial class InstanceCollector
                 return;
             case MonoKind.DropGlue:
                 this.DestructionTargets(program, item, site, type);
+                return;
+            case MonoKind.LegacyRow:
+                this.RowTargets(program, item, site, type);
                 return;
             case MonoKind.ObjectDescriptor or MonoKind.VTable:
                 this.Object(program, item, site, key.Kind, type);
@@ -110,10 +114,10 @@ internal sealed partial class InstanceCollector
     // (TyCtxt.Compose, whose declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit
     // checks; a default template's, the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), or for a
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
-    // (InstanceCollector.Witnesses.cs); the body a Value callee's Closure or function item runs; an intrinsic's target where its row names
-    // one (an erased writer's reserve witness, a staticEnsure's StaticInit, a creation's payload descriptor, a DestroyValues' glue) and a
-    // dropped value's glue; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1
-    // for a callee without a body or row or a refused edge.
+    // (InstanceCollector.Witnesses.cs), a tuple operator's its comparison item (Compared); the body a Value callee's Closure or function
+    // item runs; an intrinsic's target where its row names one (an erased writer's reserve witness, a staticEnsure's StaticInit, a
+    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue; an intrinsic's Type arguments uses where its row's
+    // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
         var callee = call.Callee;
@@ -132,31 +136,28 @@ internal sealed partial class InstanceCollector
         if (callee.Kind == MirCalleeKind.Intrinsic)
         {
             var row = IntrinsicRows.Of((IntrinsicId)callee.Arg);
-            if (row.Target == IntrinsicTarget.StaticInit)
+            if (row.Need == LayoutNeed.TypeArguments)
             {
-                return this.Static(program, item, body, subject, call);
+                this.LaysOutArguments(item, subject, callee.Subst!);
             }
 
-            var argument = this.In(item, subject, callee.Subst!.Types[0]!);
-            if (row.LaysOutType && argument is not null)
-            {
-                _ = this.LaysOut(subject, argument);
-            }
-
-            return this.Intrinsic(program, item, subject, row.Target, argument);
+            return row.Target == IntrinsicTarget.StaticInit
+                ? this.Static(program, item, body, subject, call)
+                : this.Intrinsic(program, item, subject, row, this.In(item, subject, callee.Subst!.Types[0]!));
         }
 
         var representative = this.Set.Items[item].Representative;
-        var subst = callee.Subst is { } inner && representative is not null ? this.types.Compose(inner, representative) : callee.Subst;
-        if (subst is null && callee.Subst is not null)
+        var (subst, storage, _) = callee.Subst is { } inner && representative is not null
+            ? this.types.Compose(inner, representative) : (callee.Subst, Binding.StorageOutcome.Prepared, null);
+        if (!this.Made(storage, subject))
         {
-            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
             return -1;
         }
 
         if (callee.Kind == MirCalleeKind.Requirement)
         {
-            return this.Requirement(program, item, subject, callee.Symbol!, this.types.Witness(callee.Symbol!, callee.Contract, subst!));
+            var target = this.types.Witness(callee.Symbol!, callee.Contract, subst!);
+            return callee.Arg == 0 ? this.Called(program, item, subject, callee.Symbol!, target) : this.Compared(item, subject, callee, target);
         }
 
         if (callee.Arg > 0)
@@ -186,21 +187,50 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
-    // substitution's Type argument in the item's instance (the one operand form the rows read): an erased writer's reserve witness on its
-    // destination (SPEC 22.10.1), a creation's payload descriptor, admitted with the payload's layout verdict (InstanceCollector.Objects.cs),
-    // a DestroyValues' element glue. -1 for a row without a target or a Type TyCtxt could not make, whose gap the caller recorded; a
-    // staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
-    private int Intrinsic(MirProgram program, int item, SourceRef subject, IntrinsicTarget target, BoundType? argument) => target switch
+    // substitution's Type argument in the item's instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its
+    // caller's, LaysOutArguments): an erased writer's reserve witness on its destination (SPEC 22.10.1), a creation's payload
+    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not made, whose verdict the caller
+    // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
+    private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
     {
-        _ when argument is null => -1,
-        IntrinsicTarget.None => -1,
-        IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
-        IntrinsicTarget.Descriptor => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), argument),
-        IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
-        _ => throw new InvalidOperationException($"The intrinsic target {target} has no Type argument row."),
-    };
+        if (argument is null)
+        {
+            return -1;
+        }
 
-    // K 4.5 rows 11-13, K 4.7 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body;
+        return row.Target switch
+        {
+            IntrinsicTarget.None => -1,
+            IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
+            IntrinsicTarget.Descriptor => this.Descriptor(item, subject, argument),
+            IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
+            _ => throw new InvalidOperationException($"The intrinsic target {row.Target} has no Type argument row."),
+        };
+    }
+
+    // K 4.5 row 8 (DECISIONS R5-M74, R5-M111): a creation's target, its payload's object descriptor, admitted with the payload's layout
+    // verdict (InstanceCollector.Objects.cs): a creation intrinsic's, an Item of its function's, a case adaptation's that creates.
+    private int Descriptor(int item, SourceRef subject, BoundType payload)
+        => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), payload, null);
+
+    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (TyCtxt.Adaptation from its source token's
+    // Type to its target, the rule MirCases.Adapt reads under the item's view) creates an object targets its payload's descriptor, as every
+    // creation does; any other operation none.
+    private int Adaptation(int item, SourceRef subject, MirBody body, in MirRvalue adapt)
+    {
+        var token = body.Operands[adapt.Start + 1];
+        if (this.In(item, subject, body.Consts[token.Arg].Type) is not { } source || this.In(item, subject, adapt.Type!) is not { } target)
+        {
+            return -1;
+        }
+
+        var operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
+        return operation == ConversionBinding.ObjectCreation ? this.Descriptor(item, subject, target.Components[0]) : -1;
+    }
+
+    // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
+    // (Adaptation; DECISIONS R5-M111); an aggregate's Type a by-value use, a Closure environment's also its body, a Dictionary from none's
+    // the body of the DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared; DECISIONS R5-M124);
     // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type
     // and the erased target Function Type, the Cast's, whose inputs and result are by-value uses at the erasure (its entry takes and gives
     // them; a Never-result source fits Function Types of other results, SPEC 10.7), a target that does not lay out dropping the edge
@@ -212,7 +242,19 @@ internal sealed partial class InstanceCollector
         if (rvalue.Kind == MirRvalueKind.BinaryOp || rvalue is { Kind: MirRvalueKind.Cast, Op: not (byte)MirCastKind.Erasure })
         {
             this.CheckOperation(item, subject, body, rvalue);
+            if (rvalue.Kind == MirRvalueKind.BinaryOp &&
+                LayoutNeeds.Of((MirBinaryOp)rvalue.Op, OperandType(body, body.Operands[rvalue.Start])) != LayoutNeed.None &&
+                this.In(item, subject, LayoutNeeds.TypeOf(body, rvalue)) is { } needed)
+            {
+                _ = this.LaysOut(item, subject, needed); // K 4.8 (DECISIONS R5-M149): a raw pointer's displacement reads its pointee's stride.
+            }
+
             return -1;
+        }
+
+        if (rvalue.Kind == MirRvalueKind.Adapt)
+        {
+            return this.Adaptation(item, subject, body, rvalue);
         }
 
         var aggregate = rvalue.Kind == MirRvalueKind.Aggregate;
@@ -223,8 +265,13 @@ internal sealed partial class InstanceCollector
 
         if (aggregate)
         {
-            _ = this.LaysOut(subject, closed);
-            return (MirAggregateKind)rvalue.Op == MirAggregateKind.Closure ? this.Callee(program, item, subject, closed) : -1;
+            _ = this.LaysOut(item, subject, closed);
+            return (MirAggregateKind)rvalue.Op switch
+            {
+                MirAggregateKind.Closure => this.Callee(program, item, subject, closed),
+                _ when closed.Kind == BoundTypeKind.Dictionary => this.Declared(program, item, subject, LegacyRuntimeHelpers.Construction, null),
+                _ => -1,
+            };
         }
 
         if (rvalue.Kind != MirRvalueKind.Cast)
@@ -233,7 +280,7 @@ internal sealed partial class InstanceCollector
         }
 
         var adapter = closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter;
-        return this.In(item, subject, rvalue.Type!) is { } function && this.LaysOutSignature(subject, function)
-            ? this.AdmitType(item, subject, new(adapter, default, null, null, 0, this.types.Erase(function)), closed) : -1;
+        return this.In(item, subject, rvalue.Type!) is { } function && this.LaysOutSignature(item, subject, function)
+            ? this.AdmitType(item, subject, new(adapter, default, null, null, 0, this.types.Erase(function)), closed, null) : -1;
     }
 }

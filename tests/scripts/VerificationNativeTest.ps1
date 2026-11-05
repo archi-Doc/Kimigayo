@@ -5,7 +5,6 @@ $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $work = Join-Path $repo ('temp/verification-native/' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($work)
 $log = Join-Path $work 'native.log'
-$records = Join-Path $work 'results.json'
 $utf8 = [Text.UTF8Encoding]::new($false)
 $cases = 0
 function Expect([bool] $condition, [string] $message) {
@@ -29,29 +28,4 @@ $result = Get-KimiNativeLogResult $log
 Expect $result.hasSuccessLine 'The success line was lost.'
 Expect ($result.detail -ceq "Passed 4 native scalar executions (O0/O2).; $log") 'The final trimmed success line must be used.'
 Reject { Get-KimiNativeLogResult (Join-Path $work 'missing.log') }
-$result = Get-KimiNativePendingResult $records 2 $log
-Expect (-not $result.passed) 'Missing pending evidence passed.'
-Expect ($result.detail -ceq "results for 0 of 2 fixtures, 0 incomplete; completed results judged by codegen pending; $log") 'Missing pending detail changed.'
-[IO.File]::WriteAllText($records, '[]', $utf8)
-$result = Get-KimiNativePendingResult $records 0 $log
-Expect (-not $result.passed) 'An empty selection must not pass.'
-Expect ($result.detail -ceq "results for 0 of 0 fixtures, 0 incomplete; completed results judged by codegen pending; $log") 'Empty pending detail changed.'
-[IO.File]::WriteAllText($records, '[{"fixture":"a.ll","status":"failed","levels":[]},{"fixture":"b.ll","status":"passed","levels":["O0","O2"]}]', $utf8)
-foreach ($selected in @(1, 2, 3)) {
-    $result = Get-KimiNativePendingResult $records $selected $log
-    Expect ($result.passed -eq ($selected -eq 2)) 'Pending coverage must require the selected count.'
-    $detail = "results for 2 of $selected fixtures, 0 incomplete; completed results judged by codegen pending; $log"
-    Expect ($result.detail -ceq $detail) 'Pending coverage detail changed.'
-}
-foreach ($status in @('"incomplete"', '"unknown"', 'null')) {
-    [IO.File]::WriteAllText($records, ('[{"fixture":"a.ll","status":' + $status + '}]'), $utf8)
-    $result = Get-KimiNativePendingResult $records 1 $log
-    Expect (-not $result.passed) 'Unestablished observation became completed pending evidence.'
-    $detail = "results for 1 of 1 fixtures, 1 incomplete; completed results judged by codegen pending; $log"
-    Expect ($result.detail -ceq $detail) 'Incomplete evidence lost its classification.'
-}
-[IO.File]::WriteAllText($records, '[{"fixture":"a.ll"}]', $utf8)
-Expect (-not (Get-KimiNativePendingResult $records 1 $log).passed) 'Missing status became completed pending evidence.'
-[IO.File]::WriteAllText($records, '{invalid JSON', $utf8)
-Reject { Get-KimiNativePendingResult $records 1 $log }
 Write-Output "PASS native evidence evaluation: $cases assertions; $work"

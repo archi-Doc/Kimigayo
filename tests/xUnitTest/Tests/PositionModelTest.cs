@@ -42,8 +42,8 @@ public class PositionModelTest
         "        a += 1\n    check(same(values[..], (true, 0, length)), 18)\n    length += 1\n" +
         "Console.writeLine(\"\\(checks) pairs\")";
 
-    // SPEC 4.8.6: constant positions and ranges on a fixed array, resolved at compile time.
-    private const string Folding =
+    // SPEC 4.8.6: constant positions and ranges on a fixed array.
+    private const string ConstantPositions =
         "let values: [4 of i32] = [1, 2, 3, 4]\nlet a = values[^1]\nlet s = values[1..^1]\nlet c = values[..=2]\nlet t = values[^2..]\nlet u = values[1@u8..3@i64]\n" +
         "require a == 4 and s.length == 2 and c.length == 3 and t.length == 2 and u.length == 2 else => $abort(\"fold\")\nConsole.writeLine(\"ok\")";
 
@@ -52,6 +52,17 @@ public class PositionModelTest
         "func at<P>(p: P) -> isize\n    P is Position\n    match p.tryResolve(4)\n        .Some(let q) => return q\n        .None => return -1\n" +
         "var values: Array<i32> = [1, 2, 3]\nvalues.insert(^1, 9)\n" +
         "require at(3) == 3 and at(^1) == 3 and at(5@isize) == -1 and at(^(2@usize)) == 2 and values[2] == 9 else => $abort(\"special\")\nConsole.writeLine(\"ok\")";
+
+    // SPEC 4.6.1, 4.7.1: the selections at a position of a Type parameter, which each instance runs: an element read (line 3) and write
+    // (line 14), a written ^x (line 6) and a range (line 9); row prints them at 1 and 2 of one integer Type.
+    private const string Generic =
+        "func at<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\n" +
+        "func last<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[^p]\n" +
+        "func span<I>(values: ref/Array<i32>, a: I, b: I) -> isize\n    I is PrimitiveInteger\n    let s = values[a..b]\n    return s.length\n" +
+        "func put<I>(p: I, v: i32) -> i32\n    I is PrimitiveInteger\n    var values: [3 of i32] = [1, 2, 3]\n    values[p] = v\n" +
+        "    return values[0] + values[1] + values[2]\nfunc row<I>(a: [3 of i32], d: ref/Array<i32>, one: I, two: I)\n    I is PrimitiveInteger\n" +
+        "    Console.writeLine(\"\\(at(a, one)) \\(at(a, two)) \\(last(a, one)) \\(span(d, one, two)) \\(put(two, 9))\")\n" +
+        "let a: [3 of i32] = [10, 20, 30]\nlet d: Array<i32> = [1, 2, 3, 4]\n";
 
     private static readonly (string Name, BigInteger Min, BigInteger Max)[] Integers =
     [
@@ -151,16 +162,11 @@ public class PositionModelTest
             1,
             "Hello.kimi:4:11: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    // SPEC 4.8.6: constant positions and ranges that resolve against a fixed array's length are resolved at compile time:
-    // no from-end subtraction and no runtime check remain, while a failing constant keeps its check (see the Abort cases).
+    // Constant positions and ranges that resolve against a fixed array's length select their elements (the fixture's native
+    // output), while a failing constant keeps its check (see the Abort cases).
     [Fact]
-    public void ConstantPositionsOnFixedArraysFold()
-    {
-        var ir = ScalarEmissionTest.EmitFixture("PositionModelFolding", Folding, "ok\n");
-        Assert.DoesNotContain("= sub i64 4, ", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain(" = sext i32 ", ir, StringComparison.Ordinal);
-        Assert.True(ir.Split("br i1 false,").Length - 1 >= 4, ir);
-    }
+    public void ConstantPositionsOnFixedArraysSelectTheirElements()
+        => ScalarEmissionTest.EmitFixture("PositionModelConstantPositions", ConstantPositions, "ok\n");
 
     // SPEC 8.13: the Kimi integer witness has explicit specializations for isize, i32 and usize; generic dispatch and
     // FromEnd<T> select them, so none of these Types reaches the generic body's u128 comparison.
@@ -170,6 +176,24 @@ public class PositionModelTest
         var ir = ScalarEmissionTest.EmitFixture("PositionModelSpecializations", Specializations, "ok\n");
         Assert.DoesNotContain(" to i128", ir, StringComparison.Ordinal);
     }
+
+    // SPEC 4.6.1, 4.6.3, 4.7.1 (DECISIONS R5-M154): a position of a Type parameter selects as its instance's integer at every width, and
+    // one outside isize or negative fails in its selection's one check, at the selection: a u128 that truncation would read as 1, and
+    // a negative element, write, ^x and range start.
+    [Theory]
+    [InlineData("Widths", null, null)]
+    [InlineData("Wide", "at(a, 18446744073709551617@u128)", "3:12")]
+    [InlineData("Negative", "at(a, -1@i8)", "3:12")]
+    [InlineData("NegativeWrite", "put(-1@isize, 9)", "14:5")]
+    [InlineData("NegativeFromEnd", "last(a, -1@i64)", "6:12")]
+    [InlineData("NegativeStart", "span(d, -1@i16, 1@i16)", "9:13")]
+    public void GenericPositionsResolveAtEveryWidth(string name, string? outside, string? location)
+        => ScalarEmissionTest.EmitFixture(
+            "PositionModelGeneric" + name,
+            Generic + (outside is null ? string.Concat(Integers.Select(static x => $"row(a, d, 1@{x.Name}, 2@{x.Name})\n")) : $"let x = {outside}\n"),
+            outside is null ? string.Concat(Integers.Select(static _ => "20 30 30 1 12\n")) : string.Empty,
+            outside is null ? 0 : 1,
+            location is null ? null : $"Hello.kimi:{location}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     private static string Bool(bool value) => value ? "true" : "false";
 }

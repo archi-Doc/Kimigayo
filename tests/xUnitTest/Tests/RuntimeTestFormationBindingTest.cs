@@ -55,7 +55,7 @@ public class RuntimeTestFormationBindingTest
     public void ValidNestedTargetsStillCertify(string argument)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(BindingState.Resolved, Test(c).StateOf());
         Assert.NotNull(Test(c).RuntimeTestOf());
         var restored = CompilationTestHelper.Reload(c);

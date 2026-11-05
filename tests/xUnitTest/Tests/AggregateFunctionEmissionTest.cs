@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -70,15 +68,6 @@ public class AggregateFunctionEmissionTest
         const string Source = "func f() -> (string, i32)\n    var value = (\"before\", 1)\n    defer => value = (\"after\", 2)\n    return value@move\nf()";
         var ir = ScalarEmissionTest.EmitFixture("AggregateFunctionSnapshot", Source, string.Empty);
         StringEmissionTest.WriteAuditedFixture("AggregateFunctionSnapshot", ir, string.Empty, "before=1;after=1", order: [1, 0]);
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[1];
-        var function = module.GetFunction(1);
-        var delivery = Assert.Single(body.Deliveries, x => body.IsReachable(x.Operation));
-        var secured = function.Instructions.FindIndex(x => x.Operation == delivery.Write && x.Opcode == EmissionOpcode.TransferAggregate);
-        var cleanup = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.DestroyAggregate);
-        var ret = function.Instructions.FindIndex(x => x.Operation == delivery.Operation && x.Opcode == EmissionOpcode.ReturnVoid);
-        Assert.True(secured >= 0 && cleanup > secured && ret > cleanup);
     }
 
     [Theory]
@@ -97,173 +86,17 @@ public class AggregateFunctionEmissionTest
     public void DivergentCleanupCannotReturnOrForwardTheCallersResultSlot()
     {
         const string Source = Echo + "func f(value: (string, i32)) -> (string, i32)\n    defer => loop => ()\n    return echo(value@move)\nf((\"held\", 1))";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Operations.Any(o => o.Source is LoopKoto));
-        var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
-        Assert.DoesNotContain(function.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar or EmissionOpcode.DestroyAggregate);
-        Assert.All(body.Deliveries, x => Assert.False(body.IsReachable(x.Operation)));
-        var call = Assert.Single(function.Instructions, x => x.Callee?.ResultSlot == true);
-        var result = function.GetOperands(call)[0];
-        Assert.Equal(EmissionOperandKind.SlotAddress, function.SlotAddresses[(int)result.Value].Kind);
         var ir = ScalarEmissionTest.EmitFixture("AggregateFunctionDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
-    }
-
-    [Fact]
-    public void LogicalNamesAndIncomingAddressesDoNotRequireExtraSlots()
-    {
-        const string Source = "func f(a: (string, i32), gap: (), empty: [0 of string], b: (string, i32)) -> (string, i32) => b@move\nlet empty: [0 of string] = []\nf((\"a\", 1), (), empty@move, (\"b\", 2))";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(1);
-        Assert.Equal(new[] { "ret", "a0", "a3" }, function.Abi.Parameters.Select(x => x.Name));
-        Assert.Equal(2, function.SlotAddresses.Count(x => x.Kind == EmissionOperandKind.Argument));
-        Assert.Single(function.SlotAddresses, x => x.Kind == EmissionOperandKind.ReturnAddress);
-        Assert.All(function.Slots, x => Assert.Equal(EmissionOperandKind.SlotAddress, function.SlotAddresses[x.Place].Kind));
-        Assert.DoesNotContain(function.Abi.Parameters, x => x.Attributes.Length != 0);
     }
 
     [Fact]
     public void ZeroByteArgumentsAndResultsKeepLogicalOwnershipWithoutStorage()
     {
         const string Source = "func echo(value: [0 of string]) -> [0 of string] => value@move\nlet empty: [0 of string] = []\necho(echo(empty@move))";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var function = module.GetFunction(1);
-        Assert.Empty(function.Abi.Parameters);
-        Assert.False(function.Abi.ResultSlot);
-        Assert.Empty(function.Slots);
-        Assert.Contains(function.Instructions, x => x.Opcode == EmissionOpcode.ReturnVoid);
-        var body = c.Ownership.Bodies[0];
-        Assert.Equal(2, body.Operations.Count(x => x.Kind == OwnershipOperationKind.CallEntry));
-        foreach (var call in body.Operations.Select((op, id) => (op, id)).Where(x => x.op.Kind == OwnershipOperationKind.Call))
-        {
-            Assert.NotEqual(-1, call.op.Place);
-            Assert.Equal(PlaceState.None, body.GetInputState(call.id, call.op.Place) & PlaceState.MayInit);
-            Assert.Equal(OwnershipOperationKind.Produce, body.Operations[call.id + 1].Kind);
-        }
-
-        Assert.Empty(module.GetFunction(0).Slots);
+        CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         var invalid = MinimalEmissionTest.Analyze(Source + "\necho(empty@move)");
         Assert.False(invalid.Analysis.IsVerified);
-    }
-
-    [Fact]
-    public void CopyArgumentsUseIndependentAcquiredStorage()
-    {
-        const string Source = "func echo(value: (i32, i32)) -> (i32, i32) => value\nlet value = (1, 2)\necho(value)\necho(value)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var function = module.GetFunction(0);
-        var local = Assert.Single(body.Places, x => x.Kind == OwnershipPlaceKind.Local);
-        var acquisitions = body.Operations.Select((op, id) => (op, id)).Where(x => x.op.Kind == OwnershipOperationKind.Consume && x.op.Place == local.Id).ToArray();
-        Assert.Equal(2, acquisitions.Length);
-        foreach (var acquisition in acquisitions)
-        {
-            Assert.Equal(AcquisitionKind.Copy, acquisition.op.Acquisition);
-            Assert.Contains(function.Instructions, x => x.Operation == acquisition.id && x.Opcode == EmissionOpcode.TransferAggregate && x.Place == acquisition.op.Input && x.Constant == local.Id);
-        }
-    }
-
-    [Fact]
-    public void ConditionalParameterFlagStartsAtProduceAndCannotBeOmitted()
-    {
-        var c = MinimalEmissionTest.Analyze(Echo + "func f(value: (string, i32), flag: bool)\n    if flag => echo(value@move)\nf((\"a\", 1), true)");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 2);
-        var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
-        var place = Assert.Single(function.LiveFlags);
-        Assert.Equal(OwnershipPlaceKind.Parameter, body.Places[place].Kind);
-        var produce = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == place);
-        var index = function.Instructions.FindIndex(x => x.Operation == produce && x.Opcode == EmissionOpcode.StoreLiveFlag && x.Constant == 1);
-        Assert.True(index >= 0);
-        var scratch = new int[body.Places.Count + body.Operations.Count];
-        Assert.True(BodyLowering.ValidateStringFlags(body, function, scratch));
-        function.Instructions.RemoveAt(index);
-        Assert.False(BodyLowering.ValidateStringFlags(body, function, scratch));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MissingNormalInitializationIsRejectedEvenForZeroByteResults(bool zero)
-    {
-        var source = zero ? "func echo(value: [0 of string]) -> [0 of string] => value@move\nlet empty: [0 of string] = []\necho(empty@move)" : Echo + "echo((\"a\", 1))";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        body.OperationStorage[call + 1] = body.Operations[call + 1] with { Kind = OwnershipOperationKind.Read };
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Theory]
-    [InlineData("result")]
-    [InlineData("argument")]
-    [InlineData("parameter")]
-    [InlineData("return")]
-    public void InconsistentFunctionPlansAreRejectedAndRecover(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze(Echo + "echo((\"a\", 1))");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
-        if (defect == "result")
-        {
-            body.OperationStorage[call] = body.Operations[call] with { Place = -1 };
-        }
-        else if (defect == "argument")
-        {
-            body.OperationStorage[call - 1] = body.Operations[call - 1] with { Place = body.Operations[call].Place };
-        }
-        else
-        {
-            body = c.Ownership.Bodies[1];
-            if (defect == "return")
-            {
-                body.Deliveries[0] = body.Deliveries[0] with { Write = -1 };
-            }
-            else
-            {
-                var produce = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce);
-                body.OperationStorage[produce] = body.Operations[produce] with { Source = body.Function };
-            }
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Fact]
-    public void PhysicalSignatureCacheReusesShapesWithoutRetainingSyntax()
-    {
-        var pool = new FunctionAbiPool();
-        // One pool and Layout across three compilations: their Types are Tuples of primitives, without stored Types that would
-        // follow one compilation's edits (Layout's input contract), so the shared records stay valid.
-        var layout = new Layout();
-        var tree = Populate(pool, layout, out var first);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        Assert.False(tree.IsAlive);
-        var c = MinimalEmissionTest.Analyze(Echo.Replace("echo", "renamed") + "()");
-        var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
-        Assert.Same(first, pool.Get(0, renamed, layout));
-        var empty = MinimalEmissionTest.Analyze("func f(value: [0 of string]) -> [0 of string] => value@move\n()");
-        var f = KotoTree.Walk(empty.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        var omitted = pool.Get(0, f, layout);
-        Assert.NotSame(first, omitted);
-        Assert.Empty(omitted.Parameters);
-        GC.KeepAlive(layout);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -275,26 +108,17 @@ public class AggregateFunctionEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);
-    }
-
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static WeakReference Populate(FunctionAbiPool pool, Layout layout, out FunctionAbi abi)
-    {
-        var c = MinimalEmissionTest.Analyze(Echo + "()");
-        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "echo");
-        abi = pool.Get(0, function, layout);
-        return new WeakReference(function);
     }
 }

@@ -48,7 +48,7 @@ public class ContractConstraintSubjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    " + clause);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
         Assert.Equal(BindingState.Invalid, Contract(c).StateOf());
         var restored = CompilationTestHelper.Reload(c);
@@ -86,7 +86,7 @@ public class ContractConstraintSubjectBindingTest
         var replacement = Contract(donor).ConstraintNodes[0].Left;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(BindingState.Resolved, Contract(c).StateOf());
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.False(c.Bind().IsComplete);

@@ -8,40 +8,31 @@ using Kimi.Compiler;
 
 namespace Benchmark;
 
-// The check-time cost of the Generic shape under each analysis configuration (R5 K4b): a fresh check (Bind, CheckStartup and Analyze, the
-// compiler pipeline's stages 2 to 4) and a warm Analyze, the same compilation rebound without an edit and analyzed again, as an LSP
-// server repeats it. MIR code generation ("sel") adds the instance collector to Analyze. Retained memory is the managed heap after full
-// collections with the compilation alive: after its first check, and the growth over its warm Analyzes.
+// The check-time cost of the Generic shape (R5 K4b): a fresh check (Bind, CheckStartup and Analyze, the compiler pipeline's stages 2 to 4)
+// and a warm Analyze, the same compilation rebound without an edit and analyzed again, as an LSP server repeats it. One configuration,
+// the process's: every pipeline's Analyze builds, analyzes and collects the MIR and publishes its records (DECISIONS BU-48, R5-M156), and
+// MIR code generation is the one code generator (R5-M160), so the former legacy, mir and sel rows measured one check; `compiler` names a
+// non-default pipeline. Retained memory is the managed heap after full collections with the compilation alive: after its first check,
+// and the growth over its warm Analyzes.
 internal static partial class AnalyzeCostMeasurements
 {
     private const int Warmups = 4;
     private const int Samples = 7;
     private const int Iterations = 4;
 
-    private static readonly (string Name, CompilerPipeline Pipeline, CompilerCodegen Codegen)[] Configurations =
-    [
-        ("legacy", CompilerPipeline.Legacy, CompilerCodegen.Legacy),
-        ("mir", CompilerPipeline.Mir, CompilerCodegen.Legacy),
-        ("sel", CompilerPipeline.Mir, CompilerCodegen.Mir),
-    ];
-
     internal static void Run()
     {
         var results = new List<object>();
         foreach (var size in new[] { 1, 32, 64, 128 })
         {
-            var source = CompilerPipelineBenchmark.GenericSource(size);
-            foreach (var (name, pipeline, codegen) in Configurations)
-            {
-                results.Add(Result(size, source, name, pipeline, codegen));
-            }
+            results.Add(Result(size, CompilerPipelineBenchmark.GenericSource(size)));
         }
 
         var report = new
         {
-            schemaVersion = 2,
+            schemaVersion = 3,
             measuredAtUtc = DateTimeOffset.UtcNow,
-            compiler = Compilation.CompilerVersion,
+            compiler = Compilation.CompilerIdentity,
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
             processors = Environment.ProcessorCount,
@@ -55,18 +46,18 @@ internal static partial class AnalyzeCostMeasurements
         Console.WriteLine(JsonSerializer.Serialize(report, options));
     }
 
-    // One configuration's measurements, in a frame of its own, so that no compilation of another stays reachable during them.
+    // One size's measurements, in a frame of its own, so that no compilation of another stays reachable during them.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static object Result(int size, string source, string name, CompilerPipeline pipeline, CompilerCodegen codegen)
+    private static object Result(int size, string source)
     {
         for (var i = 0; i < Warmups; i++)
         {
-            Check(Create(source, pipeline, codegen));
+            Check(Create(source));
         }
 
-        var (freshTicks, freshBytes) = Measure(() => Create(source, pipeline, codegen), static c => Check(c));
+        var (freshTicks, freshBytes) = Measure(() => Create(source), static c => Check(c));
         var baseline = GC.GetTotalMemory(forceFullCollection: true);
-        var warm = Create(source, pipeline, codegen);
+        var warm = Create(source);
         Check(warm);
         var retained = GC.GetTotalMemory(forceFullCollection: true) - baseline;
         var (warmTicks, warmBytes) = Measure(() => warm, static c => Check(c));
@@ -74,7 +65,6 @@ internal static partial class AnalyzeCostMeasurements
         var result = new
         {
             size,
-            configuration = name,
             freshCheckMeanMilliseconds = Milliseconds(freshTicks),
             freshCheckMeanAllocatedBytes = (double)freshBytes / (Samples * Iterations),
             warmAnalyzeMeanMilliseconds = Milliseconds(warmTicks),
@@ -87,12 +77,10 @@ internal static partial class AnalyzeCostMeasurements
         return result;
     }
 
-    // A compilation of the source under a configuration, prepared and parsed, outside measurement.
-    private static Compilation Create(string source, CompilerPipeline pipeline, CompilerCodegen codegen)
+    // A compilation of the source, prepared and parsed, outside measurement.
+    private static Compilation Create(string source)
     {
         var c = Compilation.CreateForTest();
-        c.Pipeline = pipeline;
-        c.Codegen = codegen;
         Require(c.Prepare("x86_64-pc-windows-msvc"), "Target preparation failed.");
         c.Kotonoha.AddSource(new SourceDocument("AnalyzeCost.kimi", source));
         return c;

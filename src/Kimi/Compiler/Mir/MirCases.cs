@@ -99,9 +99,30 @@ internal sealed class MirCases(TyCtxt types)
     /// (an obligation Binding publishes for a use, R4-M22).</summary>
     internal void Deselect() => this.width = 0;
 
+    /// <summary>Gets the binders the selected view makes borrows, as bits of the body's binder order: the Semantics case a relation is
+    /// required in (SPEC 15.6.5; a C1-F4 row's CaseMask, Binding's Condition renumbered to the body), so a row whose mask they cover is
+    /// checked in the view.</summary>
+    /// <returns>The view's borrow binders.</returns>
+    internal ulong Borrows()
+    {
+        var bits = 0UL;
+        for (var b = 0; b < this.width; b++)
+        {
+            if (this.view[b].Target is not null && MirTypes.IsBorrow(this.view[b].Semantics))
+            {
+                bits |= 1UL << b;
+            }
+        }
+
+        return bits;
+    }
+
     /// <summary>Gets the views of a callee body that a call with a substitution selects under the selected view (SPEC 8.15): for each
     /// resolved binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
-    /// admitted case while that Type is still abstract. Views are decoded as <see cref="Select"/> numbers them; the selected view is kept.</summary>
+    /// admitted case while that Type is still abstract or its instance a Limit. The instance is read as every reader reads one
+    /// (<see cref="TyCtxt.ReadableInstance"/>, DECISIONS R4-M139): over Rejected storage its case is the instance's Semantics, which no rejected part
+    /// changes, so the view is the one its repair selects. Views are decoded as <see cref="Select"/> numbers them; the selected view is
+    /// kept.</summary>
     /// <param name="callee">The callee body.</param>
     /// <param name="subst">The call's substitution, or null for the callee's own (every view).</param>
     /// <returns>The views, bit i for view i.</returns>
@@ -114,7 +135,7 @@ internal sealed class MirCases(TyCtxt types)
         {
             var binder = callee.Binders[b];
             var size = binder.Resolved ? BitOperations.PopCount((uint)binder.Admitted) : 1;
-            if (binder.Resolved && binder.Target.WholeType is { } whole && types.Apply(whole, subst) is { } actual &&
+            if (binder.Resolved && binder.Target.WholeType is { } whole && types.ReadableInstance(whole, subst) is { } actual &&
                 this.Type(actual) is { IsAbstract: false } type)
             {
                 var bit = 1u << (int)type.Semantics;

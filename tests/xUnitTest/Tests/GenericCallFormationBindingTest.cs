@@ -47,7 +47,7 @@ public class GenericCallFormationBindingTest
     public void ValidExplicitArgumentsRemainApplicable(string argument)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
@@ -60,7 +60,7 @@ public class GenericCallFormationBindingTest
     public void DependentArgumentsUseCallerEvidence(string expression)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is Copy\ngroup Consumer\n    func take<T>(value: T) => ()\n    func call<U>(value: Box<U>)\n        U is Copy\n        " + expression);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 

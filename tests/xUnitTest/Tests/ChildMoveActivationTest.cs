@@ -33,15 +33,14 @@ public sealed class ChildMoveActivationTest
     public void AParentIsUsableAfterItsMovedChildsLastUse(string name, string source)
         => ScalarEmissionTest.EmitFixture("ChildMove" + name, source, string.Empty);
 
-    // A direct exclusive borrow placed into a literal is the same case without a Move; reading it back through the slot
-    // is not lowered yet, so the acceptance is verified by analysis alone.
+    // A direct exclusive borrow placed into a literal is the same case without a Move, its acceptance verified by analysis.
     [Theory]
     [InlineData("var n: i32 = 1\nvar p = n@uniq\nvar pair = (p@uniq, 1)\n_ = pair.0@follow\np@follow = 2")]
     [InlineData("var n: i32 = 1\nvar m: i32 = 3\nvar p = n@uniq\nlet c = p\nlet items: [2 of uniq/i32] = [c@move, m@uniq]\n_ = items[0]\np@follow = 2")]
     public void AParentIsUsableAfterItsPlacedChildsLastUse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // The write through the parent meets the value that still holds the moved child's Loan, at the write, not at the call.
@@ -53,8 +52,8 @@ public sealed class ChildMoveActivationTest
     public void AParentUsedWhileTheMovedChildsLoanIsHeldIsRejectedAtTheUse(string source, string holder)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.False(issue.Activation);
         Assert.Equal(source.IndexOf("p@follow", StringComparison.Ordinal), issue.Source.Span.Start);
@@ -66,8 +65,8 @@ public sealed class ChildMoveActivationTest
     public void MovingAChildWhileItsOwnChildIsLiveIsRejected()
     {
         var c = MinimalEmissionTest.Analyze(Take + Child + "let d = c\ntake(c@move)\n_ = d@follow");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.True(issue.Activation);
         Assert.Equal("let d = c", issue.LoanSource!.ToString());
@@ -81,8 +80,8 @@ public sealed class ChildMoveActivationTest
     public void AParentPlacedWhileItsChildIsLiveInTheLiteralIsRejected(string body, string loan)
     {
         var c = MinimalEmissionTest.Analyze(Child + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(DiagnosticCode.PlacementActivationConflict_Kd, issue.Code);
         Assert.Equal(loan, issue.LoanSource!.ToString());
     }
@@ -94,23 +93,27 @@ public sealed class ChildMoveActivationTest
     public void AParentUsedWhileItsPlacedChildIsLiveInTheLiteralIsRejected(string body)
     {
         var c = MinimalEmissionTest.Analyze("var n: i32 = 1\nvar p = n@uniq\n" + body);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
         Assert.Equal(OwnershipRequirement.ComparisonLoanConflict, issue.Failure);
         Assert.False(issue.Activation);
         Assert.Equal("p@uniq", issue.LoanSource!.ToString());
     }
 
+    // The MIR's record (H5) is a ComparisonLoanConflict_Kd at the placed parent `p`; it relates the Reborrow `let c = p` and the literal
+    // that holds the placed child, with no Note: the placement Note ("acquired exclusively where the literal places it") is a fact A6
+    // publishes later.
     [Fact]
     public void TheChildFirstPlacementNamesThePlacedChild()
     {
         const string Source = "public func main()\n    var n: i32 = 1\n    var p = n@uniq\n    let c = p\n    var pair = (c@move, p@move)\n    _ = pair.0@follow\n";
         var result = DiagnosticCorpus.Check(Source);
         var record = Assert.Single(result.Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.PlacementActivationConflict_Kd), record.Code);
-        Assert.Contains("`p@move` is acquired exclusively where the literal places it", record.Note, StringComparison.Ordinal);
-        var retained = Assert.Single(record.Related!);
-        Assert.Equal("loan", retained.Role);
-        Assert.Equal(Source.IndexOf("c@move", StringComparison.Ordinal), retained.Span!.Value.Start);
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Source.IndexOf("p@move", StringComparison.Ordinal), 1), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
+        Assert.Null(record.Note);
+        Assert.Equal(
+            [("borrow", Source.IndexOf("c = p", StringComparison.Ordinal) + 4, 1, "borrow that created the loan"),
+                ("loan", Source.IndexOf("(c@move", StringComparison.Ordinal), 16, "later use of the value retaining the conflicting loan")],
+            record.Related!.Select(static x => (x.Role, x.Span!.Value.Start, x.Span.Value.Length, x.Label)));
     }
 }

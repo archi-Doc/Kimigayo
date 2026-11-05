@@ -1,0 +1,9 @@
+func use(z: uniq/i32, x: ref/i32, slot: uniq/(ref/i32 during x)) -> i32
+    origin z outlives x
+    var store = func [slot@move] (b: ref/i32 during x) -> i32
+        slot@follow = b
+        return 0
+    store@move(z@follow@ref)
+    z@follow = 42
+    return 0
+public func main() => ()

@@ -14,6 +14,9 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 {
     private const string Len = "func len(n: ref/i32) -> i32 => n@follow\n";
 
+    // A closure whose result borrows its hidden environment receiver (SPEC 8.10, 7.7.4).
+    private const string EnvironmentClosure = "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n";
+
     [Theory]
     [InlineData("Item", "func answer() -> i32 => 42\nlet value = consume(answer)")]
     [InlineData("Closure", "let answer = func [] () -> i32 => 42\nlet value = consume(answer)")]
@@ -111,7 +114,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             (common ? "func accept<T>(f: () -> T) => ()\n" : "func accept<T, F>(f: ref/F)\n    F is Callable<() -> T>\n    return\n") +
             "accept(stop)\nConsole.writeLine(\"alive\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "accept");
         Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
         ScalarEmissionTest.EmitFixture("CallableSignatureNever" + common, source, "alive\n");
@@ -156,7 +159,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var path = Path.GetFullPath("callable-signature.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
@@ -194,7 +197,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         const string Source = "func consume<T, F>(action: F) -> T\n    F is Callable<owner, () -> T>\n    return action@move()\nlet value = consume(func [] () => 42)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -261,7 +264,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var arguments = reversed ? "x@ref, len" : "len, x@ref";
         var body = $"func keep<T>({parameters}) -> T => value@move\nvar x: i32 = 4\nlet r = keep({arguments})\n";
         var c = MinimalEmissionTest.Analyze(Len + body + "require r@follow == 4 else => $abort(\"order\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "keep");
         var slot = call.CallOf()!.TypeArguments[0]!;
         var borrow = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static x => x.ToString() == "x@ref");
@@ -291,7 +294,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void APerCallOriginLeavesTheSlotOriginOpen()
     {
         var c = MinimalEmissionTest.Analyze(Len + "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nlet r = runOnly(len)\nlet again = runOnly(len)");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "runOnly").ToArray();
         Assert.Equal(2, calls.Length);
         var first = calls[0].CallOf()!.TypeArguments[0]!;
@@ -299,11 +302,13 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (first.Kind, first.Semantics));
         Assert.Equal((OriginKind.Inference, true), (first.Origin!.Kind, first.Origin.Open));
         Assert.NotSame(first.Origin, second.Origin); // Each call site has its own local region.
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
 
-        // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code.
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(ir, @"define internal \S+ @__kimi_generic_entry\d+\("));
+        // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code: both calls call the one instance.
+        var startup = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Startup;
+        var entries = startup.Instructions.Where(static x => x.Callee?.Signature == "internal void (ptr, ptr)").ToArray();
+        Assert.Equal(2, entries.Length);
+        Assert.Same(entries[0].Callee, entries[1].Callee);
     }
 
     // Local-region inference keeps the actual Loan inserted after a result-only call or at a generic argument.
@@ -327,9 +332,9 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     {
         const string Source = "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc make<T>(f: () -> T) -> T => f()\npublic func main()\n    var r = make(constant)\n    let local: i32 = 3\n    r = local@ref\n    require r@follow == 3 else => $abort(\"value\")\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Validate(out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 15.3.6, 10.8: when only the argument's own per-call Origin would satisfy the slot (the Function value or Callable proof holds
@@ -437,14 +442,89 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("func make<T>(f: () -> T) -> T => f()\n", "    let s = make(c@move)\n")]
     public void AnEnvironmentResultIsNoSlotEvidence(string declaration, string body)
     {
-        var source = declaration + "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n" + body + "    Console.writeLine(\"\\(s[0])\")\n";
+        var source = declaration + EnvironmentClosure + body + "    Console.writeLine(\"\\(s[0])\")\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), body.Trim().Split('\n')[0][8..]), (error.Code, Text(source, error.Span)));
+        var call = body.Trim().Split('\n')[0][8..];
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), call), (error.Code, Text(source, error.Span)));
+
+        // DECISIONS BU-86: the record carries the judgment that left the candidate pending, the argument and the slot.
+        Assert.Equal("The result of c over its environment is no evidence for T", error.Note);
+        var argument = Assert.Single(error.Related!);
+        Assert.Equal(("argument", call[5..^1]), (argument.Role, Text(source, argument.Span)));
 
         var valid = "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\npublic func main() -> ()\n    var x: i32 = 5\n    let r = x@ref\n    let c = func [r] () => r\n    let s = make(c@ref)\n    x = 6\n    Console.writeLine(\"\\(s@follow)\")\n";
         var conflict = Assert.Single(DiagnosticCorpus.Check(valid).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "x = 6"), (conflict.Code, Text(valid, conflict.Span)));
         ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceCapturedReference", "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\nlet x: i32 = 5\nlet r = x@ref\nlet c = func [r] () => r\nlet s = make(c@ref)\nrequire s@follow == 5 else => $abort(\"captured\")", string.Empty);
+    }
+
+    // DECISIONS BU-86: a result whose callee Origin no argument substitutes (`.None` is no evidence for s) leaves the candidate Pending
+    // on that Origin, not on the environment result that also leaves T unsolved, so the record carries no environment judgment. That
+    // return has no Language fact: valid programs reach it too (`keep(.Some(x@ref))`), so the record stays fact-less (G354-1c, R2).
+    [Fact]
+    public void AnUnsubstitutedResultOriginCarriesNoEnvironmentJudgment()
+    {
+        var source = "func make<T, F>(f: ref/F, o: Option<ref/i32 during s>) -> Option<ref/i32 during s>\n    F is Callable<() -> T>\n    return o@move\npublic func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n    let r = make(c@ref, .None)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", null), (error.Code, Text(source, error.Span), error.Note));
+        Assert.Null(error.Related);
+    }
+
+    // DECISIONS BU-86 (2026-11-03): the environment judgment decides only for a slot that no evidence binds (SPEC 10.8). Once another
+    // argument (`n: i32`) or the expected result binds T, the closure's result part is matched by no inference; the Callable Constraint
+    // at F judges it and refutes it (SPEC 8.10), so the candidate is inapplicable whatever position stays open (U's Literal).
+    [Theory]
+    [InlineData("func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\n", "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n")]
+    [InlineData("func make<T, U, F>(f: ref/F, u: U) -> T\n    F is Callable<() -> T>\n    return $abort(\"x\")\n", "    let r: i32 = make(c@ref, 2)\n")]
+    public void AnEnvironmentResultDecidesOnlyAnUnsolvedSlot(string declaration, string body)
+    {
+        var source = declaration + EnvironmentClosure + body;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var call = body[(body.LastIndexOf("= ", StringComparison.Ordinal) + 2)..^1];
+        Assert.Equal(
+            (nameof(DiagnosticCode.NoApplicableOverload_Kd), call, "make requires F is Callable<() -> T>; this condition is refuted for closure () -> ref/Array<i32>"),
+            (error.Code, Text(source, error.Span), error.Note));
+    }
+
+    // SPEC 10.8, 8.10: with T bound by a reference to another place, the Callable proof decides; only its Origin part is Unknown, so the
+    // record is that proof's own, at the argument.
+    [Fact]
+    public void ABoundSlotsReferenceIsJudgedByTheCallableProof()
+    {
+        var source = "func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\n" + EnvironmentClosure +
+            "    let w: Array<i32> = [1]\n    let n = w@ref\n    let r = make(c@ref, n, 2)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "c@ref"), (error.Code, Text(source, error.Span)));
+        Assert.StartsWith("F is Callable<() -> T> is not proven", error.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 10.8, 10.1 steps 4-5: when another argument or the expected result binds T, the environment result is no evidence and the
+    // candidate is judged by its proof: refuted (SPEC 8.10), so the overload applies (rows 1-2), or proven for a closure whose result is
+    // not over its environment (row 3).
+    [Theory]
+    [InlineData("func make<T, U, F>(f: ref/F, t: T, u: U) -> i32\n    F is Callable<() -> T>\n    return 1\nfunc make<F>(f: ref/F, t: i32, u: i64) -> i32\n    return 2\n" + EnvironmentClosure, "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n")]
+    [InlineData("func make<T, U, F>(f: ref/F, u: U) -> T\n    F is Callable<() -> T>\n    return $abort(\"x\")\nfunc make<F>(f: ref/F, u: i64) -> i32\n    return 2\n" + EnvironmentClosure, "    let r: i32 = make(c@ref, 2)\n")]
+    [InlineData("func make<T, U, F>(f: ref/F, t: T, u: U) -> T\n    F is Callable<() -> T>\n    return t@move\npublic func main() -> ()\n    let c = func [] () => 5\n", "    let n: i32 = 1\n    let r = make(c@ref, n, 2)\n")]
+    public void ABoundEnvironmentSlotLeavesTheCandidateToItsProof(string declarations, string body)
+        => Assert.Empty(DiagnosticCorpus.Check(declarations + body).Diagnostics);
+
+    // SPEC 10.8 (traversal order never chooses a solution; DECISIONS BU-86): the environment judgment that decides is that of the first
+    // unsolved slot in slot order, whatever the order of the arguments. T is bound by n, U only by e's environment result, so each order
+    // twin, with or without an overload, is pending on U.
+    [Theory]
+    [InlineData("f: ref/F, g: ref/G", "c@ref, e@ref", false)]
+    [InlineData("g: ref/G, f: ref/F", "e@ref, c@ref", false)]
+    [InlineData("f: ref/F, g: ref/G", "c@ref, e@ref", true)]
+    [InlineData("g: ref/G, f: ref/F", "e@ref, c@ref", true)]
+    public void TheEnvironmentJudgmentIsChosenBySlotOrder(string closures, string arguments, bool overload)
+    {
+        var source = "func make<T, U, V, F, G>(" + closures + ", t: T, v: V) -> i32\n    F is Callable<() -> T>\n    G is Callable<() -> U>\n    return 1\n" +
+            (overload ? "func make<F, G>(" + closures + ", t: i32, v: i64) -> i32\n    return 2\n" : string.Empty) + EnvironmentClosure +
+            "    let w: Array<i32> = [1]\n    let e = func [w@move] () => w@ref\n    let n: i32 = 1\n    let r = make(" + arguments + ", n, 2)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(
+            (nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(" + arguments + ", n, 2)", "The result of e over its environment is no evidence for U"),
+            (error.Code, Text(source, error.Span), error.Note));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -456,8 +536,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // The fixed-input instantiation and the per-call stand-in rechecks run only when a fit or a Callable proof fails as is; a warm rebind
@@ -473,7 +553,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -486,8 +566,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

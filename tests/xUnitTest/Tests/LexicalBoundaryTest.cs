@@ -30,7 +30,7 @@ public class LexicalBoundaryTest(ITestOutputHelper output)
         Assert.Equal(nameof(DiagnosticCode.InvalidNumericLiteral_Kd), error.Code);
         Assert.Equal(index, error.Text);
         Assert.Equal(new SourceSpan(source.Length - index.Length, index.Length), error.Span);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]

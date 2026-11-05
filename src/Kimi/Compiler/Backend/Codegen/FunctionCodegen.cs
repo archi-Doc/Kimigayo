@@ -2,14 +2,14 @@
 
 // FunctionCodegen (R5 package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS R5-M65), MIR code generation: the LLVM definition of one body
 // item of the checked set from its validated, analyzed MIR body in the item's instance (a StaticInit item's with its static's slot), of
-// one DropGlue item by its Type's row or of one ClosureErasure or ItemAdapter item, and the coverage rows (PD11) of the MIR forms: a form
-// the frame does not cover yet is one located Unsupported_Kd, never wrong code. Each concern file (Files) owns its rows, in its header or at
-// its writer: the forms it writes, those it leaves to a later unit, named, and the DECISIONS entries behind them. This file dispatches each
-// statement, rvalue and terminator to its row, writes the unconditional branch and the SwitchInt, and makes the records; StorageLive,
-// StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
+// one DropGlue item by its Type's row, of one ClosureErasure or ItemAdapter item or of one Builtin or PropertyWitness item. Every MIR
+// form of an accepted program has its row; a form the backend does not generate is the capability table's gap at check (DECISIONS
+// R5-M146). Each concern file (Files) owns its rows, in its header or at its writer: the forms it
+// writes and the DECISIONS entries behind them. This file dispatches each statement, rvalue and terminator to its row, writes the unconditional
+// branch and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
-// exactness (A2, R4-M6a, R4-M102: gate step 2 writes no inexact body); the compilation's Layout and runtime location texts;
+// exactness (A2, R4-M6a, R4-M102: an inexact body reaching Write is a broken contract); the compilation's Layout and runtime location texts;
 // ModuleCodegen's signatures (Signature and Import: Abi.Of under the internal and the C convention, IMPL 21.3.1), constant pool and
 // record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
@@ -25,15 +25,28 @@
 // and a site's location (FunctionCodegen.Values.cs); the text's spelling (.Spelling.cs); the function's frame: homes, prologue and return
 // (.Frame.cs); parameter passing: its kind's argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place
 // writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs),
-// operators (.Arithmetic.cs), casts by their kind (.Casts.cs) and the scalar conversions (.Conversions.cs), calls (.Calls.cs) and value
-// calls (.Closures.cs), intrinsics (.Intrinsics.cs), the Drop terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a
-// value's destruction one level per Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the
-// adapter items' functions and a Function value's glue row (.Erasures.cs); a static's slot, its ensure function and an access's state
-// test (.Statics.cs).
+// operators (.Arithmetic.cs) and the string comparisons among them (.Strings.cs; DECISIONS R5-M118), casts by their kind (.Casts.cs) and
+// the scalar conversions (.Conversions.cs), calls (.Calls.cs) and value calls (.Closures.cs), the shims' functions, Builtin and
+// PropertyWitness (.Shims.cs; DECISIONS R5-M126, R5-M130, R5-M141), intrinsics (.Intrinsics.cs), the Drop
+// terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a value's destruction one level per Type, a DropGlue item's
+// function or an Open row's (.Glue.cs); the common Function values: erasure, the adapter items' functions and a Function value's glue row
+// (.Erasures.cs); a static's slot, its ensure function and an access's state test (.Statics.cs); the handle operations: a creation, a
+// clone, a runtime Type test and a virtual slot's entry (.Objects.cs); the whole-value updates, replace, exchange and swap (.Updates.cs),
+// and the inline storage kernels (.Storage.cs), the legacy rows of compiler functions (DECISIONS R5-M116); the formatting rows' Context
+// words and witness targets, a user formatter's write wrapper and Text.writer's words (.Formatting.cs; DECISIONS R5-M128, R5-M130); an
+// owning interpolation's buffer, hints and end, its estimate and its buffer's Region home (.Interpolation.cs; DECISIONS R5-M131); the
+// Array rows written in place: an Array from none, setArrayLength,
+// capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written in place: a Dictionary from none and a
+// Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124); a test build's phases, the cleanup window and a terminator's completion
+// (.Phases.cs; DECISIONS R5-M137).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
-// out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
-// Ok are broken contracts: InternalInvariant_Kd.
+// out-string failures or catch-alls, or lay out a Type outside the item's by-value set (its locals, constants and aggregates), its
+// type-driven Type and its operator rows' Types (a scalar or string read through reference layers, Compute) but through Needed, the Type a
+// form's LayoutNeeds row names (DECISIONS R5-M149), so every Type code generation lays out is a use the collector checked (K 4.8, past a
+// pair layer under the item's view too) or a row Type, which always lays out. An Opaque value (the gate admits none), a Type TypeOf
+// cannot make, a Layout outcome other than Ok and any other input validated MIR never has are broken contracts: InternalInvariant_Kd,
+// recorded once by the owner that detects it, at the site it has, else the body's subject (DECISIONS R5-M146).
 
 using Kimi.Compiler.Mir;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -76,13 +89,10 @@ internal sealed partial class FunctionCodegen
         (this.program, this.collector, this.item, this.body, this.output, this.next) = (program, collector, item, body, output, 0);
         if (program.Drops.Incomplete(body.Ordinal) is { } refusal)
         {
-            // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so a body
-            // A1 or A2 left inexact (R4-M102: an inline copy's problem marks its caller) is not written; its refusal is that problem's own
-            // code at its subject, by the location rule, and every other item is still written, so its gaps are recorded too. Interim: a
-            // body A1 skipped at the arena limit (ViewsOf 0, R4-M15a) is one located Unsupported_Kd at the body, since its problem carries
-            // no arguments for OwnershipStorageLimit_Kd; removed once A1's arena problem publishes requiredBytes, limitBytes and the table.
-            var (code, subject) = program.Drops.ViewsOf(body.Ordinal) == 0 ? (DiagnosticCode.Unsupported_Kd, body.Source) : refusal;
-            this.module.Report(code, collector.Subject(item, subject));
+            // IC's contract (MirDropTable.Incomplete, R4-M69, R4-M102; DECISIONS R5-M96's H5 line, R5-M185): A2's verdicts are exact only
+            // for a body A1 accepts (R4-M6a), and every body A1 or A2 left inexact has a kept Error problem, its own or its template's of
+            // the same code, so check rejects its program and the gate never lets it here: a broken contract at its subject (K 4.9).
+            this.module.Report(DiagnosticCode.InternalInvariant_Kd, collector.Subject(item, body, refusal.Source));
             return;
         }
 
@@ -125,6 +135,7 @@ internal sealed partial class FunctionCodegen
     private void Block(int index)
     {
         var block = this.body.Blocks[this.at = index];
+        this.window = -1; // A window never spans blocks; a block that ended without a successor left its own open (FunctionCodegen.Phases).
         this.output.Write('b');
         WriteNumber(this.output, index);
         this.output.Write(":\n");
@@ -144,6 +155,7 @@ internal sealed partial class FunctionCodegen
         switch (statement.Kind)
         {
             case MirStatementKind.Assign:
+                this.Position(statement.Source);
                 this.Assign(statement);
                 return;
             case MirStatementKind.StorageLive or MirStatementKind.StorageDead or MirStatementKind.FakeRead or MirStatementKind.EndBorrow:
@@ -207,6 +219,7 @@ internal sealed partial class FunctionCodegen
                 this.output.Write("  unreachable\n");
                 return;
             case MirTerminatorKind.Call:
+                this.Position(terminator.Source);
                 this.Call(terminator);
                 return;
             case MirTerminatorKind.Drop:
@@ -217,33 +230,43 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A terminator's transfer to its one runtime successor: its location's flag points (FunctionCodegen.Flags), then the branch.
+    // A terminator's transfer to its one runtime successor: its location completed (FunctionCodegen.Phases), then the branch.
     private void Branch(int target)
     {
-        this.Points(new(this.at, this.body.Blocks[this.at].Count));
+        this.Completed();
         this.output.Write("  br ");
         this.WriteLabel(target);
         this.output.Write('\n');
     }
 
-    // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target; its location's flag
-    // points, which hold on every successor, before it.
+    // A conditional branch between two of the function's own numbered labels (a drop guard, a comparison part, a write wrapper's frame):
+    // `br i1 <condition>, label <then><id>, label <otherwise><id>`.
+    private void Branch(Value condition, string then, string otherwise, int id)
+    {
+        var output = this.output;
+        output.Write("  br i1 ");
+        this.WriteValue(condition);
+        output.Write(", label ");
+        Name(output, then, id);
+        output.Write(", label ");
+        Name(output, otherwise, id);
+        output.Write('\n');
+    }
+
+    // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target; its location
+    // completed before it (its flag points hold on every successor).
     private void Switch(in MirTerminator terminator)
     {
         var operand = terminator.Operand;
-        if (!this.Operand(operand, out var value))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, terminator.Source);
-            return;
-        }
-
-        if (this.LoweringOf(operand) is not { } lowering)
+        if (!this.Operand(operand, out var value) || this.LoweringOf(operand) is not { } lowering)
         {
             return; // A broken contract, recorded.
         }
 
-        this.Points(new(this.at, this.body.Blocks[this.at].Count));
-        var (output, type, width) = (this.output, lowering.Layout.StorageType, 8 * lowering.Layout.Size);
+        this.Completed();
+        var output = this.output;
+        var type = lowering.Layout.StorageType;
+        var width = 8 * lowering.Layout.Size;
         output.Write("  switch ");
         output.Write(type);
         output.Write(' ');

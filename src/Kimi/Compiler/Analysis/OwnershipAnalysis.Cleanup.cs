@@ -14,7 +14,7 @@ public sealed partial class OwnershipAnalysis
     private int cleanupQuery;
 
     // SPEC 15.6.6, 16.3.3, 8.15.1: whether destroying a value of the Type may observe the Loans it holds: through a struct that declares a
-    // drop, or an abstract part not proven Copy, whose destruction every instance decides (MirTypes.Observes, DECISIONS R4-M36).
+    // drop, or an abstract part not proven Copy, whose destruction every instance decides (MirTypes.Observation, DECISIONS R4-M36).
     private bool CleanupObservesBorrows(BoundType type, Koto source)
     {
         if (++this.cleanupQuery == int.MaxValue)
@@ -91,7 +91,7 @@ public sealed partial class OwnershipAnalysis
         {
             foreach (var payload in cases)
             {
-                if (this.CleanupObservesBorrows(payload, source, depth + 1))
+                if (payload is not { } stored || this.CleanupObservesBorrows(stored, source, depth + 1))
                 {
                     return true;
                 }
@@ -125,7 +125,7 @@ public sealed partial class OwnershipAnalysis
         this.selections.RemoveAt(this.selections.Count - 1);
         var completes = this.flow!.Nodes[deferred].CanCompleteNormally;
         this.body.RecordCompletion(entry, join, completes);
-        this.body.DeferredPlanStorage[plan] = new(deferred, edge, entry, join, this.body.Operations.Count, parent, completes);
+        this.body.DeferredPlanStorage[plan] = new(deferred, edge, entry, this.body.Operations.Count, parent, completes);
         this.current = completes ? join : -1;
 
         this.activeDeferred = parent;

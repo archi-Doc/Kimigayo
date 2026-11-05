@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the indexed storage of one MIR body and its projection chains.
-// Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records.
+// Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records,
+// the validator's verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and
+// whether a construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
 // References use body-local indices; projection chains are interned and ProjectedType owns their Type rule.
 // Must not resolve syntax or introduce a parallel representation for the same body.
 
@@ -31,6 +33,7 @@ internal sealed class MirBody
     private MirOpaque[] opaques = [];
     private int[] opaqueRoots = [];
     private MirMustNotComplete[] ends = [];
+    private SourceRef[] guessedSites = [];
     private int localCount;
     private int blockCount;
     private int statementCount;
@@ -43,6 +46,7 @@ internal sealed class MirBody
     private int opaqueCount;
     private int opaqueRootCount;
     private int endCount;
+    private int guessedSiteCount;
 
     internal MirDefKey Key { get; private set; }
 
@@ -81,8 +85,21 @@ internal sealed class MirBody
     /// another's failure body precedes it; a default copy has none, A3 judges its template (SPEC 7.2.3).</summary>
     internal ReadOnlySpan<MirMustNotComplete> MustNotComplete => this.ends.AsSpan(0, this.endCount);
 
+    /// <summary>Gets the sites the MustNotComplete rows' ranges name: the nodes Binding guessed a failure body's completion rests on.</summary>
+    internal ReadOnlySpan<SourceRef> GuessedSites => this.guessedSites.AsSpan(0, this.guessedSiteCount);
+
     /// <summary>Gets a value indicating whether a value of the body is Opaque: an error or Unsupported form replaced it.</summary>
     internal bool HasOpaque => this.opaqueCount > 0;
+
+    /// <summary>Gets or sets a value indicating whether the validator found a broken contract located in the body (MirValidator, its one
+    /// writer; tests inject it), so that no consumer reads it (DECISIONS R5-M183).</summary>
+    internal bool HasFinding { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a construction record lies in the body: the builder's one record path of the body
+    /// it builds (MirBuilder.Record) is its one writer, and it is read-only after build (DECISIONS R5-M183, GR-1a). The analyses read the
+    /// body, unlike one with <see cref="HasFinding"/>; a record made without a body in hand (a module's broken HIR contract, a collection
+    /// record) marks none.</summary>
+    internal bool HasConstructionRecord { get; set; }
 
     /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
     /// <param name="source">The source of a statement, a terminator or a local.</param>
@@ -93,9 +110,16 @@ internal sealed class MirBody
     /// R4-M69).</summary>
     /// <param name="scope">A scope of the body.</param>
     /// <returns>The innermost Inlined scope enclosing it, or -1 when it lies in none.</returns>
-    internal int Inlining(int scope)
+    internal int Inlining(int scope) => this.Enclosing(scope, MirScopeKind.Inlined);
+
+    /// <summary>Gets the scope of a kind a scope lies in, itself included: an Inlined scope's copy (<see cref="Inlining"/>), a Deferred
+    /// scope's defer body (SPEC 16.1).</summary>
+    /// <param name="scope">A scope of the body.</param>
+    /// <param name="kind">The kind.</param>
+    /// <returns>The innermost scope of the kind enclosing it, or -1 when it lies in none.</returns>
+    internal int Enclosing(int scope, MirScopeKind kind)
     {
-        while (scope >= 0 && this.scopes[scope].Kind != MirScopeKind.Inlined)
+        while (scope >= 0 && this.scopes[scope].Kind != kind)
         {
             scope = this.scopes[scope].Outer;
         }
@@ -204,14 +228,15 @@ internal sealed class MirBody
     internal bool Binds(int binder, BindingSymbol? target) => target is not null && (uint)binder < (uint)this.Binders.Count &&
         ReferenceEquals(this.Binders[binder].Target, target);
 
-    /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain.</summary>
+    /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain, no finding
+    /// and no record.</summary>
     /// <param name="key">The definition.</param>
     /// <param name="source">The body's syntax.</param>
     internal void Reset(MirDefKey key, SourceRef source)
     {
-        (this.Key, this.Source) = (key, source);
+        (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord) = (key, source, false, false);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
-        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = 0;
+        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
         this.projectionIds.Clear();
         this.constIds.Clear();
         this.Binders.Clear();
@@ -311,6 +336,10 @@ internal sealed class MirBody
     }
 
     internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);
+
+    /// <summary>Adds a site to <see cref="GuessedSites"/>, which a MustNotComplete row added after it names in its range.</summary>
+    /// <param name="site">A node Binding guessed.</param>
+    internal void AddGuessedSite(SourceRef site) => Add(ref this.guessedSites, ref this.guessedSiteCount, site);
 
     private static int Add<T>(ref T[] items, ref int count, in T item)
     {

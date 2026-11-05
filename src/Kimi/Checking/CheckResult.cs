@@ -71,12 +71,17 @@ public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresen
     /// <summary>Creates the output of a check that an input or its configuration blocked before the check entry ran (SPEC 23.2.2).</summary>
     /// <param name="code">The <c>Input</c> Error that explains it.</param>
     /// <param name="location">The input it concerns, such as the project file, or the default value for none.</param>
-    /// <param name="note">The environment-dependent text of the failure, published as a bounded Note.</param>
-    /// <returns>The Blocked output: that one record, without a range.</returns>
-    public static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, string? note = null)
+    /// <param name="notes">The environment-dependent texts of the independent failures (SPEC 23.1.2), each published as a bounded Note of
+    /// its own record; none gives one record without a Note.</param>
+    /// <returns>The Blocked output: those records, without a range.</returns>
+    public static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, params IReadOnlyList<string?> notes)
     {
         var owner = new DiagnosticOwner();
-        owner.Report(DiagnosticPartition.Input, code, location.IsEmpty ? null : location.Value, note: note);
+        for (var i = 0; i < Math.Max(notes.Count, 1); i++)
+        {
+            owner.Report(DiagnosticPartition.Input, code, location.IsEmpty ? null : location.Value, note: notes.Count == 0 ? null : notes[i]);
+        }
+
         return new(CheckOutcome.Blocked, false, TestPresence.Unknown, owner.Finalize());
     }
 }

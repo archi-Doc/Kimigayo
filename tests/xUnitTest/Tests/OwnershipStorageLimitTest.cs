@@ -1,49 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
-using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
-using Kimi.Lsp;
 using Verification;
 using Xunit;
 
 namespace XunitTest;
 
-public class OwnershipStorageLimitTest(ITestOutputHelper output)
+public class OwnershipStorageLimitTest
 {
-    // The old instance run's storage limit (InstanceStorageLimit, deleted at G7), on a compilation pinned to the old generator, which goes
-    // by G4 at the latest (DECISIONS R5-M85).
-    [Fact]
-    public void ConcreteInstanceLimitsRemainResourceFailuresAndRecover()
-    {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))", codegen: CompilerCodegen.Legacy);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var initial), initial);
-        var previous = OwnershipStorage.ByteLimit;
-        try
-        {
-            // Reuse the fully prepared instance; retained arrays must not bypass a later request's limit.
-            OwnershipStorage.ByteLimit = 8;
-            using var writer = new StringWriter();
-            Assert.False(c.WriteIr(writer, out var failure));
-            Assert.Empty(writer.ToString());
-            Assert.True(c.Emission.FailureIsResourceLimit, failure);
-            Assert.Contains("ownership", failure!, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("8", failure, StringComparison.Ordinal);
-            Assert.True(c.Analysis.IsVerified);
-            Assert.Empty(c.Problems);
-        }
-        finally
-        {
-            OwnershipStorage.ByteLimit = previous;
-        }
-
-        Assert.True(c.WriteIr(TextWriter.Null, out var recovered), recovered);
-        Assert.False(c.Emission.FailureIsResourceLimit);
-        Assert.Empty(c.Problems);
-    }
-
     [Fact]
     public void OversizedProductsReportResourcesBeforeAllocationOrOverflow()
     {
@@ -53,56 +19,47 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
         Assert.Equal("borrow dependencies", failure.Table);
     }
 
+    // R6-check H5 (DECISIONS R5-M185, H0b-3): the MIR decides acceptance, so OwnershipStorage's logical limit is the old analysis's alone,
+    // read through its legacy entry until H10b, and publishes nothing; the MIR's arenas have their own limit (R4-M15a, R4-M132;
+    // MirPublicationTest). The published records are the MIR's: an independent error stays at its use, and generation follows the verdict.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void LimitsPreservePublicEvidenceAndIndependentErrors(bool independent)
+    public void TheOldLimitPublishesNothingBesideIndependentErrors(bool independent)
     {
         var source = VerificationWorkloads.InspectionLoans(32, true) +
             (independent ? "\nfunc invalid()\n    let value = 1\n    let moved = value@move\n    let invalid = value" : string.Empty);
         var path = Path.GetFullPath("ownership-storage.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        c.AnalyzeLegacyOwnership(); // The old analysis's full-size preparation (the ledger's Analyzed observer may have run it already).
         var previous = OwnershipStorage.ByteLimit;
         try
         {
-            // Repeat after full-size preparation: retained capacity must never bypass the logical limit.
+            // Repeat after full-size preparation: retained capacity must never bypass the logical limit. The legacy entry runs once per
+            // version, so each repeat invalidates it first.
             OwnershipStorage.ByteLimit = 4096;
-            Assert.False(c.Analyze().IsVerified);
-            var issue = Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipRequirement.StorageLimit);
+            c.InvalidateOwnership();
+            Assert.Equal(!independent, c.Analyze().IsVerified);
+            var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues, static x => x.Failure == OwnershipRequirement.StorageLimit);
             Assert.True(issue.RequiredBytes > 4096);
             Assert.Equal(4096, issue.LimitBytes);
             Assert.Contains("func check()", issue.Source.ToString(), StringComparison.Ordinal);
-            Assert.False(c.Validate(out _));
 
-            // PD12: whichever generator the process selects, the limited body is refused before generation, with no module and no
-            // Internal record (the Finalize below covers what generation reported).
             using var module = new StringWriter();
-            Assert.False(c.WriteIr(module, out _));
-            Assert.Empty(module.ToString());
+            Assert.Equal(!independent, c.Generate(module));
+            Assert.Equal(independent, module.ToString().Length == 0);
             c.ReportAnalysis();
             c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
             var result = c.Diagnostics.Finalize();
-            var error = Assert.Single(result.Diagnostics, static x => x.Code == "OwnershipStorageLimit_Kd");
-            Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-            Assert.Equal(DiagnosticCategory.Resource, error.Category);
-            Assert.Contains(error.Reason!, static x => x.Name == "limitBytes" && x.Value == "4096");
-            Assert.Contains(error.Reason!, x => x.Name == "requiredBytes" && x.Value == issue.RequiredBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Assert.Contains(error.Reason!, x => x.Name == "table" && x.Value == issue.StorageTable);
-            Assert.Equal("check()", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+            Assert.DoesNotContain(result.Diagnostics, static x => x.Code == "OwnershipStorageLimit_Kd");
             Assert.DoesNotContain(result.Diagnostics, static x => x.Category == DiagnosticCategory.Internal);
-            Assert.Equal(independent, result.Diagnostics.Any(static x => x.Code == "MovedPlace_Kd"));
+            var moved = (nameof(DiagnosticCode.MovedPlace_Kd), source.LastIndexOf("value", StringComparison.Ordinal), "value".Length);
+            Assert.Equal(independent ? [moved] : [], result.Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
 
-            var console = new DiagnosticContractTest.DiagnosticConsole();
-            new Kimigayo(console).Render(result, string.Empty);
-            Assert.Contains("4096", console.Text, StringComparison.Ordinal);
-            output.WriteLine(console.Text);
-            var identity = SourceIdentity.FromPath(path);
-            var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity];
-            Assert.Contains(sent, x => x.Range == error.Display!.Range && x.Message.Contains("4096", StringComparison.Ordinal));
-
-            Assert.False(c.Analyze().IsVerified);
-            Assert.Equal(issue, Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipRequirement.StorageLimit));
+            c.InvalidateOwnership();
+            Assert.Equal(!independent, c.Analyze().IsVerified);
+            Assert.Equal(issue, Assert.Single(c.AnalyzeLegacyOwnership().Issues, static x => x.Failure == OwnershipRequirement.StorageLimit));
         }
         finally
         {

@@ -33,8 +33,8 @@ public class CallArgumentMappingTest
     public void SemanticCallKeepsEvaluationOrderAndParameterSlots()
     {
         var c = MinimalEmissionTest.Analyze("func f(a: i32, b: i32 = 2, c: i32 = 3) -> i32 => a + b + c\nfunc use() -> i32 => f(c: 3, a: 1)");
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "use");
         var call = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i].Kind == OwnershipOperationKind.Call);
         var target = body.CallAt(call);
         var inputs = body.CallInputs(call).ToArray();

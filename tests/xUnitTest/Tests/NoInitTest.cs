@@ -126,12 +126,8 @@ public class NoInitTest(ITestOutputHelper output)
     public void UnreadStorageGeneratesNoElementLoadsOrStores()
     {
         var c = MinimalEmissionTest.Analyze("unsafe\n    var values: [4096 of bool] = noinit");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error ?? MinimalEmissionTest.Describe(c, null));
-        var instructions = module.GetFunction(0).Instructions;
-        Assert.DoesNotContain(instructions, static x => x.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.FillArray);
-        using var output = new StringWriter();
-        module.WriteIr(output);
-        Assert.DoesNotContain("@__kimi_fill_array", output.ToString(), StringComparison.Ordinal);
+        var body = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c)).Startup;
+        Assert.DoesNotContain(body.Instructions, static x => x.Opcode is "load" or "store" or "call");
     }
 
     // These programs deliberately violate the programmer's read-before-write obligation. Check acceptance only;
@@ -143,7 +139,7 @@ public class NoInitTest(ITestOutputHelper output)
     public void ReadBeforeWriteHasNoExtraCompilerState(string use)
     {
         var c = MinimalEmissionTest.Analyze("unsafe\n    var values: [2 of bool] = noinit\n    " + use);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error ?? MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -167,7 +163,7 @@ public class NoInitTest(ITestOutputHelper output)
         {
             ok &= c.Bind().IsComplete;
             c.Binding.CheckStartup(OutputKind.Application);
-            ok &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
+            ok &= c.Analyze().IsVerified && c.Generate(TextWriter.Null);
         });
         Assert.True(ok);
         Assert.Equal(0, bytes);

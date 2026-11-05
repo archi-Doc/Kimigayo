@@ -3,53 +3,74 @@
 // Owns A5's Loan stratum (SPEC 15.6–15.8, 7.2.3; design A3 3, 5 and 6 with its errata; DECISIONS R4-M57, R4-M66) per body and Semantics
 // case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
-// verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains) and published rows (TyCtxt.Published), and A4's key rows of the
-// program version (MirEffects.Keys).
+// verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains), published rows (TyCtxt.Published), stored parts and their raw
+// layers' steps, members and statement (TyCtxt.StoredParts, RawStep, RawMembers, RawStated), A4's key rows of the program version
+// (MirEffects.Keys), and the Origin stratum's causes and classes of the body it judged before (MirOrigins.Causes, Refutes, Fixed; rule W,
+// R4-M132).
 // Output: each Loan conflict at its access, activation or Call's or Drop's effects, coded by A3 5's A6 table (CallReservationConflict_Kd
 // for a Loan in its reservation holder, CallActivationConflict_Kd or PlacementActivationConflict_Kd for an activation at a Call or at the
 // writeback write, else ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow),
 // with the Loan's anchor, its witness's next use or the store that carries it, an activation's reservation and, inside an inline default
 // copy, the default's operation (Evaluated, the problem at the outermost omitting call; R4-M97) as facts, a failure whose events all lie in
-// one evaluation of a copy left to its template; Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past
-// its bound, and the cases of the rules below), a limit record at its operation also inside a copy, and in a view a Call holds (its W
-// stored a value past a holder that passes the guard only by argument, P13's interim, R4-M73) every other Loan problem as Unsupported_Kd at
-// its subject, through MirReport; and Work, the steps it took (A3 6.2).
+// one evaluation of a copy left to its template; Unsupported_Kd at a call or a Borrow or read it does not classify (a call whose W
+// reaches a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of the rules below); OwnershipDepthLimit_Kd where a
+// check's verdict rests on a part past a walk's bound or on a call's retention limit (R4-M153: a borrowed root's Drop, a destroying call,
+// a store W or its referent leaves undecided there, A4's Deep at a call or Drop, and a conflict only drop-liveness gives, at the drop-live
+// holder's declaration); each a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
+// view's case admits, R4-M148) every rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
+// signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
+// operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with its
+// anchor, witness and Evaluated facts (SPEC 5.2.1 condition 3); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with
+// their problems as Cause facts; and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
-// - a Call's contract rows, P9's among them: MirBorrows.CallRows; their transfer, with r3: MirBorrows.Calls;
+// - a raw pointer's addresses and own-step entries, the untracked rule and PQ-10's Borrows and reads: MirBorrows.Addresses (R4-M116);
+// - the own-step entries' departures: MirBorrows.OwnSteps (R4-M116);
+// - a Call's contract rows, P9's and untied stores among them: MirBorrows.CallRows; their transfer: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
 // - a default template's slot-rooted test, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
 // - a Place's steps and their classes, E17's Inline row included: MirSteps (R4-M100);
-// - the problems' codes and facts and the held view: MirBorrows.Reports.
-// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own,
-// static storage included (a direct Loan on a static names E); its state is a MirLoanSets node of Loans and markers, which never conflict
-// and no ending removes (Φ_E, and the per-local markers of the role table, Marker). An Opaque site's value is {Φ_E}: it rests on a recorded
-// error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw Ref site, and per PairAcquire the view makes a
-// Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref (E3), named by its whole Place; access is
-// syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it overwrites, E, and the
-// values the access takes (E13 (1): an operand's, its operation's operands' values up to it and roots after it in evaluation order; a
-// borrow's R2 parents and E5's seed; an observing destruction's value; another access's, the values it stores into a live holder, transit,
-// and E5's seed), closed through the holders their direct Loans name; an activation the operation's operands' values and its reservation
-// holder's seed, that holder left out; all from one gather per location. A two-phase Loan is shared only in its reservation holder, where a
-// write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every Loan whose path it exactly
-// prefixes (E8), a whole static's included, after the checks and the transfer: the Loans are ordered by the Move Path of their Places'
-// longest inline prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A Call that moves a pending slot
-// ends the Loans of its Move Path's subtree, a default's inspection Loans, before its plan and checks (R-a, R4-M96). A holder a direct
-// Loan names keeps its state at every head.
-// Must not read syntax or HIR, judge Origins, re-derive retention or Move Paths, intern projections, or copy the body per view.
+// - the problems' codes and facts, and PD13's held view: MirBorrows.Reports, its fact MirBorrows.CallRows' (R4-M148);
+// - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
+// - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
+// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
+// body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
+// (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
+// reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their
+// indirect markers, an ending removes (Φ_E, Φ_W, the per-local markers of the role table, Marker, and rule W's indirect markers,
+// MirBorrows.Causes); Φ_W is always beside Φ_E, and only reads through a shared Loan drop it (MirBorrows.Reach, R4-M170). An
+// Opaque site's value is {Φ_E, Φ_W}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw
+// Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref
+// (E3), named by its whole Place, a raw Place borrow's, past a raw Deref, its fresh anchor's, which no access reaches (SPEC 5.2.2,
+// R4-M156); an address, after the Loans, names the holder a raw pointer addresses (SPEC 15.6 Addresses, R4-M116), as a direct Loan does,
+// and a value that may refer to storage the body does not own carries Φ_E where it is formed, E's own state from the entry; access is
+// syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it
+// overwrites, E, and the values the access takes (E13 (1): an operand's, its operation's operands' values up to it and roots after it in
+// evaluation order; a borrow's R2 parents and E5's seed; an observing destruction's value; another access's, the values it stores into a
+// live holder, transit, and E5's seed), closed through the holders their direct Loans name; an activation the operation's operands' values
+// and its reservation holder's seed, that holder left out; all from one gather per location. A two-phase Loan is shared only in its
+// reservation holder, where a write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every
+// Loan whose path it exactly prefixes (E8), a whole static's included, after the checks and the transfer: the Loans are ordered by the Move
+// Path of their Places' longest inline prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A Call that
+// moves a pending slot ends the Loans of its Move Path's subtree, a default's inspection Loans, before its plan and checks (R-a, R4-M96). A
+// holder a direct Loan names keeps its state at every head.
+// Must not read syntax or HIR, judge Origins (it reads MirOrigins' published causes and classes), re-derive retention or Move Paths, intern
+// projections, or copy the body per view.
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A5's Loan stratum (design A3, R4 shadow: the old path still decides): <see cref="Run"/> checks a body under the selected
-/// view.</summary>
+/// <summary>A5's Loan stratum (design A3; its problems decide acceptance, DECISIONS R5-M185): <see cref="Run"/> checks a body under the
+/// selected view.</summary>
 /// <param name="types">The Type context, whose retention and published rows calls read.</param>
 /// <param name="flow">The dataflow, begun with the body.</param>
 /// <param name="moves">The move paths, built for the body.</param>
 /// <param name="cases">The Semantics case views, a view of the body selected.</param>
 /// <param name="effects">A4, whose last run's key rows the effect rule reads.</param>
-internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMoveData moves, MirCases cases, MirEffects effects)
+/// <param name="origins">The Origin stratum, whose causes and classes of the body it judged rule W reads.</param>
+internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMoveData moves, MirCases cases, MirEffects effects, MirOrigins origins)
 {
     private const int Escaped = 0; // E's slot, and the element of the marker Φ_E.
-    private const int Markers = 1; // The element of local 0's marker, after Φ_E: local L's is Markers + L, which its role decides (Marker).
+    private const int Writable = 1; // The element of the marker Φ_W, E reached through no shared layer (SPEC 15.6.4; DECISIONS R4-M170).
+    private const int Markers = 2; // The element of local 0's marker, after Φ_E and Φ_W: local L's is Markers + L, which its role decides (Marker).
 
     private readonly MirLoanSets sets = new();
     private readonly HashSet<BoundType> seen = new(ReferenceEqualityComparer.Instance);
@@ -57,8 +78,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private MirProgram program = null!;
     private long view;
     private ulong views;
-    private int loanBase; // The element of Loan 0: after Φ_E and the per-local markers.
-    private int escapedSet; // The set {Φ_E}.
+    private int loanBase; // The element of Loan 0: after Φ_E, Φ_W and the per-local markers.
+    private int escapedSet; // The set {Φ_E, Φ_W}, which a value that may refer to storage the body does not own carries where it is formed.
+    private int writableSet; // The set {Φ_W}, which a read through a shared Loan drops (MirBorrows.Reach).
 
     /// <summary>What a local's marker, element <see cref="Markers"/> plus the local, is: the role table of the per-local markers (R4-M70),
     /// by the local's role (<see cref="MarkerOf"/>).</summary>

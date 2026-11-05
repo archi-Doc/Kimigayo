@@ -20,7 +20,7 @@ public class Utf8DeclarationTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         var symbol = c.Library.GetSymbol(id)!;
         var origin = Assert.Single(symbol.Schema!.Origins);
-        Assert.Equal(LoanRequirement.Uniq, origin.LoanRequirement);
+        Assert.Equal(new SlotRequirement(LoanRequirement.Uniq, default), origin.Requirement);
         Assert.Equal(OriginVariance.Covariant, origin.Variance);
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(symbol.Type!, symbol.Declaration));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveOwned(symbol.Type!, symbol.Declaration));
@@ -46,6 +46,6 @@ public class Utf8DeclarationTest
     }
 
     private static string Describe(Compilation c)
-        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
+        => MinimalEmissionTest.Describe(c) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
             "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString()));
 }

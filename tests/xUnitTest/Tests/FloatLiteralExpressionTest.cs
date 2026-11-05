@@ -92,7 +92,7 @@ public class FloatLiteralExpressionTest(ITestOutputHelper output)
     {
         const string Program = "func take(x: f32) => ()\ntake(1.0 + 1.0)";
         var c = MinimalEmissionTest.Analyze(Program);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var operation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single();
         foreach (var expression in new[] { "1 + 1", "1.0 + 1.0" })
         {
@@ -110,12 +110,12 @@ public class FloatLiteralExpressionTest(ITestOutputHelper output)
     public void WarmFittingReusesBindingOwnershipAndEmissionStorage()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

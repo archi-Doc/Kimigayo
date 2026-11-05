@@ -37,6 +37,7 @@ public class ElementMoveEmissionTest
         { "NestedArray", "var a: [2 of (string, [2 of string])] = [(\"a\", [\"b\", \"c\"]), (\"d\", [\"e\", \"f\"])]\nlet taken = a[0].1[1]@move\na[0].1[1] = \"new\"\nlet whole = a[0]@move\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;f=1;new=1;ok=1" },
         { "DynamicReplacement", "var a: (string, [2 of string]) = (\"first\", [\"old\", \"last\"])\nlet taken = a.0@move\nvar i: isize = 0\na.1[i] = \"new\"\nConsole.writeLine(\"ok\")", "first=1;old=1;last=1;new=1;ok=1" },
         { "ConditionalSelf", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    a.0 = if take => a.0@move else => \"new\"\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=1;ok=1" },
+        { "IndexSibling", "var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2\nif a.1[0] == 42 => Console.writeLine(\"ok\")", "held=1;ok=1" },
     };
 
     [Theory]
@@ -70,7 +71,7 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
     }
 
@@ -100,52 +101,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
-    }
-
-    [Theory]
-    [InlineData("acquisition")]
-    [InlineData("selector")]
-    [InlineData("projection")]
-    [InlineData("type")]
-    public void CorruptedMovePlansFailAndReanalysisRecovers(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("let a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]@move");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var plan = body.Projections[0];
-        switch (defect)
-        {
-            case "acquisition": body.OperationStorage[plan.Output] = body.Operations[plan.Output] with { Acquisition = AcquisitionKind.None }; break;
-            case "selector": body.Projections[0] = plan with { Selector = 1 }; break;
-            case "projection": body.OperationStorage[plan.Output] = body.Operations[plan.Output] with { Projection = -1 }; break;
-            case "type": body.PlaceStorage[body.Operations[plan.Output].Place] = body.Places[body.Operations[plan.Output].Place] with { Type = BoundType.I32 }; break;
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    [Fact]
-    public void OnlyConditionalRemaindersNeedFlags()
-    {
-        var c = MinimalEmissionTest.Analyze("let a = (\"first\", \"last\")\nlet taken = a.0@move");
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        Assert.Empty(module.GetFunction(0).PathFlags);
-        c = MinimalEmissionTest.Analyze("func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\nf(true)");
-        Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).Single(x => x.PathFlags.Count != 0);
-        Assert.Single(function.PathFlags);
-        Assert.Empty(function.LiveFlags);
-        var body = c.Ownership.Bodies.Single(x => x.MovePathCount != 0);
-        var scratch = new int[body.Operations.Count];
-        Assert.True(BodyLowering.ValidatePathFlags(body, function, scratch));
-        var instruction = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StorePathFlag && x.Constant == 1);
-        function.Instructions.RemoveAt(instruction);
-        Assert.False(BodyLowering.ValidatePathFlags(body, function, scratch));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -164,7 +120,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -179,7 +135,7 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze($"let a = (\"first\", 0)\nlet result = a.0 {op} \"first\"");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Analysis.IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -188,20 +144,21 @@ public class ElementMoveEmissionTest
         var c = MinimalEmissionTest.Analyze("func inspect(text: ref/string) => ()\nlet a: [1 of string] = [\"first\"]\ninspect(a[0])");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Analysis.IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
-    // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
-    // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.3).
+    // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the update. The located
+    // receiver stays protected while its index operands evaluate (SPEC 4.7.4), and a move of its sibling there does not touch it, so
+    // that program is accepted (Fixtures' IndexSibling; R4's 1a verdict, the owner 2026-11-03): the old analysis's
+    // ComparisonLoanConflict_Kd went with the MIR deciding acceptance (H5).
     [Theory]
     [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += label work: do\n    let taken = a.0@move\n    exit to work 2", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2", DiagnosticCode.ComparisonLoanConflict_Kd)]
-    public void MoveOfTheTargetInTheRightSideOrIndexIsRejected(string source, DiagnosticCode failure)
+    public void MoveOfTheTargetInTheRightSideIsRejected(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == failure);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -237,7 +194,7 @@ public class ElementMoveEmissionTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
 
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
@@ -245,7 +202,7 @@ public class ElementMoveEmissionTest
         var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
-            success &= c.WriteIr(TextWriter.Null, out _);
+            success &= c.Generate(TextWriter.Null);
         });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);

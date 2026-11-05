@@ -245,8 +245,8 @@ public sealed partial class Binding
             {
                 if (this.BindOrigin(application.ArgumentNodes[i], scope) is not { } origin)
                 {
-                    this.AddPrerequisite(application, application.ArgumentNodes[i]);
-                    return this.Fail(application, BindingFailure.InvalidOrigin);
+                    // SPEC 23.1.2: the failed Origin argument reports its cause, and the application rests on it.
+                    return this.CompleteDependent(application, application.ArgumentNodes[i]);
                 }
 
                 arguments[i] = origin;

@@ -39,7 +39,7 @@ public class ArrayArgumentEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -62,7 +62,7 @@ public class ArrayArgumentEmissionTest
         var c = MinimalEmissionTest.Analyze("func use(x: [1 of string]) => ()\nfunc use(x: [1 of i32]) => ()\nlet value = \"moved\"\nuse([value@move])\nConsole.writeLine(value)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -72,7 +72,7 @@ public class ArrayArgumentEmissionTest
     public void OtherEvidenceCanFixGenericElementTypesBeforeProbing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ArrayArgumentEmissionTest
         const string Source = "func use(x: [1 of i8]) => Console.writeLine(\"wrong\")\nfunc use(x: [1 of u8]) => Console.writeLine(\"ok\")\nuse([255])";
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
@@ -89,7 +89,7 @@ public class ArrayArgumentEmissionTest
             restored.Binding.CheckStartup(OutputKind.Application);
             restored.Analyze();
             using var output = new StringWriter();
-            Assert.True(restored.WriteIr(output, out error), error);
+            Assert.True(restored.Generate(output), MinimalEmissionTest.Describe(restored));
             Assert.Equal(original.ToString(), output.ToString());
         }
 

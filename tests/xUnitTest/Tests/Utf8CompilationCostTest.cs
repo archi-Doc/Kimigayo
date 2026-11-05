@@ -29,7 +29,7 @@ public class Utf8CompilationCostTest
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var allocated = AllocationMeasurement.Measure(() =>
         {
             if (stage == "Pipeline")
@@ -40,7 +40,7 @@ public class Utf8CompilationCostTest
                 }
 
                 c.Binding.CheckStartup(OutputKind.Application);
-                if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+                if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
                 {
                     throw new InvalidOperationException("Warm formatting compilation failed.");
                 }
@@ -52,8 +52,8 @@ public class Utf8CompilationCostTest
             {
                 "Binding" => c.Bind().IsComplete,
                 "Ownership" => c.Analyze().IsVerified,
-                "Validation" => c.Validate(out _),
-                _ => c.WriteIr(TextWriter.Null, out _),
+                "Validation" => c.Generate(TextWriter.Null),
+                _ => c.Generate(TextWriter.Null),
             };
             if (!valid)
             {
@@ -65,11 +65,30 @@ public class Utf8CompilationCostTest
         Assert.InRange(allocated, 0, stage is "Binding" or "Ownership" ? 0 : AllocationMeasurement.MeasuredOperations * 256);
     }
 
+    // PLAN G410: a Never writer operand's writer Type, like a borrowed writer's, is formed without allocating on a warm rebind.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("writer")]
+    [InlineData("do => return 7")]
+    public void WarmTryWriteBindingAllocatesNothing(string first)
+    {
+        var c = MinimalEmissionTest.Analyze("func run(writer: uniq/Utf8Writer) -> i32\n    _ = $tryWrite(" + first + ", \"\\(42)\")\n    return 0\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("Warm $tryWrite Binding failed.");
+            }
+        });
+        Assert.Equal(0, allocated);
+    }
+
     [Fact]
     public void ReloadRecomputesFormattingBoundsAndSelectedCalls()
     {
         var c = MinimalEmissionTest.Analyze("let value = \"text\"\nConsole.writeLine(\"value=\\(value)\")");
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var replacement = MinimalEmissionTest.Analyze("let value = 42@i64\nConsole.writeLine(\"value=\\(value)\")");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
         var tree = c.Kotonoha;
@@ -80,7 +99,7 @@ public class Utf8CompilationCostTest
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         using var output = new StringWriter();
-        Assert.True(c.WriteIr(output, out error), error);
+        Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         Assert.Contains("alloca [26 x i8]", output.ToString());
         ScalarEmissionTest.WriteFixture("Utf8CompilationReload", output.ToString(), "value=42\n");
     }

@@ -118,7 +118,7 @@ public class ClosedTypeConstraintBindingTest
         var replacement = Target(donor).ConstraintNodes[0].Right;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).StateOf());

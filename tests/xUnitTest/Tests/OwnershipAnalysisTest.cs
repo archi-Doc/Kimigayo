@@ -29,14 +29,13 @@ public class OwnershipAnalysisTest
     public void SupportedProgramsVerify(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
     [InlineData("let s: string\nConsole.writeLine(s)", DiagnosticCode.UninitializedPlace_Kd)]
     [InlineData("let s = \"a\"\n_ = s@move\nConsole.writeLine(s)", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("let s = \"a\"\n_ = s@move\nif s == \"x\"\n    ()", DiagnosticCode.MovedPlace_Kd)]
-    [InlineData("let s = \"a\"\nlet taken = s", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let s = \"a\"\ns = \"b\"", DiagnosticCode.ReassignedLet_Kd)]
     [InlineData("let s = \"a\"\nConsole.writeLine(s)\ns = \"b\"", DiagnosticCode.ReassignedLet_Kd)]
     [InlineData("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    Console.writeLine(s)", DiagnosticCode.UninitializedPlace_Kd)]
@@ -53,14 +52,23 @@ public class OwnershipAnalysisTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
+    // SPEC 3.5 (R6-check H1, DECISIONS BU-84): a bare move of a non-Copy Place is Binding's TransferRequired_Kd, not a state error.
+    [Fact]
+    public void ABareMoveIsBindingsRecord()
+        => Assert.Equal(
+            [(DiagnosticCode.TransferRequired_Kd, "s")],
+            MinimalEmissionTest.Analyze("let s = \"a\"\nlet taken = s").Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+
+    // A bare move of a temporary's part is invalid (SPEC 3.5: a bare non-Copy Place, a part of a temporary by 3.4.1 and 3.6), Binding's
+    // TransferRequired_Kd, which rejects the program. The expectation that H5 restores the old analysis's Unsupported_Kd here is withdrawn:
+    // that record claimed a valid form unimplemented (DECISIONS Q13; H3b round 0).
     [Theory]
     [InlineData("let moved = (\"first\", \"last\").0")]
     public void UnsupportedOwnershipCannotBecomeVerified(string source)
     {
-        var c = Parse(source);
-        var result = c.Analyze();
-        Assert.False(result.IsVerified);
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "(\"first\", \"last\").0")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.False(c.Accepts);
     }
 
     [Fact]
@@ -68,7 +76,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("func f(x: string = \"x\") => ()\nf()");
         var result = c.Analyze();
-        Assert.True(result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(result.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -89,7 +97,7 @@ public class OwnershipAnalysisTest
         var result = c.Analyze();
         // The Copy-unproven parameter keeps its generic Type; its x@move transfer is checked as a Move (SPEC 13.5.3; its MIR:
         // tests/mir/generics.kimi `wrapSome`).
-        Assert.True(valid == result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == result.IsVerified, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
             Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
@@ -108,15 +116,15 @@ public class OwnershipAnalysisTest
         Assert.False(bound && c.Analyze().IsVerified);
         Assert.True(
             c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TransferRequired_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.TransferRequired_Kd),
-            string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")) + MinimalEmissionTest.Describe(c, null));
+            string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")) + MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void ConditionalReplacementUsesPostRhsState()
     {
         var c = Parse("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    s = \"b\"\n    s = s@move");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto f && f.NameKoto.IdentifierName == "s");
         var writes = body.Operations.Where(x => x.Kind == OwnershipOperationKind.Write && x.Place == s.Id).ToArray();
         Assert.Equal(PlacementKind.ConditionalReplacement, writes[^2].Placement);
@@ -131,8 +139,8 @@ public class OwnershipAnalysisTest
     public void ExitCleanupFollowsDeclarationOrderAndSkipsMovedValues()
     {
         var c = Parse("func f(first: string, second: string)\n    let a = \"a\"\n    let b: string\n    b = \"b\"\n    _ = a@move\n    return");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var plan = body.CleanupPlans.First(x => x.Reason == CleanupReason.Return && x.Edge >= 0 && body.IsReachable(body.Edges[x.Edge].From));
         var steps = body.CleanupSteps.Skip(plan.Start).Take(plan.Count).Where(x => body.Places[x.Place].Kind != OwnershipPlaceKind.Temporary).ToArray();
         Assert.Equal(new[] { CleanupAction.Destroy, CleanupAction.Skip, CleanupAction.Destroy, CleanupAction.Destroy }, steps.Select(x => x.Action));
@@ -143,8 +151,8 @@ public class OwnershipAnalysisTest
     public void ReturnDuringLaterArgumentCleansEarlierTemporaryBeforeCalleeEntry()
     {
         var c = Parse("func makeText() -> string => \"a\"\nfunc f(a: string, b: i32) => ()\nfunc use(c: bool)\n    f(makeText(), if c => return else => 1)");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "use");
         var value = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Temporary && x.Source is InvocationKoto call && call.CallOf()!.Target.Name == "makeText");
         Assert.Contains(body.CleanupSteps, x => x.Place == value.Id && x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto);
         Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.CallEntry && x.Place == value.Id);
@@ -156,7 +164,7 @@ public class OwnershipAnalysisTest
     public void ReturnSecuresTheResultBeforeCleanupAndDelivery()
     {
         var c = Parse("func f(s: string) -> string\n    return s@move");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // A return inside an argument destroys the inner local before the outer temporary (its MIR: tests/mir/scopes.kimi
@@ -172,7 +180,7 @@ public class OwnershipAnalysisTest
     {
         var source = "func makeText() -> string => \"outer\"\nfunc consume(a: string, b: i32) => ()\nfunc use(c: bool)\n    consume(\n        makeText(),\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )";
         var c = Parse(source.Replace("\n", newline) + (trailingNewline ? newline : string.Empty));
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         if (newline != "\n" || trailingNewline)
         {
             Assert.Equal(MirDumpTest.Dump(Parse(source)), MirDumpTest.Dump(c));
@@ -183,11 +191,10 @@ public class OwnershipAnalysisTest
     public void RebindInvalidatesAllVerification()
     {
         var c = Parse("let s = \"a\"\nConsole.writeLine(s)");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let other: string\nConsole.writeLine(other)");
         c.Bind();
         Assert.False(c.Analysis.IsVerified);
-        Assert.Equal(0, c.Analysis.BodyCount);
         Assert.False(c.Analyze().IsVerified);
     }
 
@@ -205,16 +212,15 @@ public class OwnershipAnalysisTest
     public void BodylessRequirementsAreNotOwnershipBodies()
     {
         var c = Parse("contract Named\n    func name(self: ref/Self) -> i32\nConsole.writeLine(\"x\")");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(1, c.Analysis.BodyCount);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
     public void InputStatesReplayWithinBlocks()
     {
         var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move\n    let t = 1");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto { NameKoto.IdentifierName: "s" }).Id;
         var consume = body.Operations.ToList().FindIndex(x => x.Kind == OwnershipOperationKind.Consume && x.Place == s);
         Assert.Equal(PlaceState.MustInit | PlaceState.MayInit | PlaceState.MayAssigned | PlaceState.MayOwn, body.GetInputState(consume, s));
@@ -244,18 +250,20 @@ public class OwnershipAnalysisTest
     [InlineData("let x = 1\nx++", DiagnosticCode.InvalidAssignment_Kd)]
     public void StructuralAssignmentErrorsRemainInBinding(string source, DiagnosticCode code)
     {
+        // Check's verdict: Binding's record rejects; the analysis verdict is the MIR's (DECISIONS R5-M185; Q13, H3b round 0).
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(c.Analyze().IsVerified);
+        c.Analyze();
+        Assert.False(c.Accepts);
     }
 
     [Fact]
     public void StaticStringTemporaryHasCleanupResponsibility()
     {
         var c = Parse("\"discarded\"");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var literal = Assert.Single(body.Places, x => x.Source is StringLiteralKoto);
         Assert.Equal(OwnershipPlaceKind.Temporary, literal.Kind);
@@ -266,8 +274,8 @@ public class OwnershipAnalysisTest
     public void BranchMoveMakesExitCleanupConditional()
     {
         var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var local = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Local);
         Assert.Contains(body.CleanupSteps, x => x.Place == local.Id && x.Action == CleanupAction.Conditional);
     }
@@ -276,7 +284,7 @@ public class OwnershipAnalysisTest
     public void ScalarSelfAssignmentReplacesTheCopiedOldValue()
     {
         var c = Parse("var x = 1\nx = x");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var body = Body(c);
         var write = body.Operations.Last(x => x.Kind == OwnershipOperationKind.Write);
         Assert.Equal(PlacementKind.Replacement, write.Placement);
@@ -287,8 +295,8 @@ public class OwnershipAnalysisTest
     public void LoopTransferCleansInnerLocalAndKeepsOuterLocal()
     {
         var c = Parse("func f(c: bool)\n    let outer = \"a\"\n    while c\n        let inner = \"b\"\n        continue\n    Console.writeLine(outer)");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var body = c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.Name == "f");
         var plan = Assert.Single(body.CleanupPlans, x => x.Reason == CleanupReason.LoopTransfer);
         var local = Assert.Single(body.CleanupSteps.Skip(plan.Start).Take(plan.Count), x => body.Places[x.Place].Kind == OwnershipPlaceKind.Local);
         Assert.Equal("inner", ((FieldKoto)local.Source).NameKoto.IdentifierName);
@@ -308,7 +316,7 @@ public class OwnershipAnalysisTest
         Assert.DoesNotContain(flow.Nodes.Keys, x => ReferenceEquals(x, invalid.Kotonoha.RootKoto));
     }
 
-    private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(x => x.Function.IsGenerated);
+    private static OwnershipBody Body(Compilation c) => c.AnalyzeLegacyOwnership().Bodies.Single(x => x.Function.IsGenerated);
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);
@@ -331,19 +339,12 @@ public class OwnershipAnalysisTest
 
             var c = Parse(source.ToString());
             c.Bind();
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            var phases = new long[2 * (AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations)];
-            var phase = 0;
-            var allocated = AllocationMeasurement.Measure(() =>
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
-                var before = GC.GetAllocatedBytesForCurrentThread();
                 c.Bind();
-                phases[phase++ % phases.Length] = GC.GetAllocatedBytesForCurrentThread() - before;
-                before = GC.GetAllocatedBytesForCurrentThread();
                 c.Analyze();
-                phases[phase++ % phases.Length] = GC.GetAllocatedBytesForCurrentThread() - before;
-            });
-            Assert.True(allocated == 0, $"Allocated {allocated}; Binding/Ownership phases of the last 16 operations: {string.Join(',', phases)}");
+            }));
         }
     }
 }

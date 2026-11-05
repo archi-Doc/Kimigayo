@@ -24,11 +24,23 @@ public class UserArithmeticUpdateTest
     public void ALocalUpdateEndsInspectionBeforeReplacement()
         => ScalarEmissionTest.EmitFixture("UserArithmeticUpdateLocal", Counter + "\nvar total = Counter.init(21)\ntotal += total\nrequire total.value == 42 else => $abort(\"self update\")", string.Empty);
 
+    // SPEC 15.6.4: the program is valid, but since G264 (S) S2 A5 errs at `var value = input@move` and at `return value@move`'s `value` (the
+    // old `value`'s composed erased destruction around a result that keeps a Loan on `value` and is stored into it, a self-row; ledger
+    // 778c6e6ebc84), and generation refuses it; the old analysis accepted and ran it (fixture UserArithmeticUpdateGeneric). H5's (e) list,
+    // row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and re-points this test back to its
+    // run.
     [Fact]
     public void GenericUpdateRetainsThePublishedContract()
     {
         const string Program = "\nfunc doubled<T>(input: T) -> T\n    T is Addable<T>\n    T.(Addable<T>).Output is T\n    var value = input@move\n    value += value\n    return value@move\nlet result = doubled(Counter.init(21))\nrequire result.value == 42 else => $abort(\"generic update\")";
-        ScalarEmissionTest.EmitFixture("UserArithmeticUpdateGeneric", Counter + Program, string.Empty);
+        var c = MinimalEmissionTest.Analyze(Counter + Program);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.False(c.Accepts);
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var value = input@move")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("return value@move", "value")));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -71,6 +83,8 @@ public class UserArithmeticUpdateTest
     public void BorrowedTargetsRetainTheirEvaluatedLocation(string name, string program, string output)
         => ScalarEmissionTest.EmitFixture("UserArithmeticUpdateBorrowed" + name, Counter + "\n" + program, output);
 
+    // Here and below, the record is the MIR's (H5): the update's placement activation (a call's activation where a getter runs) meets the
+    // live loan, at the update.
     [Theory]
     [InlineData("Array<Counter>")]
     [InlineData("[1 of Counter]")]
@@ -78,8 +92,8 @@ public class UserArithmeticUpdateTest
     {
         var source = Counter + "\nfunc add(values: uniq/" + type + ")\n    let saved = values[0]@ref\n    values[0] += values[0]\n    require saved.value == 21 else => $abort(\"live child\")\nvar values: " + type + " = [Counter.init(21)]\nadd(values@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd && c.SyntaxOf(x.Subject).ToString() == "values[0] += values[0]");
         Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
     }
 
@@ -87,8 +101,8 @@ public class UserArithmeticUpdateTest
     public void RetainedElementLoanStillPreventsReplacement()
     {
         var c = MinimalEmissionTest.Analyze(Counter + "\nvar values: Array<Counter> = [Counter.init(21)]\nlet saved = values[0]@ref\nvalues[0] += values[0]\nrequire saved.value == 21 else => $abort(\"saved element\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd && c.SyntaxOf(x.Subject).ToString() == "values[0] += values[0]");
         Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
     }
 
@@ -106,7 +120,7 @@ public class UserArithmeticUpdateTest
         // not depend on the checkout.
         var path = overwrite ? Path.GetFullPath("arithmetic-element-loan.kimi") : "arithmetic-element-loan.kimi";
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (overwrite)
         {
             Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
@@ -160,10 +174,10 @@ public class UserArithmeticUpdateTest
         const string Program = "struct Box\n    public var raw: i32 = 41\n    public computed item: View\n        get() -> View during self => View.init(self.raw@ref)\n        set(value: i32) -> () => self.raw = value\nvar box = Box.init()\nbox.item += ()\nrequire box.raw == 42 else => $abort(\"getter dependency\")";
         var source = View + (destructor ? "    drop => _ = self.value\n" : string.Empty) + Program;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         if (destructor)
         {
-            Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+            Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.CallActivationConflict_Kd && c.SyntaxOf(x.Subject).ToString() == "box.item += ()");
             Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
         }
         else
@@ -184,9 +198,9 @@ public class UserArithmeticUpdateTest
     public void AnIndependentLoanStillPreventsReplacement()
     {
         var c = MinimalEmissionTest.Analyze(Counter + "\nvar total = Counter.init(21)\nlet saved = total@ref\ntotal += total\nrequire saved.value == 21 else => $abort(\"saved\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
-        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd && c.SyntaxOf(x.Subject).ToString() == "total += total");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -202,12 +216,12 @@ public class UserArithmeticUpdateTest
             : kind == "borrowed" ? "\nfunc add(values: uniq/Array<Counter>) => values[0] += values[0]\nvar values: Array<Counter> = [Counter.init(21)]\nadd(values@uniq)"
             : "\nvar total = Counter.init(21)\ntotal += total";
         var c = MinimalEmissionTest.Analyze(Counter + source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 }

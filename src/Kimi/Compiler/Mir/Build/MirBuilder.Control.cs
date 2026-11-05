@@ -83,6 +83,8 @@ internal sealed partial class MirBuilder
     // SPEC 14.11: the failure body runs where the condition is false and has no successor, at run time or for the checks (SPEC 14.10.3);
     // its row says no runtime path from its entry may reach its end (SPEC 14.11), which A3 checks. The failure body, a single item or a
     // block, is the scope its defers register in (SPEC 14.2, 16.1), cleaned up before its end, as a function's or a match arm's body is.
+    // Its row names the nodes Binding guessed its completion rests on (DECISIONS R5-M186), asked only where it can complete: its HIR
+    // Completion is the guess rule's own structural completion, which rests on no guess where it cannot complete.
     private void Require(RequireKoto require)
     {
         var fail = this.body.AddBlock();
@@ -93,7 +95,13 @@ internal sealed partial class MirBuilder
         this.Statement(require.ElseBody);
         this.CloseScope(failure);
         this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(require)));
-        this.body.AddMustNotComplete(new(fail, this.current, SourceRef.Of(require.ElseBody)));
+        var start = this.body.GuessedSites.Length;
+        foreach (var guessed in Completes(require.ElseBody) ? compilation.Binding.GuessedCompletionNodes(require.ElseBody, require.ElseBody) : default)
+        {
+            this.body.AddGuessedSite(SourceRef.Of(guessed));
+        }
+
+        this.body.AddMustNotComplete(new(fail, this.current, SourceRef.Of(require.ElseBody), start, this.body.GuessedSites.Length - start));
         this.Enter(pass, test);
     }
 
@@ -101,12 +109,13 @@ internal sealed partial class MirBuilder
     private MirPlace Test(Koto condition, int whenFalse, int whenTrue)
     {
         var tested = this.OpenScope(block: false);
-        var test = this.Temp(BoundType.Boolean, condition);
+        var test = this.Hold(BoundType.Boolean, condition);
         var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
         this.Assign(test, condition);
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
+        this.Made(test);
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
         return test;
@@ -122,10 +131,14 @@ internal sealed partial class MirBuilder
         this.body.Terminate(this.current, terminator);
     }
 
-    // A body whose value its construct takes, as a call's input as Result places it (input), then the join after the construct.
+    // An if clause's or a do's body whose value its construct takes, as a call's input as Result places it (input), in a scope of its
+    // own, as a match arm's: the body is its own Body, so the temporaries of its result end with it (SPEC 14.2.1, 16.2.2 step 3); then the
+    // join after the construct.
     private void Arm(MirPlace destination, Koto body, int after, bool input)
     {
+        var scope = this.temporaries = this.OpenScope(block: true);
         this.Result(destination, body, body, input);
+        this.CloseScope(scope);
         this.Join(after, body);
     }
 

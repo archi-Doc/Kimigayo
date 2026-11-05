@@ -39,7 +39,7 @@ internal static partial class MirDump
             }
         }
 
-        foreach (var record in program.Records.Where(x => x.Subject.Module == module))
+        foreach (var record in program.Records(MirRecordClass.Construction).Where(x => x.Subject.Module == module))
         {
             Source(text.Append(record.Code == DiagnosticCode.Unsupported_Kd ? "unsupported" : record.Code.ToString()), record.Subject).Append('\n');
         }
@@ -109,7 +109,13 @@ internal static partial class MirDump
 
         foreach (var row in body.MustNotComplete)
         {
-            Source(text.Append("  must not complete bb").Append(row.End).Append(" from bb").Append(row.Entry), row.Subject).Append('\n');
+            Source(text.Append("  must not complete bb").Append(row.End).Append(" from bb").Append(row.Entry), row.Subject);
+            foreach (var site in body.GuessedSites.Slice(row.Start, row.Count))
+            {
+                Source(text.Append(" guessed"), site);
+            }
+
+            text.Append('\n');
         }
 
         Blocks(text, body, drops, ordinal);

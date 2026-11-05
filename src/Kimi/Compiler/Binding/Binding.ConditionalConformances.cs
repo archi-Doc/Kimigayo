@@ -36,7 +36,9 @@ public sealed partial class Binding
 
                         // Substitute explicit identities, then compare determined concrete atoms.
                         // No case splitting, contrapositive, or general satisfiability solver.
-                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity && p.RequiredType is { } pt && q.RequiredType is { } qt && !DependentType(pt) && !DependentType(qt) && !this.SameCompleteType(pt, qt))
+                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity &&
+                            p.RequiredType is { } pt && q.RequiredType is { } qt &&
+                            !this.DependentType(pt) && !this.DependentType(qt) && !this.SameCompleteType(pt, qt))
                         {
                             return true;
                         }
@@ -174,6 +176,15 @@ public sealed partial class Binding
 
     private bool SameConformanceType(BoundType? a, BoundType? b, BindingScope scope)
         => ReferenceEquals(a, b) || (a is not null && b is not null && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.TypeIdentity, this.ContractType(a, scope), this.ContractType(b, scope))), scope) == ConstraintProof.Proven);
+
+    // SPEC 8.6.1, 8.2.3: a conformance's bound Contract reference `formal`, in its declaration's terms, names the bound reference
+    // `required` of the same Contract for `receiver` when its instance is one Type with `required` in `scope`, judged as two paths are
+    // (SameConformanceType): the substitution can leave a projection over the receiver's arguments that names a Type
+    // (`Iter<S.(HasItem).Item>` of `B<SrcI>` is `Iter<i32>`), or a premise of `scope` names one, so the substituted form's reference
+    // decides no identity.
+    private bool NamesReference(BoundType formal, BoundType receiver, BoundType required, BindingScope scope)
+        => ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, receiver) is { } instance &&
+            this.SameConformanceType(instance, required, scope);
 
     private void BindConditionalDeclarations(bool conditions)
     {
@@ -339,8 +350,7 @@ public sealed partial class Binding
         {
             foreach (var candidate in bindings)
             {
-                if (ReferenceEquals(candidate.Contract.Declaration, contract.Declaration) && candidate.Contract.Type is { } formal &&
-                    ReferenceEquals(this.StoredType(formal, type), contractReference))
+                if (candidate.Contract.Type is { } formal && this.NamesReference(formal, type, contractReference, scope))
                 {
                     identity = candidate;
                     break;
@@ -361,7 +371,7 @@ public sealed partial class Binding
 
         if (identity is null || identity.PathStorage.Count == 0)
         {
-            return !DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -377,7 +387,7 @@ public sealed partial class Binding
 
         try
         {
-            var outer = this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
+            this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
             for (var i = 0; i < identity.PathStorage.Count; i++)
             {
@@ -409,7 +419,7 @@ public sealed partial class Binding
                 evidence = null;
             }
 
-            return this.EndProof(outer, result);
+            return this.EndProof(result);
         }
         finally
         {
@@ -443,7 +453,7 @@ public sealed partial class Binding
         return this.ProveConditionalPremises(path.Premises, path.Type.Declaration, type, scope);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope, Koto? failureUse = null)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope)
     {
         if (premises is null)
         {
@@ -455,21 +465,26 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var outer = this.BeginProof();
+        this.BeginProof();
         var result = ConstraintProof.Proven;
+        ClauseFact? conditions = null;
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.SubstituteConstraint(written, binder, (BoundType[])type.Components), scope, type) : null;
+            var limit = this.ScopeReads.Limit;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
-            if (bound is not null && failureUse is not null)
+            if (proof != ConstraintProof.Proven)
             {
-                this.RecordReferenceConstraint(failureUse, condition, bound, proof);
+                var onLimit = proof == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
+                conditions = FirstAtVerdict(conditions, new(condition, bound, proof, onLimit));
             }
 
             result = CombineProof(result, proof, true);
         }
 
-        return this.EndProof(outer, result);
+        var verdict = this.EndProof(result);
+        this.LeaveClause(conditions, result); // The conditions are a clause list (G351a).
+        return verdict;
     }
 }

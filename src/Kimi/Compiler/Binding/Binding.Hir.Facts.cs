@@ -87,7 +87,7 @@ public sealed partial class Binding
             case HirOp.DictionaryLiteral:
                 return CallPlan.Of(node) is { } find && Complete(find);
             case HirOp.Closure:
-                return BoundClosure.Of((FunctionKoto)node) is not null;
+                return ((FunctionKoto)node).ClosureDefinition is not null;
             case HirOp.Convert:
                 return ((ConversionKoto)node).ConversionBinding is not ConversionBinding.None and var binding &&
                     (binding != ConversionBinding.CaseAdaptation || HirTables.PlanOf(node).Plan is ExplicitAdaptationPlan);

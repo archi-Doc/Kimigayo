@@ -137,43 +137,10 @@ public class FloatEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
 
         // A floating-point literal Pattern is rejected by the parser; Binding's own failures then rest on that Error and are derived.
-        Assert.True(c.Binding.Issues.Count != 0 || c.Binding.DerivedIssues.Count != 0, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Issues.Count != 0 || c.Binding.DerivedIssues.Count != 0, MinimalEmissionTest.Describe(c));
         using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
+        Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
-    }
-
-    [Theory]
-    [InlineData("bits")]
-    [InlineData("precision")]
-    [InlineData("integer-type")]
-    [InlineData("operator")]
-    public void CorruptFloatPlansFailBeforeWriting(string defect)
-    {
-        var c = MinimalEmissionTest.Analyze("var a: f32 = 1.25\nlet b = a * 2.0\nif b == 2.5 => Console.writeLine(\"ok\")");
-        Assert.True(c.Validate(out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 0x3FA00000L);
-        Assert.True(index >= 0);
-        if (defect == "bits")
-        {
-            body.Values[index] = body.Values[index] with { Constant = 0x3FA00001L };
-        }
-        else if (defect is "precision" or "integer-type")
-        {
-            body.PlaceStorage[body.Operations[index].Place] = body.Places[body.Operations[index].Place] with { Type = defect == "precision" ? BoundType.F64 : BoundType.I32 };
-        }
-        else
-        {
-            index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Binary && x.Operator == KotoKind.Asterisk);
-            body.Values[index] = body.Values[index] with { Operator = KotoKind.Percent };
-        }
-
-        using var writer = new StringWriter();
-        Assert.False(c.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
-        c.Analyze();
-        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -182,10 +149,10 @@ public class FloatEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: f32) -> f32 => -(x * 1_2.5)\nvar a: f32 = 1.25\na = if a > 0.0 => f(a) else => a\nlet pair: (f32, f64) = (a, 1.25)");
         Assert.True(c.Analyze().IsVerified);
-        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.Generate(TextWriter.Null))
             {
                 throw new InvalidOperationException("Float analysis or emission failed.");
             }
@@ -206,13 +173,13 @@ public class FloatEmissionTest
         c.Analyze();
         Assert.Equal(MirDumpTest.Dump(MinimalEmissionTest.Analyze(Source)), MirDumpTest.Dump(c));
         using var original = new StringWriter();
-        Assert.True(c.WriteIr(original, out var error), error);
+        Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Analyze();
         using var roundTrip = new StringWriter();
-        Assert.True(restored.WriteIr(roundTrip, out error), error);
+        Assert.True(restored.Generate(roundTrip), MinimalEmissionTest.Describe(restored));
         Assert.Equal(original.ToString(), roundTrip.ToString());
         ScalarEmissionTest.WriteFixture("FloatDoubleRoundingRoundTrip", roundTrip.ToString(), "ok\n");
     }
@@ -220,17 +187,15 @@ public class FloatEmissionTest
     internal static void AssertEmissionSupport(Compilation c, bool expected)
     {
         using var writer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Equal(expected, c.WriteIr(writer, out var error));
+        Assert.Equal(expected, c.Generate(writer));
         if (expected)
         {
             Assert.True(c.Binding.Result.IsComplete);
             Assert.True(c.Analysis.IsVerified);
-            Assert.Null(error);
             Assert.NotEmpty(writer.ToString());
         }
         else
         {
-            Assert.NotNull(error);
             Assert.Empty(writer.ToString());
         }
     }

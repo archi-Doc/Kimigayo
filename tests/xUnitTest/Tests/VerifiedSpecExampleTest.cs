@@ -8,17 +8,17 @@ using Xunit;
 namespace XunitTest;
 
 // These regressions read the normative example itself, so a stale copied test cannot mask drift. The SPEC examples of
-// tests/diagnostics/spec-cases.json report exactly the Error records the SPEC gives them (plan §8 of the Complete Polonius A5 Plan,
-// DECISIONS R4-M45): on the old path, or its recorded difference (plan §9.2), until R6-check deletes it; on the MIR once the deciding
-// analysis or A5 family has landed there.
+// tests/diagnostics/spec-cases.json publish exactly the Error records the SPEC gives them (plan §8 of the Complete Polonius A5 Plan,
+// DECISIONS R4-M45), or the MIR's recorded difference (plan §9.2): since R6-check H5 the MIR decides every verdict (DECISIONS R5-M185).
 public class VerifiedSpecExampleTest
 {
     /// <summary>The deciders a SPEC example names: Binding, the analyses A1–A4 and the A5 families F1–F10 (plan §6.1) but F6, which
     /// the adopted proposal Abstract Calls Reach by Paths retired.</summary>
     internal static readonly string[] Families = ["Binding", "A1", "A3", "A4", "F1", "F2", "F3", "F4", "F5", "F7", "F8", "F9", "F10"];
 
-    /// <summary>The deciders whose rules have landed on the MIR; a rule unit adds its family when it lands.</summary>
-    internal static readonly string[] Landed = ["Binding", "A1", "A3", "A4", "F1", "F3", "F5", "F9"];
+    /// <summary>The deciders whose rules have landed on the MIR: every one since R6-check H5 (DECISIONS R5-M185; F7, F8 and F10 at R4's
+    /// exit), so it gates nothing here; the difference ledger's summary reads it until H10a.</summary>
+    internal static readonly string[] Landed = ["Binding", "A1", "A3", "A4", "F1", "F2", "F3", "F4", "F5", "F7", "F8", "F9", "F10"];
 
     private const string Document = "Hello.kimi";
 
@@ -32,8 +32,7 @@ public class VerifiedSpecExampleTest
     }
 
     // Every case has a unique name, one variant as written, known deciders and a record, variant or omission for each error verdict of its
-    // block; every record has a code of Error severity, and every recorded difference a class, sections the SPEC has and a note, a MIR
-    // difference only for a landed family.
+    // block; every record has a code of Error severity, and every recorded difference a class, sections the SPEC has and a note.
     [Fact]
     public void TheExampleTableIsWellFormed()
     {
@@ -47,15 +46,14 @@ public class VerifiedSpecExampleTest
             foreach (var variant in example.Variants)
             {
                 Assert.True(variant.Family is null || Families.Contains(variant.Family), example.Name);
-                Assert.True(variant.Mir is null || Landed.Contains(variant.Family ?? example.Family), $"{example.Name}: a MIR difference of a family not landed is never checked.");
-                foreach (var difference in new[] { variant.Old, variant.Mir }.OfType<SpecDifference>())
+                if (variant.Mir is { } difference)
                 {
                     Assert.Contains(difference.Category, (string[])["a", "b", "c", "d", "e"]);
                     Assert.All(difference.Clause.Split(' '), x => Assert.Contains(x, DiagnosticCorpus.SpecSections));
                     Assert.NotEqual(string.Empty, difference.Note.Trim());
                 }
 
-                Assert.All(variant.Expected.Concat(variant.Old?.Records ?? []).Concat(variant.Mir?.Records ?? []), x => Assert.True(
+                Assert.All(variant.Expected.Concat(variant.Mir?.Records ?? []), x => Assert.True(
                     Enum.TryParse<DiagnosticCode>(x.Code, out var code) && DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error, $"{example.Name}: {x.Code}"));
             }
         }
@@ -70,12 +68,9 @@ public class VerifiedSpecExampleTest
         var source = DiagnosticCorpus.Source(example, variant);
         var c = Bind(source);
         c.Analyze();
-        var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
-        AssertRecords("old", source, variant.Old?.Records ?? variant.Expected, [.. common, .. old, .. passed]);
-        if (Landed.Contains(variant.Family ?? example.Family))
-        {
-            AssertRecords("MIR", source, variant.Mir?.Records ?? variant.Expected, [.. common, .. mir]);
-        }
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        AssertRecords(source, variant.Mir?.Records ?? variant.Expected, TestDiagnostics.Of(c));
     }
 
     // Binds a variant's source as the Hello.kimi of an Application, whose startup has no issue.
@@ -114,13 +109,13 @@ public class VerifiedSpecExampleTest
         }
     }
 
-    // Compares a side's Error records with the expected ones as "code line: text" rows, a record's line being the one holding its primary
-    // location; a dependent record may be absent.
-    private static void AssertRecords(string side, string source, SpecRecord[] expected, IEnumerable<MirDifferenceLedger.Entry> records)
+    // Compares the published Error records with the expected ones as "code line: text" rows, a record's line being the one holding its
+    // primary location; a dependent record may be absent.
+    private static void AssertRecords(string source, SpecRecord[] expected, IEnumerable<TestDiagnostic> records)
     {
         var lines = source.Split('\n');
-        var observed = records.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error).Select(x =>
-            x.Node.CodeContext?.SourceDocument?.Path == Document ? Row(x.Code.ToString(), x.Node.Span.Start) : $"{x.Code} {LegacyRecords.Location(x.Node)}")
+        var observed = records.Where(static x => x.Severity == DiagnosticSeverity.Error).Select(x =>
+            x.Path == Document ? Row(x.Code, x.Span.Start) : $"{x.Code} {x.Path}:{x.Span.Start}")
             .Order(StringComparer.Ordinal).ToList();
         var required = new List<string>();
         foreach (var record in expected)
@@ -137,7 +132,7 @@ public class VerifiedSpecExampleTest
         }
 
         required.Sort(StringComparer.Ordinal);
-        Assert.True(required.SequenceEqual(observed), $"{side}: expected\n  {string.Join("\n  ", required)}\nobserved\n  {string.Join("\n  ", observed)}");
+        Assert.True(required.SequenceEqual(observed), $"expected\n  {string.Join("\n  ", required)}\nobserved\n  {string.Join("\n  ", observed)}");
 
         string Row(string code, int offset)
         {

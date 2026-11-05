@@ -30,10 +30,29 @@ public sealed partial class Binding
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
     // An independent failure can keep the signature valid; a failed declaration part still rejects that context.
     private Koto? InvalidDeclarationContextCause(Koto declaration)
+        => this.FailedDeclarationContext(declaration) is { } context ? this.InvalidDeclarationCause(context) : null;
+
+    // That nearest failed declaration (or conditional conformance) itself, which is Invalid (InvalidDeclarationCause).
+    private Koto? FailedDeclarationContext(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && this.InvalidDeclarationCause(node) is { } cause)
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && this.InvalidDeclarationCause(node) is not null)
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    // The failure of the first declaration a node's own selection calls (CallPlan.Called) that failed or lies in a failed context, or
+    // the declaration itself when it is left unresolved on a failure of its own (an accessor resting on a missing part).
+    private Koto? InvalidCalledDeclaration(Koto node)
+    {
+        for (var i = 0; CallPlan.Called(node, i) is { } called; i++)
+        {
+            if ((this.InvalidDeclarationContextCause(called) ?? (called.BindingState == BindingState.Unresolved && this.HasFailureCauses(called) ? called : null)) is { } cause)
             {
                 return cause;
             }
@@ -100,6 +119,28 @@ public sealed partial class Binding
         }
     }
 
+    // The Invalid node a check that could not judge a Type rests on (DECISIONS BU-75): the failed context of the first part that names one,
+    // its cause when that is Invalid, else the failed declaration; each distinct part visited once (DECISIONS BU-19).
+    private Koto? InvalidOperandContext(BoundType type) => this.InvalidOperandContext(type, this.visitedParts.Begin(this.storageVersion));
+
+    private Koto? InvalidOperandContext(BoundType type, uint query)
+    {
+        if (type.Symbol is { } symbol && this.FailedDeclarationContext(symbol.Declaration) is { } context)
+        {
+            return this.InvalidDeclarationCause(context) is { BindingState: BindingState.Invalid } cause ? cause : context;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && this.InvalidOperandContext(type.Components[i], query) is { } inner)
+            {
+                return inner;
+            }
+        }
+
+        return null;
+    }
+
     private bool ProjectionPart(BoundType type, uint query)
     {
         if (type.Kind == BoundTypeKind.AssociatedProjection)
@@ -120,19 +161,24 @@ public sealed partial class Binding
     }
 
     // Whether an existence walk's query meets a part for the first time; a leaf is cheaper to answer again than to record.
-    private bool FirstVisit(BoundType part, uint query)
+    private bool FirstVisit(BoundType part, uint query) => this.FirstVisit(part, query, 1);
+
+    // Whether a walk's query meets a part for the first time in a state, one bit: a walk whose effect at a part depends on a small state
+    // as well keeps the visits of each state apart (visitedParts).
+    private bool FirstVisit(BoundType part, uint query, byte state)
     {
         if (part.Components.Count == 0)
         {
             return true;
         }
 
-        if (this.visitedParts.TryGet(part, query, out _))
+        this.visitedParts.TryGet(part, query, out var met);
+        if ((met & state) != 0)
         {
             return false;
         }
 
-        this.visitedParts.Set(part, query, true);
+        this.visitedParts.Set(part, query, (byte)(met | state));
         return true;
     }
 }

@@ -51,7 +51,7 @@ public sealed class HoverProjectionTest
     [Fact]
     public void CallsUseOneTokenAndPreserveOriginalStaticContract()
     {
-        const string text = "/// Identity.\nfunc same<T>(x: T) -> T => x\nfunc main() -> i32 => same(42)\n";
+        const string text = "/// Identity.\nfunc same<T>(x: T) -> T => x@move\nfunc main() -> i32 => same(42)\n";
         var snapshot = Project(text);
         var callStart = text.LastIndexOf("same", StringComparison.Ordinal);
         var name = At(snapshot, callStart);
@@ -148,7 +148,7 @@ public sealed class HoverProjectionTest
     [Fact]
     public void TypeParameterItemsKeepTheParentsClassificationInputs()
     {
-        const string text = "/// * T: Item type.\n/// * value: Input.\nfunc same<T>(value: T) -> T => value\n";
+        const string text = "/// * T: Item type.\n/// * value: Input.\nfunc same<T>(value: T) -> T => value@move\n";
         var snapshot = Project(text);
         var parent = Assert.Single(At(snapshot, text.IndexOf("same", StringComparison.Ordinal)).Declarations);
         var parameter = Assert.Single(At(snapshot, text.IndexOf("<T>", StringComparison.Ordinal) + 1).Declarations);
@@ -170,22 +170,17 @@ public sealed class HoverProjectionTest
 
         var document = new HoverDocument(new("main.kimi", string.Empty), entries);
         var sum = 0;
-        for (var i = 0; i < 32; i++)
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            sum += document.Find(i * 3);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < entries.Length; i++)
-        {
-            sum += document.Find(i * 3);
-            sum += document.Find((i * 3) + 1);
-            sum += document.Find((i * 3) + 2);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
-        Assert.Equal(99980496, sum);
+            sum = 0;
+            for (var i = 0; i < entries.Length; i++)
+            {
+                sum += document.Find(i * 3);
+                sum += document.Find((i * 3) + 1);
+                sum += document.Find((i * 3) + 2);
+            }
+        }));
+        Assert.Equal(99980000, sum);
         Assert.Equal(-1, document.Find(-1));
         Assert.Equal(-1, document.Find(30000));
     }

@@ -38,7 +38,7 @@ public sealed class LengthFunctionReferenceTest
     public void ItemIdentityIncludesNormalizedLengths()
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>\nlet b = keep<(1 + 1), i32>\nlet c = keep<3, i32>");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var items = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Where(static x => x.TypeOf()?.Kind == BoundTypeKind.FunctionItem).Select(static x => x.TypeOf()!).ToArray();
         Assert.Equal(3, items.Length);
         Assert.Same(items[0], items[1]);
@@ -88,7 +88,7 @@ public sealed class LengthFunctionReferenceTest
         c.Binding.ReportDiagnostics();
         Assert.Equal(nameof(DiagnosticCode.InvalidTypeFormation_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
         using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out _));
+        Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
     }
 
@@ -102,7 +102,7 @@ public sealed class LengthFunctionReferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         Assert.Equal(nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public sealed class LengthFunctionReferenceTest
     {
         const string Source = Keep + "let f = keep<2, i32>\n_ = f([4, 7])";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         var reference = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single();
         var donor = MinimalEmissionTest.Analyze(Source.Replace("keep<2, i32>", "keep<3, i32>", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<GenericsKoto>().Single();
@@ -118,7 +118,7 @@ public sealed class LengthFunctionReferenceTest
         Assert.True(KotoHelper.Replace(reference.Parent!, reference, replacement));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -139,12 +139,12 @@ public sealed class LengthFunctionReferenceTest
     public void WarmLengthReferencesReuseBindingOwnershipAndEmission()
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let f: ([2 of i32]) -> [2 of i32] = keep\n_ = f([4, 7])");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

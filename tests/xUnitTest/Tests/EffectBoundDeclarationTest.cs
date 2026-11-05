@@ -44,7 +44,7 @@ public class EffectBoundDeclarationTest
             "contract Indexed<K>\n    func at(self: ref/Self, key: K) -> i32\ncontract StrictIndexed: Indexed<i32>\n    effect (Indexed<i32>).at confined\n" +
             "contract Settled: StableSource\n    effect Source.take confined\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]

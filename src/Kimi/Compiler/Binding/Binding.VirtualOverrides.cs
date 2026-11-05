@@ -122,7 +122,7 @@ public sealed partial class Binding
             {
                 var bound = this.SubstituteConstraint(fact, owner, (BoundType[])selection.DeclaringType.Components);
                 // Closed propositions are obligations, not assumptions (SPEC 8.3.3).
-                if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && DependentConstraint(bound))
+                if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && this.DependentConstraint(bound))
                 {
                     current.Add(bound);
                 }
@@ -188,13 +188,6 @@ public sealed partial class Binding
             this.CheckConstraints(original.TypeConstraints, original, [], scope, declaringType: slot.DeclaringType),
             this.ProveMemberConditions(original.BoundSymbol!, slot.DeclaringType, scope),
             true);
-    }
-
-    internal bool IsInapplicableVirtualBody(FunctionKoto function)
-    {
-        var slot = function.IsVirtual ? new VirtualSlot(function, this.SelfType(function.BoundSymbol!.Scope.Owner.BoundSymbol!))
-            : function.IsOverride && this.virtualOverrides.TryGetValue(function, out var implementation) ? implementation.Slot : default;
-        return slot.Original is not null && this.VirtualApplicability(slot) == ConstraintProof.Refuted;
     }
 
     // Called by the common call-plan setter, including instantiated calls and Function Item contexts.

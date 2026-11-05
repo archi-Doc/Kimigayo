@@ -65,6 +65,11 @@ public sealed partial class Binding
     {
         var length = fill.FillCount = this.BindLength(fill.FillLength!, scope);
         var element = this.BindNode(fill.Elements[0], scope, expected?.Kind == BoundTypeKind.FixedArray ? expected.Components[0] : null);
+        if (length is not null && element is null && this.Deferred(fill.Elements[0]))
+        {
+            return Complete(fill, null); // SPEC 14.9.2 step 3 (DECISIONS BU-43): its element waits for its position's Type, and so does the fill.
+        }
+
         if (length is null || element is null)
         {
             // A failed element or length explains the fill (SPEC 23.1.2); a length syntax that binds but is no length keeps
@@ -101,10 +106,11 @@ public sealed partial class Binding
             }
             else if (!ReferenceEquals(actual, BoundType.Never))
             {
-                var common = element is null ? actual : this.CommonOriginType(element, actual);
+                var failure = default(ComparisonFailure);
+                var common = element is null ? actual : this.CommonOriginType(element, actual, out failure);
                 if (common is null)
                 {
-                    this.Fail(literal.Elements[i], BindingFailure.TypeMismatch);
+                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
                     complete = false;
                 }
                 else
@@ -235,7 +241,8 @@ public sealed partial class Binding
 
     // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
     // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
-    // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it.
+    // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it. Every
+    // element is bound, also after a failed one (SPEC 23.1.2), as a Dictionary literal's parts are (IndependentDictionaryType).
     private BoundType? BindIndependentArrayLiteral(ArrayLiteralKoto literal, BindingScope scope)
     {
         BoundType? established = null;
@@ -243,9 +250,9 @@ public sealed partial class Binding
         var collecting = this.collectingElements;
         this.collectingElements = literal;
         var collected = true;
-        for (var i = 0; collected && i < literal.Elements.Count; i++)
+        for (var i = 0; i < literal.Elements.Count; i++)
         {
-            collected = this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault);
+            collected &= this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault);
         }
 
         this.collectingElements = collecting;
@@ -303,14 +310,15 @@ public sealed partial class Binding
         if (this.AwaitsPosition(source))
         {
             // SPEC 14.9.2 step 3, 4.3: it takes the established element Type; without one, the awaiting elements' own common Type.
-            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual) ?? literalDefault;
+            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual, out _) ?? literalDefault;
             return true;
         }
 
-        var common = established is null ? actual : this.CommonOriginType(established, actual);
+        var failure = default(ComparisonFailure);
+        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
         if (common is null)
         {
-            this.FailMismatch(source, source, actual, established!);
+            this.FailMismatch(source, source, actual, established!, failure);
             return false;
         }
 
@@ -406,10 +414,11 @@ public sealed partial class Binding
             return true;
         }
 
-        var common = established is null ? actual : this.CommonOriginType(established, actual);
+        var failure = default(ComparisonFailure);
+        var common = established is null ? actual : this.CommonOriginType(established, actual, out failure);
         if (common is null)
         {
-            this.FailMismatch(source, source, actual, established!);
+            this.FailMismatch(source, source, actual, established!, failure);
             failed = source;
             return false;
         }

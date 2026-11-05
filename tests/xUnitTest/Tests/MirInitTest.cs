@@ -140,38 +140,47 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 15.1.3, 15.1.5: a Move needs a Move Path: a constant index of a fixed array has one, a runtime index of an Array has none
     // (StaticMovePathRequired_Kd), and such a Move changes no state, so a second one is not MovedPlace; a raw pointer's Take is untracked
-    // (SPEC 5.2.3), and a Place a function publishes never offers Take, whatever root holds its reference.
+    // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222). A Place a function publishes never offers Take, whatever root
+    // holds its reference: its bare Move is SPEC 3.5's error and its explicit one a shared path's (SPEC 15.1.5), both Binding's since
+    // R6-check H1 (DECISIONS BU-84; TransferJudgmentTest), so no MIR Move Path is asked. A referent through a reference Field offers no
+    // Take either, also inside a raw Place: its bare Move is Binding's TransferRequired_Kd since H1 (G222's MIR StaticMovePathRequired_Kd
+    // before).
     [Fact]
     public void AMoveNeedsAMovePath()
     {
+        const string Lens = "struct Lens {source}\n    internal let to: uniq/string during source\n    internal let at: raw/string during source\n" +
+            "    internal init(to: uniq/string during source, at: raw/string during source)\n        self.at = at\n        self.to = to\n";
         Assert.Empty(Problems("func take(s: string) => ()\nfunc f()\n    var arr: [2 of string] = [\"a\", \"b\"]\n    take(arr[0]@move)\n" +
             "    arr[0] = \"c\"\n    let whole = arr@move\n"));
         Assert.Empty(Problems("func take(s: string) => ()\nfunc f(pointer: raw/string)\n    unsafe\n        let first = (*pointer)@move\n" +
             "        let second = (*pointer)@move\n        take(first@move)\n        take(second@move)\n"));
+        Assert.Empty(Problems(Lens + "func f(lens: uniq/Lens)\n    unsafe => _ = (*lens.at)@move\n"));
+        var lent = MirBuildTest.Compile(
+            Lens + "func f(lens: uniq/Lens)\n    let s = lens.to@follow\nfunc g(p: raw/Lens)\n    unsafe\n        let s = (*p).to@follow\n");
+        Assert.Equal(
+            ["TransferRequired_Kd lens.to@follow", "TransferRequired_Kd (*p).to@follow"],
+            lent.Binding.Issues.Select(static x => $"{x.Code} {x.Node.ToString().Split('\n')[0]}"));
+        Assert.Empty(Problems(lent));
         Assert.Equal(
             ["StaticMovePathRequired_Kd values[i] 1", "StaticMovePathRequired_Kd values[i] 1"],
             Problems("func take(s: string) => ()\nfunc f(values: Array<string>, i: isize)\n    take(values[i]@move)\n    take(values[i]@move)\n"));
-        Assert.Equal(
-            ["StaticMovePathRequired_Kd first(names)@follow 1"],
-            Problems("func first(values: ref/Array<string>) -> ref/string during values => values[0]@ref\nfunc f(names: Array<string>)\n" +
-                "    let bare = first(names)@follow\n"));
     }
 
-    // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: a Move of a preceding parameter or of its owned contents in the
-    // template, explicit or bare, is DefaultArgumentMove_Kd, while a Move past a borrow the parameter holds keeps StaticMovePathRequired_Kd.
-    // Each is the template's check: the calls' inline copies, in a caller of two views, add none.
+    // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: an explicit Move of a preceding parameter or of its owned
+    // contents in the template, parenthesized or not, is DefaultArgumentMove_Kd. Each is the template's check: the calls' inline copies, in a
+    // caller of two views, add none. A bare one is Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter holds
+    // (StaticMovePathRequired_Kd before R6-check H1) Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
     [Fact]
     public void ADefaultCannotMoveItsPreparedSlot()
     {
-        var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = x) => ()\n" +
-            "func part(p: (string, i32), y: string = p.0@move) => ()\nfunc lent(x: ref/string, y: string = x@follow) => ()\n" +
-            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n    let text = \"d\"\n" +
-            "    lent(text@ref)\n");
+        var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = (x)@move) => ()\n" +
+            "func part(p: (string, i32), y: string = p.0@move) => ()\n" +
+            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n");
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(
             [
-                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1",
-                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1", "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd x@follow 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd (x) 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
@@ -189,6 +198,48 @@ public sealed class MirInitTest(ITestOutputHelper output)
         moves.Build(body, flow);
         var array = body.Locals.ToArray().ToList().FindIndex(static x => x.Name == "a");
         Assert.Equal(2, moves.Paths.ToArray().Count(x => x.Local == array));
+    }
+
+    // SPEC 15.1.3 (DECISIONS R4-M21, R4-M146): Build empties the paths of a large body whole and a small body's entry by entry (MirTable),
+    // and a body after either gets the paths a fresh instance gives: the paths, the flow paths and each Place's path, so no child or Place
+    // of an earlier body, keyed by indices that restart, answers for it.
+    [Fact]
+    public void ABodyAfterALargeOneGetsAFreshInstancesPaths()
+    {
+        var text = new StringBuilder("struct Q\n    public var a: i32 = 1\n    public var b: (i32, i32) = (1, 2)\n    public init() => ()\n");
+        text.Append("func large()\n");
+        for (var i = 0; i < 600; i++)
+        {
+            text.Append($"    var q{i} = Q.init()\n    q{i}.b.1 = {i}\n");
+        }
+
+        text.Append("func small(flag: bool)\n    var q = Q.init()\n    if flag => q.b.0 = 3\n    q.a = 2\n");
+        text.Append("func other(flag: bool)\n    var q = Q.init()\n    q.a = 4\n    let t = (q.b.1, flag)\n");
+        var bodies = MirBuildTest.Compile(text.ToString()).BuildMir().Bodies.ToArray();
+        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+        Paths(bodies.Single(static x => x.Key.Decl?.Name == "large"), moves);
+        foreach (var name in new[] { "small", "other" })
+        {
+            var body = bodies.Single(x => x.Key.Decl?.Name == name);
+            Assert.Equal(Paths(body, new MirMoveData()), Paths(body, moves));
+        }
+
+        // A body's paths built by a MirMoveData: each path, the flow paths' count and each projected Place's path and access in use order.
+        string[] Paths(MirBody body, MirMoveData data)
+        {
+            flow.Begin(body);
+            data.Build(body, flow);
+            var found = new Found(data, [.. data.Paths.ToArray().Select(static x => x.ToString()), $"flow {data.FlowCount}"]);
+            for (var block = 0; block < body.Blocks.Length; block++)
+            {
+                for (var i = 0; i <= body.Blocks[block].Count; i++)
+                {
+                    MirUses.ForEach(body, new(block, i), ref found);
+                }
+            }
+
+            return [.. found.Log];
+        }
     }
 
     // SPEC 4.7.4 (DECISIONS R4-M56): a selection's receiver is checked once, where it is located: at its guard, the selection, so an
@@ -247,7 +298,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
         var c = MirBuildTest.Compile(
             "func helper(x: i32) -> i32 => x + 1\n#Test\nfunc sample()\n    let a = 3\n    $expect(helper(1) == a)\n    $expect((a < 4))\n",
             test: true);
-        var program = c.BuildMir();
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
         var body = program.Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Test);
         var read = MirBuildTest.Records(body).Select(x => body.Operands[x.Start + 1]).Where(static x => x.Kind == MirOperandKind.Copy).ToArray();
         Assert.Equal(3, read.Length);
@@ -257,7 +308,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
         }
 
-        new MirAnalysis(c.Types).Run(program);
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
@@ -289,14 +340,14 @@ public sealed class MirInitTest(ITestOutputHelper output)
     public void ASecuredNeverPlaceIsWritten()
     {
         var c = MirBuildTest.Compile("func k() -> i32 => 1\nfunc g2(a: Never, b: i32) => ()\nfunc absurd(x: Never) => g2(x, k())\n");
-        var program = c.BuildMir();
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
         var call = body.Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x.Callee.Symbol?.Name == "g2");
         var secured = body.Operands[call.Start];
         Assert.Equal((MirOperandKind.Move, MirLocalKind.Temp), (secured.Kind, body.Locals[secured.Place.Root].Kind));
         ref readonly var local = ref body.Locals[secured.Place.Root];
         Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
-        new MirAnalysis(c.Types).Run(program);
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
@@ -338,13 +389,32 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Empty(Problems(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "cases.kimi"))));
     }
 
+    // SPEC 3.5, 3.5.1, 8.15.2 (R6-check (b2)'s acceptance moves): the owner case of a pair layer over `uniq/i32`, directly or through its
+    // own binder's layer, Reborrows, and over a nested `t/U` acquires by that layer's cases, so the Place is usable again after the child's
+    // last use (before (b2) each was a Move, a false MovedPlace_Kd at the second use).
+    [Theory]
+    [InlineData("func exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local\n" +
+        "    let again = value\n    _ = again\nfunc nested<t/U, s/T>(value: s/t/U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n" +
+        "    U is Copy\n    let local = value\n    _ = local\n    let again = value\n    _ = again\npublic func main() -> ()\n    var n: i32 = 1\n" +
+        "    let r = n@uniq\n" +
+        "    exclusive<owner/i32>(r@move)\n    var m: i32 = 2\n    nested<owner/i32, owner/i32>(m)\n")]
+    [InlineData("func own<s/T>(value: s/(s/(uniq/i32 during a) during b)) -> ()\n    s is owner or ref\n    let local = value@follow\n    _ = local\n" +
+        "    let again = value@follow\n    _ = again\nfunc exclusive<s/T>(value: s/(uniq/i32 during a)) -> ()\n    s is owner or ref\n    let local = value\n" +
+        "    _ = local\n    let again = value\n    _ = again\npublic func main() -> ()\n    var n: i32 = 1\n    let r = n@uniq\n    own<owner/i32>(r@move)\n" +
+        "    var m: i32 = 1\n    let q = m@uniq\n    exclusive<owner/i32>(q@move)\n")]
+    public void AnOwnerCaseReborrowLeavesItsPlaceUsable(string source) => Assert.Empty(Problems(source));
+
     // R4-M15a: a body whose state arena would exceed the analyses' byte limit (64 MiB) records OwnershipStorageLimit_Kd once, at the body,
     // and is not analyzed: N locals live across N branches need about N heads × 5 lanes × N/64 words, so the unset read of y is reported at
-    // N = 64 and not at N = 13,500.
+    // N = 64 and not at N = 13,500, where the limit carries its arguments, A1's arena over the limit (G213, R4-M132).
     [Fact]
     public void AnArenaAboveTheLimitStopsTheBody()
     {
-        foreach (var (size, expected) in new[] { (64, "UninitializedPlace_Kd y 1"), (13_500, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32 1") })
+        foreach (var (size, expected) in new[]
+        {
+            (64, "UninitializedPlace_Kd y 1"),
+            (13_500, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32 1 Initialization over"),
+        })
         {
             var text = new StringBuilder("func f(flag: bool) -> i32\n    let y: i32\n");
             for (var n = 0; n < size; n++)
@@ -379,8 +449,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     [InlineData("    var v{0} = text({0})\n    while flag\n        keep(v{0}@move)\n        v{0} = text({0})\n")]
     public void InitializationScalesLinearly(string group)
     {
-        var (sizes, work, allocated, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3], new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
+        var (sizes, work, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var analyses = new (MirBody Body, MirDataflow Flow, MirMoveData Moves, MirProgram Sink)[3];
+        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {
             var text = new StringBuilder("func text(n: i32) -> string => \"\\(n)\"\nfunc keep(s: string) => ()\nfunc other(s: string) => ()\n");
             text.Append("func work(flag: bool)\n");
@@ -397,15 +468,21 @@ public sealed class MirInitTest(ITestOutputHelper output)
             var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
             var drops = new MirDrops(moves, cases);
             var init = new MirInit(flow, moves, cases, drops);
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            flow.Begin(body);
-            moves.Build(body, flow);
-            drops.Begin(body, sink);
-            cases.Select(body, 0);
-            Assert.True(init.Run(body, 0, sink.Problems));
-            drops.Judge(0);
-            drops.End();
-            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            analyses[i] = (body, flow, moves, sink);
+            return () =>
+            {
+                flow.Begin(body);
+                moves.Build(body, flow);
+                drops.Begin(body, sink);
+                cases.Select(body, 0);
+                Assert.True(init.Run(body, 0, sink.Problems));
+                drops.Judge(0);
+                drops.End();
+            };
+        });
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (body, flow, moves, sink) = analyses[i];
             Assert.Equal(0, sink.Problems.All.Length);
             arena[i] = ArenaWords(body, flow, moves);
         }
@@ -417,14 +494,17 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a node Binding failed hides no independent problem of the children Binding resolved: a closure's
-    // body is built wherever its creation stands (failed, inside a let Binding rejected, or a failed Index's kept operand), and a failed
+    // body is built wherever its creation stands (discarded, bound by a let, inside a let Binding rejects for its own reason, its Type
+    // annotation, or a failed Index's kept operand; a result over the call's
+    // own storage fails only its returned value, whose relation is a row the Origin stratum also records, DECISIONS R4-M152), and a failed
     // Index, Field, follow or `*p` evaluates its operands before its Opaque value, which does not use a moved operand again.
     [Fact]
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
         const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
-        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    _ = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    let g = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
@@ -466,7 +546,6 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
         "    return v[-(if c => i else => missing)]\n",
         "MovedPlace_Kd s 1")]
-    [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x 1")]
     [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y = make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y += make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f(c: bool)\n    let s = \"x\"\n    var y: i32 = 0\n    y = if c => take(s@move, s@move) else => missing\n", "MovedPlace_Kd s 1")]
@@ -511,7 +590,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)
         => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * (long)MirInit.Lanes * ((moves.FlowCount + 63) / 64);
 
-    // The problems of a source's own bodies: code, the first line of the subject, and the views.
+    // The problems of a source's own bodies: code, the first line of the subject, the views and a storage limit's arguments.
     internal static string[] Problems(string source)
         => Problems(MirBuildTest.Compile(source));
 
@@ -519,7 +598,30 @@ public sealed class MirInitTest(ITestOutputHelper output)
     {
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        return [.. program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-            .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        return [.. program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i)).Where(static x => x.Problem.Subject.Module == 0)
+            .Select(x => $"{x.Problem.Code} {c.SyntaxOf(x.Problem.Subject).ToString().Split('\n')[0].Trim()} {x.Problem.Views}" +
+                (x.Problem.Code == DiagnosticCode.OwnershipStorageLimit_Kd ? $" {MirDataflowTest.Limit(program.Problems, x.Index)}" : string.Empty))];
+    }
+
+    // The path and access MirMoveData finds for each projected Place a body uses, after the lines a log starts with.
+    private readonly struct Found(MirMoveData moves, List<string> log) : IMirUses
+    {
+        internal List<string> Log => log;
+
+        public void Operand(in MirOperand operand)
+        {
+        }
+
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        {
+            if (place is { IsStatic: false, Projection: > 0 })
+            {
+                log.Add($"{place} {moves.Find(place, out var how)} {how}");
+            }
+        }
+
+        public void Effect(MirEffect effects, int site)
+        {
+        }
     }
 }

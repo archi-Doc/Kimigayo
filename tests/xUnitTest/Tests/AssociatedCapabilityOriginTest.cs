@@ -16,7 +16,7 @@ public class AssociatedCapabilityOriginTest
     {
         var source = "contract Read<E>\n    func get(self: ref/Self) -> E\ncontract C\n    associate Item(step) is Read<ref/i32 during step>\nfunc relay<I>(value: ref/I.Item(a), other: ref/i32 during b) -> ref/i32 during " + result + "\n    I is C\n    return value.get()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public class AssociatedCapabilityOriginTest
     public void BoundCapabilityResultRetainsItsSourceLoan()
     {
         var c = MinimalEmissionTest.Analyze(Concrete + "var value = 42\nlet result = read(value@ref)\nvalue = 7\nrequire result == 42 else => $abort(\"loan\")");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
     }
 }

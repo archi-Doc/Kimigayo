@@ -17,7 +17,7 @@ public class ClosedProjectionConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(kind, "Source.Origin.Item is Copy"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }

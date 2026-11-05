@@ -52,14 +52,14 @@ public class SyntaxEditInvalidationTest
             "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value@uniq\n" +
             "var box = Box.init()\nlet n = box[0]\n";
         var c = MinimalEmissionTest.Analyze(Indexed);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var index = Statements(c).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "n").InitializerKoto!;
         Assert.NotNull(c.Binding.IndexerCall(index, true));
         var declaration = Statements(c).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "box");
         var donor = Statements(MinimalEmissionTest.Analyze(Indexed.Replace("var box", "let box", StringComparison.Ordinal))).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "box");
         ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
         Assert.True(KotoHelper.Replace(declaration.Parent!, declaration, donor));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.NotNull(c.Binding.IndexerCall(index, false));
         Assert.Null(c.Binding.IndexerCall(index, true));
     }

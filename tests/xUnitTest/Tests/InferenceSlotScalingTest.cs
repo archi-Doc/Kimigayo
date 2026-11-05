@@ -15,7 +15,7 @@ public class InferenceSlotScalingTest
     public void StructuralSlotsHaveNoWordSizeLimit(bool constructor, int count)
     {
         var c = MinimalEmissionTest.Analyze(Wide(count, constructor));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -50,7 +50,7 @@ public class InferenceSlotScalingTest
         var c = MinimalEmissionTest.Analyze(Wide(130, true));
         var complete = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
-        Assert.True(complete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
 
     private static string Wide(int count, bool constructor, bool unbound = false)

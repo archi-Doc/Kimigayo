@@ -9,7 +9,6 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundConstraint Proposition, BindingScope Scope, bool Derivation), CapabilityWork> capabilityNodes = new();
     private readonly HashSet<(CapabilityWork Source, CapabilityWork Consumer)> capabilityEdges = new();
     private readonly Queue<CapabilityWork> capabilityQueue = new();
-    private readonly Dictionary<BoundType, int> capabilityTypeDepths = new(ReferenceEqualityComparer.Instance);
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -178,21 +177,28 @@ public sealed partial class Binding
         return null;
     }
 
-    private int CapabilityTypeDepth(BoundType type)
+    // SPEC 15.2.3 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a Function
+    // Type that quantifies an input is its own, under its syntax; a Closure's is its value's (ClosureSignature), under its literal, which
+    // every Closure Type names (ClosureType). A Closure's signature is unreadable, none, where BU-60's view withholds its held instance (an
+    // Origin position closed in no instance, PLAN G300) or its literal's header did not bind (the Type BindConcreteClosure starts with).
+    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
     {
-        if (this.capabilityTypeDepths.TryGetValue(type, out var depth))
+        if (type.Kind == BoundTypeKind.Function)
         {
-            return depth;
+            return OwnFunctionBinder(type, type) is { } binder ? (type, binder) : null;
         }
 
-        depth = 1;
-        for (var i = 0; i < type.Components.Count; i++)
+        if (type.Kind != BoundTypeKind.Closure)
         {
-            depth = Math.Max(depth, 1 + this.CapabilityTypeDepth(type.Components[i]));
+            return null;
         }
 
-        this.capabilityTypeDepths.Add(type, depth);
-        return depth;
+        if (type.Symbol?.Declaration is not FunctionKoto definition)
+        {
+            throw new InvalidOperationException($"Closure Type `{type}` names no literal (InternalInvariant; BU-73).");
+        }
+
+        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
     }
 
     private void ResetCapabilities(BindingMode mode)
@@ -245,13 +251,12 @@ public sealed partial class Binding
         if (!derivation && type.Symbol is not null)
         {
             var growing = false;
-            var depth = 0;
+            var depth = type.Height;
             for (var ancestor = this.capabilityConsumer; ancestor is not null; ancestor = ancestor.Parent)
             {
                 if (ReferenceEquals(ancestor.Type.Symbol, type.Symbol) && !ReferenceEquals(ancestor.Type, type))
                 {
-                    depth = depth == 0 ? this.CapabilityTypeDepth(type) : depth;
-                    var previous = this.CapabilityTypeDepth(ancestor.Type);
+                    var previous = ancestor.Type.Height;
                     if (depth > previous)
                     {
                         if (growing)
@@ -288,10 +293,11 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
-            return this.ReadVerdict(work.Result, work.Cause);
+            this.ScopeReads.Origin ??= work.Result == ConstraintProof.Proven ? null : work.Origin;
+            return this.ReadVerdict(work.Result, work.Cause, work.Fact);
         }
 
-        var outer = this.BeginProof();
+        this.BeginProof();
         try
         {
             while (this.capabilityQueue.TryDequeue(out var next))
@@ -299,10 +305,12 @@ public sealed partial class Binding
                 next.Queued = false;
                 next.Evaluated = true;
                 this.capabilityConsumer = next;
-                this.limitRead = null;
-                this.errorRead = null;
+                this.ScopeReads = default;
+                next.Parts?.Clear();
                 var result = this.ComputeCapability(next);
-                var cause = result == ConstraintProof.Unknown ? this.limitRead : result == ConstraintProof.Error ? this.errorRead : null;
+                var cause = this.ProofCause(result);
+                next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
+                next.Origin = result == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
                 if (result == next.Result && ReferenceEquals(cause, next.Cause))
                 {
                     continue;
@@ -326,9 +334,9 @@ public sealed partial class Binding
             this.capabilityConsumer = null;
         }
 
-        this.limitRead = null;
-        this.errorRead = null;
-        return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause));
+        this.ScopeReads = default;
+        this.ScopeReads.Origin = work.Result == ConstraintProof.Proven ? null : work.Origin;
+        return this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)
@@ -387,8 +395,7 @@ public sealed partial class Binding
         }
         else
         {
-            var origin = OwnedOrigin(type) is not { } owned ||
-                this.ProvesOriginOutlives(owned, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown;
+            var origin = OwnedOrigin(type) is not { } owned ? ConstraintProof.Proven : this.StaticOrigin(owned, work.Scope);
             return CombineProof(origin, this.StructuralCapability(work), true);
         }
 
@@ -440,23 +447,12 @@ public sealed partial class Binding
 
     private ConstraintProof StructuralCapability(CapabilityWork work)
     {
-        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Kind == BoundTypeKind.Function &&
-            OwnFunctionBinder(work.Type, work.Type) is { } binder)
+        // A Function Type is its call signature: only its own quantified Origins are closed, so querying a component separately still
+        // observes its free lifetime dependency.
+        var call = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.CallSignature(work.Type) : null;
+        if (call is { Signature: { } own, Binder: var binder } && ReferenceEquals(own, work.Type))
         {
-            // Only this signature's own quantified Origins are closed. Querying a
-            // component separately must still observe its free lifetime dependency.
-            var count = InputOriginCount(binder);
-            var inputs = this.originScratch.Rent(count);
-            try
-            {
-                inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
-                var closed = this.SubstituteStoredOrigins(work.Type, binder, [], inputs.AsSpan(0, count));
-                return this.RequestCapability(closed, work.Intrinsic, work.Scope);
-            }
-            finally
-            {
-                this.originScratch.Return(inputs, clearArray: true);
-            }
+            return this.SignatureCapability(work, own, binder);
         }
 
         if (work.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
@@ -481,25 +477,63 @@ public sealed partial class Binding
             return this.SummaryCapability(work, (DeclarationContainerKoto)work.Type.Symbol!.Declaration);
         }
 
+        // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        foreach (var (part, argument) in new CapabilityParts(work.Type))
+        var parts = new CapabilityParts(work.Type);
+        while (parts.MoveNext())
         {
+            var (part, argument) = parts.Current;
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
             var proof = argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved);
+        }
+
+        // A Closure's call signature is a part after its captures, member Components.Count; an unreadable one (CallSignature) answers
+        // BU-22's limit with its literal as the site, on which a failed literal's use rests (DECISIONS BU-73).
+        if (call is { } closure)
+        {
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = closure.Signature is { } signature ? this.SignatureCapability(work, signature, closure.Binder)
+                : this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = closure.Binder }, null);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
         }
 
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
         {
             for (var a = 0; a < reference.OriginArguments.Count; a++)
             {
-                var origin = reference.OriginArguments[a];
-                var outlives = origin is not null && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner);
-                result = CombineProof(result, outlives ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+                var saved = this.ScopeReads.Origin;
+                this.ScopeReads.Origin = null;
+                var proof = this.StaticOrigin(reference.OriginArguments[a], work.Scope);
+                result = CombineProof(result, proof, true);
+                this.ScopeReads.Origin = work.Part(1, proof, this.ScopeReads.Origin, saved);
             }
         }
 
         return result;
+    }
+
+    // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
+    // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed.
+    private ConstraintProof SignatureCapability(CapabilityWork work, BoundType signature, Koto binder)
+    {
+        var count = InputOriginCount(binder);
+        var inputs = this.originScratch.Rent(count);
+        try
+        {
+            inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
+            var images = new PerCallImages(inputs.AsSpan(0, count), BoundOrigin.Static, BoundOrigin.Static);
+            return this.RequestCapability(this.SubstituteStoredOrigins(signature, binder, [], images), work.Intrinsic, work.Scope);
+        }
+        finally
+        {
+            this.originScratch.Return(inputs, clearArray: true);
+        }
     }
 
     // Copy's derivation over the stored Types of a declaration's Self (SPEC 3.5.2); Owned reads component summaries.
@@ -510,7 +544,7 @@ public sealed partial class Binding
         {
             var type = this.StoredType(shape.Types[i], work.Type);
             var proof = shape.Types[i].BindingState == BindingState.Invalid ? ConstraintProof.Error : type is null ? ConstraintProof.Unknown : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: work.Intrinsic)), work.Scope);
-            if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy && type is not null && HoldsHolder(type))
+            if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy && type is not null && this.HoldsHolder(type))
             {
                 proof = ConstraintProof.Refuted; // SPEC 5.7: a `during self` layer makes its Type non-Copy.
             }
@@ -621,6 +655,9 @@ public sealed partial class Binding
 
         public (BoundType Part, bool Argument) Current { readonly get; private set; }
 
+        // The current part's member: its component's index; a requirement reference's Type arguments are member 1.
+        public readonly int Member => this.argument >= 0 ? 1 : this.index;
+
         public readonly CapabilityParts GetEnumerator() => this;
 
         public bool MoveNext()
@@ -650,45 +687,5 @@ public sealed partial class Binding
 
             return false;
         }
-    }
-
-    private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
-    {
-        internal BoundType Type { get; } = type;
-
-        internal BindingSymbol Intrinsic { get; } = intrinsic;
-
-        internal BindingScope Scope { get; } = scope;
-
-        internal bool Derivation { get; } = derivation;
-
-        // Recursive Owned structure starts optimistically; everything else starts unknown.
-        internal ConstraintProof Result { get; set; } = InitialResult(intrinsic, type);
-
-        internal bool Evaluated { get; set; }
-
-        internal bool Queued { get; set; }
-
-        internal CapabilityWork? Parent { get; set; }
-
-        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
-        internal ICheckCause? Cause { get; set; }
-
-        internal List<CapabilityWork> Dependents { get; } = new();
-
-        internal void Reset()
-        {
-            this.Result = InitialResult(this.Intrinsic, this.Type);
-            this.Evaluated = false;
-            this.Queued = false;
-            this.Parent = null;
-            this.Cause = null;
-            this.Dependents.Clear();
-        }
-
-        private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && !type.IsAbstract
-                ? ConstraintProof.Proven
-                : ConstraintProof.Unknown;
     }
 }

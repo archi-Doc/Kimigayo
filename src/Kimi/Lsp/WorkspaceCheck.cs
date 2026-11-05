@@ -174,8 +174,9 @@ internal sealed class WorkspaceCheck
                 lists.Add(uri, list);
             }
 
-            // A related location in a recorded input with a range is sent as a location when the client accepts one; the text
-            // of every other related location is appended to the message.
+            // A related location in a recorded input with a range is sent as a location when the client accepts one, placed by its
+            // document's identity (the state owner spells it as it is sent); the text of every other related location is appended
+            // to the message.
             List<LspRelatedInformation>? sent = null;
             List<string>? appended = null;
             foreach (var related in diagnostic.Related ?? [])
@@ -183,7 +184,7 @@ internal sealed class WorkspaceCheck
                 var relatedPath = related.Source < 0 ? null : output.Sources[related.Source].Path;
                 if (relatedInformation && related.Source >= 0 && identities[related.Source] is { } relatedInput && related.Range is { } relatedRange)
                 {
-                    (sent ??= []).Add(new(new(relatedInput.ToUri(), relatedRange), related.Describe(null)));
+                    (sent ??= []).Add(new(new(relatedInput, relatedRange), related.Describe(null)));
                 }
                 else
                 {
@@ -420,13 +421,9 @@ internal sealed class WorkspaceCheck
         var productMembers = new HashSet<SourceIdentity>(members);
         foreach (var test in project.ProjectFile.TestSources)
         {
-            try
+            if (SourceIdentity.TryFromPath(Path.Combine(directory, test), out var member))
             {
-                members.Add(SourceIdentity.FromPath(Path.GetFullPath(test, directory)));
-            }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                // The check reports the invalid path.
+                members.Add(member); // An invalid path has no identity; the check reports it.
             }
         }
 
@@ -805,9 +802,9 @@ internal sealed class WorkspaceCheck
         LoadedProject item;
         try
         {
-            item = Project.TryCreate(this.start.Kimigayo, null, path.Value, source, out var project, out var failure)
+            item = Project.TryCreate(this.start.Kimigayo, null, path.Value, source, out var project, out var failures)
                 ? CreateLoaded(path, project, source)
-                : new LoadedProject { Path = path, Failure = failure ?? "The project could not be loaded.", Inputs = source.GetRecorded() };
+                : new LoadedProject { Path = path, Failures = failures, Inputs = source.GetRecorded() };
         }
         catch (PendingInputException)
         {
@@ -925,7 +922,8 @@ internal sealed class WorkspaceCheck
     {
         if (plan.Key.Kind == UnitKind.FailedRoot || plan.Project is { Project: null })
         {
-            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, plan.Project?.Failure ?? "The project could not be loaded.");
+            var failures = plan.Project is { Failures.Count: > 0 } failed ? failed.Failures : ["The project could not be loaded."];
+            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, failures);
         }
 
         if (plan.Key.Target.Length == 0)

@@ -12,6 +12,9 @@ namespace XunitTest;
 /// <summary>SPEC 13.5.6, 15.6.3: a child reference retains its actual parent's authority.</summary>
 public class StoredReferenceLoanTest(ITestOutputHelper output)
 {
+    private const string Borrow = "borrow that created the loan";
+    private const string Retained = "later use of the value retaining the conflicting loan";
+
     [Theory]
     [InlineData("", "value@follow")]
     [InlineData(" during a", "value@follow")]
@@ -20,10 +23,10 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         var source = "func run(value: uniq/i32" + origin + ")\n    let child = value@follow@uniq\n    let snapshot: i32 = " + read + "\n    child@follow = 99";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -35,6 +38,8 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("StoredReferenceLoanRead" + name, source, string.Empty);
     }
 
+    // Since the MIR decides acceptance (R6-check H5), each record is A5's: it relates the borrow that created the child's Loan and the
+    // child's later use that retains it, as A5 publishes them (R6-check H3b T49, class 3).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -55,9 +60,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
             Assert.Equal(DiagnosticSeverity.Error, error.Severity);
             Assert.Equal("value", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
             Assert.Equal("This operation conflicts with an active loan", error.Message);
-            var retained = Assert.Single(error.Related!);
-            Assert.Equal("loan", retained.Role);
-            Assert.Contains("child", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+            Assert.Equal([("borrow", "value@follow@uniq", Borrow), ("loan", "child@follow = 99", Retained)], Related(source, error));
         }
 
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -74,7 +77,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
                 Assert.Equal(result.Diagnostics[i].Display!.Range, sent[i].Range);
                 if (related)
                 {
-                    Assert.Equal(result.Diagnostics[i].Related![0].Range, Assert.Single(sent[i].RelatedInformation!).Location.Range);
+                    Assert.Equal(Ranges(result.Diagnostics[i]), sent[i].RelatedInformation!.Select(static x => x.Location.Range));
                 }
                 else
                 {
@@ -91,7 +94,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         var source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32" + origin + ")\n    let found = value@follow@ref\n    change(value)\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, static x => x.Code == Kimi.DiagnosticCode.CallActivationConflict_Kd);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
@@ -124,19 +127,17 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         var source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    " + acquisition + "\n    " + mutation + "\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Analysis.IsVerified);
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
-    // Expects the rule before Loan identity by base (A5 S1): Moving `value` while `found`, a child through it, is live is
-    // now an error (SPEC 15.6.3); the default pipeline keeps the old rule until R6-check.
+    // Loan identity by base (A5 S1): Moving `value` while `found`, a child through it, is live is an error (SPEC 15.6.3).
     [Fact]
-    [Trait("OldRule", "S1")]
     public void AChildRetainsItsInputAfterTransferringTheParentReference()
     {
         const string source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    let found = value@follow@ref\n    let moved = value@move\n    require found == 42 else => $abort(\"value\")\n    change(moved)\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")";
-        ScalarEmissionTest.EmitFixture("StoredReferenceLoanTransferred", source, string.Empty);
+        MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("value@move", "value")));
     }
 
     [Fact]
@@ -144,11 +145,13 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         const string source = "var entries = [1: 42]\nvar iterator = entries.iterateUniq()\nmatch iterator.next()\n    .Some((let key, let value))\n        let child = value@follow@ref\n        value@follow = 99\n        require child == 42 and key == 1 else => $abort(\"child\")\n    .None => $abort(\"missing\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
+    // Each A5 record relates the borrow that created the Loan, the retaining later use and the call's own reservation (R6-check H5;
+    // H3b T49, class 3).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -168,10 +171,10 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
             Assert.Equal(DiagnosticSeverity.Error, error.Severity);
             Assert.Equal("change(value)", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
             Assert.Contains("cannot activate", error.Message, StringComparison.Ordinal);
-            var retained = Assert.Single(error.Related!);
-            Assert.Equal("loan", retained.Role);
-            Assert.Contains("found", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
-            Assert.Equal("value retaining the conflicting loan", retained.Label);
+            Assert.Equal(
+                [("borrow", "value@follow@ref", Borrow), ("loan", "found == 42", Retained), ("reservation", "value", "conflicting exclusive call reservation")],
+                Related(source, error));
+            Assert.Equal(error.Span!.Value.Start + "change(".Length, error.Related![2].Span!.Value.Start);
         }
 
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -189,7 +192,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
                 Assert.Contains(result.Diagnostics[i].Message, sent[i].Message, StringComparison.Ordinal);
                 if (related)
                 {
-                    Assert.Equal(result.Diagnostics[i].Related![0].Range, Assert.Single(sent[i].RelatedInformation!).Location.Range);
+                    Assert.Equal(Ranges(result.Diagnostics[i]), sent[i].RelatedInformation!.Select(static x => x.Location.Range));
                 }
                 else
                 {
@@ -198,7 +201,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
             }
         }
 
-        Assert.False(c.Validate(out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -211,4 +214,12 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
+
+    // A record's related locations as role, text and label, in order.
+    private static IEnumerable<(string Role, string Text, string? Label)> Related(string source, CheckDiagnostic error)
+        => error.Related!.Select(x => (x.Role, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label));
+
+    // A record's related ranges, as the language server sends them.
+    private static IEnumerable<SourceRange> Ranges(CheckDiagnostic error)
+        => error.Related!.Select(static x => x.Range!.Value);
 }

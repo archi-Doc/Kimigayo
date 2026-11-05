@@ -12,9 +12,10 @@ namespace XunitTest;
 
 // SPEC 15.6.2, 15.6.6, 16.2.2: a borrow of a block-local root that escapes through the block's result, a closure capture or a
 // longer-lived value is a Loan conflict at the destruction that ends the root while that value keeps its Loan. It is one record
-// per destroyed root and holder, at the transfer or statement whose cleanup destroys the root, relating the value keeping the
-// Loan (`loan`) and the Borrow or capture entry that created it (`borrow`). The join that the block's value reaches only after
-// the destruction, later uses of the value and an exit that delivers another source's borrow add no record.
+// per destroyed root and holder, at the MIR's storage end of the root: its declaration, or the temporary itself (H5, the flip),
+// relating the use of the value keeping the Loan (`loan`: the label block, which delivers an exit's value (DECISIONS R5-M50), or
+// a temporary's later use) and the Borrow or capture that created it (`borrow`). The join that the block's value reaches only
+// after the destruction, later uses of the value and an exit that delivers another source's borrow add no record.
 public class BlockEscapeLoanTest(ITestOutputHelper output)
 {
     private const string Closure = "public func main() -> ()\n    let g = label block: do\n        let n = 5\n        exit to block func [n@ref] () => n@follow\n    Console.writeLine(\"\\(g())\")\n";
@@ -35,6 +36,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string OtherFirst = "func show(c: bool)\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n" +
         "    Console.writeLine(\"\\(r@follow)\")\n\npublic func main() -> ()\n    show(true)\n";
 
+    // Both exits escape: the one record relates the later exit's Borrow, the MIR's Anchor (TheMirLoanIsUsedAtTheLabelBlock).
     private const string BothExits = "func show(c: bool)\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block n@ref\n        exit to block n@ref\n" +
         "    Console.writeLine(\"\\(r@follow)\")\n\npublic func main() -> ()\n    show(true)\n";
 
@@ -80,6 +82,9 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string LoopItem = "func show() -> i32\n    let r = label l: loop\n        let arr: Array<i32> = [1, 2]\n        for x in arr\n            exit to l x\n        exit to l arr[0]@ref\n" +
         "    return r@follow\n\npublic func main() -> ()\n    Console.writeLine(\"\\(show())\")\n";
 
+    private const string ReferenceSlot = "public func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = label b: do\n        let q = words[0]@ref\n" +
+        "        exit to b q@ref\n    Console.writeLine(r@follow)\n";
+
     // SPEC 3.6, 13.5.6, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
     // full-expression boundary.
     private const string TemporaryHandle = "struct Item\n    public var id: i32 = 7\nfunc make() -> rc/Item => Kimi.Intrinsics.makeRc(Item.init())\n\npublic func main() -> ()\n";
@@ -100,13 +105,16 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string TemporaryFunction = "func mk() -> (() -> i32)\n    let values: Array<i32> = [11, 22, 33]\n    return func [values@move] () -> i32 => values[1]\n" +
         "func call(f: ref/(() -> i32)) -> i32 => f()\n\npublic func main() -> ()\n    let r = mk()@ref\n    Console.writeLine(\"\\(call(r))\")\n";
 
-    private const string Transfer = "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
+    private const string Root = "let n = 5";
 
-    private const string Escaped = "`n` is destroyed here while a live value keeps the Loan of `n@ref`; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
+    // The loop over an abstract Iterable of GenericRequirement, AbstractHolder and their valid twins.
+    private const string IterableLoop = "for a in values\n        count += 1";
 
     private const string BorrowLabel = "borrow that created the loan";
 
-    private const string LoanLabel = "value retaining the conflicting loan";
+    private const string LoanLabel = "later use of the value retaining the conflicting loan";
+
+    private const string RetainedLabel = "value retaining the conflicting loan";
 
     // A local that keeps n's Loan through an Option payload written in the block, a definition the carrying walk does not decide; both
     // exits destroy n while it keeps the Loan.
@@ -132,52 +140,61 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     public static TheoryData<string, string, string, string, string, string, string> Escapes => new()
     {
-        // Name, source, primary text, the context of the related borrow and the borrow in it, the start of the related value, and the Note.
-        { "Closure", Closure, "exit to block func [n@ref] () => n@follow", "[n@ref]", "n@ref", "do", Escaped },
-        { "Plain", Plain, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "NoUse", NoUse, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "Two", Two, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "Parameter", Parameter, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "OtherFirst", OtherFirst, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "BothExits", BothExits, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "Temporary", Temporary, "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
-        { "GenericRequirement", GenericRequirement, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "GenericReborrow", GenericReborrow, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "AbstractHolder", AbstractHolder, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "ReadLocal", ReadLocal, "exit to b q", "let q = n@ref", "n@ref", "do", Escaped },
-        { "NestedBlock", NestedBlock, "exit to outer inner", "exit to b n@ref", "n@ref", "do", Escaped },
-        { "CapturedLocal", CapturedLocal, "exit to b func [q] () => q@follow", "let q = n@ref", "n@ref", "do", Escaped },
-        { "Element", Element, "exit to b n[0]@ref", "exit to b n[0]@ref", "n[0]@ref", "do", "`n` is destroyed here while a live value keeps the Loan of `n[0]@ref`" + Transfer },
-        { "Constructor", Constructor, "exit to b Holder.init(n@ref)", "Holder.init(n@ref)", "n@ref", "do", Escaped },
-        { "Tuple", Tuple, "exit to b (n@ref, n@ref)", "(n@ref", "n@ref", "do", Escaped },
-        { "MatchBinding", MatchBinding, "exit to b x", "match n@ref", "n@ref", "do", Escaped },
-        { "LoopItem", LoopItem, "exit to l x", "for x in arr", "arr", "loop", "`arr` is destroyed here while a live value keeps the Loan of `arr`" + Transfer },
-        { "TemporaryInTuple", TemporaryInTuple, "let r = (make()@ref, 1)", "(make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
-        { "TemporaryHandleView", TemporaryHandle + "    let r = make()@objref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@objref", "make()@objref", "make()@objref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@objref`" },
-        { "TemporaryHandleAnnotated", TemporaryHandle + "    let r: objref/Item = make()\n    Console.writeLine(\"\\(r.id)\")\n", "let r: objref/Item = make()", "let r: objref/Item = make()", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
-        { "TemporaryHandlePayload", TemporaryHandle + "    let r = make()@follow@ref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@follow@ref", "let r = make()@follow@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
-        { "TemporaryHandleField", TemporaryHandle + "    let r = make().id@ref\n    Console.writeLine(\"\\(r@follow)\")\n", "let r = make().id@ref", "let r = make().id@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
-        { "TemporaryHandleSlot", TemporaryHandle + "    let r = make()@ref\n    let c = Kimi.Intrinsics.clone(r)\n", "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
-        { "ReferenceSlot", "public func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = label b: do\n        let q = words[0]@ref\n        exit to b q@ref\n    Console.writeLine(r@follow)\n", "exit to b q@ref", "exit to b q@ref", "q@ref", "do", "`q` is destroyed here while a live value keeps the Loan of `q@ref`" + Transfer },
-        { "TemporaryReferenceSlot", FirstText + "\npublic func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = first(words@ref)@ref\n    Console.writeLine(r@follow)\n", "let r = first(words@ref)@ref", "first(words@ref)@ref", "first(words@ref)@ref", "let r", "The temporary `first(words@ref)` is destroyed here while a live value keeps the Loan of `first(words@ref)@ref`" },
-        { "TemporaryGeneric", TemporaryGeneric, "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
-        { "TemporaryFunction", TemporaryFunction, "let r = mk()@ref", "mk()@ref", "mk()@ref", "let r", "The temporary `mk()` is destroyed here while a live value keeps the Loan of `mk()@ref`" },
-        { "TemporaryExclusiveReferenceSlot", SlotInt + "\npublic func main() -> ()\n    var xs: Array<i32> = [1]\n    let r = slot(xs@uniq)@uniq\n    r@follow@follow = 2\n", "let r = slot(xs@uniq)@uniq", "slot(xs@uniq)@uniq", "slot(xs@uniq)@uniq", "let r", "The temporary `slot(xs@uniq)` is destroyed here while a live value keeps the Loan of `slot(xs@uniq)@uniq`" },
+        // Name, source, the text the primary span is found in and its text, the context of the related borrow and the borrow in it, and the
+        // related use (its first occurrence; a label block's whole text).
+        { "Closure", Closure, Root, Root, "exit to block func [n@ref] () => n@follow", "func [n@ref] () => n@follow", Block(Closure, "do\n") },
+        { "Plain", Plain, Root, Root, "exit to block n@ref", "n@ref", Block(Plain, "do\n") },
+        { "NoUse", NoUse, Root, Root, "exit to block n@ref", "n@ref", Block(NoUse, "do\n") },
+        { "Two", Two, Root, Root, "exit to block n@ref", "n@ref", Block(Two, "do\n") },
+        { "Parameter", Parameter, Root, Root, "exit to block n@ref", "n@ref", Block(Parameter, "do\n") },
+        { "OtherFirst", OtherFirst, Root, Root, "exit to block n@ref", "n@ref", Block(OtherFirst, "do\n") },
+        { "BothExits", BothExits, Root, Root, "exit to block n@ref\n    Console", "n@ref", Block(BothExits, "do\n") },
+        { "Temporary", Temporary, "let r = make()@ref", "make()", "make()@ref", "make()@ref", "r@follow" },
+        { "GenericRequirement", GenericRequirement, Root, Root, "exit to block n@ref", "n@ref", Block(GenericRequirement, "do\n") },
+        { "GenericReborrow", GenericReborrow, Root, Root, "exit to block n@ref", "n@ref", Block(GenericReborrow, "do\n") },
+        { "AbstractHolder", AbstractHolder, "let n: T = other@follow", "let n: T = other@follow", "exit to block n@ref", "n@ref", Block(AbstractHolder, "do\n") },
+        { "ReadLocal", ReadLocal, Root, Root, "let q = n@ref", "n@ref", Block(ReadLocal, "do\n") },
+        { "NestedBlock", NestedBlock, Root, Root, "exit to b n@ref", "n@ref", Block(NestedBlock, "do\n") },
+        { "CapturedLocal", CapturedLocal, Root, Root, "let q = n@ref", "n@ref", Block(CapturedLocal, "do\n") },
+        { "Element", Element, "let n: Array<i32> = [5, 6]", "let n: Array<i32> = [5, 6]", "exit to b n[0]@ref", "n[0]@ref", Block(Element, "do\n") },
+        { "Constructor", Constructor, Root, Root, "Holder.init(n@ref)", "n@ref", Block(Constructor, "do\n") },
+        { "Tuple", Tuple, Root, Root, "(n@ref", "n@ref", Block(Tuple, "do\n") },
+        { "MatchBinding", MatchBinding, Root, Root, "match n@ref", "n@ref", Block(MatchBinding, "do\n") },
+        { "LoopItem", LoopItem, "let arr: Array<i32> = [1, 2]", "let arr: Array<i32> = [1, 2]", "for x in arr", "arr", Block(LoopItem, "loop\n") },
+        { "TemporaryInTuple", TemporaryInTuple, "let r = (make()@ref, 1)", "make()", "(make()@ref", "make()@ref", "r.0@follow" },
+        { "TemporaryHandleView", TemporaryHandle + "    let r = make()@objref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@objref", "make()", "make()@objref", "make()@objref", "r.id" },
+        { "TemporaryHandleAnnotated", TemporaryHandle + "    let r: objref/Item = make()\n    Console.writeLine(\"\\(r.id)\")\n", "let r: objref/Item = make()", "make()", "let r: objref/Item = make()", "make()", "r.id" },
+        { "TemporaryHandlePayload", TemporaryHandle + "    let r = make()@follow@ref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@follow@ref", "make()", "let r = make()@follow@ref", "make()@follow@ref", "r.id" },
+        { "TemporaryHandleField", TemporaryHandle + "    let r = make().id@ref\n    Console.writeLine(\"\\(r@follow)\")\n", "let r = make().id@ref", "make()", "let r = make().id@ref", "make().id@ref", "r@follow" },
+        { "TemporaryHandleSlot", TemporaryHandle + "    let r = make()@ref\n    let c = Kimi.Intrinsics.clone(r)\n", "let r = make()@ref", "make()", "make()@ref", "make()@ref", "Kimi.Intrinsics.clone(r)" },
+        { "ReferenceSlot", ReferenceSlot, "let q = words[0]@ref", "let q = words[0]@ref", "exit to b q@ref", "q@ref", Block(ReferenceSlot, "do\n") },
+        { "TemporaryReferenceSlot", FirstText + "\npublic func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = first(words@ref)@ref\n    Console.writeLine(r@follow)\n", "let r = first(words@ref)@ref", "first(words@ref)", "first(words@ref)@ref", "first(words@ref)@ref", "Console.writeLine(r@follow)" },
+        { "TemporaryGeneric", TemporaryGeneric, "let r = make()@ref", "make()", "make()@ref", "make()@ref", "inspect(r)" },
+        { "TemporaryFunction", TemporaryFunction, "let r = mk()@ref", "mk()", "mk()@ref", "mk()@ref", "call(r)" },
+        { "TemporaryExclusiveReferenceSlot", SlotInt + "\npublic func main() -> ()\n    var xs: Array<i32> = [1]\n    let r = slot(xs@uniq)@uniq\n    r@follow@follow = 2\n", "let r = slot(xs@uniq)@uniq", "slot(xs@uniq)", "slot(xs@uniq)@uniq", "slot(xs@uniq)@uniq", "r@follow@follow = 2" },
     };
 
+    // A source with the abstract Iterable loop (GenericRequirement, AbstractHolder) also has A5's two records at that valid `for` since
+    // G264 (S) S2 (ledger 6d990a95ee72, aa63161bf69c; class 4: both reject, the MIR adds them), S2's (e)-family records that PLAN G416
+    // removes (H5's (e) list, row "S2's self-row family", the owner's O-9), as TheMirLoanIsUsedAtTheLabelBlock pins.
     [Theory]
     [MemberData(nameof(Escapes))]
-    public void AnEscapedBorrowIsOneRecordAtTheDestruction(string name, string source, string at, string context, string borrow, string value, string note)
+    public void AnEscapedBorrowIsOneRecordAtTheDestruction(string name, string source, string statement, string at, string context, string borrow, string value)
     {
-        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        var loop = source.Contains(IterableLoop, StringComparison.Ordinal) ? Locate(source, IterableLoop, IterableLoop) : default;
+        Assert.Equal(
+            Enumerable.Repeat((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), loop), loop == default ? 0 : 2),
+            records.Where(x => Located(source, x.Span) == loop).Select(x => (x.Code, Located(source, x.Span))));
+        var record = Assert.Single(records, x => Located(source, x.Span) != loop);
         Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), DiagnosticSeverity.Error), (record.Code, record.Severity));
-        Assert.Equal((source.IndexOf(at, StringComparison.Ordinal), at), (record.Span!.Value.Start, Text(source, record.Span)));
-        Assert.Equal(note, record.Note);
+        Assert.Equal(Locate(source, statement, at), Located(source, record.Span));
+        Assert.Null(record.Note);
         Assert.Equal(["borrow", "loan"], record.Related!.Select(static x => x.Role));
         var lending = record.Related![0];
-        Assert.Equal((source.IndexOf(context, StringComparison.Ordinal) + context.IndexOf(borrow, StringComparison.Ordinal), borrow), (lending.Span!.Value.Start, Text(source, lending.Span)));
+        Assert.Equal(Locate(source, context, borrow), Located(source, lending.Span));
         Assert.Equal(BorrowLabel, lending.Label);
-        Assert.StartsWith(value, Text(source, record.Related![1].Span), StringComparison.Ordinal);
+        Assert.Equal(Locate(source, value, value), Located(source, record.Related![1].Span));
         Assert.Equal(LoanLabel, record.Related![1].Label);
         output.WriteLine(name);
     }
@@ -196,6 +213,33 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
+    // SPEC 16.2.2, 15.6.6 on MIR (DECISIONS R5-M50, DIAGNOSTICS A6 `Use`): the delivery after the Scope Exit is the target's, whichever
+    // exit builds it first, so the value keeping the Loan is used at the label block, never at an exit delivering another source; the
+    // Anchor is the escaping exit's Borrow (the later one where both escape).
+    // Over an abstract Iterable (GenericRequirement, AbstractHolder) A5 also errs twice at the valid `for` loop until PLAN G416: the lent
+    // item's composed erased destruction stores next()'s Loan into the iterator, a self-row (G264 (S) S2 lands without GXS, the owner's
+    // O-9); those two are H5's (e) rows, pinned here so the test fails when G416 removes them.
+    [Theory]
+    [InlineData(OtherFirst, 0)]
+    [InlineData(BothExits, 0)]
+    [InlineData(GenericRequirement, 2)]
+    [InlineData(GenericReborrow, 0)]
+    [InlineData(AbstractHolder, 2)]
+    public void TheMirLoanIsUsedAtTheLabelBlock(string source, int g416Rows)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var conflicts = Enumerable.Range(0, program.Problems.All.Length).Where(x => program.Problems.All[x].Code == DiagnosticCode.ComparisonLoanConflict_Kd).ToArray();
+        var lines = conflicts.Select(x => source.AsSpan(0, c.SyntaxOf(program.Problems.All[x].Subject).Span.Start).Count('\n')).ToArray();
+        var loop = Array.FindIndex(source.Split('\n'), static x => x.StartsWith("    for ", StringComparison.Ordinal));
+        Assert.Equal(g416Rows, lines.Count(x => x == loop));
+        var index = conflicts[Assert.Single(Enumerable.Range(0, lines.Length), x => lines[x] != loop)];
+        Assert.Equal(
+            [("Anchor", source.LastIndexOf("n@ref", StringComparison.Ordinal)), ("Use", source.IndexOf("do\n", StringComparison.Ordinal))],
+            program.Problems.Facts(index).ToArray().Select(x => ($"{x.Kind}", c.SyntaxOf(x.Site).Span.Start)));
+    }
+
     // SPEC 15.6.6: the plain escape is one record, at the destruction.
     [Fact]
     public void ThePlainEscapeIsOneRecord()
@@ -210,38 +254,43 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         var source = "public func main() -> ()\n    var k = 1\n    let q = k@ref\n    k = 2\n    Console.writeLine(\"\\(q@follow)\")\n" + Plain[(Plain.IndexOf('\n', StringComparison.Ordinal) + 1)..];
         var records = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.ComparisonLoanConflict_Kd)], records.Select(static x => x.Code));
-        Assert.Equal(["k = 2", "exit to block n@ref"], records.Select(x => Text(source, x.Span)));
+        Assert.Equal(["k = 2", Root], records.Select(x => Text(source, x.Span)));
         Assert.Null(records[0].Note);
     }
 
-    // SPEC 15.6.6: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
-    // Loan reaches keeps a record relating only the value keeping it, while the join still adds none. The same body over a plain
-    // reference is decided: one record, at the first destruction its carrying definition reaches.
+    // SPEC 15.6.6: where the carrying walk gives up, the escaping exit is never dropped. Since the MIR decides acceptance (H5, DECISIONS
+    // R5-M185) both exits' destructions of n are A5's one record at n's declaration (H3b T44: at each exit before; the second exit's own
+    // record is the old analysis's, 1x by R5's F-c ruling), relating the Borrow and `o`, whose next use lies past the block, at its
+    // declaration (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without the destruction's Note (T49, until
+    // A6). The same body over a plain reference, which the walk decides, has the same record.
     [Fact]
-    public void AnUndecidedHolderKeepsEveryDestruction()
+    public void AnUndecidedHoldersExitDestructionsAreOneRecord()
     {
-        var records = DiagnosticCorpus.Check(UndecidedHolder).Diagnostics;
-        Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), x.Code));
-        Assert.Equal(["exit to block 0", "exit to block 1"], records.Select(x => Text(UndecidedHolder, x.Span)));
-        Assert.Equal(UndecidedHolder.IndexOf("exit to block 1", StringComparison.Ordinal), records[1].Span!.Value.Start);
-        Assert.All(records, x => Assert.Equal(("loan", "var o"), (Assert.Single(x.Related!).Role, Text(UndecidedHolder, x.Related![0].Span)[..5])));
-        Assert.All(records, static x => Assert.Equal("`n` is destroyed here while a live value keeps its Loan" + Transfer, x.Note));
         var decided = UndecidedHolder.Replace("var o: Option<ref/i32> = .Some(z@ref)", "var o = z@ref", StringComparison.Ordinal)
             .Replace("o = .Some(n@ref)", "o = n@ref", StringComparison.Ordinal);
-        var record = Assert.Single(DiagnosticCorpus.Check(decided).Diagnostics);
-        Assert.Equal("exit to block 0", Text(decided, record.Span));
-        Assert.Equal(["borrow", "loan"], record.Related!.Select(static x => x.Role));
+        foreach (var (source, holder) in new[] { (UndecidedHolder, "var o: Option<ref/i32> = .Some(z@ref)"), (decided, "var o = z@ref") })
+        {
+            var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+            Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Root, (string?)null), (record.Code, Text(source, record.Span), record.Note));
+            Assert.Equal([("borrow", "n@ref", BorrowLabel), ("loan", holder, RetainedLabel)], record.Related!.Select(x => (x.Role, Text(source, x.Span), x.Label)));
+        }
     }
 
-    // SPEC 3.6, 8.15.1: an abstract receiver temporary ends with its statement as well, so the iterator it lends cannot outlive it.
+    // SPEC 3.6, 8.15.1: an abstract receiver temporary ends with its statement as well, so the iterator it lends cannot outlive it. Since
+    // G264 (S) S2 A5 also errs at `var it = make().iterate()`, the abstract iterator's composed end: the old analysis's own record, which
+    // the MIR now publishes too (s2-alone.md's Gain, ledger b4fcbfb1691b, old to both; class 4: both reject, the MIR adds the record). It
+    // is not an (e)-family record, and PLAN G416 is not expected to remove it.
     [Fact]
     public void AnAbstractReceiverTemporaryEndsWithItsStatement()
     {
         const string source = "func keep<C>(make: () -> C) -> ()\n    C is Iterable\n    var it = make().iterate()\n    _ = it.next()\n\npublic func main() -> ()\n    Console.writeLine(\"x\")\n";
-        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "var it = make().iterate()"), (record.Code, Text(source, record.Span)));
-        Assert.StartsWith("var it", Text(source, Assert.Single(record.Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
-        Assert.Equal("The temporary `make()` is destroyed here while a live value keeps its Loan", record.Note);
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(
+            [(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Locate(source, "var it = make().iterate()", "var it = make().iterate()")), (nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Locate(source, "make()", "make()"))],
+            records.Select(x => (x.Code, Located(source, x.Span))));
+        var record = records[1];
+        Assert.Equal(Locate(source, "it.next()", "it"), Located(source, Assert.Single(record.Related!, static x => x.Role == "loan").Span));
+        Assert.Null(record.Note);
     }
 
     // SPEC 3.6: the valid twins of TemporaryGeneric and TemporaryFunction: a borrow of an abstract or a Function temporary used within
@@ -258,16 +307,32 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     [InlineData("ParameterBothExits", "func pick(c: bool, z: ref/i32) -> i32\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z\n        exit to block z\n    return r@follow\nlet z = 1\nConsole.writeLine(\"\\(pick(true, z@ref))\")", "1\n")]
     [InlineData("Copied", "let r = label block: do\n    let n = 5\n    exit to block n\nConsole.writeLine(\"\\(r)\")", "5\n")]
     [InlineData("InnerValue", "func show(c: bool) -> i32\n    let z = 1\n    let r = label outer: do\n        let n = 5\n        let inner = label block: do\n            if c\n                exit to block n@ref\n            exit to block z@ref\n        let v = inner@follow\n        exit to outer v\n    return r\nConsole.writeLine(\"\\(show(true)) \\(show(false))\")", "5 1\n")]
-    [InlineData("GenericBothExits", "func show<C>(values: ref/C, c: bool) -> ()\n    C is Iterable\n    var count: i32 = 0\n    for a in values\n        count += 1\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block z@ref\n    Console.writeLine(\"\\(r@follow) \\(count)\")\nlet xs: Array<i32> = [1]\nshow(xs@ref, true)", "1 1\n")]
     [InlineData("ReborrowBothExits", "func show<s/T>(value: s/T, c: bool) -> ()\n    s is ref or uniq\n    T is Copy\n    let local = value\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block z@ref\n    Console.writeLine(\"\\(r@follow)\")\nlet v = 3\nshow(v@ref, true)", "1\n")]
-    [InlineData("AbstractBothExits", "func show<C, T>(values: ref/C, other: ref/T, c: bool) -> ()\n    C is Iterable\n    T is Copy\n    var count: i32 = 0\n    for a in values\n        count += 1\n    let r = label block: do\n        let n: T = other@follow\n        if c\n            exit to block other\n        exit to block other\n    let k: T = r@follow\n    Console.writeLine(\"\\(count)\")\nlet xs: Array<i32> = [1]\nlet v = 3\nshow(xs@ref, v@ref, true)", "1\n")]
     [InlineData("TemporaryReferenceReborrow", FirstText + SlotInt + "let words: Array<string> = [\"a\"]\nlet r = first(words@ref)@follow@ref\nConsole.writeLine(r)\nConsole.writeLine(first(words@ref)@ref@follow)\nvar xs: Array<i32> = [1]\nlet s = slot(xs@uniq)@follow@uniq\ns@follow = 2\nslot(xs@uniq)@follow += 1\nConsole.writeLine(\"\\(xs[0])\")", "a\na\n3\n")]
     [InlineData("LocalCopied", "let r = label b: do\n    let n: Array<i32> = [5, 6]\n    let q = n[1]@ref\n    let t = (q, 1)\n    exit to b t.0@follow + n[0]\nConsole.writeLine(\"\\(r)\")", "11\n")]
     public void BorrowsWithinTheirRootsScopeRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("BlockEscapeLoan" + name, source, stdout);
 
-    // SPEC 23.3: the console shows both related locations and the Note, the language server sends them in both placements,
-    // and the JSON form keeps the borrow role, for a conversion and for a capture entry.
+    // SPEC 15.6.2, 16.2.2, 15.6.4 (R4-M170): GenericBothExits and AbstractBothExits are valid, but since G264 (S) S2 A5 errs twice at their
+    // `for` over an abstract Iterable (the lent item's composed erased destruction stores next()'s Loan into the iterator, a self-row;
+    // ledger e5aa44c0e03d, 39072356123f), and generation refuses them; the old analysis accepted and ran them to "1 1\n" and "1\n". H5's
+    // (e) list, row "S2's self-row family" (the owner's O-9, 「(a) 加えて着地」): PLAN G416 restores the acceptance and moves the rows
+    // back to BorrowsWithinTheirRootsScopeRun.
+    [Theory]
+    [InlineData("GenericBothExits", "func show<C>(values: ref/C, c: bool) -> ()\n    C is Iterable\n    var count: i32 = 0\n    for a in values\n        count += 1\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block z@ref\n    Console.writeLine(\"\\(r@follow) \\(count)\")\nlet xs: Array<i32> = [1]\nshow(xs@ref, true)")]
+    [InlineData("AbstractBothExits", "func show<C, T>(values: ref/C, other: ref/T, c: bool) -> ()\n    C is Iterable\n    T is Copy\n    var count: i32 = 0\n    for a in values\n        count += 1\n    let r = label block: do\n        let n: T = other@follow\n        if c\n            exit to block other\n        exit to block other\n    let k: T = r@follow\n    Console.writeLine(\"\\(count)\")\nlet xs: Array<i32> = [1]\nlet v = 3\nshow(xs@ref, v@ref, true)")]
+    public void BorrowsOverAnAbstractIterableAreRefusedPendingG416(string name, string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, $"{name}: {MinimalEmissionTest.Describe(c)}");
+        Assert.False(c.Accepts);
+        var loop = new SyntaxLocation(IterableLoop);
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, loop), (DiagnosticCode.ComparisonLoanConflict_Kd, loop));
+        Assert.False(c.Generate(TextWriter.Null));
+    }
+
+    // SPEC 23.3: the console shows both related locations, the language server sends them in both placements, and the JSON form
+    // keeps the borrow role, for a conversion and for a closure's capture. The MIR's record has no Note (H5).
     [Theory]
     [InlineData(Plain)]
     [InlineData(Closure)]
@@ -282,13 +347,13 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Contains(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), console.Text, StringComparison.Ordinal);
         Assert.Contains(": " + BorrowLabel, console.Text, StringComparison.Ordinal);
         Assert.Contains(": " + LoanLabel, console.Text, StringComparison.Ordinal);
-        Assert.Contains("Note: " + Escaped, console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Note: ", console.Text, StringComparison.Ordinal);
 
         var identity = SourceIdentity.FromPath(checkOutput.Sources[record.Source].Path);
         var plain = Assert.Single(WorkspaceCheck.Place(checkOutput, [identity], identity, false)[identity]);
         Assert.Equal((record.Code, record.Display!.Range), (plain.Code, plain.Range));
         Assert.Contains(BorrowLabel, plain.Message, StringComparison.Ordinal);
-        Assert.Contains("note: " + Escaped, plain.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("note: ", plain.Message, StringComparison.Ordinal);
         var related = Assert.Single(WorkspaceCheck.Place(checkOutput, [identity], identity, true)[identity]);
         Assert.Equal(record.Related!.Select(static x => x.Range), related.RelatedInformation!.Select(static x => (SourceRange?)x.Location.Range));
 
@@ -300,24 +365,48 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     // Warm ownership analysis allocates nothing, for valid bodies whose block values keep body-local Loans and for escapes,
     // whose destruction check, carrying-definition walk, Borrow search through definitions, constructions and calls, and record
-    // reuse retained storage.
+    // reuse retained storage. FollowedWorkload's show also has A5's two records at its valid `for` over an abstract Iterable since G264
+    // (S) S2 (class 4, as GenericRequirement's in AnEscapedBorrowIsOneRecordAtTheDestruction), S2's (e)-family records that PLAN G416
+    // removes (H5's (e) list, row "S2's self-row family", the owner's O-9); the old analysis's count stays the escapes.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(ValidWorkload, 0)]
-    [InlineData(EscapingWorkload, 2)]
-    [InlineData(FollowedWorkload, 4)]
-    public void WarmEscapeChecksAllocateNothing(string workload, int escapes)
+    [InlineData(ValidWorkload, 0, 0)]
+    [InlineData(EscapingWorkload, 2, 0)]
+    [InlineData(FollowedWorkload, 4, 2)]
+    public void WarmEscapeChecksAllocateNothing(string workload, int escapes, int g416)
     {
         var c = MinimalEmissionTest.Analyze(workload);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(escapes == 0, c.Analysis.IsVerified);
-        Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
-        Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Borrow is not null));
+        var loop = workload.IndexOf(IterableLoop, StringComparison.Ordinal);
+        Assert.Equal(g416, c.Problems.Count(x => x.Code.IsLoanConflict() && (c.SyntaxOf(x.Subject).Span.Start, c.SyntaxOf(x.Subject).Span.Length) == (loop, IterableLoop.Length)));
+        Assert.Equal(escapes + g416, c.Problems.Count(static x => x.Code.IsLoanConflict()));
+        Assert.Equal(escapes, c.AnalyzeLegacyOwnership().Issues.Count(static x => x.Borrow is not null));
         var verified = escapes == 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() => verified = c.Analyze().IsVerified));
         Assert.Equal(escapes == 0, verified);
-        Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
+        Assert.Equal(escapes + g416, c.Problems.Count(static x => x.Code.IsLoanConflict()));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
+
+    // The text of the block that `head` opens (its first occurrence): through the last following line indented deeper than head's line.
+    private static string Block(string source, string head)
+    {
+        var start = source.IndexOf(head, StringComparison.Ordinal);
+        var depth = source.AsSpan(source.LastIndexOf('\n', start) + 1).IndexOfAnyExcept(' ');
+        var end = source.IndexOf('\n', start);
+        while (source.AsSpan(end + 1).IndexOfAnyExcept(' ') > depth)
+        {
+            end = source.IndexOf('\n', end + 1);
+        }
+
+        return source[start..end];
+    }
+
+    // The start and text of `inner` in the first occurrence of `outer`.
+    private static (int Start, string Text) Locate(string source, string outer, string inner)
+        => (source.IndexOf(outer, StringComparison.Ordinal) + outer.IndexOf(inner, StringComparison.Ordinal), inner);
+
+    private static (int Start, string Text) Located(string source, SourceSpan? span) => (span!.Value.Start, Text(source, span));
 }

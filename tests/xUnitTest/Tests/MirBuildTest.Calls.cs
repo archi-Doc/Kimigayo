@@ -9,26 +9,61 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The calls of the MIR build: reservations of exclusive inputs, evaluation order and operand reads, pair acquisitions, diverging
-/// arguments and Value callees.</summary>
+/// <summary>The calls of the MIR build: reservations of exclusive inputs, evaluation order and operand reads, the temporaries' destruction in
+/// reverse creation order, pair acquisitions, diverging arguments and Value callees.</summary>
 public sealed partial class MirBuildTest
 {
+    // Values with a destructor, their calls, method, getter, constructor and Contract operator (SPEC 3.6's temporaries).
+    private const string Temporaries = """
+        struct Noisy
+            public let name: i32
+            public computed twin: Noisy
+                get() -> Noisy => Noisy.init(2)
+            public init(name: i32) => self.name = name
+            public func make(self, n: i32) -> Noisy => Noisy.init(n)
+            public func bump(self: uniq/Self, other: ref/Noisy) -> Noisy => Noisy.init(4)
+            drop => ()
+        struct Echo
+            public let n: i32
+            public init(a: ref/Noisy) => self.n = a.name
+            drop => ()
+        struct Num
+            Self is Addable<Num>
+            associate Addable<Num>.Output is Num
+            public let v: i32
+            public init(v: i32) => self.v = v
+            public func added(self: ref/Self, right: ref/Num) -> Num => Num.init(4)
+            drop => ()
+        func pass(a: ref/Noisy) -> Noisy => Noisy.init(2)
+        func show(a: ref/Noisy) => ()
+        func see(e: ref/Echo) => ()
+        func sum(n: ref/Num) => ()
+        func pair(t: ref/(Noisy, i32)) => ()
+        func two(a: ref/Noisy, b: i32) => ()
+        func both(a: Noisy, b: i32, c: i32 = 0) => ()
+        func noisies(a: ref/Noisy) -> Array<Noisy> => [Noisy.init(2)]
+        func keys(d: ref/Dictionary<i32, Noisy>) => ()
+
+        """;
+
     // SPEC 15.6.7: every exclusive borrow that produces an invocation's argument or receiver is reserved (TwoPhaseUniq): a written @uniq,
-    // also in parentheses, the Reborrow of a stored uniq at a uniq parameter and a synthesized receiver (an Array literal's reserve and
-    // appends); a written @uniq on a receiver's path is not formed (DECISIONS R4-M52), so the receiver has one reservation, at its lending
-    // point; a borrow saved in storage or a control-flow result is live when formed (Uniq).
+    // also in parentheses, the Reborrow of a stored uniq at a uniq parameter and a synthesized receiver (a Dictionary literal's entry
+    // layout; an Array literal is one aggregate and borrows nothing, DECISIONS R5-M129); a written @uniq on a receiver's path is not formed
+    // (DECISIONS R4-M52), so the receiver has one reservation, at its lending point; a borrow saved in storage or a control-flow result is
+    // live when formed (Uniq).
     [Fact]
     public void ReservedCallInputsAreTwoPhase()
     {
         var source = "func take(a: uniq/i32, b: i32) => ()\nfunc f()\n    var p: i32 = 1\n    take(p@uniq, p + 1)\n    take((p@uniq), 2)\n" +
-            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\nstruct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
+            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\n    let table = [1: 2]\n" +
+            "struct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
             "    public func bump(self: uniq/Self, by: i32) => self.count = self.count + by\nstruct Holder\n    public var c: Counter\n" +
             "    public init() => self.c = Counter.init()\nfunc g(h: uniq/Holder)\n    h@follow@uniq.c.bump(1)\n    h@follow@uniq.c@uniq.bump(2)\nfunc chosen()\n    var p: i32 = 1\n" +
             "    take(if p > 0 => p@uniq else => p@uniq, 4)\nstruct Bag\n    public var items: Array<i32>\n    public var count: i32\n" +
             "    public init()\n        self.items = []\n        self.count = 0\nfunc fill()\n    var bag = Bag.init()\n    bag@uniq.items.append(bag.count)\n";
         Assert.Equal(
-            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq,
-                MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq],
+            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.Shared, MirRefKind.Shared,
+                MirRefKind.TwoPhaseUniq],
             Refs(Body(source, "f")).Select(static x => x.Kind));
         var g = Body(source, "g");
         var lent = Refs(g).ToArray();
@@ -58,7 +93,7 @@ public sealed partial class MirBuildTest
         {
             var program = Compile(Holder + $"    {statement}\n").BuildMir();
             Assert.Empty(program.Findings);
-            Assert.Empty(program.Records);
+            Assert.Empty(program.Records(MirRecordClass.Construction));
             var text = new StringBuilder();
             MirDump.Write(program, 0, text);
             return string.Join('\n', text.ToString().Split('\n').Select(static x => x.Split(" @")[0]));
@@ -222,8 +257,8 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62): where only the checks continue, any acquisition takes the Never value as it is (a comparison's
-    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, not of its Never-typed target's, and a
-    // rejected node of Type Never keeps its Opaque value: each body validates.
+    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, and a rejected node of Type Never keeps
+    // its Opaque value: each body validates.
     [Theory]
     [InlineData("func f() -> bool\n    let s = \"a\"\n    return s == (return false)\n")]
     [InlineData("func f(b: (string, i32)) -> bool\n    return (return false) < b\n")]
@@ -232,19 +267,40 @@ public sealed partial class MirBuildTest
     public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
 
     // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
-    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call).
+    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call),
+    // which marks f, the body it lies in, alone (MirBody.HasConstructionRecord; GR-1a, fail-before: none).
     [Fact]
     public void ATupleOperatorWithoutItsComparisonIsUnsupported()
     {
-        var deep = string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80);
-        var c = Compile("struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n" +
-            "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
-            $"func f(a: ref/({deep}, i32), b: ref/({deep}, i32)) -> bool => a == b\n");
+        var c = Compile(Unbuilt.Declarations + $"func f(a: ref/{Unbuilt.Tuple}, b: ref/{Unbuilt.Tuple}) -> bool => a == b\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
+        var record = Assert.Single(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
+        Assert.Equal(["f"], program.Bodies.ToArray().Where(static x => x.HasConstructionRecord && x.Source.Module == 0).Select(static x => x.Key.Decl?.Name));
+    }
+
+    // SPEC 13.4, 23.1.2 (DECISIONS BU-38, R5-M166): a tuple operator whose leaf's storage rests on a part Binding rejected, inline or
+    // through a handle, has its comparison, since what the leaf's witness runs does not depend on that part: its comparison call (equals
+    // under the operator mode) builds, with no record of the builder's (fail-before: the Limit of the twin above, Unsupported_Kd at the
+    // operator).
+    [Theory]
+    [InlineData("struct Bad\n    Self is Equatable\n    public var m: Missing\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Bad, b: ref/Bad) -> bool => (a, 1) == (b, 1)\n")]
+    [InlineData("struct Bad\n    public var m: Missing\nstruct Sx\n    Self is Equatable\n    public var x: rc/Bad\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(a: ref/Sx, b: ref/Sx) -> bool => (a, 1) == (b, 1)\n")]
+    public void ATupleOperatorOverRejectedStorageBuildsItsComparison(string source)
+    {
+        var c = Compile(source);
+        Assert.Equal(["UnresolvedBinding_Kd"], CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        var f = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        Assert.False(f.HasOpaque);
+        Assert.Contains(f.Blocks.ToArray(), static x => x.Terminator is
+        {
+            Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Requirement, Symbol.Name: "equals", Arg: (int)ComparisonMode.Operator },
+        });
     }
 
     // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the
@@ -257,6 +313,264 @@ public sealed partial class MirBuildTest
         var signature = body.Consts[call.Terminator.Callee.Arg];
         Assert.Equal(MirConstKind.TypeToken, signature.Kind);
         Assert.Same(body.TypeOf(new MirPlace(1)), signature.Type);
+    }
+
+    // SPEC 3.6, 16.2.1, 7.2.3, 14.6.2 (DECISIONS R4-M129): a temporary is destroyed before every temporary created while it was evaluated
+    // (a call's result before its receiver's and arguments' temporaries, an aggregate before its operands', a Subject or iterator before its
+    // expression's, a pending slot before its argument's), on the normal end and on an exit that interrupts the statement: a cleanup chain
+    // after a Drop of the first drops the second, and none after a Drop of the second drops the first. A binding is destroyed by
+    // declaration, after its initializer's temporaries, and before an earlier binding initialized after it (fail-before: each temp's Drop
+    // registered where its storage began, so the second was destroyed first, but for the bindings).
+    [Theory]
+    [InlineData("show(pass(Noisy.init(1)))", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("show(Noisy.init(1).make(2))", "Noisy.init(1).make(2)", "Noisy.init(1)")]
+    [InlineData("show(pass(Noisy.init(1)).bump(Noisy.init(3)))", "pass(Noisy.init(1)).bump(Noisy.init(3))", "pass(Noisy.init(1))")]
+    [InlineData("show(Noisy.init(1).twin)", "Noisy.init(1).twin", "Noisy.init(1)")]
+    [InlineData("see(Echo.init(Noisy.init(1)))", "Echo.init(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("sum(Num.init(1) + Num.init(3))", "Num.init(1) + Num.init(3)", "Num.init(3)")]
+    [InlineData("pair((pass(Noisy.init(1)), 5))", "(pass(Noisy.init(1)), 5)", "Noisy.init(1)")]
+    [InlineData("show(pass(pass(Noisy.init(1))))", "pass(pass(Noisy.init(1)))", "pass(Noisy.init(1))")]
+    [InlineData("_ = pass(Noisy.init(1))", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("pass(Noisy.init(1))", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("match pass(Noisy.init(1))\n        _ => ()", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("for x in noisies(Noisy.init(1))@ref => ()", "noisies(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("for x in noisies(Noisy.init(1)) => ()", "ArrayOwningIterator<Noisy>", "Noisy.init(1)")]
+    [InlineData("two(pass(Noisy.init(1)), try n)", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("both(pass(Noisy.init(1)), try n)", "pass(Noisy.init(1))", "Noisy.init(1)")]
+    [InlineData("let kept = pass(Noisy.init(1))", "Noisy.init(1)", "kept")]
+    [InlineData("let a: Noisy\n    let b = Noisy.init(2)\n    a = Noisy.init(1)", "b", "a")]
+    public void ATemporaryIsDestroyedBeforeTheTemporariesOfItsEvaluation(string statement, string first, string then)
+    {
+        var (c, body) = Temporaried(statement);
+        var (a, b) = (Dropped(c, body, first), Dropped(c, body, then));
+        Assert.True(Precedes(body, a, b));
+        Assert.False(Precedes(body, b, a));
+    }
+
+    // SPEC 14.2.1, 16.2.2 step 3 (DECISIONS R4-M129): an if clause's body is its own Body, as a match arm's is, so the temporaries of its
+    // result end with it, before the call that takes the if's value (fail-before: they were the enclosing statement's, destroyed after the
+    // call).
+    [Fact]
+    public void AnIfClausesTemporariesEndWithIt()
+    {
+        var (c, body) = Temporaried("show(if true => pass(Noisy.init(1)) else => Noisy.init(3))");
+        var blocks = body.Blocks.ToArray();
+        var argument = Dropped(c, body, "Noisy.init(1)");
+        var all = Enumerable.Range(0, blocks.Length);
+        var drop = Assert.Single(all, x => blocks[x].Terminator is { Kind: MirTerminatorKind.Drop } d && d.Place.Root == argument);
+        var call = Assert.Single(all, x => blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "show" });
+        Assert.True(Reaches(body, drop, call));
+        Assert.False(Reaches(body, call, drop));
+    }
+
+    // SPEC 12.4.3, 16.2.1, 3.6 (DECISIONS R4-M129): a dictionary literal places its entries in a value of its own, which an exit from an
+    // entry destroys after the temporaries created since, and moves it to the literal's value after the last entry, where that is created,
+    // so it is destroyed before its entries' temporaries (fail-before: the entries placed in the literal's value, held before them).
+    [Fact]
+    public void ADictionaryLiteralsEntriesArePlacedInAValueOfItsOwn()
+    {
+        var (c, body) = Temporaried("keys([1: pass(Noisy.init(1)), 2: Noisy.init(try n)])");
+        var moved = Assert.Single(
+            body.Statements.ToArray(),
+            x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && TyCtxt.Name(body.TypeOf(x.Place)!) == "Dictionary<i32, Noisy>");
+        var (literal, entries, argument) = (moved.Place.Root, body.Operands[moved.Rvalue.Start].Place.Root, Dropped(c, body, "Noisy.init(1)"));
+        Assert.True(Precedes(body, literal, argument));
+        Assert.False(Precedes(body, argument, literal));
+        Assert.True(Precedes(body, argument, entries));
+    }
+
+    // SPEC 22.5.1 (DECISIONS R5-M144, R5-M145; PLAN G157 (32)): a failure of a Dictionary literal entry's insertion, its allocation included,
+    // reports the entry's key expression, as its duplicate key does: each entry's lookup, its literal's storage handle and its placement are
+    // located at its key (fail-before: the handle and the placement at its value).
+    [Fact]
+    public void ADictionaryLiteralsEntryInsertionIsLocatedAtItsKey()
+    {
+        var c = Compile("func key() -> i32 => 1\nfunc f() -> Dictionary<i32, i32> => [key(): 10, 2: 20]\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var steps = body.Blocks.ToArray().Select(static x => x.Terminator)
+            .Where(static x => x.Kind == MirTerminatorKind.Call && x.Callee.Symbol?.Name is "findEntry" or "dictionaryStorage" or "placeEntry")
+            .Select(x => x.Callee.Symbol!.Name + " " + c.SyntaxOf(x.Source.Syntax));
+        Assert.Equal(
+            ["findEntry key()", "dictionaryStorage key()", "placeEntry key()", "findEntry 2", "dictionaryStorage 2", "placeEntry 2"],
+            steps);
+    }
+
+    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its
+    // adapter is healthy: a first segment that is an expression follows the adapter's status, and a text's write returns the recorded failure
+    // itself, so a text first needs none (fail-before: next() ran first, on an adapter that may have failed already).
+    [Theory]
+    [InlineData("\\(next())x", new[] { "status", "next", "write" })]
+    [InlineData("x\\(next())", new[] { "write", "next", "write" })]
+    public void ATryWritesFirstExpressionFollowsItsAdaptersStatus(string literal, string[] calls)
+    {
+        var body = Body("func next() -> i32 => 1\nfunc f(w: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(w, \"" + literal + "\")\n", "f");
+        Assert.Equal(calls, HealthyPath(body, calls.Length));
+
+        // The first test's failure arm reaches the result's status without the expression (SPEC 22.10.4).
+        var failed = new List<string>();
+        var first = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.SwitchInt);
+        for (var block = body.Blocks[first].Terminator.Target; block >= 0 && body.Blocks[block].Terminator.Kind != MirTerminatorKind.Return;)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                failed.Add(terminator.Callee.Symbol!.Name);
+            }
+
+            block = terminator.Target;
+        }
+
+        Assert.Equal(["status"], failed);
+    }
+
+    // SPEC 22.10.4, 14.10.3 (PLAN G410; DECISIONS R4-M62): a $tryWrite's writer is evaluated first; one of Type Never is the Never value,
+    // which its status and writes take as it is, so its writes and embedded expressions are built in their order where only the checks
+    // continue, and A1 checks them as with a real writer, and its result, a call's, is placed. Each row: the parameters, the statements
+    // around the write (WRITE), its writer and literal, then A1's problems; the MIR layer observes the rule, the body's write calls and A1's
+    // records (fail-before: the builder went to the result at the Never writer, building no write, so A1 reported nothing at b or u and
+    // UninitializedPlace_Kd at r). Dev's located Unsupported_Kd at `<formatting>`, which G410's Binding half removes, is not compared.
+    [Theory]
+    [InlineData("", "let b = Box.init()\n    eat(b@move)\n    _ = WRITE\n    return 0", "do => return 7", "\\(b)", "MovedPlace_Kd b")]
+    [InlineData("", "let b = Box.init()\n    eat(b@move)\n    _ = WRITE\n    return 0", "$abort(\"w\")", "\\(b)", "MovedPlace_Kd b")]
+    [InlineData("c: bool", "if c\n        let u: i32 = fail()\n        _ = WRITE\n    return 0", "do => return 7", "\\(u)", "UninitializedPlace_Kd u")]
+    [InlineData("", "let b = Box.init()\n    _ = WRITE\n    return 0", "do => return 7", "\\(b)", "")]
+    [InlineData("", "let r = WRITE\n    match r\n        .Ok(_) => return 1\n        .Err(_) => return 2", "do => return 7", "\\(42)", "")]
+    [InlineData("w: uniq/Utf8Writer", "let b = Box.init()\n    _ = WRITE\n    return 0", "w", "\\(b)x\\(b)", "")]
+    public void ANeverWritersWritesAreBuiltForTheChecks(string parameters, string statements, string writer, string literal, string problems)
+    {
+        var c = Compile("struct Box\n    Self is Utf8Format\n    public init() => ()\n" +
+            "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(writer, \"v\")\n" +
+            $"func eat(b: Box) => ()\nfunc fail() -> Never => $abort(\"f\")\nfunc f({parameters}) -> i32\n    " +
+            statements.Replace("WRITE", $"$tryWrite({writer}, \"{literal}\")", StringComparison.Ordinal) + "\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.Contains(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "write" });
+        Assert.Equal(
+            problems.Split('|', StringSplitOptions.RemoveEmptyEntries),
+            program.Problems.All.ToArray().Where(static x => x.Code is DiagnosticCode.MovedPlace_Kd or DiagnosticCode.UninitializedPlace_Kd)
+                .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+    }
+
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): an owning interpolation is one FormatSegment step per write position, the later literal bytes
+    // and values' Types its hint: a literal segment's text is its step's operand and no write, and so is an embedded string literal's (as if
+    // written: a constant has no effect); a value's position has the empty text and its write follows. The block a failed write goes to exists
+    // only where a write is tested, so text alone builds without validator findings (fail-before: each literal was a write<string> after
+    // FormatHint; then text alone left that block unreachable). A $tryWrite's text stays a write (above).
+    [Theory]
+    [InlineData(
+        "func f(n: i32) -> string => \"n=\\(n)!\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"n=\" 1 1", "FormatSegment \"\" 1 0", "write", "FormatSegment \"!\" 0 0", "FormatFinish" })]
+    [InlineData(
+        "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"lit\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish" })]
+    [InlineData("func f() -> string => \"\\(\"only\")\"\n", new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"only\" 0 0", "FormatFinish" })]
+    [InlineData(
+        "func f() -> string => \"x\\(\"y\")z\"\n",
+        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"x\" 2 0", "FormatSegment \"y\" 1 0", "FormatSegment \"z\" 0 0", "FormatFinish" })]
+    public void AnOwningInterpolationsLiteralTextIsItsSegmentStep(string source, string[] steps)
+        => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
+
+    // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported
+    // (fail-before: its unreachable failure block was a validator finding, and the analyses ran on no body).
+    [Fact]
+    public void TextAloneKeepsTheProgramsOtherErrors()
+    {
+        var program = Compile(
+            "func touch(v: uniq/i32) => ()\nfunc f() -> string\n    var x = 1\n    let r = x@uniq\n    let s = \"a\\(x)b\"\n    touch(r)\n    return s@move\n" +
+            "func only() -> string => \"\\(\"only\")\"\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+    }
+
+    // The calls on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
+    // continue it. An intrinsic is named by its id, a FormatSegment with its text, later bytes and later values' count; another call by its
+    // function's name.
+    private static List<string> HealthyPath(MirBody body, int count)
+    {
+        var path = new List<string>();
+        for (var block = 0; block >= 0 && path.Count < count;)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                path.Add(Step(body, terminator));
+            }
+
+            block = terminator.Kind switch
+            {
+                MirTerminatorKind.SwitchInt => Assert.Single(body.Cases.Slice(terminator.Start, terminator.Count).ToArray(), static x => x.Value == 0).Target,
+                MirTerminatorKind.Call or MirTerminatorKind.Goto or MirTerminatorKind.Drop => terminator.Target,
+                _ => -1,
+            };
+        }
+
+        return path;
+
+        static string Step(MirBody body, in MirTerminator call)
+        {
+            if (call.Callee.Kind != MirCalleeKind.Intrinsic)
+            {
+                return call.Callee.Symbol!.Name;
+            }
+
+            var id = (IntrinsicId)call.Callee.Arg;
+            var operands = body.Operands.Slice(call.Start, call.Count);
+            return id != IntrinsicId.FormatSegment ? id.ToString()
+                : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+        }
+    }
+
+    // A function f of the temporaries' program that runs a statement, built without validator findings.
+    private static (Compilation C, MirBody Body) Temporaried(string statement)
+    {
+        var c = Compile(Temporaries + "func f(n: Option<i32>) -> Option<i32>\n    " + statement + "\n    return .Some(0)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        return (c, program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f"));
+    }
+
+    // The one local a key names among those a body drops whole: a binding by its name, else a temp by its syntax or its Type.
+    private static int Dropped(Compilation c, MirBody body, string key)
+    {
+        var dropped = body.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place.Projection: 0 })
+            .Select(static x => x.Terminator.Place.Root).Distinct().ToArray();
+        return dropped.Any(x => body.Locals[x].Name == key) ? Assert.Single(dropped, x => body.Locals[x].Name == key)
+            : Assert.Single(dropped, x => TyCtxt.Name(body.Locals[x].Type) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
+    }
+
+    // Whether a body drops a local and, in the cleanup chain after some Drop of it (along Drops and Gotos), another; an assignment's Drop
+    // of the old value, which the new value's write follows, starts no chain (SPEC 13.7.1).
+    private static bool Precedes(MirBody body, int first, int then)
+    {
+        var blocks = body.Blocks.ToArray();
+        foreach (var start in blocks.Where(x => x.Terminator is { Kind: MirTerminatorKind.Drop } drop && drop.Place.Root == first &&
+            (body.Statements.Slice(blocks[drop.Target].Start, blocks[drop.Target].Count).ToArray() is not [{ Kind: MirStatementKind.Assign } write, ..]
+            || write.Place != drop.Place)))
+        {
+            var seen = new HashSet<int>();
+            for (var block = start.Terminator.Target; block >= 0 && seen.Add(block) && blocks[block].Terminator.Kind is MirTerminatorKind.Drop or
+                MirTerminatorKind.Goto; block = blocks[block].Terminator.Target)
+            {
+                if (blocks[block].Terminator is { Kind: MirTerminatorKind.Drop } drop && drop.Place.Root == then)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a body's runtime edges lead from one block to another.
+    private static bool Reaches(MirBody body, int from, int to)
+    {
+        var reach = new MirReach();
+        reach.Clear(body.Blocks.Length);
+        reach.Walk(body, from, checks: false);
+        return reach[to];
     }
 
     // Whether a location reads (Copies or Moves) or writes (assigns or borrows) a Place rooted at a local.

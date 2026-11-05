@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
+using Kimi.Diagnostics;
 
 namespace Benchmark;
 
@@ -76,10 +78,10 @@ public class CompilerPipelineBenchmark
         return builder.Append("    return\n").ToString();
     }
 
-    // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. Stage 3 builds the MIR as the mir
-    // pipeline's Analyze builds it (under MIR code generation with the collector); under the mir pipeline stage 4's Analyze reuses it for
-    // the generation gate. The old analysis still decides (R3-R5). Under MIR code generation stage 5 is empty and stage 6 is the
-    // generation entry (R5-M94).
+    // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. Stage 3 builds, validates and analyzes
+    // the MIR and collects its checked set (BuildMir), each memoized per program version, so stage 4's Analyze, which runs the same on
+    // the legacy and the mir pipeline (DECISIONS R5-M156), reuses them and keeps them for the generation gate. The old analysis still
+    // decides (R3-R6). Stage 5 is empty and stage 6 is the generation entry, MIR code generation (R5-M94, R5-M160).
     internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)
     {
         if (!(timestamps.IsEmpty && allocations.IsEmpty) && (timestamps.Length != Boundaries || allocations.Length != Boundaries))
@@ -99,26 +101,18 @@ public class CompilerPipelineBenchmark
         Capture(2, timestamps, allocations);
 
         var mir = result.BuildMir();
-        this.Require(mir.Records.Count == 0 && mir.Findings.Count == 0, "MIR construction or validation failed.");
+        this.Require(!mir.Records(MirRecordClass.Construction).Any() && mir.Findings.Count == 0, "MIR construction or validation failed.");
         Capture(3, timestamps, allocations);
 
         this.Require(result.Analyze().IsVerified, "Analysis failed.");
         Capture(4, timestamps, allocations);
 
-        // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage; G4 deletes the branch with
-        // Compilation.Codegen.
-        if (result.Codegen == CompilerCodegen.Mir)
-        {
-            Capture(5, timestamps, allocations);
-            this.Require(result.WriteIr(output, out var failure), failure);
-        }
-        else
-        {
-            this.Require(result.Emission.TryPrepare(out var module, out var failure), failure);
-            Capture(5, timestamps, allocations);
-            module.WriteIr(output);
-        }
-
+        // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage (DECISIONS R5-M94).
+        Capture(5, timestamps, allocations);
+        var generated = result.Generate(output);
+        var failure = generated ? string.Empty : "Generation failed: " + string.Join(", ", result.Diagnostics
+            .Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics.Select(static x => x.Code));
+        this.Require(generated, failure);
         Capture(6, timestamps, allocations);
         return result;
     }
@@ -133,11 +127,11 @@ public class CompilerPipelineBenchmark
     }
 
     // A failure names its input, so a run that stops at one is identifiable without counting inputs.
-    private void Require(bool condition, string? failure)
+    private void Require(bool condition, string failure)
     {
         if (!condition)
         {
-            throw new InvalidOperationException($"size={this.Size}, shape={this.Shape}: {failure ?? "Compiler benchmark failed."}");
+            throw new InvalidOperationException($"size={this.Size}, shape={this.Shape}: {failure}");
         }
     }
 

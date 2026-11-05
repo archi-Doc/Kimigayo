@@ -37,6 +37,39 @@ public class InheritedConformanceTest
 
     private const string Bumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\n";
 
+    // BW and BX declare HasItem before its refinement HasMore, conditionally and unconditionally.
+    private const string Refinements = """
+        contract HasItem
+            associate Item
+        contract HasMore: HasItem
+            associate Elem
+            associate HasItem.Item is Elem
+        struct Src
+            Self is HasMore
+            associate HasMore.Elem is i32
+        struct SrcI
+            Self is HasItem
+            associate HasItem.Item is i32
+        struct HA<S>
+            S is HasItem
+            public var x: S.Item
+        struct HM<S>
+            S is HasMore
+            public var x: S.Elem
+        open struct BW<S>
+            S is HasItem
+            Self is HasItem
+            associate HasItem.Item is S.(HasItem).Item
+            Self is HasMore when S is HasMore
+                associate HasMore.Elem is S.(HasMore).Elem
+        open struct BX
+            Self is HasItem
+            associate HasItem.Item is i32
+            Self is HasMore
+            associate HasMore.Elem is i32
+
+        """;
+
     // SPEC 12.7, 23.1.1, 23.1.2: an exclusive implementation reached through a base has no computed ObjectCallCompatible status
     // (OCC-X). Its conformance is one location-only Unsupported_Kd at its declaration: an explicit `Self is C`, or the derived Type's base
     // clause for an inherited conformance once a check that needs it fails. Every check resting on it is derived; an unused inherited
@@ -97,12 +130,12 @@ public class InheritedConformanceTest
     public void InheritedMappingsReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze(Arithmetic);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid);
     }
 
@@ -177,6 +210,35 @@ public class InheritedConformanceTest
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
+    // SPEC 8.6.2, 8.9.2: a derived Type inherits every path of its base, also a refinement path the base declares after the refined
+    // Contract's own conformance (registration read its root path before registering it); it gives the base's verdict.
+    [Theory]
+    [InlineData("struct D: BW<Src>\n", "HA<D>, g: HM<D>", true)]
+    [InlineData("struct D<T>: BW<T>\n    T is HasItem\n", "HA<D<Src>>, g: HM<D<Src>>", true)]
+    [InlineData("struct D<T>: BW<T>\n    T is HasItem\n", "HA<D<SrcI>>, g: HM<D<SrcI>>", false)] // The condition is refuted.
+    [InlineData("struct D<T>: BW<T>\n    T is HasItem\n", "HA<D<i32>>, g: HM<D<Src>>", false)]
+    [InlineData("open struct D<T>: BW<T>\n    T is HasItem\nstruct E<T>: D<T>\n    T is HasItem\n", "HA<E<Src>>, g: HM<E<Src>>", true)]
+    [InlineData("struct D: BX\n", "HA<D>, g: HM<D>", true)]
+    [InlineData(null, "HA<BW<Src>>, g: HM<BW<Src>>", true)] // The base itself.
+    public void ARefinementDeclaredAfterItsParentIsInherited(string? derived, string parameters, bool valid)
+    {
+        var c = CompilationTestHelper.ParseSuccess(Refinements + derived + "func f(h: " + parameters + ") -> i32 => h.x + g.x\n");
+        Assert.Equal(valid, c.Bind().IsComplete);
+        Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.UnsatisfiedConstraint_Kd, x.Code));
+    }
+
+    // SPEC 8.6.2, DIAGNOSTICS I2: the derived Type lists its base's conformances in the base's order, whatever order registration
+    // meets their paths in (KB's root path is met first, through HasItem), so DB.Z's ambiguity is BB.Z's record.
+    [Fact]
+    public void AnInterleavedBaseKeepsItsConformanceOrder()
+    {
+        const string Types = "contract HasItem\n    associate Item\ncontract KA: HasItem\ncontract KC\n    associate Z\ncontract KB: HasItem\n    associate Z\nopen struct BB\n    Self is KA\n    associate HasItem.Item is i32\n    Self is KC\n    associate KC.Z is i64\n    Self is KB\n    associate KB.Z is u8\nstruct DB: BB\n";
+        var records = Array.ConvertAll(["BB", "DB"], static x => Assert.Single(DiagnosticCorpus.Check(Types + "func f(z: " + x + ".Z) -> () => ()\n()\n").Diagnostics));
+        Assert.Equal(nameof(DiagnosticCode.AmbiguousBinding_Kd), records[0].Code);
+        Assert.Equal((records[0].Code, records[0].Message, records[0].Note), (records[1].Code, records[1].Message, records[1].Note));
+        Assert.Equal(records[0].Related, records[1].Related);
+    }
+
     [Fact]
     public void RefinementAndConditionalBodiesKeepTheOriginalMapping()
     {
@@ -195,7 +257,7 @@ public class InheritedConformanceTest
     public void ReplacingTheBaseRevokesItsInheritedMapping()
     {
         var c = MinimalEmissionTest.Analyze(Arithmetic);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var original = c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>().Single(x => x.Name == "Base");
         var donor = CompilationTestHelper.ParseSuccess("open struct Base<T>\n    T is PrimitiveInteger\n    public let value: T\n    public init(value: T) => self.value = value\n    public func added(self: ref/Self, right: ref/T) -> T => self.value + right");
         var changed = Assert.Single(donor.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
@@ -203,6 +265,6 @@ public class InheritedConformanceTest
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

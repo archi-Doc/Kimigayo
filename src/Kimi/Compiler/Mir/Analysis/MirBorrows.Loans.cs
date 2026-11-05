@@ -3,10 +3,12 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps, in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer (D5, R4-M98): a Loan, a
-// guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or a write rooted at a
-// default template's PreparedInput (R26-access); and for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are
-// on, and each static's A4 Field number.
+// location, each with its Place's steps and whether it is a raw Place borrow's (Anchored: its Place passes a raw Deref, so its fresh
+// anchor's, which no access reaches, R4-M156), in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer
+// (D5, R4-M98): a Loan, a guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or
+// a write rooted at a default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots, the mutable
+// statics its Loans are on, and each static's A4 Field number; and whether the view has a raw Ref, whose address MirBorrows.Addresses
+// forms.
 internal sealed partial class MirBorrows
 {
     private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
@@ -19,6 +21,7 @@ internal sealed partial class MirBorrows
     private int loanCount;
     private int loanStepCount;
     private bool producing; // Whether the view has an input of a Loan-stratum producer, which each producer's scan below sets (D5).
+    private bool rawRefs; // Whether the view has a raw Ref, whose address MirBorrows.Addresses forms.
     private int[] fields = []; // By static: A4's number of its Field (MirEffects.Field), -1 for none.
 
     // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
@@ -54,7 +57,7 @@ internal sealed partial class MirBorrows
             this.producing |= this.MarkerOf(i) == Marker.Guard;
         }
 
-        (this.loanCount, this.loanStepCount) = (0, 0);
+        (this.loanCount, this.loanStepCount, this.rawRefs) = (0, 0, false);
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
             ref readonly var data = ref this.body.Blocks[block];
@@ -68,6 +71,7 @@ internal sealed partial class MirBorrows
 
                 this.producing |= MirSteps.Prepared(this.body, statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
+                this.rawRefs |= rvalue is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.Raw };
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
                     this.loanAt[data.Start + i] = this.Issue(rvalue.Place, reborrow: false, (MirRefKind)rvalue.Op, statement.Place.Root, data.Start + i);
@@ -99,7 +103,7 @@ internal sealed partial class MirBorrows
     private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
         var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
-        var direct = true;
+        var (direct, anchored) = (true, false);
         for (var i = 0; i < count; i++)
         {
             if (this.walk[i].Class == MirStepClass.Shared)
@@ -108,6 +112,7 @@ internal sealed partial class MirBorrows
             }
 
             direct &= this.walk[i].Class is not (MirStepClass.Uniq or MirStepClass.Raw);
+            anchored |= this.walk[i].Class == MirStepClass.Raw;
         }
 
         MirDataflow.Grow(ref this.loans, this.loanCount + 1);
@@ -117,6 +122,7 @@ internal sealed partial class MirBorrows
         this.loans[this.loanCount] = new()
         {
             Root = key,
+            Place = place,
             Group = place.IsStatic ? moves.Paths.Length + ~place.Root : moves.Find(place, out _),
             Start = this.loanStepCount,
             Count = count,
@@ -124,6 +130,7 @@ internal sealed partial class MirBorrows
             Holder = into,
             Named = root,
             Direct = direct,
+            Anchored = anchored,
             Location = location,
         };
         this.loanStepCount += count;
@@ -147,6 +154,9 @@ internal sealed partial class MirBorrows
         /// <summary>Gets or sets its Place's root key.</summary>
         internal int Root { get; set; }
 
+        /// <summary>Gets or sets its Place, whose case Type names the storage it lends (a call's Reached entry, MirBorrows.Calls).</summary>
+        internal MirPlace Place { get; set; }
+
         /// <summary>Gets or sets its Place's group: the Move Path of its longest inline prefix (MirMoveData), or for a static's Place the
         /// number of paths and the static's index.</summary>
         internal int Group { get; set; }
@@ -169,8 +179,16 @@ internal sealed partial class MirBorrows
         /// <summary>Gets or sets a value indicating whether it is direct: its Place passes no borrow or raw Deref.</summary>
         internal bool Direct { get; set; }
 
+        /// <summary>Gets or sets a value indicating whether it is a raw Place borrow's: its Place passes a raw Deref, so it is its fresh
+        /// anchor's, which no access reaches (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156).</summary>
+        internal bool Anchored { get; set; }
+
         /// <summary>Gets or sets a value indicating whether it is a destroying reservation: its call destroys its target in place.</summary>
         internal bool Destroying { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether it is an address's own-step entry (MirBorrows.Addresses): its steps are its
+        /// owning Place's.</summary>
+        internal bool OwnStep { get; set; }
 
         /// <summary>Gets or sets its issuing statement's or terminator's location (Location's index), whose subject is its anchor and whose
         /// scope its issue's (D14).</summary>

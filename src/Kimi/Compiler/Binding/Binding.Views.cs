@@ -36,7 +36,7 @@ public sealed partial class Binding
         var range = ReferenceTypes.IsResolvedRange(key) || this.ProvesClosedContract(key, this.Library.PositionRange, scope);
         if (!range && !this.ProvesClosedContract(key, this.Library.Position, scope))
         {
-            this.RecordMismatch(source.Right, source.Right, key, "a Type proven Position or PositionRange");
+            this.RecordMismatch(source.Right, source.Right, key, "a Type proven Position or PositionRange", ComparisonFailure.Shape);
             result = this.CompleteDependent(source, source.Right);
             return true;
         }
@@ -45,7 +45,7 @@ public sealed partial class Binding
         var shared = this.BindViewCall(source, scope, core, key, range, false);
         if (!range && shared is not null)
         {
-            this.exclusiveIndexers.Add(source);
+            this.uniqIndexing[source] = new(true, null);
             if (ExclusivelyAcquirable(source.Left))
             {
                 this.BindViewCall(source, scope, core, key, false, true);

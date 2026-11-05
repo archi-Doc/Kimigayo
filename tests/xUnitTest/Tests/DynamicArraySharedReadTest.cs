@@ -53,7 +53,7 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -65,7 +65,7 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + "var values: Array<Task> = [Task.init(42)]\nlet item = values[0]@ref\n" + mutation + "\nlet id = item.id");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     [Theory]
@@ -77,7 +77,7 @@ public class DynamicArraySharedReadTest
         // SPEC 4.8.2, 4.7.1, 3.4.3: the element expression has the stored Type; a member below it records the shared
         // borrow as the receiver's adaptation instead of changing the element's Type.
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\nlet view = values[..]\n" + use);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var element = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single(x => x.Right is not RangeKoto);
         Assert.Equal("Task", element.TypeOf()!.Name);
         Assert.Equal(SemanticsKind.Owner, element.TypeOf()!.Semantics);
@@ -92,6 +92,6 @@ public class DynamicArraySharedReadTest
     {
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\n" + use);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
-        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Generate(TextWriter.Null));
     }
 }

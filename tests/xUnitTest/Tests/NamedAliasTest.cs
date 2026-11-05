@@ -23,12 +23,12 @@ public class NamedAliasTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
         Assert.All(
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf() is not null),
             x => Assert.Same(c.Library.WriteLine, x.CallOf()!.Target));
         using var writer = new StringWriter();
-        Assert.True(c.WriteIr(writer, out error), error);
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         Assert.Contains("@__kimi_write_line", writer.ToString());
     }
 
