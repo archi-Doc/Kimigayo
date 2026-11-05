@@ -311,7 +311,7 @@ public sealed partial class Binding
                 for (var i = 0; i < count; i++)
                 {
                     // The update's value and the receiver are typed parts: Evidence rows at their operations' parameter Types.
-                    rows[i] = new(i, -1, operations[i].Source!, PartKind.Typed, operations[i].ParameterType, Contribution.Evidence);
+                    rows[i] = new(i, -1, operations[i].Source!, operations[i].ParameterType, operations[i].ParameterType, Contribution.Evidence);
                 }
 
                 var solution = new SlotSolution

@@ -81,9 +81,8 @@ public partial class OriginRelationDiagnosticTest
     // well-formedness for its own solution, at the outer argument. h's Origins are its own (fresh at the call), so k3, d01, d04, i01, i02,
     // q10b, q14 and j01 are valid; put2's `a` is fixed by `p` and `b` by the Borrow of `short`, so each `_n` twin, k4 and j01n (whose nested
     // signature names k's fixed Origins) err once at the argument. In ea1 the annotation contributes the expected result that solves `T`,
-    // so `Option.None` is a Result position that the annotation proves at its written Type (DECISIONS R4-M164 U1d; the planning session's
-    // ruling, 2026-11-03, as for u1, expl and boxe): that record is the old ownership analysis's body obligation, which does not run beside
-    // a Binding record (PLAN G56), so D-3's second record at the argument (the owner, relayed 2026-10-29: 「2 記録でよい」) waits for H11.
+    // so `Option.None`, at the slot `T` itself, is that solution's contributor's, which the annotation proves at its written Type
+    // (DECISIONS R4-M164 U1d, BU-99: the premise visits stop at a slot; G412: one obligation per Type occurrence, as for u1, expl and boxe).
     // q10b's and q14's twins are q10 and q15 (the aggregate theory).
     [Theory]
     [InlineData("k3", MkNone + OwnH + LocalUse + "    let x = h(a, b, mkNone())\n    return 0\n", "")]
@@ -215,9 +214,9 @@ public partial class OriginRelationDiagnosticTest
     // call c3m does: a payload's evidence binds T, so `.None` is a Signature position (U4's review B1). cx2q/cx2e/cx2c's T holds the
     // written Type's omitted Origin, a body region that never outlives `static`, so the record is UnsatisfiedOriginRelation_Kd as
     // DIAGNOSTICS requires: the MIR's, which decides since the flip (DECISIONS R5-M185; R6-check H5), where the old analysis's shared
-    // judge gave Unproven (PLAN G392). wf (a Function
-    // payload's written header) and wt (an aggregate payload's typed child) bind T in a call but not in a construction's F1, so their
-    // `.None` stays a Result position and both are accepted, while the named calls record: pinned until PLAN G391.
+    // judge gave Unproven (PLAN G392). wf (a Function payload's written header) and wt (an aggregate payload's typed child) err at
+    // `.None` as the named calls do: the layer `ref/T during static` around the slot is the construction's, judged with T's stored
+    // Origins (DECISIONS BU-99, R1; a soundness move from their former acceptance, PLAN G391's derivation removed).
     [Theory]
     [InlineData("j02", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + ShortBody + "    put8(p, sr, E.init())\n    return 0\n", "UnsatisfiedOriginRelation_Kd E.init()", null)]
     [InlineData("j02_ok", EmptyStruct + "func put8(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: E<Option<ref/(ref/i32 during b) during a>>)\n    slot@follow = v\n" + LongBody + "    put8(p, v, E.init())\n    return 0\n", "", null)]
@@ -240,20 +239,22 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cx2e_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = W.Make(p, .None)\n    return 0\n", "", null)]
     [InlineData("cx2c", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc bad() -> i32\n    let short = 2\n    let w: W<ref/i32> = .Make(short@ref, .None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd .None", null)]
     [InlineData("cx2c_ok", "enum W<T>\n    Make(T, Option<ref/T during static>)\n    Empty\nfunc ok(p: ref/i32) -> i32\n    origin p outlives static\n    let w: W<ref/i32> = .Make(p, .None)\n    return 0\n", "", null)]
-    [InlineData("wf", "enum WF<T>\n    Make((T) -> i32, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WF<ref/i32 during q> = WF.Make(func [] (x: ref/i32 during q) -> i32 => 0, .None)\n    return 0\n", "", null)]
-    [InlineData("wt", "enum WT<T>\n    Make((T, i32), Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WT<ref/i32 during q> = WT.Make((q, 1), .None)\n    return 0\n", "", null)]
+    [InlineData("wf", "enum WF<T>\n    Make((T) -> i32, Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WF<ref/i32 during q> = WF.Make(func [] (x: ref/i32 during q) -> i32 => 0, .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
+    [InlineData("wt", "enum WT<T>\n    Make((T, i32), Option<ref/T during static>)\n    Empty\nfunc bad(q: ref/i32) -> i32\n    let w: WT<ref/i32 during q> = WT.Make((q, 1), .None)\n    return 0\n", "UnprovenOriginRelation_Kd .None", null)]
     [InlineData("fn0", "func f(w: Option<ref/(ref/i32 during c) during d>) -> i32\n    return 0\nfunc g() -> i32\n    return f(.None)\n", "", null)]
     [InlineData("dl1_ok", ImpliedStore + "func good(p: uniq/(ref/i32 during q), v: ref/i32 during q, ys: ref/(ref/i32 during q) during q) -> i32\n    put2(p, v, .Some(ys))\n    return 0\n", "", null)]
     public void EachCallAndConstructionProvesItsInstantiatedTypes(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
 
-    // An ill-formed explicit Type argument whose slot a contextual argument fills (DECISIONS R4-M164; the planning session's ruling,
-    // 2026-11-03): the call records at the argument (Binding). The written Type's own record is the body obligation the old ownership
-    // analysis did not judge beside a Binding record (PLAN G56); the MIR publishes it there since the flip (DECISIONS R5-M184; R6-check H5).
+    // An ill-formed explicit Type argument whose slot a contextual argument fills: the written Type occurrence is the slot's
+    // contributor and carries the one obligation (PLAN G412), and the argument at the slot `T` itself is that solution's, so the call
+    // records nothing there (DECISIONS BU-99, R1; rule W: the argument's former record restated the Type occurrence's). This replaces
+    // the planning session's ruling of 2026-11-03 (the call records at the argument), whose reason, the Type's record waiting for H11
+    // (PLAN G56), no longer holds since G412.
     [Theory]
-    [InlineData("u1", "func use1<T>(x: T) -> i32 => 0\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    return use1<Option<ref/(ref/i32 during q) during r>>(Option.None)\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
-    [InlineData("expl", "func id<T>(x: T) -> T => x@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = id<Option<ref/(ref/i32 during q) during r>>(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
-    [InlineData("boxe", "struct Box<T>\n    public let item: T\n    public init(item: T) => self.item = item@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = Box<Option<ref/(ref/i32 during q) during r>>.init(item: Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd Option.None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("u1", "func use1<T>(x: T) -> i32 => 0\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    return use1<Option<ref/(ref/i32 during q) during r>>(Option.None)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("expl", "func id<T>(x: T) -> T => x@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = id<Option<ref/(ref/i32 during q) during r>>(Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("boxe", "struct Box<T>\n    public let item: T\n    public init(item: T) => self.item = item@move\nfunc k(q: ref/i32, r: ref/i32) -> i32\n    let y = Box<Option<ref/(ref/i32 during q) during r>>.init(item: Option.None)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     public void AnExplicitTypeArgumentsContextualArgumentRecordsAtTheArgument(string form, string body, string records)
         => AssertRecords(form, body, records, null);
 

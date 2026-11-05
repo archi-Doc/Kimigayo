@@ -513,7 +513,7 @@ public sealed partial class Binding
             {
                 if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
                 {
-                    this.RequireInputPremises(at, parameter, adapted, this.PartContribution(at));
+                    this.RequireInputPremises(at, parameter, parameter, adapted, this.PartContribution(at));
                 }
             }
 
