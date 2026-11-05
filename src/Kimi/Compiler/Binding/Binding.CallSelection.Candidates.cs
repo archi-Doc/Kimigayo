@@ -504,8 +504,6 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            this.OpenUnsolvedOrigins(call, function, origins, solution.OriginInference); // SPEC 15.3.6: an Origin no bound mentions is a region.
-
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
             this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
@@ -539,6 +537,15 @@ public sealed partial class Binding
             if (result is not null && !this.ProveTypeLengths(result, scope.Function))
             {
                 return CandidateApplicability.Inapplicable;
+            }
+
+            if (result is not null && (this.HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
+                this.OpenResultOnlyOrigins(call, function, origins, defaults))
+            {
+                // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
+                // ref/i32 during s` initializing an unannotated local, or one only a default names, is a local region of the call, never
+                // a pending candidate.
+                result = solution.Type(resultPattern!);
             }
 
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are

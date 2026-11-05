@@ -7826,9 +7826,6 @@ resumed by R4-M86 (2026-10-20).
     r2c's false `UnprovenConstraint_Kd`).
   - Superseded in part by BU-99 (2026-11-05): an Origin that a used default's premise bounds is solved by that premise, not opened
     as the call's region.
-  - Superseded in part by BU-104 (2026-11-05): "an Origin that no supplied input and no clause names is a local region" becomes "an
-    Origin that no bound of the selected solve mentions (a meet's operand included) is a local region, whatever premise names it";
-    the clause covered results and defaults only, while SPEC 15.3.6's rule covers every variable without a candidate.
 
 - **BU-52 Rule A starts at every position the one walk names for input j: a by-value input's raw layers are storage the call writes,
   its cleanup among the writes; the class of shadow false errors of A5's whole-value Φ_E at calls as the owner's interim** (2026-10-29;
@@ -8879,9 +8876,6 @@ resumed by R4-M86 (2026-10-20).
     the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
     `UnprovenConstraint_Kd` at the call; the adapter (`ReportPendingJudgment`) adds the argument as related location `argument`
     and the Note "The result of c over its environment is no evidence for T".
-  - Superseded in part by BU-104 (2026-11-05): L531's unsubstituted Origin no longer occurs for a callee Origin without a candidate,
-    which is a local region of the call; such a call goes on to its Constraints, and `make(c@ref, .None)` records the Callable
-    Constraint's Note ("Call make requires F is Callable<() -> T>; this condition cannot be proven under the supplied bindings").
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
   - Amended 2026-11-03 (G354-1c; kept with BU by the owner, PLAN G354). The trial's one first-written judgment counted even when
@@ -9307,18 +9301,6 @@ resumed by R4-M86 (2026-10-20).
   - Evidence of the cause (the front's step 0, on dev ae112e08f): a join argument took `JudgeSelectedCall`'s rows branch, whose second
     composition read completion state and found no child rows, so the root was judged as one Evidence leaf; each form had one solve,
     whose `PremiseSolved` was empty because `EvidenceNames` read the join root's Evidence mark.
-  - B1 (M's implementation review 1, C-38; U3-design.md seventh and ninth amendments, option (i); the owner's GO 「GO（f1 → f2）」):
-    the judgment's Types are the operation's final instantiation, and after a candidate's solve every callee Origin that no bound
-    of its inference mentions (evidence, equality, result, clause; a meet's operand included: 15.3.6 follows bounds through other
-    variables and never splits a meet) is opened as a local region of the call, whatever premise names it (`OpenUnsolvedOrigins`,
-    `Binding.OpenOrigins.cs`, run after the solve and before the operations' Types are completed; it replaces `OpenResultOnlyOrigins`'
-    result-only and default-only cases with their SPEC 15.3.6 form; U3-design.md's tenth amendment). The premises (`WellFormed`) are no
-    bound and become the region's bounds; an Origin a bound mentions keeps its representative or none, its relations judged as before
-    (meet-trans keeps its record). A premise the judgment visits over two such regions is region inference's bound, so a join's or an
-    aggregate's `.None` leaves over Origins only they name are valid (n_jroot_nores, n_tuple_nores, n_afix_nores), and the bare
-    `mk(.None, 1)` no longer depends on `CompleteWaiting`'s re-run (PLAN G437's leak). BU-99's R2' is unchanged: a premise-solved
-    Origin with a candidate keeps it. Rejected: (ii), a case for the join
-    forms (a symptom fix).
   - Not in U3a: composition beneath a slot (R5, U3b); the Join record as a waiting fact, the survey path and one formation (U6).
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's

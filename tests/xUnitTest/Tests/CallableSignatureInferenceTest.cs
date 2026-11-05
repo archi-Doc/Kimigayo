@@ -458,19 +458,16 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceCapturedReference", "func make<T, F>(f: ref/F) -> T\n    F is Callable<() -> T>\n    return f()\nlet x: i32 = 5\nlet r = x@ref\nlet c = func [r] () => r\nlet s = make(c@ref)\nrequire s@follow == 5 else => $abort(\"captured\")", string.Empty);
     }
 
-    // DECISIONS BU-104 (superseding BU-86's unsubstituted-result case): a result's callee Origin that no argument substitutes (`.None`
-    // is no evidence for s) has no candidate, so it is a local region of the call and leaves no candidate Pending on it; the Callable
-    // Constraint at F is then the call's unproven judgment, its Note and its clause related, never the environment result.
+    // DECISIONS BU-86: a result whose callee Origin no argument substitutes (`.None` is no evidence for s) leaves the candidate Pending
+    // on that Origin, not on the environment result that also leaves T unsolved, so the record carries no environment judgment. That
+    // return has no Language fact: valid programs reach it too (`keep(.Some(x@ref))`), so the record stays fact-less (G354-1c, R2).
     [Fact]
-    public void AResultOriginWithoutACandidateIsARegionAndTheConstraintIsJudged()
+    public void AnUnsubstitutedResultOriginCarriesNoEnvironmentJudgment()
     {
         var source = "func make<T, F>(f: ref/F, o: Option<ref/i32 during s>) -> Option<ref/i32 during s>\n    F is Callable<() -> T>\n    return o@move\npublic func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n    let r = make(c@ref, .None)\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(
-            (nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", "Call make requires F is Callable<() -> T>; this condition cannot be proven under the supplied bindings"),
-            (error.Code, Text(source, error.Span), error.Note));
-        var related = Assert.Single(error.Related!);
-        Assert.Equal("F is Callable<() -> T>", Text(source, related.Span));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "make(c@ref, .None)", null), (error.Code, Text(source, error.Span), error.Note));
+        Assert.Null(error.Related);
     }
 
     // DECISIONS BU-86 (2026-11-03): the environment judgment decides only for a slot that no evidence binds (SPEC 10.8). Once another
