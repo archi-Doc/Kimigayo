@@ -433,6 +433,7 @@ public sealed partial class Binding
     private void SolveConstructionOrigins(ref SlotSolution solution)
     {
         this.CollectPositionPremises(ref solution);
+        this.ReturnSlotSet(solution.EvidenceNamed); // Read by the discoveries above only.
         if (solution.OriginInference is not { } inference)
         {
             return;

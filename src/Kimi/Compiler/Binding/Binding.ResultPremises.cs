@@ -305,7 +305,7 @@ public sealed partial class Binding
             this.DiscoverPremiseOrigins(solution, inference, type.Components[i]);
         }
 
-        void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
+        static void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
         {
             if (origin is null)
             {
@@ -318,7 +318,7 @@ public sealed partial class Binding
             }
 
             if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, inference.Binder) && !inference.PremiseSolved.Contains(origin) &&
-                !this.EvidenceNames(solution, origin.Slot))
+                !solution.EvidenceNamed.Contains(origin.Slot))
             {
                 inference.Discover(origin, 0);
                 inference.PremiseSolved.Add(origin);

@@ -468,12 +468,6 @@ public sealed partial class Binding
             // R3 (DECISIONS BU-104): the arguments' root rows at the known parameter Types and their child rows, composed once before the
             // parts' completion and judged after it (JudgePositionRows).
             var solution = new SlotSolution { Binding = this, Call = call, Rows = rows.AsSpan(0, count), ChildSlice = ResetSlice(childSlice) };
-            for (var i = 0; i < count; i++)
-            {
-                var parameter = parameters.Components[i];
-                rows[i] = new(i, -1, 0, call.ArgumentNodes[i], parameter, parameter, this.PartContribution(call.ArgumentNodes[i]));
-            }
-
             if (!this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count), ref solution, out var acquired))
             {
                 return null;
@@ -530,7 +524,7 @@ public sealed partial class Binding
                 }
                 else if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
                 {
-                    this.RequireInputPremises(at, parameter, parameter, adapted, this.PartContribution(at));
+                    this.RequireInputPremises(at, parameter, parameter, adapted, rows[i].Contribution);
                 }
             }
 
@@ -605,6 +599,7 @@ public sealed partial class Binding
                 return false;
             }
 
+            solution.Rows[i] = new(i, -1, 0, source, parameter, parameter, this.PartContribution(source)); // Once the part is recorded.
             this.RetainArgumentRows(ref solution, i); // R3: composed while the part is prepared, before its completion.
             var actual = this.CompleteValueCallPart(source, parameter, scope);
             if (actual is null || source.BindingState != BindingState.Resolved)

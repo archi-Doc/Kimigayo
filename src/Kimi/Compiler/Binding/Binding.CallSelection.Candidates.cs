@@ -657,26 +657,33 @@ public sealed partial class Binding
 
         solution.Contribute(mapping);
         this.CollectPositionPremises(ref solution);
-        if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+        try
         {
-            solution.OriginInference = this.BeginOriginInference(call, function);
-        }
-
-        if (solution.OriginInference is not { } inference)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (defaults.Contains(i) && function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
-                this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
+            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
             {
-                this.DiscoverPremiseOrigins(solution, inference, instantiated);
-                this.CollectInputPremises(pattern, instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
+                solution.OriginInference = this.BeginOriginInference(call, function);
             }
-        }
 
-        return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
+            if (solution.OriginInference is not { } inference)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (defaults.Contains(i) && function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
+                    this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
+                {
+                    this.DiscoverPremiseOrigins(solution, inference, instantiated);
+                    this.CollectInputPremises(pattern, instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
+                }
+            }
+
+            return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
+        }
+        finally
+        {
+            this.ReturnSlotSet(solution.EvidenceNamed);
+        }
     }
 }
