@@ -1947,7 +1947,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     classified the kept atom is rejected on the mir pipeline, in uninstantiable code only; it is G170's. A layered projection (a pair
     layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
 - **R4-M88 An operation Binding left unresolved is an Error node that keeps every operand it evaluates** (2026-10-21; its "name of an
-  Error local" term removed by R4-M125; its "constructs … stay under G121" superseded for `do` by BU-106) SPEC 23.1.2, R4-M10, R4-M70 option P, R4-M61. `HasFacts` listed no Type for an operation
+  Error local" term removed by R4-M125; its "constructs … stay under G121" superseded for `do` by BU-106) SPEC 23.1.2, R4-M10,
+  R4-M70 option P, R4-M61. `HasFacts` listed no Type for an operation
   although its building reads Binding's selection for the node, so the publisher gave one Binding left unresolved its form's Op and the
   builder formed it from `TypeOf`'s `()` fallback: Type and Projection findings, each of which stops every analysis of the program; and
   a construct Binding left untyped was held at `()` though its position fixes its Type (`return if c => 1 else => missing`).
@@ -9390,6 +9391,8 @@ resumed by R4-M86 (2026-10-20).
   14.3. Supersedes R5-M63's residual line ("the operands of other failed forms … stay replaced") for `do`; supersedes R4-M88's
   "failed or unresolved … constructs … stay under G121" for `do` only, keeping its unresolved-operation exception; ends R5-M182's
   class-5 `do` row (H3b).
+  - Authority: the `do` case under the owner's O-5 (「(a) H5 の (e) 一覧に加える」); G121's kept-construct design for if, match,
+    loop, Block and a rejected `let`'s initializer stays the owner's (R4-M88).
   - The reason that no longer holds: G121 and R4-M88 replace a construct because no destination Type holds a kept operand. A `do`'s
     body has its own Type and is built into its own temp before the Error's Opaque, whose site names that temp; R4-M61's reason
     concerns the Error's own value only (R5-M63).
@@ -9400,10 +9403,11 @@ resumed by R4-M86 (2026-10-20).
     (`MirBuilder.Kept`), unchanged. Exclusion: a labeled `do` that a jump published without failure goes to keeps nothing (its target
     row, `HirTables.PlanOf(jump).Plan`, the row the builder resolves against the targets it opened, which an Error opens none of).
     The walk visits a rejected labeled `do`'s subtree once per enclosing one: linear in size at a fixed depth, at most depth times
-    the nodes for nesting (the syntax depth is Binding's own bound, PLAN G444).
+    the nodes for nesting; the nesting factor is capped today only by PLAN G444's stack overflow (about 150 nested `do`s) and
+    bounded once G444's limit lands, so the scaling row stays at depth 100.
   - Records: a kept body's own checks (A3's `RequireFallthrough_Kd`, A1's `MovedPlace_Kd`, A5) on its real path; none reads the
-    Error's value; valid programs never reach the row. Not covered: branches, loops and a rejected `let`'s construct initializer
-    (PLAN G414 (2)).
+    Error's value; valid programs never reach the row. Not covered (PLAN G414 (2)): a rejected labeled `do` that a valid jump goes
+    to, whose parts stay replaced and lose their records as before; branches, loops and a rejected `let`'s construct initializer.
   - Rejected: StructuralCompletion's transfer set (it omits a transfer after a diverging item); a new target fact on the jump's
     row; Block and Unsafe as members (not expressions with one body); counting failed jumps in the exclusion (loses the failed
     exit's independent record).
@@ -10817,7 +10821,8 @@ structure is recorded here by the unit that first implements it.
     plans).
 - **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19; Q21, PLAN G121, Q8-7 under R5-M23 (DEC Q6 form 1), ask
   A-14; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its children are not published
-  as evaluated and a closure inside it is not built"; extended by R5-M84; amended by R4-M88; its residual line superseded for `do` by BU-106) SPEC 23.1.2: a node's failure hides no
+  as evaluated and a closure inside it is not built"; extended by R5-M84; amended by R4-M88; its residual line superseded for `do`
+  by BU-106) SPEC 23.1.2: a node's failure hides no
   independent error in the children Binding resolved; the Error node's own value stays a derived Opaque with no record. R4-M61's
   reason concerned only the Error node's own value, whose facts are missing; each kept child is published with its own facts
   (`Binding.HasFacts`) and checked like any node (`HirTables.Broken`), so the reason does not reach it.

@@ -266,51 +266,45 @@ public sealed partial class Binding
             return node is FunctionKoto { IsAnonymous: true } && bound && binding.HasFacts(node, HirOp.Closure) ? HirOp.Closure : op;
         }
 
-        // The jumps a rejected labeled do's subtree holds (Keeps), one walk reused across nodes and passes.
-        private TargetWalk? targets;
-
-        // The nodes the jump walks visited (TargetWalk), which a scaling check reads; kept across passes.
-        internal long TargetWork => this.targets?.Visited ?? 0;
-
         // The Op at a position: a declaration's at any, another node's only where it is evaluated (Syntax elsewhere).
         private HirOp OpOf(Koto node, HirPosition position)
             => position == HirPosition.Evaluated || node is FunctionKoto { IsAnonymous: false } or PropertyKoto or PropertyAccessorKoto
                 ? binding.OpOf(node) : HirOp.Syntax;
-    }
 
-    // SPEC 14.5.2 (DECISIONS BU-101, BU-106): whether a jump in a construct's subtree, one the builder builds through its target row (its
-    // Op not Error), has the construct as that row (HirTables.PlanOf, written by the jump binding before publication). A failed jump is
-    // built as a derived Opaque and reads no target, so it does not count.
-    private sealed class TargetWalk(Binding binding) : KotoVisitor
-    {
-        private Koto? target;
-        private bool found;
-
-        internal long Visited { get; private set; }
-
-        public override void Visit(Koto node)
+        // SPEC 14.5.2 (DECISIONS BU-101, BU-106): whether a jump in a construct's subtree, one the builder builds through its target row (its
+        // Op not Error), has the construct as that row (HirTables.PlanOf, written by the jump binding before publication). A failed jump is
+        // built as a derived Opaque and reads no target, so it does not count.
+        private sealed class TargetWalk(Binding binding) : KotoVisitor
         {
-            if (this.found)
+            private Koto? target;
+            private bool found;
+
+            internal long Visited { get; private set; }
+
+            public override void Visit(Koto node)
             {
-                return;
+                if (this.found)
+                {
+                    return;
+                }
+
+                this.Visited++;
+                if (node is JumpKoto jump && binding.OpOf(jump) != HirOp.Error && ReferenceEquals(HirTables.PlanOf(jump).Plan, this.target))
+                {
+                    this.found = true;
+                    return;
+                }
+
+                node.VisitChildren(this);
             }
 
-            this.Visited++;
-            if (node is JumpKoto jump && binding.OpOf(jump) != HirOp.Error && ReferenceEquals(HirTables.PlanOf(jump).Plan, this.target))
+            internal bool Targeted(Koto construct)
             {
-                this.found = true;
-                return;
+                (this.target, this.found) = (construct, false);
+                construct.VisitChildren(this);
+                this.target = null;
+                return this.found;
             }
-
-            node.VisitChildren(this);
-        }
-
-        internal bool Targeted(Koto construct)
-        {
-            (this.target, this.found) = (construct, false);
-            construct.VisitChildren(this);
-            this.target = null;
-            return this.found;
         }
     }
 }

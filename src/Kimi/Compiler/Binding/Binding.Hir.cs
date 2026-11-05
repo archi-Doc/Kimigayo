@@ -73,6 +73,12 @@ public sealed partial class Binding
         private StructuralCompletion? completion;
         private SyntaxTable? table;
 
+        // The jumps a rejected labeled do's subtree holds (Keeps), one walk reused across nodes and passes.
+        private TargetWalk? targets;
+
+        // The nodes the jump walk visited (TargetWalk), which a scaling check reads; kept across passes.
+        internal long TargetWork => this.targets?.Visited ?? 0;
+
         public override void Visit(Koto node)
         {
             var (parent, parentOp, outer, defaults, exclusive, operation) =

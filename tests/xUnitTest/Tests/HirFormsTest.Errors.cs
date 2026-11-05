@@ -82,12 +82,13 @@ public sealed partial class HirFormsTest
     }
 
     // DECISIONS BU-106: the jump walk of a rejected labeled do visits its subtree once per enclosing rejected labeled do: linear in the
-    // size at a fixed depth, and at most depth times the program's nodes for nesting (the depth is the syntax's own bound, PLAN G444).
+    // number of the do's body statements at a fixed depth, and at most depth times the program's nodes for nesting. The depth row stays
+    // at 100 because about 150 nested dos overflow Binding's stack today (PLAN G444).
     [Fact]
     public void TheJumpWalkIsBoundedByItsSubtree()
     {
-        long[] siblings = [Work(1, 8).Work, Work(1, 16).Work, Work(1, 32).Work];
-        Assert.True(siblings[2] - siblings[1] <= (2 * (siblings[1] - siblings[0])) + 8, $"siblings {string.Join(", ", siblings)}");
+        long[] statements = [Work(1, 8).Work, Work(1, 16).Work, Work(1, 32).Work];
+        Assert.True(MirBorrowsTest.Grows(statements, 2), $"body statements {string.Join(", ", statements)}");
         foreach (var depth in (int[])[25, 50, 100])
         {
             var (work, nodes) = Work(depth, 1);

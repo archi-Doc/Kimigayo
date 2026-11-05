@@ -82,6 +82,25 @@ public sealed class HirColumnsTest
         Assert.True(cold > 0 && cold == warm, $"{cold} facts cold, {warm} warm");
     }
 
+    // DECISIONS BU-106: a warm publish of a rejected labeled do that no jump goes to, whose parts the walk over its jumps (Keeps) visits
+    // to its end before keeping them, allocates nothing: the walk is one visitor reused across passes.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmPublishOfARejectedDoAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(c: bool) -> i32\n    let y: i32 = label done: do\n        if c => return 1\n" +
+            "        require c else => ()\n    return 1\n");
+        HirTables.Publish(c);
+        var work = c.Binding.KeptTargetWork;
+        Assert.True(work > 0, "the walk did not run");
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            HirTables.Publish(c);
+        }));
+        Assert.True(c.Binding.KeptTargetWork > work, "the warm publish did not walk");
+    }
+
     // The publish found no node without the facts of its Op (HirTables.Broken: a call Op its call, a match, a try and a user loop their
     // Pattern plan, an expansion the calls it names), and every parsed node in the tree has an Op, a selected symbol its Res (the prepared
     // slot exactly where the parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated
