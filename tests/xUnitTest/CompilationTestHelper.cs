@@ -94,11 +94,11 @@ internal static class CompilationTestHelper
         return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
     }
 
-    // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (OwnershipIssue.Code).
+    // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsLoanConflict(this DiagnosticCode code)
         => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;
 
-    // The problem codes of an unproven Origin obligation: what is unproven decides the code (OwnershipIssue.Code).
+    // The problem codes of an unproven Origin obligation: what is unproven decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsUnprovenOrigin(this DiagnosticCode code)
         => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd;
 

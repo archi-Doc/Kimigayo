@@ -117,6 +117,20 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         Assert.Null(MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), DiagnosticCode.InternalInvariant_Kd));
     }
 
+    // Tests read a requirement the census pairs map to several codes through one helper each (CompilationTestHelper): its codes are
+    // exactly that requirement's codes here, four of a Comparison Loan conflict and two of an unproven Origin (DECISIONS BU-85: an
+    // unjudged non-relation is Internal).
+    [Fact]
+    public void TheMultiCodeHelpersAreTheCensusImages()
+    {
+        var (conflicts, origins) = (Images(OwnershipRequirement.ComparisonLoanConflict), Images(OwnershipRequirement.UnprovenOrigin));
+        Assert.Equal((4, 2), (conflicts.Length, origins.Length));
+        Assert.All(Enum.GetValues<DiagnosticCode>(), x => Assert.Equal((conflicts.Contains(x), origins.Contains(x)), (x.IsLoanConflict(), x.IsUnprovenOrigin())));
+
+        static DiagnosticCode[] Images(OwnershipRequirement requirement)
+            => [.. Pairs.Where(x => x.Requirement == Ownership(requirement)).Select(static x => x.Code)];
+    }
+
     /// <summary>Gets whether a compilation is Binding-complete (R4-M47): Binding accepted its program, a complete result and no published
     /// Error in Binding's partition (its lints included), which leaves it complete (R5-M31).</summary>
     /// <param name="compilation">The bound compilation.</param>
