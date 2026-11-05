@@ -9232,6 +9232,7 @@ resumed by R4-M86 (2026-10-20).
     display and Type text show `m.at`; `StepOf` an explicit Exclusive arm. A raw layer stating it is a located `Unsupported_Kd`,
     since SPEC 5.7 does not settle whether it keeps raw authority. Every substitution, quantification and schema reader keys on
     `Parameter` or `Input` and a binder, so it never matches. The frozen old path and Mir/** are unchanged.
+    - ValueCallGate's FixedInBodyOrigin row: ended by R5-M192 (R6-check H11a deletes the gate).
   - The C1-F4 view's row (`ClassifyAtom`, 2a0-D §3): Fixed in every body. This is sound by vacuity. A caller proves a Constraint
     over ρ0 for every choice, so a value carrying ρ0 exists only if a caller supplied one, through an argument proven to outlive
     a fixed unknown: only `static` is. So reading ρ0 as outliving a body admits no dangling borrow.
@@ -14322,7 +14323,7 @@ structure is recorded here by the unit that first implements it.
     ≈ −600.
   - Superseded in part by R5-M192 (2026-11-05, R6-check H11a): H11 splits into H11a (the deletions, behavior-preserving) and H11b
     (R4-M108's list, which changes published records).
-  - Amended (R6-check H14, R5-M193, 2026-11-05): H14 starts after H10b's C2, not after H11, independent of H11 and H10b-2; its size
+  - Amended by R5-M193 (2026-11-05, R6-check H14): H14 starts after H10b's C2, not after H11, independent of H11 and H10b-2; its size
     is +42 source lines (+31 test lines), not about −150, since H10b deleted `StaticScalar.cs`, `IsIndexerCall` and
     `DesignatedType`, which H0 counted.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
@@ -14564,7 +14565,7 @@ structure is recorded here by the unit that first implements it.
     wording (board C-26).
 - **R5-M193 The Koto semantic-slot reads outside Binding end (R6-check H14)** (2026-11-05, R5; design
   `draft/Sketches/R6-check/H14-design.md` revision 1, an independent design review ACCEPT on re-check and the implementation review
-  ACCEPT; under R5-M9, R5-M182 and R5-M190; BU and R4 consenting) Major: two Binding-only rules' code moves with every reader and
+  ACCEPT; under R5-M9, R5-M182 and R5-M190; BU and R4 consenting) Major: three Binding-only rules' code moves with every reader and
   only read views are added; no representation, published fact or record changes.
   - Scope: the reads of the Koto semantic slots outside Binding end (Mir 8, the Backend 2, the root helpers 23, Parsing 4,
     Documentation 3, Testing 1, the Benchmark 1), except the old control-flow analysis' 25 (`ControlFlowAnalysis.cs`, until
