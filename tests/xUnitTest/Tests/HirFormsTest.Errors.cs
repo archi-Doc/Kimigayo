@@ -62,6 +62,58 @@ public sealed partial class HirFormsTest
         Assert.True(kept is null || kept == string.Join(" ", keeps.Select(static x => x.ToString())), string.Join(" ", keeps.Select(static x => x.ToString())));
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-106): a rejected do keeps its body Evaluated, written in place (None, None), with its parts' own Ops; a
+    // labeled do that a jump published without failure goes to, and a rejected if, keep nothing (fail-before: the do's body was Syntax).
+    [Fact]
+    public void ARejectedDoKeepsItsBody()
+    {
+        const string Source = "func f(c: bool) -> i32\n    let x: i32 = do\n        require c else => ()\n        7\n" +
+            "    let y: i32 = label done: do\n        if c => exit to done 2\n        require c else => ()\n" +
+            "    let z: i32 = if c\n        require c else => ()\n    else\n        ()\n    return 1\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        HirTables.Publish(c);
+        var dos = Reachable(c.Kotonoha).OfType<DoKoto>().ToArray();
+        Assert.All(dos, static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
+        Assert.Equal((HirOp.Block, new HirAdjust(HirAcquire.None, HirAdaptation.None)), (HirTables.Op(dos[0].Body), HirTables.AdjustOf(dos[0].Body)));
+        Assert.Equal(HirOp.Require, HirTables.Op(Reachable(c.Kotonoha).OfType<RequireKoto>().First()));
+        var rejectedIf = Reachable(c.Kotonoha).OfType<IfKoto>().Last();
+        var replaced = Reachable(c.Kotonoha).Where(x => x.Parent is not null && (IsWithin(x, dos[1]) || IsWithin(x, rejectedIf)));
+        Assert.All(replaced.Where(x => x is not DoKoto and not IfKoto), static x => Assert.Equal(HirOp.Syntax, HirTables.Op(x)));
+    }
+
+    // DECISIONS BU-106: the jump walk of a rejected labeled do visits its subtree once per enclosing rejected labeled do: linear in the
+    // number of the do's body statements at a fixed depth, and at most depth times the program's nodes for nesting. The depth row stays
+    // at 100 because about 150 nested dos overflow Binding's stack today (PLAN G444).
+    [Fact]
+    public void TheJumpWalkIsBoundedByItsSubtree()
+    {
+        long[] statements = [Work(1, 8).Work, Work(1, 16).Work, Work(1, 32).Work];
+        Assert.True(MirBorrowsTest.Grows(statements, 2), $"body statements {string.Join(", ", statements)}");
+        foreach (var depth in (int[])[25, 50, 100])
+        {
+            var (work, nodes) = Work(depth, 1);
+            Assert.True(work <= (long)depth * nodes, $"depth {depth}: {work} visits, {nodes} nodes");
+        }
+
+        static (long Work, long Nodes) Work(int depth, int statements)
+        {
+            var source = new System.Text.StringBuilder("func f(c: bool) -> i32\n");
+            for (var i = 0; i < depth; i++)
+            {
+                source.Append(' ', 4 * (i + 1)).Append($"let y{i}: i32 = label l{i}: do\n");
+            }
+
+            for (var i = 0; i < statements; i++)
+            {
+                source.Append(' ', 4 * (depth + 1)).Append("require c else => ()\n");
+            }
+
+            source.Append("    return 1\n");
+            var c = MinimalEmissionTest.Analyze(source.ToString());
+            return (c.Binding.KeptTargetWork, Reachable(c.Kotonoha).LongCount());
+        }
+    }
+
     // SPEC 23.1.2 (DECISIONS R5-M63): a failed Field, Index, follow or `*p` keeps the operands Binding resolved as a value or a Place at
     // their positions, written in place (None, None) with their own Ops; a member name, a follow target, a Type name and an operand Binding
     // did not resolve, or resolved without the facts of an evaluated name (both paths of a name), stay replaced, so the MIR records

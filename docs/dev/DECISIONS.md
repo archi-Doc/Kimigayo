@@ -1948,7 +1948,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     classified the kept atom is rejected on the mir pipeline, in uninstantiable code only; it is G170's. A layered projection (a pair
     layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
 - **R4-M88 An operation Binding left unresolved is an Error node that keeps every operand it evaluates** (2026-10-21; its "name of an
-  Error local" term removed by R4-M125) SPEC 23.1.2, R4-M10, R4-M70 option P, R4-M61. `HasFacts` listed no Type for an operation
+  Error local" term removed by R4-M125; its "constructs … stay under G121" superseded for `do` by BU-106) SPEC 23.1.2, R4-M10,
+  R4-M70 option P, R4-M61. `HasFacts` listed no Type for an operation
   although its building reads Binding's selection for the node, so the publisher gave one Binding left unresolved its form's Op and the
   builder formed it from `TypeOf`'s `()` fallback: Type and Projection findings, each of which stops every analysis of the program; and
   a construct Binding left untyped was held at `()` though its position fixes its Type (`return if c => 1 else => missing`).
@@ -9419,6 +9420,31 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: `InternalInvariant_Kd` at the site. A record after Bind needs the removed channel, or an eager build at Bind's end that
     cannot cover `OriginAtomIn`'s MIR-site atoms, which makes two mechanisms. Also rejected: keeping the list for a later reader, and
     exempting Unclassed atoms from E4's check (a second form of the part rule).
+- **BU-106 A rejected do keeps the parts Binding resolved** (2026-11-05; PLAN G414 (1), R6-check H5's (e) row, the owner 2026-11-04
+  「(a) H5 の (e) 一覧に加える」 (board O-5); design `bu/batch/G414/design.md` revision 1, review REVISE, re-check ACCEPT) SPEC 23.1.2,
+  14.3. Supersedes R5-M63's residual line ("the operands of other failed forms … stay replaced") for `do`; supersedes R4-M88's
+  "failed or unresolved … constructs … stay under G121" for `do` only, keeping its unresolved-operation exception; ends R5-M182's
+  class-5 `do` row (H3b).
+  - Authority: the `do` case under the owner's O-5 (「(a) H5 の (e) 一覧に加える」); G121's kept-construct design for if, match,
+    loop, Block and a rejected `let`'s initializer stays the owner's (R4-M88).
+  - The reason that no longer holds: G121 and R4-M88 replace a construct because no destination Type holds a kept operand. A `do`'s
+    body has its own Type and is built into its own temp before the Error's Opaque, whose site names that temp; R4-M61's reason
+    concerns the Error's own value only (R5-M63).
+  - Rule (`HirPublisher.Keeps`, the one owner of "kept"): a node Binding rejected whose form's Op runs its one body once
+    (`Binding.RunsItsBodyOnce`, beside `Construct`: SPEC 14.3's "`do Body` is an expression that runs once"; an unsafe block and a
+    defer are statements, a block is a body, a selection or loop runs a body conditionally or repeatedly) keeps each child Binding
+    resolved whose Op is published with its facts, Evaluated with Adjust `(None, None)`; the builder builds it by R5-M63's rule
+    (`MirBuilder.Kept`), unchanged. Exclusion: a labeled `do` that a jump published without failure goes to keeps nothing (its target
+    row, `HirTables.PlanOf(jump).Plan`, the row the builder resolves against the targets it opened, which an Error opens none of).
+    The walk visits a rejected labeled `do`'s subtree once per enclosing one: linear in size at a fixed depth, at most depth times
+    the nodes for nesting; the nesting factor is capped today only by PLAN G444's stack overflow (about 150 nested `do`s) and
+    bounded once G444's limit lands, so the scaling row stays at depth 100.
+  - Records: a kept body's own checks (A3's `RequireFallthrough_Kd`, A1's `MovedPlace_Kd`, A5) on its real path; none reads the
+    Error's value; valid programs never reach the row. Not covered (PLAN G414 (2)): a rejected labeled `do` that a valid jump goes
+    to, whose parts stay replaced and lose their records as before; branches, loops and a rejected `let`'s construct initializer.
+  - Rejected: StructuralCompletion's transfer set (it omits a transfer after a diverging item); a new target fact on the jump's
+    row; Block and Unsafe as members (not expressions with one body); counting failed jumps in the exclusion (loses the failed
+    exit's independent record).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -10829,7 +10855,8 @@ structure is recorded here by the unit that first implements it.
     plans).
 - **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19; Q21, PLAN G121, Q8-7 under R5-M23 (DEC Q6 form 1), ask
   A-14; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its children are not published
-  as evaluated and a closure inside it is not built"; extended by R5-M84; amended by R4-M88) SPEC 23.1.2: a node's failure hides no
+  as evaluated and a closure inside it is not built"; extended by R5-M84; amended by R4-M88; its residual line superseded for `do`
+  by BU-106) SPEC 23.1.2: a node's failure hides no
   independent error in the children Binding resolved; the Error node's own value stays a derived Opaque with no record. R4-M61's
   reason concerned only the Error node's own value, whose facts are missing; each kept child is published with its own facts
   (`Binding.HasFacts`) and checked like any node (`HirTables.Broken`), so the reason does not reach it.
@@ -14402,7 +14429,7 @@ structure is recorded here by the unit that first implements it.
     at its failed node; G157 (1) is H7's prerequisite (R5); H2 void (A-5 met); R4-M108's H11 list joins H11. R4-12 and R4-13 (the owner,
     2026-11-02, verbatim 「2つとも、推奨どおりでお願いいたす」): `RequirementImplementation` is retagged to R7 with its one reader, the R7-tagged private
     composition (an owner-approved postponed removal; A-12 does not land before H11); G121's lost `do` record is a named class-5 row at
-    H3b, accepted until G121's construct design.
+    H3b, accepted until G121's construct design (ended by BU-106, PLAN G414 (1)).
   - Amended (R6-check Q8-6, BU-82, 2026-11-03): Q8's "until H11" for the Semantics-case renderer's old caller is "until H10b", which
     deletes the old Analysis.
   - Amended (R6-check H3-1, 2026-11-03, bp; R4's design stop and R5's agreement as the H0 package's owner): the folded records take two
