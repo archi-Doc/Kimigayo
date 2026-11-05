@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Verification;
 using Xunit;
 
 namespace XunitTest;
 
-public class CallableRegionScalingTest
+public class CallableRegionScalingTest(ITestOutputHelper output)
 {
     public static TheoryData<string, int> Workloads => new()
     {
@@ -37,4 +38,57 @@ public class CallableRegionScalingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
+
+    // R6-check H8c D8 (H8a OQ2): A5's work and Loan-set bytes (A3 6.2's ν) on each axis at N = 16, 32, 64 grow within the axis's bound.
+    // Work: A3 6.3's dense terms "(ended points) × holders" and "accesses × live nodes" with the factor 5 of the dense rows of
+    // MirBorrowsTest.TheWorkScalesWithTheProgram, where N holders live across N writes, StorageLives and StorageDeads or N references are
+    // read at the end; linear (2) on results. Bytes: linear on every axis. candidates has no MIR term and no row: its N Callable
+    // constraints are Binding's, and A5's work and bytes, the MIR size and the cold analysis are constant over N.
+    [Theory]
+    [InlineData("results", 2)]
+    [InlineData("regions", 5)]
+    [InlineData("fixed-calls", 5)]
+    [InlineData("fixed-roots", 5)]
+    [InlineData("fixed-joins", 5)]
+    public void EachAxisScalesWithinItsBound(string axis, double factor)
+        => WorkScales(output, Sizes(axis), factor);
+
+    // V16: the cold analysis's allocation on each axis at N = 16, 32, 64 grows linearly. fixed-roots and fixed-joins have no row: their
+    // cold growth lies outside A5's linear bytes, an open issue (PLAN) until its stage is attributed.
+    [Theory]
+    [InlineData("results")]
+    [InlineData("regions")]
+    [InlineData("fixed-calls")]
+    [Trait("Purpose", "Allocation")]
+    public void TheColdAnalysisScalesLinearly(string axis)
+        => ColdAnalysisScales(output, Sizes(axis));
+
+    // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
+    // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
+    internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)
+    {
+        var measured = sources.Select(MirBorrowsTest.Measured).ToArray();
+        long[] work = [.. measured.Select(static x => x.Work)];
+        long[] bytes = [.. measured.Select(static x => x.Bytes)];
+        output.WriteLine($"work {string.Join(", ", work)}; bytes {string.Join(", ", bytes)}");
+        Assert.True(MirBorrowsTest.Grows(work, factor), $"work {string.Join(", ", work)}");
+        Assert.True(MirBorrowsTest.Grows(bytes, 2), $"bytes {string.Join(", ", bytes)}");
+    }
+
+    // The cold Analyze of three sizes of a workload, each double the one before, bound with its startup checked outside the window:
+    // each verifies, and the allocation grows linearly (V16: a[2] - a[1] <= 3 (a[1] - a[0])).
+    internal static void ColdAnalysisScales(ITestOutputHelper output, string[] sources)
+    {
+        var compilations = new Compilation[sources.Length];
+        var allocated = AllocationMeasurement.MeasureSeries(sources.Length, i =>
+        {
+            var c = compilations[i] = MirBuildTest.Compile(sources[i]);
+            return () => c.Analyze();
+        });
+        output.WriteLine($"cold analysis allocation {string.Join(", ", allocated)}");
+        Assert.All(compilations, static c => Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c)));
+        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
+    }
+
+    private static string[] Sizes(string axis) => [.. new[] { 16, 32, 64 }.Select(n => VerificationWorkloads.CallableRegions(axis, n))];
 }

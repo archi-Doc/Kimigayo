@@ -1015,8 +1015,8 @@ public sealed partial class MirBorrowsTest
     {
         const string Plain = "func shape()\n    var x = 0\n«N:    x = {0}\n»";
         const string Addressed = "func shape()\n    var x = 0\n    let p = x@raw\n«N:    x = {0}\n»    _ = p == null\n";
-        long[] plain = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Plain, n, 0)).Work)];
-        long[] addressed = [.. new[] { 32, 64 }.Select(n => this.Measured(Prelude + Expand(Addressed, n, 0)).Work)];
+        long[] plain = [.. new[] { 32, 64 }.Select(n => Measured(Prelude + Expand(Plain, n, 0)).Work)];
+        long[] addressed = [.. new[] { 32, 64 }.Select(n => Measured(Prelude + Expand(Addressed, n, 0)).Work)];
         output.WriteLine($"N 32, 64: plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
         Assert.True(addressed[1] - addressed[0] - (plain[1] - plain[0]) >= 32, $"plain {string.Join(", ", plain)}, addressed {string.Join(", ", addressed)}");
     }
@@ -1030,7 +1030,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("raw/i32 during static")]
     public void TheAddressWalksVisitATypeDagOncePerWalk(string leaf)
     {
-        long[] work = [.. new[] { 8, 12, 16 }.Select(n => this.Measured(Prelude + TypeDag(leaf, n)).Work)];
+        long[] work = [.. new[] { 8, 12, 16 }.Select(n => Measured(Prelude + TypeDag(leaf, n)).Work)];
         output.WriteLine($"N 8, 12, 16: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
     }
@@ -1270,7 +1270,7 @@ public sealed partial class MirBorrowsTest
 
     // The Work a shape's body adds beside its twin's, both over the raw and chain shapes.
     private long Added(string shape, string twin)
-        => this.Measured(Prelude + RawShapes + ChainShapes + shape).Work - this.Measured(Prelude + RawShapes + ChainShapes + twin).Work;
+        => Measured(Prelude + RawShapes + ChainShapes + shape).Work - Measured(Prelude + RawShapes + ChainShapes + twin).Work;
 
     // The chain forms' bodies (sources in the R4 notes' N2 review), each Bad form's valid twin beside it.
     private const string ChainForms = ChainRepl + """

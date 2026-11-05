@@ -590,7 +590,7 @@ public sealed partial class MirBorrowsTest
     {
         const string Shape = "func shape()\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n«N:    var n{0} = Node.init(next: null, data: null)\n»" +
             "    n0.data = w@raw@raw/u8\n    var a: Array<raw/Node> = []\n«N:    a.append(n{0}@raw)\n»    inspect(a)\n    y = 5\n";
-        long[] work = [.. new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + RawShapes + ReferentShapes + Expand(Shape, n, 0)).Work)];
+        long[] work = [.. new[] { 32, 64, 128 }.Select(n => Measured(Prelude + RawShapes + ReferentShapes + Expand(Shape, n, 0)).Work)];
         output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 4), $"work {string.Join(", ", work)}");
     }
