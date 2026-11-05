@@ -328,6 +328,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G60 (G420):** the parser recovery remainder (dropped declaration and list-item Name causes, recovered child contexts; STATUS keeps the limit), closed unfixed with PARSING_REVIEW.md by the owner's 「Q-a： 削除して」 (G420, 2026-11-05; the row's text at 4fb6fcdb1).
 <a id="g420"></a>
 - **G420 (R4):** the docs/dev reduction (the owner, 2026-11-05: 「Q-a： 削除して」「Q-b： draft に移して」「Q-c： promptsも削除して」「Q-d： …→認めます」「Q-e： 一度に行って。…」, then 「規則 A」 for DECISIONS and 「(B」 for PLAN_HISTORY) landed in one push, dev bfa96470a: docs/dev 3,114,096 → 2,467,775 B; every DECISIONS id, PLAN G number and linked anchor kept; the pre-compaction text at 4fb6fcdb1.
+<a id="g384"></a>
+- **G384 (R4):** a write then a read through an index Place (`items[0]@follow = 7`, then `let r = items[0]@follow`) gave a false `ComparisonLoanConflict_Kd`; the old analysis made it, and it went with the H5 merge 70fd9deb9 (R4's triage, 2026-11-05). Closed by its regression rows (`TransferJudgmentTest.AnElementIsWrittenAndReadInPlace`, the form and three invalid twins), W-16, dev 279c891b7.
 
 ## Retired audit records
 
