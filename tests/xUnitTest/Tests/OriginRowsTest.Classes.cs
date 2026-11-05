@@ -28,6 +28,9 @@ public sealed partial class OriginRowsTest
     // LocalOmissionsRetainFixedVariablesAndInitializerConstraints, which reads Binding's obligation, 2a-4).
     private const string LocalOmission = "func f(x: ref/i32)\n    var local: ref/i32 = x\n";
 
+    // A callee whose Origins only an aggregate's `.None` leaf names: no bound mentions them, so the call opens them as its regions.
+    private const string UnsolvedRegion = "func mk(p: (Option<ref/(ref/i32 during a) during b>, i32)) -> i32 => 0\nfunc k(c: bool) -> i32\n    return mk((.None, 1))\n";
+
     // A callee's meet of its own Origins, judged with its Parameter atoms (2a0-D's rv/meet-trans-ok, PLAN G195).
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
@@ -97,10 +100,27 @@ public sealed partial class OriginRowsTest
     [InlineData(MirOriginsTest.FailedClause, "f", "local@ref", "Dependent")]
     [InlineData(MirOriginsTest.RepeatedSet, "run", "k", "Dependent")]
     [InlineData(LocalOmission, "f", "x", "Inferred")]
+    [InlineData(UnsolvedRegion, "k", "(.None, 1)", "Inferred")]
     public void TheShorterEndOfARowTakesItsClass(string source, string body, string site, string kind)
     {
         var (slice, row) = RowAt(source, body, site);
         Assert.Equal(kind, slice.Atoms[row.Shorter].Kind.ToString());
+    }
+
+    // Row 8 (R4-M101 E5; DECISIONS BU-104, M's C-40 ruling): a callee Origin that no bound of the call's solve mentions is opened as a
+    // local region of the call (OpenUnsolvedOrigins), formed in the calling body and fresh per call: each call's premise row has its own
+    // Inferred region, no Parameter atom of the callee, and none is shared between the calls.
+    [Fact]
+    public void AnOpenedRegionIsInferredAndFreshPerCall()
+    {
+        var c = MirBuildTest.Compile(UnsolvedRegion + "func k2(c: bool) -> i32\n    let x = mk((.None, 1))\n    return mk((.None, 2))\n" + Main);
+        var body = Bodies(c).Single(static x => x.Key.Decl?.Name == "k2").Key.Body;
+        var slice = c.Types.OriginRows(body);
+        var ends = slice.Rows.Where(x => Site(c, x) is "(.None, 1)" or "(.None, 2)").Select(x => slice.Atoms[x.Shorter]).ToArray();
+        Assert.Equal(2, ends.Length);
+        Assert.All(ends, static x => Assert.Equal((OriginAtomKind.Inferred, OriginKind.Inference), (x.Kind, x.Atom.Kind)));
+        Assert.NotSame(ends[0].Atom, ends[1].Atom);
+        Assert.DoesNotContain(slice.Atoms, static x => x.Atom.Kind == OriginKind.Parameter && x.Kind == OriginAtomKind.Unclassed);
     }
 
     // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent

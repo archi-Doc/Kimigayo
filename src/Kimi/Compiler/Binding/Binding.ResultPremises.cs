@@ -470,7 +470,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.OpenUnsolvedOrigins(use, function, origins); // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
+            this.OpenUnsolvedOrigins(use, function, origins, inference); // SPEC 15.3.6: an Origin no bound mentions is a local region.
             return true; // Selected-call clauses are judged at their supplying arguments, never as applicability.
         }
 

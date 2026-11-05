@@ -191,16 +191,34 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 15.6.4 steps 1, 3 (DECISIONS BU-104, superseding BU-51's region clause): after a candidate's solve, every Origin of
-    // the callee without a candidate (no evidence, no equality, no result and no representative), whatever names it, a supplied
-    // parameter's premise included, is a local region of the call, solved with the body's other local regions by its uses; the
-    // premises the call's judgment visits over it are that region's bounds (a result-only `s` of `constant() -> ref/i32 during s`, one
-    // only a default names, the Origins only a join's or an aggregate's `.None` leaves name). It needs no annotation and is never
-    // replaced by static. It is the call's open region, keyed apart from argument evidence by UnsolvedKey.
-    private void OpenUnsolvedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins)
+    // the callee that no bound of its inference mentions (evidence, equality, result, clause; a meet's operand included, since 15.3.6
+    // follows bounds through other variables and never splits a meet) is a local region of the call, solved with the body's other local
+    // regions by its uses, whatever premise names it: the premises the call's judgment visits over it (`inference.WellFormed`, no bound)
+    // are that region's bounds (a result-only `s` of `constant() -> ref/i32 during s`, one only a default names, the Origins only a
+    // join's or an aggregate's `.None` leaves name). An Origin a bound mentions keeps its representative or none, its relations judged.
+    // It needs no annotation and is never replaced by static. It is the call's open region, keyed apart from argument evidence by
+    // UnsolvedKey.
+    private void OpenUnsolvedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, OriginInference? inference)
     {
         for (var i = 0; i < function.Origins.Count; i++)
         {
-            origins[i] ??= this.OpenOrigin(call, UnsolvedKey + i);
+            if (origins[i] is null && !BoundMentions(inference, function, i))
+            {
+                origins[i] = this.OpenOrigin(call, UnsolvedKey + i);
+            }
+        }
+
+        static bool BoundMentions(OriginInference? inference, FunctionKoto function, int slot)
+        {
+            for (var i = 0; inference is not null && i < inference.Bounds.Count; i++)
+            {
+                if (NamesSlot(inference.Bounds[i].Longer, function, slot) || NamesSlot(inference.Bounds[i].Shorter, function, slot))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
