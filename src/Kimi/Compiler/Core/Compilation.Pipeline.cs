@@ -2,8 +2,7 @@
 
 // Owns the public entry path for post-Binding phases and their Problem records.
 // Input: a prepared compilation. Output: analysis, the constructed and validated MIR (ConstructMir), that MIR analyzed with its checked set
-// (BuildMir, which composes it), and diagnostics, the same on every pipeline (Compilation.Switch.cs; DECISIONS R5-M156); generation has
-// its own entry (Compilation.Generation.cs, R5 C0a).
+// (BuildMir, which composes it), and diagnostics (DECISIONS R5-M156); generation has its own entry (Compilation.Generation.cs, R5 C0a).
 // The MIR decides acceptance (DECISIONS R5-M185): Analysis is verified when the MIR of the version exists and its rows hold no Error, its
 // rows being every merged problem of its report (construction and collection records, the analyses' problems) and its validator findings,
 // which Problems gives and Core's publisher publishes (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184).
