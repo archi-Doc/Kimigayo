@@ -360,14 +360,15 @@ public class NeverContinuationTest
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal is bound as `char`, its lexer record standing for it, so a join
-    // forms its Type over it and a later use keeps its own record.
+    // forms its Type over it and a later use keeps its own record. The read is unreachable and only the first arm places `t.0`, so it is
+    // also UninitializedPlace_Kd, as in SPEC 14.9.2's `pick` (14.10.3 per part; the owner's 「A で進める（推奨）」, DECISIONS R4-M175).
     [Fact]
     public void AnUnreadableLiteralIsATypedPartOfItsJoin()
     {
         const string Source = "func f(c: bool, a: i64) -> i64\n    let t = if c => ('ab', (return 1)) else => ((return 2), 'x')\n    let z: i64 = t.0\n    return 0\n" +
             "public func main() => ()\n";
         var codes = DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code).Order();
-        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], codes);
+        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UninitializedPlace_Kd)], codes);
     }
 
     // DECISIONS BU-9 r1, BU-43: a failed part is no waiting part, so no Type is formed over it and no literal is bound twice; its join
@@ -542,6 +543,49 @@ public class NeverContinuationTest
     public void AnAssumedSourceCountsAndInitializesNothing(string source, string records)
     {
         var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\n" + source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // SPEC 14.10.3 per part (the owner's 「A で進める（推奨）」; DECISIONS R4-M175): a construction holding a Never part places its other parts
+    // and nothing into the Never part, as a value end, through an exit (an assumed delivery places its operand's value) and nested, in any
+    // position, a Tuple or a fixed array; a read of a placed part is valid, of the Never part UninitializedPlace_Kd. Each read is
+    // unreachable (after `return`, or after an `if` whose arms both diverge). Fail-before on dev 66de6a02a: it rejected the do rows'
+    // placed-part reads (an exit holding a Never part built no delivery) and accepted every Never-part read but the do's, and the whole read.
+    // An exit's operand `(a, (return 1)).0` reads the placed part, so it is valid. A dynamic Array's element has no Place of its own, so
+    // `arr[1]` is accepted: the stated limit (STATUS).
+    [Theory]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit ((return 2), a)\n    return t.1", "")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, fail())\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, (return 2))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, (return 2))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = if c => (a, a) else => (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = if c => (a, a) else => (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = match c\n        true => (a, a)\n        false => ((return 2), a)\n    return t.1", "")]
+    [InlineData("return 9\n    let t = match c\n        true => (a, a)\n        false => ((return 2), a)\n    return t.0", "UninitializedPlace_Kd t.0")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))\n    return t.0", "")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = ((return 1), a, a)\n    return t.1 + t.2", "")]
+    [InlineData("return 9\n    let t = ((return 1), a, a)\n    return t.0", "UninitializedPlace_Kd t.0")]
+    [InlineData("return 9\n    let t = (a, (return 1), a)\n    return t.0 + t.2", "")]
+    [InlineData("return 9\n    let t = (a, (return 1), a)\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = (a, a, fail())\n    return t.0 + t.1", "")]
+    [InlineData("return 9\n    let t = (a, a, fail())\n    return t.2", "UninitializedPlace_Kd t.2")]
+    [InlineData("return 9\n    let t = ((a, (return 1)), a)\n    return t.0.0 + t.1", "")]
+    [InlineData("return 9\n    let t = ((a, (return 1)), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t: [2 of i64] = [a, (return 1)]\n    return t[0]", "")]
+    [InlineData("return 9\n    let t: [2 of i64] = [a, (return 1)]\n    return t[1]", "UninitializedPlace_Kd t[1]")]
+    [InlineData("return 9\n    let t = (a, (return 1))\n    let u = t\n    return u.0", "UninitializedPlace_Kd t")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit a\n        exit (a, (return 1)).0\n    return t", "")]
+    [InlineData("return 9\n    let t = label s: if c\n        yield to s a\n    else\n        yield to s (a, (return 1)).0\n    return t", "")]
+    [InlineData("return 9\n    let t: Array<i64> = [a, (return 1)]\n    return t[1]", "")]
+    public void AConstructionHoldingANeverPartPlacesItsOtherParts(string body, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\nfunc f(c: bool, a: i64) -> i64\n    " + body + "\n", output: OutputKind.Library);
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(records, MinimalEmissionTest.Problems(c));
     }

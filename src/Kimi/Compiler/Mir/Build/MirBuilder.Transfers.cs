@@ -31,7 +31,8 @@ internal sealed partial class MirBuilder
     // it abandons (its operands pending since its target began), places its result and goes on through its target's drop tree to the
     // target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code after it,
     // where those calls continue with their reservations. SPEC 14.10.3: an explicit source counts in unreachable code, so an operand that
-    // does not complete leaves an assumed delivery: through the drop tree to the target's join (Join), placing nothing, secured by none.
+    // does not complete leaves an assumed delivery, secured by none, through the drop tree to the target's join (Join), which places the
+    // operand's value as Set places it.
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
@@ -114,7 +115,16 @@ internal sealed partial class MirBuilder
             }
         }
 
-        if (!continues && !assumed)
+        if (!continues && assumed)
+        {
+            // SPEC 14.10.3: an assumed delivery places its operand's value as Set places any: nothing of the Never value, and of a
+            // construction holding a Never part its other parts (MirMoveData's Never parts), into the join's own Destination (Into),
+            // before the Scope Exit, which no cleanup there can observe (DECISIONS R4-M175).
+            (var at, this.current) = (this.current, runtime);
+            this.Set(target.Into, MirRvalue.Use(this.body.AddOperand(value)), jump);
+            this.current = at;
+        }
+        else if (!continues)
         {
             this.body.Push(runtime, MirStatement.Assign(place, MirRvalue.Use(this.body.AddOperand(value)), inner));
             if (index == 0 && this.constructed is not null)
@@ -217,6 +227,9 @@ internal sealed partial class MirBuilder
 
         // Whether an edge reaches its join: a delivery, assumed too, or another edge Joins builds.
         internal bool Joined { get; set; }
+
+        // Its own Destination, which an assumed delivery places into: Destination before a delivery made it a result temp (Delivers).
+        internal MirPlace Into { get; } = Destination;
     }
 
     // The builder's position where a construct opened: the pending operands below its transfers (Mark), the open scopes around it (Depth),

@@ -360,6 +360,22 @@ public class PatternBindingTest
         Assert.Equal(records, MinimalEmissionTest.Problems(c));
     }
 
+    // SPEC 14.10.3 per part, 15.1.6 (the owner's 「A で進める（推奨）」; DECISIONS R4-M175): a match acquires its whole Subject, so a Case value
+    // constructed with a Never payload part, in unreachable code, is UninitializedPlace_Kd at the match whichever part the arm binds
+    // (fail-before: accepted). The real-path twins of NeverContinuationTest's per-part rows, a loop's and a do's, read only what their
+    // completing exit placed and are accepted.
+    [Theory]
+    [InlineData("enum E\n    Pair(i64, i64)\n    Other\nfunc f(c: bool, a: i64) -> i64\n    return 9\n    let e = E.Pair(a, (return 1))\n    match e\n        .Pair(let x, _) => return x\n        .Other => return 0\n", "UninitializedPlace_Kd e")]
+    [InlineData("enum E\n    Pair(i64, i64)\n    Other\nfunc f(c: bool, a: i64) -> i64\n    return 9\n    let e = E.Pair(a, (return 1))\n    match e\n        .Pair(_, let y) => return y\n        .Other => return 0\n", "UninitializedPlace_Kd e")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.0\n", "")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.1\n", "")]
+    public void ASubjectWithANeverPartIsAcquiredWhole(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
     [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {

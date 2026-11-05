@@ -9,7 +9,8 @@
 // path, and a Move through them has no Move Path, except through a raw pointer, however read (an untracked Take). Roots whose events all
 // lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and numbered after the flow
 // roots, so a head stores only the flow paths. A path admits one placement when its root is a let binding or it lies in a constructor's
-// Field placed once (SPEC 15.1.1, 11.7).
+// Field placed once (SPEC 15.1.1, 11.7). Each Assign's Never parts: the components of its destination that its construction leaves
+// unplaced, as their operand is the Never value (SPEC 14.10.3; DECISIONS R4-M175), which A1's definition applies.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -45,6 +46,10 @@ internal sealed class MirMoveData
 
     private readonly MirTable<(int Parent, MirProjectionKind Kind, int Arg)> children = new(); // Each child by creation index.
     private readonly MirTable<MirPlace> places = new(); // Each projected Place's path by creation index << 2 | access.
+    private readonly MirTable<int> nevers = new(); // The Never parts' newest run of an Assign, by statement index, and of a temp, by ~local.
+    private int[] runs = []; // Runs of Never parts: a count, the next run of the same temp (-1: none), then the parts' paths.
+    private int[] trail = []; // Rebase's steps from a part up to its temp.
+    private int runCount;
     private int[] parents = []; // By creation index; locals first.
     private (MirProjectionKind Kind, int Arg)[] steps = []; // By creation index: the step from the parent.
     private int[] sizes = [];
@@ -76,9 +81,10 @@ internal sealed class MirMoveData
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent) = (0, false);
+        (this.created, this.ViewDependent, this.runCount) = (0, false, 0);
         this.children.Clear();
         this.places.Clear();
+        this.nevers.Clear();
         MirDataflow.Grow(ref this.chains, locals);
         MirDataflow.Grow(ref this.live, locals);
         Array.Fill(this.chains, -1, 0, locals);
@@ -109,13 +115,32 @@ internal sealed class MirMoveData
         {
             for (var i = 0; i <= body.Blocks[block].Count; i++)
             {
-                events.At(block, i < body.Blocks[block].Count ? body.Statements[body.Blocks[block].Start + i].Kind : MirStatementKind.Assign);
+                var index = body.Blocks[block].Start + i;
+                events.At(block, i < body.Blocks[block].Count ? body.Statements[index].Kind : MirStatementKind.Assign);
                 MirUses.ForEach(body, new(block, i), ref events);
+                if (i < body.Blocks[block].Count && body.Statements[index].Kind == MirStatementKind.Assign)
+                {
+                    this.Nevers(index, body.Statements[index].Place, body.Statements[index].Rvalue);
+                }
             }
         }
 
         this.Number(locals);
+        for (var run = 0; run < this.runCount; run += this.runs[run] + 2)
+        {
+            for (var i = run + 2; i < run + 2 + this.runs[run]; i++)
+            {
+                this.runs[i] = this.numbers[this.runs[i]];
+            }
+        }
     }
+
+    /// <summary>Gets the Never parts of an Assign of the built body (SPEC 14.10.3): the paths of its destination's components that its
+    /// construction places nothing into, their operand being the Never value, directly or through a temp such a construction formed.</summary>
+    /// <param name="statement">The Assign's statement index.</param>
+    /// <returns>The parts' paths; empty for most.</returns>
+    internal ReadOnlySpan<int> NeverParts(int statement)
+        => this.nevers.TryGetValue(statement, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
 
     /// <summary>Gets the path of a Place of the built body and how the Place is below it.</summary>
     /// <param name="place">A local's Place.</param>
@@ -192,6 +217,120 @@ internal sealed class MirMoveData
         }
 
         return path;
+    }
+
+    // SPEC 14.10.3 (DECISIONS R4-M175): an Assign's Never parts, as paths created below its destination's, so a whole use sees them: each
+    // component of its aggregate whose operand is the Never value (a temp of Type Never), each element's for a Fill, and the Never parts of
+    // a temp an operand or a Use takes whole, at the component. A temp's parts are those of every definition of it (its runs), as A1 joins
+    // paths by union; a Closure environment or an Array buffer has no component path.
+    private void Nevers(int statement, MirPlace destination, in MirRvalue rvalue)
+    {
+        var kind = (MirAggregateKind)rvalue.Op;
+        if (destination.IsStatic || rvalue.Kind is not (MirRvalueKind.Aggregate or MirRvalueKind.Use) ||
+            (rvalue.Kind == MirRvalueKind.Aggregate && kind is MirAggregateKind.Closure or MirAggregateKind.Array))
+        {
+            return;
+        }
+
+        var found = this.Resolve(destination);
+        var run = this.runCount;
+        if ((found & 3) != Direct)
+        {
+            return;
+        }
+
+        this.Push(0);
+        this.Push(-1);
+        var type = rvalue.Type;
+        var fill = rvalue.Kind == MirRvalueKind.Aggregate && kind == MirAggregateKind.Fill;
+        var copies = fill ? type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } ? (int)type.Length : 0 : 1;
+        for (var i = 0; i < rvalue.Count; i++)
+        {
+            ref readonly var operand = ref this.body.Operands[rvalue.Start + i];
+            if (operand.Kind == MirOperandKind.Const || operand.Place.IsStatic || operand.Place.Projection != 0 ||
+                this.body.Locals[operand.Place.Root].Kind != MirLocalKind.Temp)
+            {
+                continue;
+            }
+
+            var never = ReferenceEquals(this.body.Locals[operand.Place.Root].Type, BoundType.Never);
+            var source = never || !this.nevers.TryGetValue(~operand.Place.Root, out var newest) ? -1 : newest;
+            for (var k = 0; (never || source >= 0) && k < copies; k++)
+            {
+                var part = found >> 2;
+                if (rvalue.Kind == MirRvalueKind.Aggregate)
+                {
+                    part = this.Component(part, rvalue, fill ? k : i);
+                }
+
+                if (never)
+                {
+                    this.Push(part);
+                }
+                else
+                {
+                    this.Rebase(source, operand.Place.Root, part);
+                }
+            }
+        }
+
+        this.runs[run] = this.runCount - run - 2;
+        if (this.runs[run] == 0)
+        {
+            this.runCount = run;
+            return;
+        }
+
+        this.nevers.Add(statement, run);
+        if (destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp)
+        {
+            ref var newest = ref this.nevers.Entry(~destination.Root, out var exists);
+            (this.runs[run + 1], newest) = (exists ? newest : -1, run);
+        }
+    }
+
+    // The path of an aggregate's component (its operand at position i, or a Fill's element i): a Tuple's Field, a fixed array's ConstIndex,
+    // an enum Case's payload Field under its Downcast (the aggregate's ordinal), a struct's base (its first operand where it has one) or own
+    // Field.
+    private int Component(int path, in MirRvalue aggregate, int i) => (MirAggregateKind)aggregate.Op switch
+    {
+        MirAggregateKind.Tuple => this.Child(path, MirProjectionKind.Field, i),
+        MirAggregateKind.FixedArray or MirAggregateKind.Fill => this.Child(path, MirProjectionKind.ConstIndex, i),
+        _ when AdtDef.IsEnum(aggregate.Type) => this.Child(this.Child(path, MirProjectionKind.Downcast, aggregate.Arg), MirProjectionKind.Field, i),
+        _ when AdtDef.Base(aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
+        _ => this.Child(path, MirProjectionKind.Field, i),
+    };
+
+    // A temp's Never parts, each run of them, at a path: each part's steps from the temp, taken again from the path.
+    private void Rebase(int run, int temp, int path)
+    {
+        for (; run >= 0; run = this.runs[run + 1])
+        {
+            for (var i = run + 2; i < run + 2 + this.runs[run]; i++)
+            {
+                var depth = 0;
+                for (var c = this.runs[i]; c != temp; c = this.parents[c])
+                {
+                    MirDataflow.Grow(ref this.trail, depth + 1);
+                    this.trail[depth++] = c;
+                }
+
+                var part = path;
+                while (depth > 0)
+                {
+                    var step = this.steps[this.trail[--depth]];
+                    part = this.Child(part, step.Kind, step.Arg);
+                }
+
+                this.Push(part);
+            }
+        }
+    }
+
+    private void Push(int value)
+    {
+        MirDataflow.Grow(ref this.runs, this.runCount + 1);
+        this.runs[this.runCount++] = value;
     }
 
     // Numbers the paths in pre-order without a stack: subtree sizes in reverse creation order (a child is created after its parent), flow

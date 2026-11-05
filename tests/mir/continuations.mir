@@ -208,6 +208,7 @@ fn divergingArgument @79
       StorageDead(_2) @84 s1
       goto bb3 @79
   bb5:
+      _0 = move _2 @83 s1
       goto bb4 @83 s1
   bb6:
       StorageDead(_4) @87 s1

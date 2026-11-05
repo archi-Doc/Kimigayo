@@ -8,8 +8,8 @@
 // paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
 // before each Drop the runtime edges reach and each state event there.
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
-// a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree, a
-// Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
+// a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree
+// but its Never parts (MirMoveData.NeverParts, SPEC 14.10.3), a Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
 // every incoming path, its own bit being the construction fact; a use through a runtime Index of storage reports on its receiver under
 // the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
 // contract, DECISIONS R4-M56), so the two are one problem unless the receiver changed in between. Every root is tracked (A2 reads
@@ -128,6 +128,11 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 else if (statement.Kind != MirStatementKind.EndBorrow)
                 {
                     MirUses.ForEach(cases, this.at, ref this);
+                    foreach (var part in statement.Kind == MirStatementKind.Assign ? moves.NeverParts(data.Start + i) : default)
+                    {
+                        // SPEC 14.10.3 (R4-M175): the construction placed nothing into its Never parts.
+                        MirDataflow.Apply(state, Lanes, part, moves.Paths[part].End, set: 1 << Uninit, clear: (1 << Init) | (1 << Partial));
+                    }
                 }
             }
 
