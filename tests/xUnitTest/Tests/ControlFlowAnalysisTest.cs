@@ -68,10 +68,11 @@ public class ControlFlowAnalysisTest
         Assert.Contains(CompilationTestHelper.PublishedErrors(c), x => x.Message.Contains(diagnostic, StringComparison.Ordinal));
     }
 
-    // SPEC 14.11, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports each falling failure body once: the require rows above, a failure body only the checks reach, a require nested after a return in a failure body that the checks alone
-    // leave to its end, a default's failure body once however many calls copy it, a defer's once however many exits build it, a defer that a
-    // single-item failure body registers, which runs where that body is left (SPEC 16.1), whose own body diverges or completes, and a default
-    // whose failure bodies continue only for the checks.
+    // SPEC 14.11, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports each falling failure body once, at that body: the require rows above,
+    // a failure body only the checks reach, a require nested after a return in a failure body that the checks alone leave to its end, a
+    // default's failure body once however many calls copy it, a defer's once however many exits build it, a defer that a single-item
+    // failure body registers, which runs where that body is left (SPEC 16.1), whose own body diverges or completes, and a default whose
+    // failure bodies continue only for the checks. Each row that falls has one require.
     [Theory]
     [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    return 1", 0)]
     [InlineData("func f(ready: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1", 0)]
@@ -89,7 +90,12 @@ public class ControlFlowAnalysisTest
     [InlineData("func f()\n    require true else => defer => ()\n    ()", 1)]
     [InlineData(RequireContinuationTest.Default, 0)]
     public void TheMirFindsEveryRequireFallthrough(string source, int count)
-        => Assert.Equal(count, RequireFallthroughs(Compile(source)).Length);
+    {
+        var c = Compile(source);
+        var mir = RequireFallthroughs(c);
+        Assert.Equal(count, mir.Length);
+        Assert.All(mir, x => Assert.Same(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>()).ElseBody, x));
+    }
 
     [Fact]
     public void ResolvesYieldsBeforeClassifyingDiscardedSelections()

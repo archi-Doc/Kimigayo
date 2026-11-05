@@ -257,6 +257,7 @@ public class DirectiveConditionValidationTest
         compilation.Analyze();
 
         Assert.Equal(["UnknownCompileTimeName_Kd missing"], CompilationTestHelper.PublishedErrors(compilation).Select(static x => $"{x.Code} {x.Text}"));
+        Assert.Single(TestDiagnostics.Of(compilation));
         Assert.Single(body.Items);
     }
 

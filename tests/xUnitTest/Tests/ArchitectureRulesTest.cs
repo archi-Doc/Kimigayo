@@ -63,7 +63,7 @@ public class ArchitectureRulesTest
     // R6-check H8b (D8, D9): the 4 calls left are stopped methods, which keep their old reads until their removal condition. PLAN
     // G428's fix: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
     // OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning and
-    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. PLAN G52's fix:
+    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. PLAN G52's join cascade (its last part):
     // ControlFlowAnalysisTest.DefersCoverageWhenAnUnresolvedCallCouldHaveTypeNever. Each fix moves its tests and lowers the limit; at 0,
     // H10b replaces the row by zero-reference rows.
     [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 4)]
