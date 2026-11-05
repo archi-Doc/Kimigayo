@@ -18,28 +18,23 @@ public class DefaultCompletionTest
         const string Declaration = "func f(x: i32 = (loop => continue)) -> i32 => x\n";
         var call = supplied ? "f(3)\n" : "f()\n";
         var c = Parse(forward ? call + Declaration : Declaration + call);
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
-        var invocation = Assert.Single(flow.Nodes.Keys.OfType<InvocationKoto>());
-        Assert.Equal(supplied, flow.Nodes[invocation].CanCompleteNormally);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var invocation = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        Assert.Equal(supplied ? HirCompletion.Completes : HirCompletion.Diverges, HirTables.CompletionOf(invocation));
         var function = (FunctionKoto)invocation.CallOf()!.Target.Declaration;
-        Assert.True(flow.Nodes[function].CanCompleteNormally);
-        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(HirCompletion.Completes, HirTables.CompletionOf(function.ExpressionBody!));
     }
 
     [Theory]
     [InlineData("loop => continue")]
-    [InlineData("label scope: do\n    var n: i32 = loop => continue\n    n = 3\n    exit to scope n")]
-    [InlineData("label scope: do\n    defer => loop => ()\n    exit to scope 3")]
+    [InlineData("label scope: do\n    var n: i32 = loop => continue\n    n = 3\n    exit to scope n\n")]
+    [InlineData("label scope: do\n    defer => loop => ()\n    exit to scope 3\n")]
     public void NoncompletingDefaultsSatisfyRequireFailure(string expression)
     {
+        // SPEC 14.11: the default does not complete, so neither does the failure body f(), and A3 records no RequireFallthrough_Kd
+        // there; the third default's exit runs its diverging defer, which only the MIR sees (the HIR Completion column has no cleanup).
         var c = Parse("func f(x: i32 = (" + expression + ")) => ()\nfunc caller()\n    require true else => f()\ncaller()");
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
-        var call = Assert.Single(flow.Nodes.Keys.OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "f");
-        Assert.False(flow.Nodes[call].CanCompleteNormally);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -65,25 +60,20 @@ public class DefaultCompletionTest
     public void NestedDefaultsPropagateCompletion()
     {
         var c = Parse("f()\nfunc leaf(x: i32 = (loop => continue)) -> i32 => x\nfunc f(x: i32 = leaf()) -> i32 => x");
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
-        Assert.All(flow.Nodes.Where(x => x.Key is InvocationKoto), x => Assert.False(x.Value.CanCompleteNormally));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(x)));
     }
 
     [Fact]
     public void RecursiveDefaultUsesTheResolvedSignature()
     {
         var c = Parse("func f(x: i32 = f()) -> i32 => x\nf()");
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.PendingBinding);
-        Assert.Empty(flow.Issues);
-        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     private static Compilation Parse(string source)
     {
-        var c = CompilationTestHelper.Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         return c;
     }
@@ -102,12 +92,14 @@ public class DefaultCompletionTest
         public void WarmDefaultFlowReanalysisAllocatesNothing()
         {
             var c = Parse("f()\nfunc f(x: i32 = (loop => continue)) -> i32 => x\nf(3)");
-            var flow = c.AnalyzeControlFlow();
-            Assert.Empty(flow.Issues);
-            Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
-            Assert.Empty(flow.Issues);
-            Assert.Empty(flow.PendingBinding);
-            Assert.Single(flow.Nodes, x => x.Key is InvocationKoto && !x.Value.CanCompleteNormally);
+            var valid = c.Analyze().IsVerified;
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Bind();
+                valid &= c.Analyze().IsVerified;
+            }));
+            Assert.True(valid, MinimalEmissionTest.Describe(c));
+            Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => HirTables.CompletionOf(x) == HirCompletion.Diverges);
         }
     }
 }

@@ -89,3 +89,10 @@ func blockedExit()
     let b = label work: do
         defer => loop => ()
         exit to work 2
+func branchBlockedExit(flag: bool) -> i32
+    if flag
+        defer
+            loop
+                continue
+        return 2
+    return 1

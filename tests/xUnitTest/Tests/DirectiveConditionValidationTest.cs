@@ -110,7 +110,6 @@ public class DirectiveConditionValidationTest
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Code);
         Assert.Contains("missing", diagnostic.Message);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
-        Assert.Empty(compilation.AnalyzeControlFlow().PendingBinding);
     }
 
     [Theory]
@@ -254,11 +253,10 @@ public class DirectiveConditionValidationTest
         var compilation = Parse("label work: do\n    #if false and missing\n    var excluded = 1\n    exit to work");
         var labeled = Assert.IsType<LabeledKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var body = Assert.IsType<DoKoto>(labeled.Target).Body;
-        var analysis = compilation.AnalyzeControlFlow();
+        compilation.Bind();
+        compilation.Analyze();
 
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
-        Assert.Empty(analysis.Issues);
-        Assert.Empty(analysis.PendingBinding);
+        Assert.Equal(["UnknownCompileTimeName_Kd missing"], CompilationTestHelper.PublishedErrors(compilation).Select(static x => $"{x.Code} {x.Text}"));
         Assert.Single(body.Items);
     }
 
@@ -304,8 +302,8 @@ public class DirectiveConditionValidationTest
         var compilation = Parse($"#if {condition}\nvar value = 1");
 
         Assert.Empty(TestDiagnostics.Of(compilation));
-        compilation.Bind();
-        Assert.Empty(compilation.AnalyzeControlFlow().PendingBinding);
+        Assert.True(compilation.Bind().IsComplete, string.Join("\n", compilation.Binding.Issues));
+        Assert.True(compilation.Analyze().IsVerified, MinimalEmissionTest.Describe(compilation));
     }
 
     private static Compilation Parse(string source, bool debug = false)
