@@ -12,6 +12,7 @@ public sealed partial class Binding
         => new()
         {
             Rows = evaluation.Rows.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
+            ChildSlice = evaluation.ChildSlices.AsSpan(candidate * 2, 2),
             Binding = this,
             Call = evaluation.Call,
             Binder = function,
@@ -75,6 +76,10 @@ public sealed partial class Binding
         // call's pooled CallEvaluation.Rows (one per argument of each candidate; none for a call without arguments), which lives until
         // the call's selected candidate is judged (JudgeSelectedCall).
         internal Span<PositionRow> Rows;
+
+        // R3 (DECISIONS BU-104): the candidate's retained child rows in childRows, start and count (count -1 until its first solve
+        // composes them, RetainChildRows); empty for a property update, whose typed parts have no child positions.
+        internal Span<int> ChildSlice;
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);

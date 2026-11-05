@@ -79,6 +79,7 @@ public sealed partial class Binding
         var operations = evaluation.Operations.AsSpan(index * evaluation.OperationStride, evaluation.OperationStride);
         operations.Clear();
         evaluation.Rows.AsSpan(index * call.ArgumentNodes.Count, call.ArgumentNodes.Count).Clear(); // F1: each candidate writes its own root rows.
+        evaluation.ChildSlices[(index * 2) + 1] = -1; // R3: composed at the candidate's first solve.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
         evaluation.Scratch.AsSpan(0, CallSlotCount(function)).Clear();
@@ -245,6 +246,7 @@ public sealed partial class Binding
         internal EvaluatedCandidate[] Evaluated;
         internal BoundArgumentOperation[] Operations;
         internal PositionRow[] Rows;
+        internal int[] ChildSlices;
         internal int OperationStride;
         internal int SavedCandidates;
         internal BoundType?[] AllTypes;

@@ -191,6 +191,8 @@ public sealed partial class Binding
         var settled = this.RentSlotSet(count);
         var adapted = this.typeScratch.Rent(count);
         var rows = this.rowScratch.Rent(count);
+        var childSlice = this.indexScratch.Rent(2);
+        var childBase = this.childRows.Count;
         Array.Clear(arguments, 0, slots);
         Array.Clear(origins, 0, originCount);
         try
@@ -228,6 +230,7 @@ public sealed partial class Binding
 
             var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);
             solution.Rows = rows.AsSpan(0, count);
+            solution.ChildSlice = ResetSlice(childSlice);
             if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
             {
                 return null;
@@ -250,6 +253,7 @@ public sealed partial class Binding
             // SPEC 15.6.4 steps 1, 3, 15.3.6 (F1, DECISIONS R4-M164 U4): a construction is a call. The Origins that its expected Type leaves
             // open are solved by the call's solve, which its clauses and each Signature payload's premises bound (SolveLate).
             solution.ContributePayloads(payload);
+            this.RetainChildRows(ref solution); // R3: the payloads' composition, before their completion.
             if (expected is null || ReferenceEquals(expected, BoundType.Never))
             {
                 this.SolveConstructionOrigins(ref solution);
@@ -285,11 +289,20 @@ public sealed partial class Binding
                 return null;
             }
 
-            // SPEC 15.6.4 step 3: the call's walk over the instantiated inputs, each payload by its contribution (RequireInputPremises).
+            // SPEC 15.6.4 step 3: the call's walk over the instantiated inputs, each payload by its rows (JudgePositionRows) where it has
+            // child rows, else by its contribution (RequireInputPremises; R4, DECISIONS BU-104).
             this.callRelationScratch.Clear();
             for (var i = 0; i < count; i++)
             {
-                this.RequireInputPremises(operations[i].Source!, payload[i].BoundType!, operations[i].ParameterType!, adapted[i], rows[i].Contribution);
+                this.ChildGroup(solution, i, out var childStart, out var childEnd);
+                if (childStart != childEnd)
+                {
+                    this.JudgePositionRows(operations[i].Source!, rows[i] with { Type = operations[i].ParameterType }, solution);
+                }
+                else
+                {
+                    this.RequireInputPremises(operations[i].Source!, payload[i].BoundType!, operations[i].ParameterType!, adapted[i], rows[i].Contribution);
+                }
             }
 
             this.PublishCallRelations();
@@ -319,6 +332,8 @@ public sealed partial class Binding
         finally
         {
             this.rowScratch.Return(rows, clearArray: true);
+            this.indexScratch.Return(childSlice);
+            this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
             this.typeScratch.Return(adapted, clearArray: true);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.lengthScratch.Return(lengths, clearArray: true);

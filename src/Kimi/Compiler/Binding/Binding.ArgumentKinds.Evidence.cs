@@ -22,8 +22,9 @@ public sealed partial class Binding
     // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
     // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
     // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2, the child
-    // rows, ComposePositionRows; `[]` has none). A join argument stays Evidence until U2j (after revision B, on its representation). A
-    // receiver is Evidence; a default is a Signature position.
+    // rows, ComposePositionRows; `[]` has none). A control-flow part is Evidence: one position with a Type of its own, read only where
+    // its root has no child rows (R4', DECISIONS BU-104); a join whose results are positions is judged by its leaves. A receiver is
+    // Evidence; a default is a Signature position.
     private Contribution PartContribution(Koto part)
     {
         var core = KotoHelper.UnwrapParentheses(part);
@@ -54,7 +55,7 @@ public sealed partial class Binding
                 var part = this.Call.ArgumentNodes[i];
                 var pattern = this.Function.Parameters[mapping[i]].Type.BoundType is { } parameter ? this.Pattern(parameter) : null;
                 var type = pattern is null ? null : this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths);
-                this.Rows[i] = new(i, -1, part, pattern, type, this.Binding.PartContribution(part));
+                this.Rows[i] = new(i, -1, 0, part, pattern, type, this.Binding.PartContribution(part));
             }
         }
 
@@ -66,7 +67,7 @@ public sealed partial class Binding
             {
                 var part = this.Call.ArgumentNodes[i];
                 var type = payload[i].BoundType is { } pattern ? this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) : null;
-                this.Rows[i] = new(i, -1, part, payload[i].BoundType, type, this.Binding.PartContribution(part));
+                this.Rows[i] = new(i, -1, 0, part, payload[i].BoundType, type, this.Binding.PartContribution(part));
             }
         }
 

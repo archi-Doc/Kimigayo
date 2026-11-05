@@ -5158,6 +5158,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     scope keeps its first cause, so the order would move records).
 - **R4-M164 Contributions at composed positions (G216 (a) U2.2)** (2026-11-03; the owner, verbatim 「候補 1 つで進める」, 2026-11-02: R4
   implements BU's design bu96; extends BU-51's one input-premise rule) SPEC 10.5.1, 10.3, 15.6.4 step 3. Later units extend this entry.
+  - Superseded in part by BU-99 (2026-11-05): F1's Result value and its per-argument reading; a slot's solution is its contributor's by
+    the premise visits' stop at a slot where no evidence is supplied.
   - F1: what a filled slot's position contributes to its selected call is one closed kind, `Contribution` (Evidence, Signature,
     Result), the evidence walk's fact (`Binding.ArgumentKinds.Evidence.cs`). `RequireInputPremises(at, parameter, supplied,
     contribution)` reads it: Evidence is judged beside its own Type, only where the fit replaced an Origin; a Signature position at
@@ -9239,11 +9241,12 @@ resumed by R4-M86 (2026-10-20).
 - **BU-99 A position's Result is the stop at its slot, leaf rows bound the solve, and a position without evidence solves the
   callee's Origins it alone names** (2026-11-05; G216 (a) U2, the Position Rows proposal revision 3 §3 rule 3, §4-§6; the planning
   session's design `artifacts\verify\g216a-oracle\U2-design.md`, fifth amendment, M's design review 2 ACCEPT) SPEC 10.3, 10.5.1,
-  15.3.6, 15.6.1, 15.6.4 step 3, 8.1.1, 15.3.7. Amends BU-94; supersedes BU-51's region clause in part.
+  15.3.6, 15.6.1, 15.6.4 step 3, 8.1.1, 15.3.7. Amends BU-94; supersedes BU-51's region clause and R4-M164's F1 Result in part.
   - R1: the premise visits walk a position's pattern beside its instantiated Type (`RequireInputPremises`,
     `CollectInputPremises(pattern, instantiated, ...)`). At a position that supplies no evidence (no actual Type: a Signature row, a
-    default) `WellFormedPart` stops at a slot of the pattern: the slot's solution is its contributor's (the expected result, a Type
-    argument (G412), the receiver's Type). At an Evidence position it goes on over the solution beside the position's own Type, judged
+    default) `WellFormedPart` stops at a slot of the pattern: the slot's solution is its contributor's (the expected result or a
+    Type argument, G412; `SlotSolution.Pattern` has already substituted a method's declaring-Type slot by the receiver's Type, so it is
+    no stop, while a constructor keeps its slots). At an Evidence position it goes on over the solution beside the position's own Type, judged
     where the fit replaced an Origin (15.6.1, rule 6): a solution the solve formed from several inputs' evidence is no one input's
     Type (arg2_n), the twin of the stored visit's slot line. A layer around the slot is the call's; `VisitStoredPremises` continues on
     the result at a slot and descends by the result's
@@ -9273,6 +9276,32 @@ resumed by R4-M86 (2026-10-20).
   - Removal conditions that remain: join arguments (U3); `PartContribution` (U6). A non-Result root row is the part's contribution at
     the last `Contribute`; property rows are Evidence where `PartContribution` may say Signature, inert because the input carries no
     Origin. Open: `CompleteWaiting` completes a waiting part at a ParameterType that still holds the callee's unsolved Origins (PLAN).
+
+- **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
+  G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
+  third amendment, M's design review 3 ACCEPT; the owner's decision, 2026-11-05, verbatim 「案Aを採用します。ただし、以下の提案を検討して、
+  良い案なら採用してください。」: option A, the composition is the one owner of membership, with four reinforcements, all adopted) SPEC
+  10.5.1, 14.9.2 step 2, 15.3.6, 15.6.4 step 3, 23.1.2. Amends BU-94 and BU-99.
+  - R3: a candidate's child rows are composed once, at its first `SolveLate` (`RetainChildRows`, the probe's state: a waiting join,
+    its flattened nested joins, each part's recorded kind), into `childRows`, and retained as the candidate's slice
+    (`SlotSolution.ChildSlice`: start and count, count -1 until composed; `CallEvaluation.ChildSlices` per candidate, a Case
+    construction's, a value call's and a fixed construction's re-check their own). Every later reading reads the slice and composes
+    nothing: a later solve of the candidate (the re-run after `CompleteWaiting`, `CheckDefaulted`'s) instantiates each leaf's `Pattern`
+    under its own solution; the judgment (`JudgePositionRows`) derives Types top-down from the operation's Type by the new `Index`
+    column. A retained row holds structure (`Argument`, `Parent` relative to its slice, `Index`, `Part`), `Pattern` and
+    `Contribution`; `Type` is the reading's; a part's failure is read at the reading (rule W). `childRows` is one list whose
+    evaluations append and remove their own rows when they end (nested evaluations end first), so a warm Bind allocates nothing.
+    Supersedes BU-94's "child rows ... removed when the argument's judgment ends"; BU-94 and BU-99 stay.
+  - R3': an independently typed control-flow part (a join the call does not classify, its own formation's Type) is one position and
+    is not entered; a part formed part by part keeps its parts as positions.
+  - R4/R4': an argument whose root has child rows is judged by its rows wherever a root is read (named calls in `JudgeSelectedCall`,
+    value calls, Case constructions), whether or not its operation adapted it; no aggregate of the leaves is formed. A root's
+    Contribution is read only for a root without child rows; `EvidenceNames` reads the Evidence leaf rows, the Evidence roots without
+    child rows and the receiver, never a composed root's mark. `PartContribution`'s Join row reads "a control-flow part is Evidence".
+  - Evidence of the cause (the front's step 0, on dev ae112e08f): a join argument took `JudgeSelectedCall`'s rows branch, whose second
+    composition read completion state and found no child rows, so the root was judged as one Evidence leaf; each form had one solve,
+    whose `PremiseSolved` was empty because `EvidenceNames` read the join root's Evidence mark.
+  - Not in U3a: composition beneath a slot (R5, U3b); the Join record as a waiting fact, the survey path and one formation (U6).
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and

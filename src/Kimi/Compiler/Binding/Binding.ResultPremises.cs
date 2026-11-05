@@ -196,22 +196,6 @@ public sealed partial class Binding
     private static bool SameLayer(BoundType actual, BoundType result)
         => actual.Kind == result.Kind && actual.Components.Count == result.Components.Count && actual.OriginArguments.Count == result.OriginArguments.Count;
 
-    // Whether an evidence position's pattern names the callee's Origin parameter `slot`: an Evidence root row's or the receiver's
-    // (DiscoverPremiseOrigins).
-    private static bool EvidenceNames(in SlotSolution solution, int slot)
-    {
-        for (var i = 0; i < solution.Rows.Length; i++)
-        {
-            if (solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } && MentionsOriginSlot(pattern, solution.Binder, slot))
-            {
-                return true;
-            }
-        }
-
-        return solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
-            function.Parameters[receiver].Type.BoundType is { } receiverPattern && MentionsOriginSlot(receiverPattern, solution.Binder, slot);
-    }
-
     // Whether a query of VisitWellFormedPremises meets a pattern part beside these parts for the first time; a leaf, or a part that
     // stores no Origin, is cheaper to visit again than to record.
     private static bool FirstMet(TypeMemo<(BoundType Result, BoundType? Actual)> parts, BoundType pattern, BoundType result, BoundType? actual, uint query)
@@ -271,6 +255,34 @@ public sealed partial class Binding
         }
     }
 
+    // Whether a position with a Type of its own names the callee's Origin parameter `slot` in its pattern: an Evidence leaf row's, an
+    // Evidence root's without child rows, or the receiver's (DiscoverPremiseOrigins; R4', DECISIONS BU-104). A root with child rows is
+    // read only through its leaves.
+    private bool EvidenceNames(in SlotSolution solution, int slot)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            this.ChildGroup(solution, i, out var start, out var end);
+            if (start == end && solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } &&
+                MentionsOriginSlot(pattern, solution.Binder, slot))
+            {
+                return true;
+            }
+
+            for (var j = start; j < end; j++)
+            {
+                if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Contribution: Contribution.Evidence, Pattern: { } leaf } &&
+                    MentionsOriginSlot(leaf, solution.Binder, slot))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
+            function.Parameters[receiver].Type.BoundType is { } receiverPattern && MentionsOriginSlot(receiverPattern, solution.Binder, slot);
+    }
+
     // R2' (SPEC 15.3.6; DECISIONS BU-99): a position that gives no evidence, a Signature leaf row or a default the call uses, makes each
     // Origin of the callee that its instantiated Type `type` names and no evidence position's pattern names (EvidenceNames) a variable of
     // the solve, published as premise-solved (OriginInference.PremiseSolved): its premise then bounds it from above (SolveOriginInference's
@@ -293,7 +305,7 @@ public sealed partial class Binding
             this.DiscoverPremiseOrigins(solution, inference, type.Components[i]);
         }
 
-        static void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
+        void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
         {
             if (origin is null)
             {
@@ -306,7 +318,7 @@ public sealed partial class Binding
             }
 
             if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, inference.Binder) && !inference.PremiseSolved.Contains(origin) &&
-                !EvidenceNames(solution, origin.Slot))
+                !this.EvidenceNames(solution, origin.Slot))
             {
                 inference.Discover(origin, 0);
                 inference.PremiseSolved.Add(origin);
