@@ -470,7 +470,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.OpenResultOnlyOrigins(use, function, origins, default); // A function reference's call uses no default (SPEC 10.1.1).
+            this.OpenUnsolvedOrigins(use, function, origins); // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
             return true; // Selected-call clauses are judged at their supplying arguments, never as applicability.
         }
 
