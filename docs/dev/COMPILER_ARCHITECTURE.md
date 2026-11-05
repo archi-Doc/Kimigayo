@@ -249,7 +249,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   (DECISIONS R4-M35, A5 plan §8). Their R4 exit rule (a row where the old path rejected and MIR accepted, other than a MIR-only
   relaxation, and a rejection of a library or milestone program blocked until classified (a), (c) or (d) with a SPEC clause;
   location and code-choice differences did not) gave way for R4's exit to the owner's 90% rule (DECISIONS R4-M165). The
-  difference ledger that recorded them ended at R6-check H10a (the last is `shared-base/1415d6b42/mir-diff/`). The owner is
+  difference ledger that recorded them ended at R6-check H10a (the last is W-15's `shared-base/37a0c05a6/mir-diff/`). The owner is
   consulted after two consecutive working sessions on the A5 plan that land no unit.
 - **Temporary structures**, with the stage that removes them; Transitional attributes identify these declarations (CR-A7):
   - the `KIMI_PIPELINE` switch (R6); the Koto semantic forwarding properties (R7, their Parsing and root-helper reads at R6-check;
@@ -257,7 +257,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     contract is unmarked, and only its publisher walk and private state disappear at R7;
   - the temporary intrinsics `Capacity`, `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and
     `FormatFinish` that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137);
-  - `Binding.IsTwinRecord`, the test MIR side's twin filter (H11, with the twins; DECISIONS R4-M111, R6-check H10a D4);
+  - `Binding.IsTwinRecord`, the test MIR side's twin filter (H11, with the twins; DECISIONS R4-M111, R5-M188);
     `BindingFailure.VirtualEffectBound`, with no producer since H5's F, its code arm and its description row (H11; DECISIONS BU-90 X2);
   - the old analysis's receiver-dependence gate, its `CallPlan.ReceiverDependentResult` fact, `ReceiverDependentListed` flag and
     `Binding.ValueCallGate` (R6-check; DECISIONS R4-M152); F1's located `Unsupported_Kd` at a returned Closure's call,

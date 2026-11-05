@@ -656,7 +656,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Functional/Allocation split is simpler), its positional split of `Compilation.Problems` (order-dependent; computing SourceRefs
   numbers unnumbered nodes under the observer) and its shipping only the hook in U0b (two parallel analysis units would invent
   the driver and record).
-  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): the difference harness ends; W-14's ledger is the last.
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): the difference harness ends; the last ledger is W-15's (`shared-base/37a0c05a6/mir-diff/`, identical to W-14's).
 - **R4-M18** (2026-10-12) The Semantics case bound (`PairBinder.CaseBound`,
   64; SPEC 8.15, 23.1.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
   signature and before the parts are bound: a function or Property whose defaults, base initializer, body, initializer or accessor
@@ -14203,8 +14203,7 @@ structure is recorded here by the unit that first implements it.
   `draft/Sketches/R6-check/H10a-design.md` revision 1 with §9's fixes, two design reviews) Major. Amended in place by R6-check H8a
   (2026-11-05, R5's ruling on its OQ1; design `draft/Sketches/R6-check/H8a-design.md` D4) before the entry landed: `LegacyRecords`.
   - The difference ledger (R4-M17) ends: its observer, compared set, matcher, aggregation, classification table and tests, and
-    `Compilation.Analyzed`. Nothing classifies against it since H5 (D-c2); W-14's `shared-base/1415d6b42/mir-diff/` is the last
-    ledger. The difference categories (a)–(e) stay defined (COMPILER_ARCHITECTURE).
+    `Compilation.Analyzed`. Nothing classifies against it since H5 (D-c2); the last ledger is the last window's before H10a's merge, W-15's `shared-base/37a0c05a6/mir-diff/` (identical to W-14's `1415d6b42`). The difference categories (a)–(e) stay defined (COMPILER_ARCHITECTURE).
   - The test MIR side is `MirTargetSide.MirSide`: after `Analyze`, Binding's records without the twins, then
     `Compilation.Problems`' rows as the publisher has them (every merged problem under its own code, then the validator findings).
     Supersedes R4-M136's side (the ledger's common and MIR sides, without collection records and derived problems): those were the

@@ -158,7 +158,7 @@ from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus what
 `./scripts/verify.ps1 -DiagnosticSnapshot` alone, the build and that step, suffices), optionally `semantic/` (`KIMI_SEMANTIC_SNAPSHOT=write`
 output, with the `KIMI_SEMANTIC_HIR`/`KIMI_SEMANTIC_MIR` flags it used) and `README.txt` naming the commit, the commands, the
 evidence directory and the date. Reuse an existing base for the same commit; produce a missing one and copy it there
-(`mir-diff/`, the difference ledger's, ended at R6-check H10a; the last is `shared-base/1415d6b42/mir-diff/`). Never edit a base in place: delete a wrong one whole and remake it. A unit compares
+(`mir-diff/`, the difference ledger's, ended at R6-check H10a; the last is W-15's `shared-base/37a0c05a6/mir-diff/`). Never edit a base in place: delete a wrong one whole and remake it. A unit compares
 against the base of the commit it starts from; pass `-DiagnosticBaseline` an absolute Windows path (`C:/...` or `C:\...`),
 since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
 
