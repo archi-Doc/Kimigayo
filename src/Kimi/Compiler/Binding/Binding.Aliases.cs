@@ -10,6 +10,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly List<AliasKoto> aliases = new();
     private readonly Dictionary<SourceDocument, List<AliasImport>> aliasesByDocument = new();
     private readonly Dictionary<AliasKoto, BindingScope?> aliasTargets = new();
     private readonly Dictionary<(SourceDocument Document, string Name), AliasImport> namedAliases = new();
