@@ -187,8 +187,9 @@ public class OriginRedesignTest
     // header's Origin declaration, which its relations complete, whether a Constraint, the signature or the body names it first
     // (a use before the occurrence included, and a set inside a nested Callable). A struct's set is seen by every fragment's members
     // and nested Types, and a related one is valid in a Field Type or a payload; a conditional conformance owns its `when` list's set
-    // (its block sees it, the Type's other members do not), and a Contract-wide clause owns its own. An unrelated set keeps
-    // MissingOriginBinding_Kd until G417 (3) U2.
+    // (its block sees it, the Type's other members do not), and a Contract-wide clause owns its own. A set no relation equates
+    // quantifies every choice of its Origins (G417 (3) U2): a function's, a struct's, a requirement's, a `when` list's and a
+    // Contract-wide clause's are valid.
     [Theory]
     [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    origin k.at == y\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "")]
     [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    origin k.at == y\n    return 0", "")]
@@ -206,9 +207,43 @@ public class OriginRedesignTest
     [InlineData("struct Holder<T> {h}\n    origin s.at == h\n    T is Source\n    T.(Source).Item is (Cursor{s}).Item\n    public let w: ref/i32 during h\nstruct Holder<T> {h}\n    public func item(self: ref/Self) -> ref/i32 during s.at => self.w", "")]
     [InlineData("struct Holder<T> {h}\n    origin s.at == h\n    T is Source\n    T.(Source).Item is (Cursor{s}).Item\n    public let w: ref/i32 during h\n    struct Inner\n        public let v: ref/i32 during s.at", "")]
     [InlineData("enum Choice<T> {h}\n    origin s.at == h\n    T is Source\n    T.(Source).Item is (Cursor{s}).Item\n    One(ref/i32 during s.at)\n    Two", "")]
-    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "InvalidConstraint_Kd InvalidConstraint_Kd MissingOriginBinding_Kd")]
+    [InlineData("func f<T>(value: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "")]
+    [InlineData("struct Holder<T> {h}\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    public let v: i32", "")]
+    [InlineData("contract Picks\n    func pick<T>(value: ref/T, y: ref/i32) -> i32\n        T is Source\n        T.(Source).Item is (Cursor{k}).Item", "")]
+    [InlineData("struct W<T, U> {w}\n    public let v: i32\n    Self is Marker when T is (Cursor{m}).Item\n    Self is Shown when U is (Cursor{m}).Item", "")]
+    [InlineData("contract Lens\n    associate Item\n    Self.Item is (Cursor{n}).Item", "")]
+    [InlineData("open struct Box<T>\n    public let v: i32\nstruct D<T> {h} : Box<ref/i32 during s.at>\n    origin s.at == h\n    T is Source\n    T.(Source).Item is (Cursor{s}).Item", "")]
+    [InlineData("struct Holder<T, U> {h}\n    T is Source\n    U is Source\n    U.(Source).Item is (Cursor{j}).Item\n    public let v: ref/i32 during j.at", "InvalidOriginBinding_Kd")]
+    [InlineData("enum Choice<T, U> {h}\n    T is Source\n    U is Source\n    U.(Source).Item is (Cursor{j}).Item\n    One(ref/i32 during j.at)\n    Two", "InvalidOriginBinding_Kd")]
+    [InlineData("open struct Box<T>\n    public let v: i32\nstruct D<T, U> {h} : Box<ref/i32 during j.at>\n    T is Source\n    U is Source\n    U.(Source).Item is (Cursor{j}).Item", "InvalidOriginBinding_Kd")]
     public void ConstraintSetsAreTheirDeclarations(string declaration, string codes)
         => Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code)));
+
+    // SPEC 15.3.4 (DECISIONS BU-100): an unrelated set's slot is a fixed Origin that no caller substitutes (OriginKind.ConstraintSet).
+    // A call under another set, two calls and a recursion prove nothing of it (a recursion keeps its own record, as without sets). A
+    // body row on it is judged, never the located limit: a `when` block's member, a local from it and an annotated local; a finite
+    // Origin never flows into it, and an `outlives` clause is its premise, while storage still hides it. A uniq parameter over it is
+    // valid; a raw layer stating it is the located Unsupported_Kd. Pins: a set inside a Constraint's Callable input stays unbound
+    // (Nested signatures), and a call proving a Constraint over it, one that every choice satisfies with a static argument included,
+    // stays UnprovenConstraint_Kd (the call-site gap, STATUS).
+    [Theory]
+    [InlineData("func f<T>(v: ref/T) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0\nfunc g<U>(u: ref/U) -> i32\n    U is Source\n    U.(Source).Item is (Cursor{m}).Item\n    return f(u)", "UnprovenConstraint_Kd")]
+    [InlineData("func f<T>(v: ref/T) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0\nfunc g(a: ref/i32) -> i32\n    let c = Cursor.init(a)\n    let x = f(c@ref)\n    return f(c@ref)", "UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData("func f<T>(v: ref/T) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return f(v)", "UnboundTypeArgument_Kd")]
+    [InlineData("struct W<V> {w}\n    public let v: i32\n    Self is Marker when V is (Cursor{m}).Item\n        public func get(self: ref/Self, y: ref/i32 during m.at) -> ref/i32 during m.at => y", "")]
+    [InlineData("func f<T>(v: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    let z: ref/i32 during k.at = y\n    return 0", "UnprovenOriginRelation_Kd")]
+    [InlineData("func f<T>(v: ref/T, y: ref/i32) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    var a = 1\n    let z: ref/i32 during k.at = a@ref\n    return 0", "UnsatisfiedOriginRelation_Kd")]
+    [InlineData("func f<T>(v: ref/T, y: ref/i32 during k.at) -> ref/i32 during k.at\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    let z: ref/i32 during k.at = y\n    return z", "")]
+    [InlineData("func f<T>(v: ref/T, y: ref/i32 during k.at) -> ref/i32 during k.at\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    let z = y\n    return z", "")]
+    [InlineData("func f<T>(v: ref/T, y: ref/i32) -> i32\n    origin k.at outlives y\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "")]
+    [InlineData("func f<T>(v: ref/T, y: ref/i32) -> ref/i32 during y\n    origin k.at outlives y\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    let z: ref/i32 during k.at = y\n    return z", "UnprovenOriginRelation_Kd")]
+    [InlineData("struct H<T> {h}\n    origin j.at outlives h\n    T is Source\n    T.(Source).Item is (Cursor{j}).Item\n    public let v: ref/i32 during j.at", "InvalidOriginBinding_Kd")]
+    [InlineData("func f<T>(v: ref/T, y: uniq/i32 during k.at) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    y@follow += 1\n    return 0", "")]
+    [InlineData("func f<T>(v: ref/T, p: raw/i32 during k.at) -> i32\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    return 0", "Unsupported_Kd")]
+    [InlineData("func f<F>(g: ref/F) -> i32\n    F is Callable<(View<i32>{a}) -> ()>\n    return 0", "InvalidConstraint_Kd InvalidConstraint_Kd MissingOriginBinding_Kd")]
+    [InlineData("struct Plain\n    Self is Source\n    associate Item is i32\nfunc f<T>(v: ref/T, y: ref/i32 during k.at) -> i32\n    T is Source\n    T.(Source).Item is not (Cursor{k}).Item\n    return 0\nfunc g(p: ref/Plain, s: ref/i32 during static) -> i32 => f(p, s)", "UnprovenConstraint_Kd")]
+    public void AnUnrelatedSetIsAFixedOrigin(string declaration, string codes)
+        => Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code).Order(StringComparer.Ordinal)));
 
     // SPEC 15.3.4: the same set name repeats only across declarations that cannot see each other (two `when` lists); within one
     // declaration, or where an enclosing declaration's set is visible, it is a duplicate.
@@ -220,10 +255,9 @@ public class OriginRedesignTest
         => Assert.Equal(duplicate, ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Any(static x => x.Code == nameof(DiagnosticCode.DuplicateBinding_Kd)));
 
     // SPEC 15.3.4, 15.3.2: a `when` list's set is seen by its implementation block only; a set no relation relates is no public Origin in
-    // storage; a Contract-wide clause's set is seen by no requirement. A `when` list holds no relation, so until G417 (3) U2 its set's own
-    // failure rejects the block's use as well (the first row); U2 makes that row valid.
+    // storage, whatever its kind (a Field, a payload, a base: a hidden Origin); a Contract-wide clause's set is seen by no requirement.
     [Theory]
-    [InlineData("struct W<T> {w}\n    public let v: i32\n    Self is Marker when T is (Cursor{m}).Item\n        public func get(self: ref/Self, y: ref/i32 during m.at) -> i32 => self.v", "    public func get", true)]
+    [InlineData("struct W<T> {w}\n    public let v: i32\n    Self is Marker when T is (Cursor{m}).Item\n        public func get(self: ref/Self, y: ref/i32 during m.at) -> i32 => self.v", "    public func get", false)]
     [InlineData("struct W<T> {w}\n    public let v: i32\n    Self is Marker when T is (Cursor{m}).Item\n    public func get(self: ref/Self, y: ref/i32 during m.at) -> i32 => self.v", "    public func get", true)]
     [InlineData("struct Holder<T, U> {h}\n    T is Source\n    U is Source\n    U.(Source).Item is (Cursor{j}).Item\n    public let v: ref/i32 during j.at", "    public let v", true)]
     [InlineData("enum Choice<T, U> {h}\n    T is Source\n    U is Source\n    U.(Source).Item is (Cursor{j}).Item\n    One(ref/i32 during j.at)\n    Two", "    One(", true)]

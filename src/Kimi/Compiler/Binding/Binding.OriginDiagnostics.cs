@@ -250,7 +250,7 @@ public sealed partial class Binding
             case OriginKind.Parameter:
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
             case OriginKind.ConstraintSet:
-                return new("expression", origin.Name); // SPEC 15.3.4: the set's slot as written, `m.at`.
+                return new("expression", SetSlotName(origin)); // SPEC 15.3.4: the set's slot as written, `m.at`.
             case OriginKind.Inference when origin.Binder is VariableKoto local:
                 return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
             case OriginKind.Holder:
@@ -271,6 +271,12 @@ public sealed partial class Binding
                 return new("omitted", origin.Occurrence?.ToString() ?? origin.Name);
         }
     }
+
+    // SPEC 15.3.4: an unrelated Constraint set's atom by its set and slot names (`m.at`), or by the set occurrence's text while its Type
+    // has no schema.
+    private static string SetSlotName(BoundOrigin origin)
+        => origin.Binder is TypeSemanticsKoto { BindingSetName: { } set, BoundType.Symbol.Schema.Origins: { } slots } && (uint)origin.Slot < (uint)slots.Count
+            ? set + "." + slots[origin.Slot].Name : origin.Binder!.ToString();
 
     // Whether `atom` is `whole` or one of the operands of its meet, at any depth.
     private static bool OriginIncludes(BoundOrigin whole, BoundOrigin atom)

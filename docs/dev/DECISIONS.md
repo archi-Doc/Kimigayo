@@ -10550,6 +10550,35 @@ resumed by R4-M86 (2026-10-20).
     - triggering on a clause's syntax, which depends on order (h5, cx1);
     - binding every header before every Constraint.
 
+- **BU-100 An unrelated Constraint set's slot is an Origin of its own kind, `OriginKind.ConstraintSet`** (2026-11-05; PLAN G417 (3)
+  U2, an Owner-class unit; the owner's 「(c) に切り替えます」, 「123を推奨どおり、4を承認する」, 「G417 の U2　aで」 and, approving the
+  vocabulary entry, 「(a) 新しい Origin の種類を足す で決定します」 (board O-18); BU's design `bu\batch\G417\binding-design.md`
+  revision 8, design review 7 ACCEPT; R4's consent C-19 for the view row) SPEC 15.3.2, 15.3.4. The cause it removes: the omitted
+  slot of a set that no relation equates had no completion, so it kept `MissingOriginBinding_Kd` and its declaration's
+  Constraints their dependent `InvalidConstraint_Kd`, though SPEC 15.3.4 makes such a set quantify every choice of its Origins.
+  - The kind's one contract: the Origin of a slot of a binding set that a Constraint names (not an associated specification),
+    that its owner's declaration holds and that no relation fixes. It is a fixed Origin about which only its declaration's
+    clauses say anything (P(ρ0)). No caller, conformance or nested signature substitutes it, so a caller proves a Constraint over
+    it for every choice. In storage (`Binding.Storage.StorageType`) it is a hidden Origin, `InvalidOriginBinding_Kd` at the
+    Origin expression (`ValidateOriginRequirements`). Binder: the set occurrence; Slot: the set Type's aggregate slot; shown
+    `m.at`. It is appended after `Unstated`, so no value renumbers.
+  - Producer: only `OmittedOrigin`'s last step, through `Binding.ConstraintSet`, in an explicit position (C-2: only the
+    Constraint position's omission).
+  - Readers (the design's table of every `OriginKind.` line): `FixedOrigin` and `FixedInBodyOrigin` true; `Declared` true; the
+    display and Type text show `m.at`; `StepOf` an explicit Exclusive arm. A raw layer stating it is a located `Unsupported_Kd`,
+    since SPEC 5.7 does not settle whether it keeps raw authority. Every substitution, quantification and schema reader keys on
+    `Parameter` or `Input` and a binder, so it never matches. The frozen old path and Mir/** are unchanged.
+  - The C1-F4 view's row (`ClassifyAtom`, 2a0-D §3): Fixed in every body. This is sound by vacuity. A caller proves a Constraint
+    over ρ0 for every choice, so a value carrying ρ0 exists only if a caller supplied one, through an argument proven to outlive
+    a fixed unknown: only `static` is. So reading ρ0 as outliving a body admits no dangling borrow.
+  - Rejected:
+    - `Parameter` with the set occurrence as Binder (U2's implementation review D1): `InContract` finds no scope it owns, so A5
+      leaves it Unclassed, and it gives `Parameter` a second meaning;
+    - a Projection atom: `OriginClasses` reads a body's Projection as body-local (finite), not fixed;
+    - extending `InContract` to a set occurrence: it keeps `Parameter`'s second meaning;
+    - completing the slot in `CompletePendingOrigins`: an unrelated set binds after its declaration completed, so it never
+      reaches that step.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
