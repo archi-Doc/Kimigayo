@@ -345,14 +345,14 @@ func check<T, U>(value: ref/T, other: ref/U, y: ref/i32) -> i32
     let z: ref/i32 during k.at = y              // The body sees k.
     return 0
 
-struct Holder<T, U> {h}
+struct Holder<T, U, V, W> {h}
     origin s.at == h
     T is Source
     U is Source
     T.(Source).Item is (Cursor{s}).Item
     U.(Source).Item is (Cursor{j}).Item         // No relation relates j.
-    Self is Marker when T is (Cursor{m}).Item   // This m belongs to this conformance,
-    Self is Shown when U is (Cursor{m}).Item    // so this one is no duplicate.
+    Self is Marker when V is (Cursor{m}).Item   // This m belongs to this conformance,
+    Self is Shown when W is (Cursor{m}).Item    // so this one is no duplicate.
     public let w: ref/i32 during s.at           // Valid: s.at is h.
     // public let v: ref/i32 during j.at        // Error: j.at is a hidden Origin.
     public func item(self: ref/Self) -> ref/i32 during s.at => self.w
