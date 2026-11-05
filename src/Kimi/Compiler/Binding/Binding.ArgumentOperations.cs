@@ -71,7 +71,10 @@ public sealed partial class Binding
     /// <returns>Whether the expression is adapted rather than acquired as it is.</returns>
     public bool TryGetAdaptation(Koto node, out BoundAdaptation adaptation) => this.adaptations.TryGetValue(node, out adaptation);
 
-    /// <summary>Gets a selected receiver/storage operation, including an unresolved projected-use proof obligation.</summary>
+    /// <summary>Gets a selected receiver/storage operation, including an unresolved projected-use proof obligation. Its reader,
+    /// InheritedReceiverBindingTest, observes the operation selected for an inherited member (its base path, object compatibility,
+    /// kind, adaptation, source and Origins), which no published table holds: the HIR has only its adaptation (HirAdjust), and
+    /// BaseReferenceKoto.BasePath is postponed to R7 (DECISIONS R5-M190).</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
     /// <param name="operation">The selected operation; an Unknown proof is not permission to execute.</param>
     /// <returns>Whether this pass selected an operation for the use.</returns>
@@ -79,15 +82,6 @@ public sealed partial class Binding
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);
-
-    // SPEC 4.7.1, 4.5: an exclusive borrow of a dynamic Array element lends the whole owned Array exclusively first.
-    internal BoundType ExclusiveArrayHandle(Koto array)
-        => this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [array.BoundType!], origin: this.PlaceOrigin(array));
-
-    // SPEC 3.4.3 (PLAN G59): the borrow, in a use's mode, of an Array element whose stored part the use borrows in place, with the
-    // element Place's own Origin.
-    internal BoundType ElementPlaceReference(SemanticsKind semantics, Koto element)
-        => this.types.Intern(BoundTypeKind.Semantics, null, semantics, [element.BoundType!], origin: this.PlaceOrigin(element));
 
     /// <summary>
     /// SPEC 10.2: safe reference layers ending in <paramref name="referent"/> yield one shared reference to it. A <c>ref</c>

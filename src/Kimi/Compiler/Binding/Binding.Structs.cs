@@ -111,7 +111,7 @@ public sealed partial class Binding
     // Closure captures (JudgeHelperCaptures). LendsFields: whether its writable Fields are lent exclusively (BorrowablePlace);
     // where SPEC lends them but Binding does not, the exclusive borrow is a located Unsupported_Kd (AccessFailure).
     // - Construction (6.3.4): an owner's path; the whole receiver is never named. Its Fields are not lent exclusively until PLAN
-    //   G166 models the Loans the old analysis and A5 lack (6.3.4's "Field borrows end before completion"); LendsFields then goes.
+    //   G166 models the Loans A5 lacks (6.3.4's "Field borrows end before completion"); LendsFields then goes.
     // - Destruction (16.3.1): access equivalent to uniq/Self, so no part offers Take, a Copy one included; of the whole receiver only a
     //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment), the helper borrow.
     private static ReceiverAuthority? Receiver(Koto? node) => Receiver((node as IdentifierNameKoto)?.BoundSymbol);

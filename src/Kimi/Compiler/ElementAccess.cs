@@ -28,7 +28,7 @@ internal static class ElementAccess
         => receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || ReferenceTypes.IsBorrow(receiver);
 
     // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
-    internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source, owners: false);
+    internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source);
 
     internal static bool IsSyntax(Koto source) => source is IndexKoto index ? !IsUserIndex(index) && index.CodeContext.Compilation.Binding.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && AdtDef.IsStruct(type));
@@ -304,13 +304,13 @@ internal static class ElementAccess
         return false;
     }
 
-    private static bool HasReceiverOnPath(Koto source, bool owners)
+    private static bool HasReceiverOnPath(Koto source)
     {
         for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
             !Binding.IsGetterResult(selection); depth++)
         {
             var receiver = AccessType(selection.Left);
-            if (owners ? IsBorrowedReceiver(receiver) : receiver?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsBorrow(receiver))
+            if (receiver?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsBorrow(receiver))
             {
                 return true;
             }

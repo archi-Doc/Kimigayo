@@ -188,7 +188,7 @@ public partial class TypeDagScalingTest
         Assert.Equal(Codes(code), Problems(Checked(source)));
     }
 
-    // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (AddType's set per Place).
+    // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (the MIR's Loan).
     [Theory]
     [InlineData(false, "")]
     [InlineData(true, "ComparisonLoanConflict_Kd")]

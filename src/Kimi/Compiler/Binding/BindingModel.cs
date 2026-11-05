@@ -367,9 +367,6 @@ public sealed class BindingSymbol
     /// <summary>Gets or sets how a capture entry initializes its environment binding (SPEC 7.7.2).</summary>
     internal CaptureAcquisition CaptureAcquisition { get; set; }
 
-    /// <summary>Gets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.7.2).</summary>
-    internal bool TransferCapture => this.CaptureAcquisition == CaptureAcquisition.Move;
-
     /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.7.3), or null when the Type may be an object payload.</summary>
     internal BindingSymbol? ObjectPayloadOptOut { get; set; }
 }

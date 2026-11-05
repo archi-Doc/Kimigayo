@@ -37,46 +37,6 @@ public sealed partial class Binding
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
 
-    // SPEC 8.3.3: generic dispatch reaches a verified implementation without a direct call, so a use of `type` as a Type
-    // argument needs every implementation that its verified conformances map a requirement to.
-    internal void CollectWitnesses(BindingSymbol type, List<FunctionKoto> destination)
-    {
-        if (!this.conformancesByType.TryGetValue(type, out var identities))
-        {
-            return;
-        }
-
-        for (var i = 0; i < identities.Count; i++)
-        {
-            var paths = identities[i].PathStorage;
-            for (var p = 0; p < paths.Count; p++)
-            {
-                if (!paths[p].IsVerified)
-                {
-                    continue;
-                }
-
-                var witnesses = paths[p].WitnessStorage;
-                for (var w = 0; w < witnesses.Count; w++)
-                {
-                    if (witnesses[w].Implementation.Declaration is FunctionKoto function && !destination.Contains(function))
-                    {
-                        destination.Add(function);
-                    }
-                }
-
-                var properties = paths[p].PropertyWitnessStorage;
-                for (var w = 0; w < properties.Count; w++)
-                {
-                    if (this.PropertyWitnessFunction(paths[p], properties[w]) is { } accessor && !destination.Contains(accessor))
-                    {
-                        destination.Add(accessor);
-                    }
-                }
-            }
-        }
-    }
-
     /// <summary>Instantiates a call forwarded by a generic body under the closed context of its caller.</summary>
     /// <param name="inner">The call in the generic body.</param>
     /// <param name="outer">The closed call context.</param>

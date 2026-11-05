@@ -72,7 +72,8 @@ public class ArchitectureRulesTest
     [InlineData("Playground references to R6-gen's deleted components", "src/Playground", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Test references to R6-gen's deleted components", "tests", "*.cs", DeletedByR6Gen, 0)]
     // R6-check H10b (D8): the same for the deleted old ownership analysis, replacing the test-read rows of its transitional entry; the
-    // compiler's row is H11's (three Binding comment lines name it).
+    // compiler's row is H11a's (D8), landing when the last Binding comment naming it goes.
+    [InlineData("Compiler references to the old ownership analysis", "src/Kimi", "*.cs", DeletedByH10b, 0)]
     [InlineData("Test references to the old ownership analysis", "tests", "*.cs", DeletedByH10b, 0)]
     [InlineData("Benchmark references to the old ownership analysis", "src/Benchmark", "*.cs", DeletedByH10b, 0)]
     [InlineData("Playground references to the old ownership analysis", "src/Playground", "*.cs", DeletedByH10b, 0)]

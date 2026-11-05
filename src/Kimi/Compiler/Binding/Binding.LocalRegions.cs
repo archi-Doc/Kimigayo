@@ -242,8 +242,7 @@ public sealed partial class Binding
     }
 
     // Lowering may reuse only relations already represented in the checked graph. A new finite fit needs ownership analysis.
-    // Its readers, lowering and the old analysis's RecordCallInput, run after Binding judged the fit in its body, so it judges in no body
-    // (DECISIONS BU-28).
+    // Its reader, FitsVerifiedTypeAt, runs after Binding judged the fit in its body, so it judges in no body (DECISIONS BU-28).
     private bool VerifiedRegionOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         if (this.ProvesOriginOutlives(longer, shorter, use))

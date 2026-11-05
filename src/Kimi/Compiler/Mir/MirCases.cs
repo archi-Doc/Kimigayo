@@ -16,8 +16,8 @@ namespace Kimi.Compiler.Mir;
 /// (<see cref="Type"/>), a PairLayer step the Place itself or the referent of its case's reference or handle (<see cref="Layer"/>), a
 /// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>) and an Adapt the operation its case selects (<see cref="Adapt"/>), the only
 /// case-dependent forms. The analyses that depend on the case (R4:
-/// A1, A4's local facts, A5) run once per view. Views are numbered as the old analysis numbers its case runs, the last binder advancing
-/// fastest, each through its admitted set in SemanticsMask order, so view i is its case bit i. The selected view is kept in reused
+/// A1, A4's local facts, A5) run once per view. Views are numbered with the last binder advancing fastest, each through its admitted
+/// set in SemanticsMask order, so view i is its case bit i. The selected view is kept in reused
 /// storage, so selecting views allocates nothing once it has held the widest body's binders.</summary>
 /// <param name="types">The Type context of the bodies, which interns the case Types.</param>
 internal sealed class MirCases(TyCtxt types)
