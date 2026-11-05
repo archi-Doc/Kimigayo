@@ -55,7 +55,7 @@ internal sealed partial class MirBuilder
                 this.Assign(destination, Child(node), input);
                 break;
             case HirOp.Block:
-                this.Block(destination, (CodeBlockKoto)node);
+                this.CodeBlock(destination, (CodeBlockKoto)node);
                 break;
             case HirOp.Call when HirTables.PlaceOf(node).Kind != HirPlaceKind.CallResult: // A subscript's element is read below as its Place.
                 this.Call(destination, node);

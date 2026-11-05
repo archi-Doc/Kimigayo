@@ -1758,8 +1758,7 @@ fn loopContinue @614
       StorageDead(_6) @621 s2
       StorageDead(_5) @620 s2
       _4 = const () @619 s2
-      StorageDead(_4) @619 s1
-      goto bb1 @619 s1
+      goto bb8 @619 s1
 fn makeTemporary @643
   _0: string return @644
   bb0:

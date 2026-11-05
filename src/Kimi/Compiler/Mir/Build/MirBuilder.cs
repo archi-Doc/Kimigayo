@@ -8,6 +8,7 @@
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
 // An Opaque temp, which holds a derived or unsupported value where its consumer needs a Place, is no storage: no Ref, pair-case
 // acquisition or case adaptation lends a Place in it; its consumer receives a derived value (DECISIONS R4-M149).
+// A body's expansions, a default's template copy and a defer body's copy, consult one body budget where a copy would begin (Refuses).
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
 using Kimi.Compiler.Parsing;
@@ -26,6 +27,7 @@ namespace Kimi.Compiler.Mir;
 /// <param name="compilation">The compilation.</param>
 internal sealed partial class MirBuilder(Compilation compilation)
 {
+    private const int ExpansionLimit = 65_536; // MIR statements (IMPL 21.3.2): no copy begins past it, one of known size never ends past it.
     private readonly MirProgram program = new();
     private readonly MirValidator validator = new(compilation.Types);
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
@@ -253,33 +255,53 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         this.current = body.AddBlock();
-        var temporaries = this.OpenScope(block: false);
+        this.OpenScope(block: false); // The body value's temporaries, which its end leaves (End).
         var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
-        this.targets.Add(new(declaration, done, -1, -1, At: default)); // A return's target, opened at the body's scope.
+        this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.
         if (self is not null)
         {
             this.Construct(self, (FunctionKoto)declaration);
         }
 
-        this.Result(done, value, value, input: false);
+        var valued = this.TargetBody(value, input: false);
         if (self is not null)
         {
             this.Made(done); // A constructor's body value, set aside.
         }
 
-        this.CloseScope(temporaries);
-        this.CloseScope(parameters);
-        // A default's value that does not complete goes on to its return, the call that takes it, for the checks only (SPEC 14.10.3).
-        var end = this.Info(value);
-        var check = template && !Completes(value) ? body.AddBlock() : -1;
-        body.Terminate(this.current, Completes(value) ? MirTerminator.Return(end) : MirTerminator.Unreachable(end, check));
-        if (check >= 0)
+        this.End(value, valued);
+        this.Pop(parameters);
+        // SPEC 14.10.3: a non-value end of the body, which no construct closes, goes on nowhere; a default's, built after its cleanup,
+        // to its return, the call that takes its value, for the checks only.
+        foreach (var (block, info) in this.ends)
         {
-            body.Terminate(check, MirTerminator.Return(end));
+            var check = template ? body.AddBlock() : -1;
+            body.Terminate(block, MirTerminator.Unreachable(info, check));
+            if (check >= 0)
+            {
+                body.Terminate(check, MirTerminator.Return(info));
+            }
         }
 
+        this.ends.Clear();
         this.validator.Validate(body, this.program.Findings);
+    }
+
+    // IMPL 21.3.2 (DECISIONS R4-M176): the body budget both expansions consult where a copy would begin: a default's template copy, of its
+    // known size, and a defer body's copy, whose size is not known before it is built (0). No copy begins past the limit, and one of known
+    // size never ends past it, so a body passes it only by what the copies begun before it build. A refused copy is not built, and the
+    // node of this body whose expansion it is, the omitting call or the defer statement, records ExpansionLimit_Kd (Resource; once per
+    // node, MirReport's key).
+    private bool Refuses(int size, Koto node)
+    {
+        if (this.body.Statements.Length + size <= ExpansionLimit)
+        {
+            return false;
+        }
+
+        this.Record(node, DiagnosticCode.ExpansionLimit_Kd);
+        return true;
     }
 
     // An argument local located at a syntax node, dropped when the body is left where its Type may need drop (SPEC 16.2.1).

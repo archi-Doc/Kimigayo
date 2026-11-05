@@ -48,11 +48,11 @@ fn largest @4
       StorageDead(_4) @22 s1
       StorageLive(_19) @37 s1
     * _19 = copy _3 @37 s1
-      goto bb26 check bb27 @36 s1
+      goto bb24 check bb25 @36 s1
   bb4:
       StorageLive(_18) @108 s1
       _18 = discriminant(_6) @108 s1
-      switch copy _18 [1: bb16, otherwise: bb5] @108 s1
+      switch copy _18 [1: bb14, otherwise: bb5] @108 s1
   bb5:
       unreachable @22 s1
   bb6:
@@ -75,7 +75,11 @@ fn largest @4
       StorageDead(_11) @26 s3
       _10 = const () @25 s3
       StorageDead(_10) @25 s2
-      goto bb15 @25 s2
+      StorageDead(_9) @23 s2
+      StorageDead(_8) @107 s1
+      StorageDead(_7) @100 s1
+      StorageDead(_6) @22 s1
+      goto bb2 @25 s2
   bb9:
       StorageDead(_12) @27 s3
       StorageLive(_16) @31 s4
@@ -102,53 +106,45 @@ fn largest @4
       _11 = const () @30 s4
       goto bb8 @30 s3
   bb14:
-      StorageDead(_8) @107 s1
-      StorageDead(_7) @100 s1
-      StorageDead(_6) @22 s1
-      goto bb2 @4
-  bb15:
-      StorageDead(_9) @23 s2
-      goto bb14 @4
-  bb16:
       _4 = const () @22 s1
-      goto bb17 @22 s1
-  bb17:
+      goto bb15 @22 s1
+  bb15:
       StorageDead(_18) @108 s1
       StorageDead(_8) @107 s1
       StorageDead(_7) @100 s1
       StorageDead(_6) @22 s1
       goto bb3 @4
-  bb18:
+  bb16:
       return @4
-  bb19:
+  bb17:
       _0 = move _20 @4
-      goto bb18 @4
+      goto bb16 @4
+  bb18:
+      drop _2 -> bb19 [keep] @16
+  bb19:
+      goto bb17 @4
   bb20:
-      drop _2 -> bb21 [keep] @16
+      drop _3 -> bb21 [keep] @19 s1
   bb21:
-      goto bb19 @4
-  bb22:
-      drop _3 -> bb23 [keep] @19 s1
-  bb23:
       StorageDead(_3) @19 s1
+      goto bb18 @4
+  bb22:
+      drop _19 -> bb23 [elide] @37 s1
+  bb23:
+      StorageDead(_19) @37 s1
       goto bb20 @4
   bb24:
-      drop _19 -> bb25 [elide] @37 s1
-  bb25:
-      StorageDead(_19) @37 s1
-      goto bb22 @4
-  bb26:
       _20 = move _19 @36 s1
-      goto bb24 @36 s1
-  bb27:
-      drop _19 -> bb28 @37 s1
-  bb28:
+      goto bb22 @36 s1
+  bb25:
+      drop _19 -> bb26 @37 s1
+  bb26:
       StorageDead(_19) @37 s1
-      drop _3 -> bb29 @19 s1
-  bb29:
+      drop _3 -> bb27 @19 s1
+  bb27:
       StorageDead(_3) @19 s1
-      drop _2 -> bb30 @16
-  bb30:
+      drop _2 -> bb28 @16
+  bb28:
       unreachable @18
 fn use @38
   _0: i64 return @43

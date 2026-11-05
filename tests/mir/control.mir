@@ -103,8 +103,8 @@ fn select @4
       switch copy _13 [0: bb21, otherwise: bb20] @34 s6
   bb18:
       StorageDead(_11) @31 s1
-    * _10 = const 6_i32 @43 s8
-      goto bb16 @42 s1
+    * _14 = const 6_i32 @43 s8
+      goto bb22 @42 s1
   bb19:
       StorageDead(_12) @33 s6
     * goto bb26 check bb27 @40 s6
@@ -225,9 +225,7 @@ fn iterate @48
       StorageDead(_17) @86 s2
       StorageDead(_16) @85 s2
       _4 = const () @58 s2
-      StorageDead(_5) @59 s2
-      StorageDead(_4) @58 s1
-      goto bb1 @58 s1
+      goto bb12 @58 s1
   bb8:
       StorageDead(_11) @73 s3
       StorageLive(_13) @79 s3

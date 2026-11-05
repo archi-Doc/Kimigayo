@@ -12,13 +12,13 @@ namespace Kimi.Compiler.Mir;
 // binding's Drop with it, in declaration order (SPEC 16.2.1), a temp's where its value is created (Hold, Made), so temporaries are
 // destroyed in reverse creation order (SPEC 3.6, DECISIONS R4-M129). The normal end of a scope cleans them up in reverse order; a
 // transfer leaves through the drop tree of its target, whose node for a scope's first registrations and the rest of the tree is built
-// once and shared by every exit that reaches it (rustc's drop tree), a defer body included.
+// once and shared by every exit that reaches it (rustc's drop tree), a defer body included. A body its target ends leaves its scopes
+// through the tree of where it goes on, as a transfer of the same kind does (End, Inline; DECISIONS R4-M176).
 internal sealed partial class MirBuilder
 {
     private readonly List<DropScope> scopes = []; // The open scopes, innermost last.
     private readonly List<Registration> registrations = []; // Every registration of the body, each scope's linked from its last.
     private readonly Dictionary<(int Scope, int Count, int Next), int> trees = new(); // The node of a scope's first Count registrations, then Next.
-    private readonly List<int> pending = []; // The registrations a drop tree is building nodes for, a stack nested builds share.
     private int temporaries; // The innermost scope of temporaries: a statement's, a condition's or the body value's.
     private int lexical; // The innermost block's scope, or the body's.
     private int scopeIds;
@@ -53,13 +53,27 @@ internal sealed partial class MirBuilder
     private void CloseScope(int index, bool clean = true)
     {
         var scope = this.scopes[index];
-        for (var at = clean ? scope.Last : -1; at >= 0; at = this.registrations[at].Prev)
+        this.CleanAfter(scope, clean ? 0 : scope.Count);
+        (this.temporaries, this.lexical) = (scope.Temporaries, scope.Lexical);
+        this.scopes.RemoveAt(index);
+    }
+
+    // Removes the open scopes from an index up, innermost first, which a body's end left (End) without cleaning them up again.
+    private void Pop(int index)
+    {
+        while (this.scopes.Count > index)
+        {
+            this.CloseScope(this.scopes.Count - 1, clean: false);
+        }
+    }
+
+    // A scope's registrations after its first count, newest first, cleaned up from the current block.
+    private void CleanAfter(in DropScope scope, int count)
+    {
+        for (var (at, left) = (scope.Last, scope.Count); left > count; (at, left) = (this.registrations[at].Prev, left - 1))
         {
             this.Clean(this.registrations[at]);
         }
-
-        (this.temporaries, this.lexical) = (scope.Temporaries, scope.Lexical);
-        this.scopes.RemoveAt(index);
     }
 
     // A cleanup the scope at an index runs when it is left.
@@ -109,41 +123,65 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // The entry of the drop tree from the open scopes above a depth to a target: each scope's registrations in reverse, the innermost scope
-    // first (plan 5.6.4). The node of a scope's registrations before the same rest is built once and shared: a later exit sees as many
-    // registrations or more, so it builds the ones registered since the last node and goes on to that node.
+    // The entry of a transfer's drop tree from the open scopes above a depth to a target: each scope's registrations in reverse, the
+    // innermost scope first (plan 5.6.4). The node of a scope's registrations before the same rest is built once and shared: a later exit
+    // sees as many registrations or more, so it builds the ones registered since the last node (Found) as a node going on to that node.
     private int Exit(int depth, int target)
     {
         var current = this.current;
         for (var index = depth; index < this.scopes.Count; index++)
         {
             var scope = this.scopes[index];
-            var (mark, count, at, next) = (this.pending.Count, scope.Count, scope.Last, target);
-            while (count > 0 && !this.trees.TryGetValue((scope.Id, count, target), out next))
-            {
-                this.pending.Add(at);
-                (at, count) = (this.registrations[at].Prev, count - 1);
-            }
-
-            next = count == 0 ? target : next;
-            if (this.pending.Count > mark)
+            var next = this.Found(scope, target, out var count);
+            if (count < scope.Count)
             {
                 var node = this.current = this.body.AddBlock();
                 this.trees.Add((scope.Id, scope.Count, target), node);
-                for (var i = mark; i < this.pending.Count; i++)
-                {
-                    this.Clean(this.registrations[this.pending[i]]);
-                }
-
+                this.CleanAfter(scope, count);
                 this.body.Terminate(this.current, MirTerminator.Goto(next, this.entry));
                 (next, this.current) = (node, current);
-                this.pending.RemoveRange(mark, this.pending.Count - mark);
             }
 
             target = next;
         }
 
         return target;
+    }
+
+    // SPEC 16.2 (DECISIONS R4-M176): where a body's end goes on from the open scopes above a depth to a target, through its drop tree as a
+    // transfer's: the nodes a transfer built (Found), outer to inner, while a scope's registrations all have one; the rest, the first
+    // scope's newer registrations and every scope inside it, cleaned up from the current block, innermost first, as no exit shares them.
+    private int Inline(int depth, int target)
+    {
+        var (index, count) = (depth, 0);
+        for (; index < this.scopes.Count; index++)
+        {
+            target = this.Found(this.scopes[index], target, out count);
+            if (count < this.scopes[index].Count)
+            {
+                break;
+            }
+        }
+
+        for (var i = this.scopes.Count - 1; i >= index; i--)
+        {
+            this.CleanAfter(this.scopes[i], i == index ? count : 0);
+        }
+
+        return target;
+    }
+
+    // The node of a scope's first registrations before a target, for the most of them a node is built for (count), else the target.
+    private int Found(in DropScope scope, int target, out int count)
+    {
+        var next = target;
+        count = scope.Count;
+        while (count > 0 && !this.trees.TryGetValue((scope.Id, count, target), out next))
+        {
+            count--;
+        }
+
+        return count == 0 ? target : next;
     }
 
     // One registration's cleanup from the current block; building goes on in it, or after a Drop or a defer in the block after it.
@@ -198,23 +236,29 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 16.1: a defer body where its scope is left, built once per target of the drop tree it is in (plan 5.6.4), in the scope that
-    // registered it; an exit to it goes on with the cleanup after it, and a body that does not complete goes on there for the checks only.
+    // registered it; its end and an exit to it go on with the cleanup after it (End), and a body that does not complete goes on there for
+    // the checks only (its Check). A copy the body budget refuses where it would begin builds nothing (Refuses, IMPL 21.3.2).
     private void Deferred(in Registration registration)
     {
+        var defer = (DeferredBlockKoto)registration.Defer!;
+        if (this.Refuses(0, defer))
+        {
+            return;
+        }
+
         var scope = this.scope;
         var start = this.statementStart;
-        var defer = (DeferredBlockKoto)registration.Defer!;
         var next = this.body.AddBlock();
         (this.scope, this.statementStart) = (registration.Scope, false);
         var depth = this.scopes.Count;
         var temporaries = this.OpenScope(block: false);
         var result = this.Hold(BoundType.Unit, defer);
-        this.targets.Add(new(defer, result, next, -1, new(this.arguments.Count, depth, this.scope, this.ends.Count)));
-        this.Block(result, defer.Body, MirScopeKind.Deferred);
+        this.targets.Add(new(defer, result, next, -1, next, new(this.arguments.Count, depth, this.scope, this.ends.Count)));
+        var valued = this.TargetBlock(result, defer.Body, MirScopeKind.Deferred);
         this.Made(result);
+        this.End(defer.Body, valued);
+        this.Pop(temporaries);
         this.targets.RemoveAt(this.targets.Count - 1);
-        this.CloseScope(temporaries);
-        this.Join(next, defer.Body);
         (this.scope, this.statementStart, this.current) = (scope, start, next);
     }
 

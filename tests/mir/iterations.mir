@@ -77,8 +77,7 @@ fn sum @4
       StorageDead(_13) @26 s3
       StorageDead(_12) @24 s3
       _9 = const () @17 s3
-      StorageDead(_9) @17 s2
-      goto bb12 @17 s2
+      goto bb13 @17 s2
   bb9:
       StorageDead(_11) @19 s3
     * goto bb14 check bb15 @23 s4
@@ -185,7 +184,7 @@ fn positions @29
       StorageDead(_3) @39 s1
       StorageLive(_17) @55 s1
     * _17 = copy _2 @55 s1
-      goto bb20 check bb21 @54 s1
+      goto bb19 check bb20 @54 s1
   bb5:
       StorageLive(_9) @40 s2
       _9 = copy _6 @40 s2
@@ -208,7 +207,8 @@ fn positions @29
       StorageDead(_14) @51 s3
       _10 = const () @44 s3
       StorageDead(_10) @44 s2
-      goto bb15 @44 s2
+      StorageDead(_9) @40 s2
+      goto bb2 @44 s2
   bb7:
       StorageDead(_12) @46 s3
     * goto bb13 check bb14 @50 s4
@@ -234,23 +234,20 @@ fn positions @29
   bb14:
       unreachable @49 s3
   bb15:
-      StorageDead(_9) @40 s2
-      goto bb2 @29
-  bb16:
       return @29
-  bb17:
+  bb16:
       _0 = move _18 @29
+      goto bb15 @29
+  bb17:
+      StorageDead(_2) @35 s1
       goto bb16 @29
   bb18:
-      StorageDead(_2) @35 s1
+      StorageDead(_17) @55 s1
       goto bb17 @29
   bb19:
-      StorageDead(_17) @55 s1
-      goto bb18 @29
-  bb20:
       _18 = move _17 @54 s1
-      goto bb19 @54 s1
-  bb21:
+      goto bb18 @54 s1
+  bb20:
       StorageDead(_17) @55 s1
       StorageDead(_2) @35 s1
       unreachable @34
@@ -300,11 +297,11 @@ fn pairs @56
       StorageDead(_3) @67 s1
       StorageLive(_18) @79 s1
     * _18 = copy _2 @79 s1
-      goto bb21 check bb22 @78 s1
+      goto bb19 check bb20 @78 s1
   bb4:
       StorageLive(_17) @105 s1
       _17 = discriminant(_6) @105 s1
-      switch copy _17 [1: bb13, otherwise: bb5] @105 s1
+      switch copy _17 [1: bb11, otherwise: bb5] @105 s1
   bb5:
       unreachable @67 s1
   bb6:
@@ -325,7 +322,12 @@ fn pairs @56
       StorageDead(_12) @72 s3
       _11 = const () @71 s3
       StorageDead(_11) @71 s2
-      goto bb12 @71 s2
+      StorageDead(_10) @69 s2
+      StorageDead(_9) @68 s2
+      StorageDead(_8) @104 s1
+      StorageDead(_7) @97 s1
+      StorageDead(_6) @67 s1
+      goto bb2 @71 s2
   bb9:
       StorageDead(_13) @73 s3
       StorageLive(_14) @75 s4
@@ -345,44 +347,35 @@ fn pairs @56
       _12 = const () @72 s3
       goto bb8 @72 s3
   bb11:
-      StorageDead(_8) @104 s1
-      StorageDead(_7) @97 s1
-      StorageDead(_6) @67 s1
-      goto bb2 @56
-  bb12:
-      StorageDead(_10) @69 s2
-      StorageDead(_9) @68 s2
-      goto bb11 @56
-  bb13:
       _3 = const () @67 s1
-      goto bb14 @67 s1
-  bb14:
+      goto bb12 @67 s1
+  bb12:
       StorageDead(_17) @105 s1
       StorageDead(_8) @104 s1
       StorageDead(_7) @97 s1
       StorageDead(_6) @67 s1
       goto bb3 @56
-  bb15:
+  bb13:
       return @56
-  bb16:
+  bb14:
       _0 = move _19 @56
-      goto bb15 @56
+      goto bb13 @56
+  bb15:
+      drop _1 -> bb16 [keep] @57
+  bb16:
+      goto bb14 @56
   bb17:
-      drop _1 -> bb18 [keep] @57
-  bb18:
-      goto bb16 @56
-  bb19:
       StorageDead(_2) @64 s1
+      goto bb15 @56
+  bb18:
+      StorageDead(_18) @79 s1
       goto bb17 @56
+  bb19:
+      _19 = move _18 @78 s1
+      goto bb18 @78 s1
   bb20:
       StorageDead(_18) @79 s1
-      goto bb19 @56
-  bb21:
-      _19 = move _18 @78 s1
-      goto bb20 @78 s1
-  bb22:
-      StorageDead(_18) @79 s1
       StorageDead(_2) @64 s1
-      drop _1 -> bb23 @57
-  bb23:
+      drop _1 -> bb21 @57
+  bb21:
       unreachable @63

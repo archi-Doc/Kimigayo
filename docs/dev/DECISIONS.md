@@ -544,7 +544,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R3-6** `MirDefKey` is keyed by `BindingSymbol` until R7's declaration table.
 - **R3-7** `Problem(Code, SourceRef Subject)` stays minimal until R6.
 - **R3-8** Default expansion stops at 65,536 MIR statements per expanded body with the Resource code
-  `DefaultExpansionLimit_Kd` (IMPL §21.3.2, plan §16-10).
+  `DefaultExpansionLimit_Kd` (IMPL §21.3.2, plan §16-10). Amended by R4-M176 (PLAN G427 U2): one body budget for default and defer
+  copies, `ExpansionLimit_Kd`.
 - **R3-9** (owner) An Array's or Dictionary's `capacity` is the temporary `IntrinsicId.Capacity`
   (`Call(Intrinsic(Capacity), [&handle])`). R5 reads the field under the current layout rules; R8 removes it with the
   representation structs. Rejected: deferring to R5 (the same choice later, plus an R3 gate exception); pulling R8's
@@ -5506,6 +5507,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
     does not complete, and `Acquire` by the Place's Type.
   - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
     `|| !Reached` clause at `Close` (a fallback keyed on an absence; BU-101 removed its need).
+- **R4-M176 A body its target ends leaves through its target's drop tree (PLAN G427)** (2026-11-05; design revision 3, review 3
+  ACCEPT; under the owner's C3; class Major) SPEC 16.2, 16.2.2, 16.1.1, 14.2.1, 14.10.3; keeps R4-M129's scope order.
+  - Rule (`MirBuilder`): a body a target ends is that target's implicit delivery. Its end (`End`) leaves the scopes the target opened
+    around it through the drop tree of the block a transfer of the same kind goes on to: an iteration's end to `Continue`; an end that
+    completes, or a value end, to the delivery its last item's Completion takes (`Target.Delivery`, the one decision `Transfer` makes:
+    Destination and Break, or Into and Join), taken before that item is built (`Target.Ending`); an end arrival that does not complete
+    to `Target.Check`, else inline for `Close`. Each (scope, registrations, continuation) cleanup is built once: `Exit` and the end's
+    builder (`Inline`) share one lookup (`Found`); the end builds what no node covers inline, innermost first.
+  - Facts the builder publishes: `Target.Body`, set by `TargetBody` (if clauses, else, `do`, match arms, function bodies) and
+    `Iterate` (iterations), read by `EndingTarget` on every route to a block, where the target's body is built by `TargetBlock` and
+    any other by `Block`, which records `InternalInvariant_Kd` for a target body; `Deferred` builds its body, always a block, by
+    `TargetBlock` and sets none. `Target.Check`, decided where the target opens: a construct's join where it is a Never form, a defer
+    body's `next`.
+  - Bodies no target ends keep their inline close and continuation: `unsafe` and a `require` failure body (SPEC 14.3, 14.11).
+  - The placer takes the pair: whoever places the body's value takes the delivery (place, continuation). `TargetBlock` places the
+    last item into the target's own place, so it takes the delivery again before that item, where its route gave it that place
+    (`Target.Ending.Place`); a route that holds the value in a temp (a reserving call input, an adapted block) places from that temp
+    after the block, so the delivery `TargetBody` took stands. Evidence: `CallReservationTest`'s reserving inputs, `MirCensusTest`
+    and the goldens fail where it takes it always.
+  - The function body (U1b) is a target body too: with a return, its end shares the return's tree (`Reach`), and records anchored at
+    that Return move to the declaration's source; before any return it cleans up inline and returns there, as before. A non-value
+    end goes on nowhere, a default template's to its check block, built after the cleanup.
+  - Residual family (the owner, verbatim 「上限付きで受入（推奨）」): a nested Body with a defer and a self exit inside a defer body still
+    has two continuations; it is pinned by scaling rows (its loop and nested-Body forms) and bounded by the body budget.
+  - Body budget (U2, under that decision, which also authorizes IMPL 21.3.2's wording; amends R3-8): one budget at the builder's
+    entry (`MirBuilder.Refuses`, `ExpansionLimit`, 65,536 MIR statements), consulted by both expansions where a copy would begin: a
+    default's template copy by its size, a defer body's copy, whose size is not known before it is built, by none. No copy begins
+    past the limit, and a copy of known size never ends past it. A refused copy builds nothing (a default takes an Opaque value as
+    before), and the node of this body whose expansion is refused, the omitting call or the `defer` statement, records the Resource
+    Error, once per node (MirReport's key). `DefaultExpansionLimit_Kd` is renamed `ExpansionLimit_Kd` in place: the old name would
+    misname a defer's record, and a rename adds no vocabulary entry, so it needs no owner approval; the owner is told at landing.
+  - Rejected: one chain followed by a selector (it would join different continuations); `TargetBody` holding a block body's temp
+    itself (a second copy of Operand's guards, Value's hold and Result's input wrapper).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

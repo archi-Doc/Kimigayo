@@ -154,7 +154,7 @@ public sealed partial class MirBuildTest
     }
 
     // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
-    // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
+    // twice at each level report ExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
     // calls that omit it take an Opaque value without another record: the record marks the template it lies in alone, not a body whose
     // Opaque value rests on it (MirBody.HasConstructionRecord; GR-1a, fail-before: none).
     [Fact]
@@ -170,7 +170,7 @@ public sealed partial class MirBuildTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var record = Assert.Single(program.Records(MirRecordClass.Construction));
-        Assert.Equal(DiagnosticCode.DefaultExpansionLimit_Kd, record.Code);
+        Assert.Equal(DiagnosticCode.ExpansionLimit_Kd, record.Code);
         Assert.Matches(@"^f\d+\(\)$", c.SyntaxOf(record.Subject).ToString());
         Assert.All(program.Bodies.ToArray(), static x => Assert.InRange(x.Statements.Length, 0, 65_536));
         Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0).HasOpaque);
