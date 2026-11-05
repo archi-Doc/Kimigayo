@@ -10550,6 +10550,25 @@ resumed by R4-M86 (2026-10-20).
     - triggering on a clause's syntax, which depends on order (h5, cx1);
     - binding every header before every Constraint.
 
+- **BU-100 An unrelated Constraint set's slot is its occurrence's own fixed Origin** (2026-11-05; PLAN G417 (3) U2; the owner's
+  「(c) に切り替えます」, 「123を推奨どおり、4を承認する」 and 「G417 の U2　aで」; BU's design `bu\batch\G417\binding-design.md` revision 7,
+  design review 6 ACCEPT with condition C-2) SPEC 15.3.2, 15.3.4. The cause it removes: the omitted slot of a set that no relation
+  equates had no completion, so it kept `MissingOriginBinding_Kd` and its declaration's Constraints their dependent
+  `InvalidConstraint_Kd`, though SPEC 15.3.4 makes such a set quantify every choice of its Origins.
+  - Rule (`Binding.OmittedOrigin`'s last step, `Binding.ConstraintSet`): in an explicit position, the omitted aggregate slot of a
+    binding set that its owner's declaration holds and that a Constraint names (not an associated specification) is
+    `OriginAtom(set, OriginKind.Parameter, slot)`. That is a fixed Origin whose Binder is the set occurrence: no caller's
+    substitution reaches it and no solver solves it. A Contract-wide clause, its own owner, is that Constraint. The atom replaces
+    only the Constraint position's omission (C-2); every other omission keeps its rule.
+  - Storage (`ValidateOriginRequirements`, after the last fixed point): a written Origin in storage (`Binding.Storage.StorageType`:
+    a stored Field's Type, a payload, a base clause) that is such an atom is a hidden Origin, `InvalidOriginBinding_Kd` at the
+    Origin expression. A related set completes through its relation first and never reaches the atom.
+  - Rejected:
+    - a Projection atom (revision 7's first candidate): `OriginClasses` reads a Projection in a body as body-local unless it
+      encloses the body, so A5 would not read the slot as fixed;
+    - completing the slot in `CompletePendingOrigins`: an unrelated set binds after its declaration completed (the per-Type
+      window of `Binding.Types`), so it never reaches that step.
+
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
   unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
   environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and

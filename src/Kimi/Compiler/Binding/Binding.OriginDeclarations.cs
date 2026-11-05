@@ -96,6 +96,32 @@ public sealed partial class Binding
         => type.Kind == BoundTypeKind.Closure ? ClosureArgumentVariance(type, index, binding)
             : type.Symbol?.Schema?.Origins[index].Variance ?? OriginVariance.Invariant;
 
+    // SPEC 15.3.4: whether a use is a binding set named in a Constraint (not an associated specification) that its declaration holds.
+    private bool ConstraintSet(Koto use)
+    {
+        if (use is not TypeSemanticsKoto { BindingSetName: { } label } || OriginOwner(use) is not { } owner ||
+            this.originDeclarations.GetValueOrDefault(owner)?.Sets.GetValueOrDefault(label) is not { } set || !ReferenceEquals(set, use))
+        {
+            return false;
+        }
+
+        // The Constraint lies between the occurrence and its owner, or is the owner (a Contract-wide clause).
+        for (var node = use.Parent; node is not null; node = node.Parent)
+        {
+            if (node is IsKoto { IsAssociatedConstraint: false })
+            {
+                return true;
+            }
+
+            if (ReferenceEquals(node, owner))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
+
     private OriginDeclaration OriginDeclarationFor(Koto owner)
     {
         if (!this.originDeclarations.TryGetValue(owner, out var declaration))

@@ -475,6 +475,14 @@ public sealed partial class Binding
                 this.JudgeRawOrigin(written, raw); // SPEC 5.7: every written raw Origin, after the last fixed point.
             }
 
+            // SPEC 15.3.2 (DECISIONS BU-100): storage holds only public Origins; a written Origin there that is a Constraint set's
+            // unrelated slot is a hidden Origin, judged once every declaration completed.
+            if (node is TypeSemanticsKoto { OriginExpression: { } expression, BoundType.Origin: { Kind: OriginKind.Parameter, Binder: TypeSemanticsKoto { BindingSetName: not null } } } &&
+                StorageType(node) is not null)
+            {
+                this.Fail(expression, BindingFailure.InvalidOrigin);
+            }
+
             var invalid = false;
             if (type.Symbol?.Schema is { } schema)
             {
