@@ -5506,6 +5506,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     does not complete, and `Acquire` by the Place's Type.
   - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
     `|| !Reached` clause at `Close` (a fallback keyed on an absence; BU-101 removed its need).
+- **R4-M176 A body its target ends leaves through its target's drop tree (PLAN G427)** (2026-11-05; design revision 3, review 3
+  ACCEPT; under the owner's C3; class Major) SPEC 16.2, 16.2.2, 16.1.1, 14.2.1, 14.10.3; keeps R4-M129's scope order.
+  - Rule (`MirBuilder`): a body a target ends is that target's implicit delivery. Its end (`End`) leaves the scopes the target opened
+    around it through the drop tree of the block a transfer of the same kind goes on to: an iteration's end to `Continue`; an end that
+    completes, or a value end, to the delivery its last item's Completion takes (`Target.Delivery`, the one decision `Transfer` makes:
+    Destination and Break, or Into and Join), taken before that item is built (`Target.Ending`); an end arrival that does not complete
+    to `Target.Check`, else inline for `Close`. Each (scope, registrations, continuation) cleanup is built once: `Exit` and the end's
+    builder (`Inline`) share one lookup (`Found`); the end builds what no node covers inline, innermost first.
+  - Facts the builder publishes: `Target.Body`, set by `TargetBody` (if clauses, else, `do`, match arms) and `Iterate` (iterations),
+    read by `EndingTarget` on every route to a block, where the target's body is built by `TargetBlock` and any other by `Block`, which
+    records `InternalInvariant_Kd` for a target body; `Deferred` builds its body, always a block, by `TargetBlock` and sets none.
+    `Target.Check`, decided where the target opens: a construct's join where it is a Never form, a defer body's `next`.
+  - Bodies no target ends keep their inline close and continuation: `unsafe` and a `require` failure body (SPEC 14.3, 14.11).
+  - A body whose route holds its value in a temp (a reserving call input, an adapted block) keeps the delivery `TargetBody` took, as
+    the route places from that temp; the function body joins in U1b, the body budget in U2.
+  - Residual family (the owner, verbatim 「上限付きで受入（推奨）」): a nested Body with a defer and a self exit inside a defer body still
+    has two continuations; it is pinned by scaling rows and bounded by U2's limit.
+  - Rejected: one chain followed by a selector (it would join different continuations); `TargetBody` holding a block body's temp
+    itself (a second copy of Operand's guards, Value's hold and Result's input wrapper).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

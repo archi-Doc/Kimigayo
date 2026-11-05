@@ -262,7 +262,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.Construct(self, (FunctionKoto)declaration);
         }
 
-        this.TargetBody(done, value, input: false);
+        this.Result(done, value, value, input: false); // PLAN G427 U1b ends it as a target body (TargetBody, End).
         if (self is not null)
         {
             this.Made(done); // A constructor's body value, set aside.

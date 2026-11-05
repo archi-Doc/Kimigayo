@@ -97,8 +97,9 @@ internal sealed partial class MirBuilder
             (target.Destination, target.Break) = (result, deliver);
         }
 
-        var (place, mark) = (target.Destination, target.At.Mark);
-        var entry = this.Exit(target.At.Depth, continues ? target.Continue : assumed ? target.Join : target.Break);
+        var (place, join) = target.Delivery(completes: !assumed);
+        var mark = target.At.Mark;
+        var entry = this.Exit(target.At.Depth, continues ? target.Continue : join);
         var runtime = continues ? -1 : this.body.AddBlock(); // The runtime edge's first block: the abandoned borrows end, the result is placed.
         for (var i = mark; i < this.arguments.Count; i++)
         {
@@ -116,7 +117,7 @@ internal sealed partial class MirBuilder
             // construction holding a Never part its other parts (MirMoveData's Never parts), into the join's own Destination (Into),
             // before the Scope Exit, which no cleanup there can observe (DECISIONS R4-M175).
             (var at, this.current) = (this.current, runtime);
-            this.Set(target.Into, MirRvalue.Use(this.body.AddOperand(value)), jump);
+            this.Set(place, MirRvalue.Use(this.body.AddOperand(value)), jump);
             this.current = at;
         }
         else if (!continues)
@@ -245,10 +246,19 @@ internal sealed partial class MirBuilder
         // Its own Destination, which an assumed delivery places into: Destination before a delivery made it a result temp (Delivers).
         internal MirPlace Into { get; } = Destination;
 
-        // The body of it its owner is building now, which TargetBody and Iterate publish (Publish) and the routes to a block read
+        // The body of it its owner is building now, which TargetBody and Iterate set (SetBody) and the routes to a block read
         // (EndingTarget); none between its bodies, and none for a defer body, always a block, which Deferred builds as its target's
         // directly (TargetBlock).
         internal Koto? Body { get; set; }
+
+        // Where its body's end places its value and goes on (End): the delivery its builder took for the body's last item, before
+        // building it (TargetBody, TargetBlock), so a departing exit inside that item, which makes the Destination a result temp, does
+        // not split it.
+        internal (MirPlace Place, int Continuation) Ending { get; set; } = (Destination, Join);
+
+        // SPEC 16.2.2, 14.10.3 (DECISIONS R4-M175): a delivery's place and continuation: one that completes goes into the Destination,
+        // a result temp after a departing exit, and on at its Break; an assumed one goes into Into and on at the Join.
+        internal readonly (MirPlace Place, int Continuation) Delivery(bool completes) => completes ? (this.Destination, this.Break) : (this.Into, this.Join);
     }
 
     // The builder's position where a construct opened: the pending operands below its transfers (Mark), the open scopes around it (Depth),

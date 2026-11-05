@@ -29,13 +29,13 @@ internal sealed partial class MirBuilder
             var next = this.body.AddBlock();
             var test = this.Test(conditional.Branches[i].Condition, next, then);
             this.Enter(then, test);
-            this.Arm(destination, conditional.Branches[i].Body, after, input);
+            this.Arm(conditional.Branches[i].Body, input);
             this.Enter(next, test);
         }
 
         if (conditional.ElseBody is { } other)
         {
-            this.Arm(destination, other, after, input);
+            this.Arm(other, input);
         }
         else
         {
@@ -54,7 +54,7 @@ internal sealed partial class MirBuilder
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
         var after = this.Open(loop, destination, head);
         this.current = start;
-        this.Iterate(loop.Body, head);
+        this.Iterate(loop.Body);
         var check = this.Close(after);
         this.body.Terminate(head, MirTerminator.Goto(start, this.Info(loop), check));
     }
@@ -70,7 +70,7 @@ internal sealed partial class MirBuilder
         this.current = head;
         var test = this.Test(loop.Condition, done, start);
         this.Enter(start, test);
-        this.Iterate(loop.Body, head);
+        this.Iterate(loop.Body);
         this.Enter(done, test);
         this.Implicit(destination, after, loop, loop.Condition);
         this.Close(after);
@@ -81,7 +81,7 @@ internal sealed partial class MirBuilder
     private void Do(MirPlace destination, DoKoto scoped, bool input)
     {
         var after = this.Open(scoped, destination);
-        this.Arm(destination, scoped.Body, after, input);
+        this.Arm(scoped.Body, input);
         this.Close(after);
     }
 
@@ -137,42 +137,54 @@ internal sealed partial class MirBuilder
     }
 
     // An if clause's or a do's body whose value its construct takes, as a call's input as Result places it (input), in a scope of its
-    // own, as a match arm's: the body is its own Body, so the temporaries of its result end with it (SPEC 14.2.1, 16.2.2 step 3); then the
-    // join after the construct.
-    private void Arm(MirPlace destination, Koto body, int after, bool input)
+    // own, as a match arm's: the body is its own Body, so the temporaries of its result end with it (SPEC 14.2.1, 16.2.2 step 3); then its
+    // end, which leaves that scope (End).
+    private void Arm(Koto body, bool input)
     {
         var scope = this.temporaries = this.OpenScope(block: true);
-        var value = this.TargetBody(destination, body, input);
-        this.CloseScope(scope);
-        this.End(after, body, value);
+        this.End(body, this.TargetBody(body, input));
+        this.Pop(scope);
     }
 
-    // SPEC 14.2.1, 16.2: a body its innermost target ends and takes the value of (an if clause's or else body, a do's, a match arm's or a
-    // function's; an iteration's is a statement, Iterate), its value as Result places it, published as that target's Body while it is
-    // built: a block of it, on any route Result takes (its own, a call input's temp, or the temp its Adjust is acquired from, SPEC
-    // 16.2.2), is built as the target's (TargetBlock, EndingTarget). Whether it ends in its value.
-    private bool TargetBody(MirPlace destination, Koto body, bool input)
+    // SPEC 14.2.1, 16.2: a body its innermost target ends and takes the value of (an if clause's or else body, a do's or a match arm's; an
+    // iteration's is a statement, Iterate), set as that target's Body while it is built: its value placed as Result places it, at the
+    // delivery its Completion takes (Target.Ending), and a block of it, on any route Result takes (its own, a call input's temp, or the
+    // temp its Adjust is acquired from, SPEC 16.2.2), built as the target's (TargetBlock, EndingTarget). Whether it ends in its value.
+    private bool TargetBody(Koto body, bool input)
     {
-        this.Publish(body);
-        var valued = this.Result(destination, body, body, input);
-        this.Publish(null);
+        ref var target = ref CollectionsMarshal.AsSpan(this.targets)[^1];
+        (target.Body, target.Ending) = (body, target.Delivery(Completes(body)));
+        var valued = this.Result(target.Ending.Place, body, body, input);
+        this.SetBody(null);
         return valued;
     }
 
-    // The body the innermost target's owner is building, or none after it (Target.Body).
-    private void Publish(Koto? body) => CollectionsMarshal.AsSpan(this.targets)[^1].Body = body;
+    // Sets the body the innermost target's owner is building, none after it (Target.Body).
+    private void SetBody(Koto? body) => CollectionsMarshal.AsSpan(this.targets)[^1].Body = body;
 
-    // SPEC 14.9.1, 14.10.3: a construct's body's end, after its value (a value end) or its end arrival: one that completes, or a value
-    // end, joins (Join), a Never value for the checks only, placing nothing (DECISIONS R4-M62); an end arrival that does not complete
-    // supplies no completion, a non-value end that Close ends.
-    private void End(int after, Koto body, bool value)
+    // SPEC 16.2, 14.9.1, 14.10.3 (DECISIONS R4-M176): a target body's end, after its value (a value end) or its end arrival, leaves the
+    // scopes the target opened around it through the drop tree of where it goes on, as a transfer of the same kind does (Inline): an
+    // iteration's to its next iteration (Continue); one that completes, or a value end, to its delivery (Target.Ending; the edge Joins),
+    // a Never value for the checks only (R4-M62); an end arrival that does not complete to the target's Check for the checks only, else
+    // cleaned up for them as a non-value end that Close ends. The scopes stay open for the body's owner to remove (Pop).
+    private void End(Koto body, bool value)
     {
-        if (Completes(body) || value)
+        var target = this.targets[^1];
+        if (target.Continue >= 0)
         {
-            this.Joins(this.Edge(after, body));
+            this.Join(this.Inline(target.At.Depth, target.Continue), body);
+        }
+        else if (Completes(body) || value)
+        {
+            this.Joins(this.Edge(this.Inline(target.At.Depth, target.Ending.Continuation), body));
+        }
+        else if (target.Check >= 0)
+        {
+            this.Join(this.Inline(target.At.Depth, target.Check), body);
         }
         else
         {
+            this.Inline(target.At.Depth, -1);
             this.ends.Add((this.current, this.Info(body)));
         }
     }
@@ -191,21 +203,18 @@ internal sealed partial class MirBuilder
         this.Joins(MirTerminator.Goto(after, this.Info(construct)));
     }
 
-    // An iteration: the body for its effect, a statement's value, built as Statement builds one (Into, into a temp of its own with the
-    // statement's temporaries, SPEC 3.6) and published as its target's Body (TargetBody), then back to the head, through the cleanup of
-    // the iteration's scopes as a continue goes.
-    private void Iterate(Koto body, int head)
+    // An iteration: the body for its effect, a statement's value (Evaluated) set as its target's Body, then its end to the next iteration
+    // (End). Its statement's temporaries are a scope of its own, not Statement's, as its end leaves them through the tree.
+    private void Iterate(Koto body)
     {
         this.statementStart = true;
         var temporaries = this.OpenScope(block: false);
-        var value = this.Hold(Held(body), body);
-        this.Publish(body);
-        this.Into(value, body);
-        this.Publish(null);
-        this.Made(value);
-        this.CloseScope(temporaries);
+        this.SetBody(body);
+        this.Evaluated(body);
+        this.SetBody(null);
         this.statementStart = false;
-        this.Join(this.Exit(this.targets[^1].At.Depth, head), body);
+        this.End(body, value: false);
+        this.Pop(temporaries);
     }
 
     // The end of a body: a runtime edge to the block where the body completes, else only its check-only continuation ends there (plan

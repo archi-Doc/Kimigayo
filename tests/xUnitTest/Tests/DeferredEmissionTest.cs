@@ -3,6 +3,7 @@
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Xunit;
 
 namespace XunitTest;
@@ -123,19 +124,78 @@ public class DeferredEmissionTest
         ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", observationMilliseconds: 1000);
     }
 
-    // The MIR body's blocks, measured per depth, bound the expansion of nested deferred bodies at each self exit and continue.
-    [Trait("Purpose", "Allocation")]
+    // SPEC 16.2 (PLAN G427): a defer body's end and its self exits leave its scopes through one drop tree, so nested deferred bodies with
+    // self exits and continues grow linearly with their depth (dev before G427: 72, 168, 360, 744 blocks at depth 1-4, doubling).
     [Theory]
-    [InlineData(1, 72)]
-    [InlineData(2, 168)]
-    [InlineData(3, 360)]
-    [InlineData(4, 744)]
-    public void NestedSelfExitsAndContinuesHaveMeasuredBoundedExpansion(int depth, int blocks)
+    [InlineData(1, 56)]
+    [InlineData(2, 88)]
+    [InlineData(3, 120)]
+    [InlineData(4, 152)]
+    [InlineData(8, 280)]
+    public void NestedSelfExitsShareTheirDropTreesLinearly(int depth, int blocks)
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(depth));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
-        Assert.Equal(blocks, c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0).Blocks.Length);
+        Assert.Equal(blocks, TopLevelBlocks(c));
+    }
+
+    // SPEC 16.2 (PLAN G427, the residual family's loop form): a loop body's end and its continues share the loop's drop tree, so each
+    // level of (defer, loop, defer, self exit, continue) at most doubles the body (dev before G427: three times per level).
+    [Fact]
+    public void NestedLoopsInDeferredBodiesAtMostDoublePerLevel()
+    {
+        var blocks = new[] { 3, 4, 5, 6 }.Select(static depth => TopLevelBlocks(MinimalEmissionTest.Analyze(LoopNestSource(depth)))).ToArray();
+        for (var i = 1; i < blocks.Length; i++)
+        {
+            Assert.True(blocks[i] <= (2 * blocks[i - 1]) + 64, string.Join(", ", blocks));
+        }
+    }
+
+    // SPEC 16.2 (PLAN G427 F4): a labeled do's exit and its completion share its drop tree, so its defer body is built once (dev before
+    // G427: twice, in the exit's tree and inline at the end). An indented body's last item is a statement (SPEC 14.2.2), so the do is Unit.
+    [Fact]
+    public void AnExitAndTheEndOfItsTargetBuildTheDeferOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(c: bool)\n    label work: do\n        defer => Console.writeLine(\"d\")\n        if c => exit to work\n        Console.writeLine(\"e\")\nf(true)");
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        var f = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
+        Assert.Equal(2, f.Blocks.ToArray().Count(static x => x.Terminator.Kind == MirTerminatorKind.Call));
+    }
+
+    // SPEC 16.2, 15.1.1, 14.10.3 (PLAN G427 F1, F2, F4, F4', F5): a body that completes and is left by a transfer to its target leaves its
+    // scopes through one drop tree; the checks join the paths there, so the valid program stays accepted, and its twin, whose failure
+    // lies on one path only (in the shared cleanup, or a Never part), keeps its one record (code) inside the marked text (at). An
+    // indented body ends in a statement (SPEC 14.2.2), so a valued end is a single-item body's (F4': after a departing yield, a Never
+    // part's value end goes on at the join, not through the result temp's delivery; after `return`, where its read sees the assumed
+    // path, R4-M175) and F4's Loan twin is on its valued exits.
+    [Theory]
+    [InlineData("func f(c: bool)\n    defer\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if c => exit\n        Console.writeLine(\"end\")", null, null)]
+    [InlineData("func f(c: bool)\n    defer\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if c => exit\n        let moved = t@move", "MovedPlace_Kd", "writeLine(t)")]
+    [InlineData("func f(n: i32)\n    var i = 0\n    while i < n\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        i += 1\n        if i == 1 => continue\n        Console.writeLine(\"end\")", null, null)]
+    [InlineData("func f(n: i32)\n    var i = 0\n    while i < n\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        i += 1\n        if i == 1 => continue\n        let moved = t@move", "MovedPlace_Kd", "writeLine(t)")]
+    [InlineData("func f(c: bool)\n    label work: do\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if c => exit to work\n        Console.writeLine(\"end\")", null, null)]
+    [InlineData("func f(c: bool)\n    label work: do\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if c\n            let moved = t@move\n            exit to work\n        Console.writeLine(\"end\")", "MovedPlace_Kd", "writeLine(t)")]
+    [InlineData("func f(c: bool)\n    var t = 1\n    var u = 2\n    let r = label work: do\n        defer => t += 1\n        if c => exit to work u@ref\n        exit to work u@ref\n    let v = r", null, null)]
+    [InlineData("func f(c: bool)\n    var t = 1\n    var u = 2\n    let r = label work: do\n        defer => t += 1\n        if c => exit to work t@ref\n        exit to work u@ref\n    let v = r", "PlacementActivationConflict_Kd", "t += 1")]
+    [InlineData("func f(c: bool)\n    return\n    let r = label s: if c\n        defer => Console.writeLine(\"d\")\n        yield to s (3, 4)\n    else => (1, (return))\n    let u = r.0", null, null)]
+    [InlineData("func f(c: bool)\n    return\n    let r = label s: if c\n        defer => Console.writeLine(\"d\")\n        yield to s (3, 4)\n    else => (1, (return))\n    let u = r.1", "UninitializedPlace_Kd", "r.1")]
+    [InlineData("func f(c: bool, d: bool)\n    label pick: if c\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if d => yield to pick\n        Console.writeLine(\"end\")\n    else => ()", null, null)]
+    [InlineData("func f(c: bool, d: bool)\n    label pick: if c\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if d\n            let moved = t@move\n            yield to pick\n        Console.writeLine(\"end\")\n    else => ()", "MovedPlace_Kd", "writeLine(t)")]
+    public void AnExitAndAnEndShareTheirCleanupAndKeepEachPathsRecords(string source, string? code, string? at)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");
+        if (code is null)
+        {
+            Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+            Assert.Empty(c.Problems);
+            return;
+        }
+
+        var issue = Assert.Single(c.Problems);
+        var (start, span) = (source.IndexOf(at!, StringComparison.Ordinal), c.SyntaxOf(issue.Subject).Span);
+        Assert.Equal(code, issue.Code.ToString());
+        Assert.True(span.Start >= start && span.End <= start + at!.Length, $"{span.Start}+{span.Length} outside {start}+{at.Length}");
     }
 
     // An expansion past the old analysis's deferred-cleanup limit (its 8192 operations) has no
@@ -199,6 +259,27 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\n#if true\n    var x = 2");
         Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    // The top-level body's MIR blocks.
+    private static int TopLevelBlocks(Compilation c) => c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0).Blocks.Length;
+
+    // A while loop whose body nests `depth` levels of a defer whose body loops over the next level, a self exit and a continue.
+    private static string LoopNestSource(int depth)
+    {
+        var source = new StringBuilder("var c = true\nvar n = 0\nwhile n < 3\n");
+        for (var i = 0; i < depth; i++)
+        {
+            source.Append(' ', (i * 8) + 4).Append("defer\n").Append(' ', (i * 8) + 8).Append("var local").Append(i).Append(" = 1\n");
+            source.Append(' ', (i * 8) + 8).Append(i + 1 < depth ? "loop\n" : "()\n");
+        }
+
+        for (var i = depth - 2; i >= 0; i--)
+        {
+            source.Append(' ', (i * 8) + 12).Append("if c => exit\n").Append(' ', (i * 8) + 12).Append("continue\n");
+        }
+
+        return source.Append("    n += 1\n    if n == 1 => continue\n    exit\nConsole.writeLine(\"ok\")").ToString();
     }
 
     private static string ExpansionSource(int depth)

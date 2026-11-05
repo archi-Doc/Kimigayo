@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -38,14 +39,20 @@ internal sealed partial class MirBuilder
                 this.Transfer((JumpKoto)item);
                 break;
             default:
-                var value = this.Hold(Held(item), item);
-                this.Into(value, item);
-                this.Made(value);
+                this.Evaluated(item);
                 break;
         }
 
         this.CloseScope(temporaries);
         this.statementStart = false;
+    }
+
+    // A statement's value, built into a temp of its own among the statement's temporaries (SPEC 3.6), complete where it is made.
+    private void Evaluated(Koto item)
+    {
+        var value = this.Hold(Held(item), item);
+        this.Into(value, item);
+        this.Made(value);
     }
 
     // SPEC 14.2.4: bare acquisition of a discarded operand into a temp destroyed with the statement's temporaries.
@@ -122,8 +129,9 @@ internal sealed partial class MirBuilder
     private bool CodeBlock(MirPlace destination, CodeBlockKoto block)
         => this.EndingTarget(block) >= 0 ? this.TargetBlock(destination, block) : this.Block(destination, block);
 
-    // SPEC 14.2, 16.2: a block that is no target body (an unsafe block's, SPEC 14.3; a require's failure body; a block in an item), its
-    // items cleaned up when it completes. A target body reaching it breaks the builder's contract (TargetBody builds those).
+    // SPEC 14.2.1, 16.2: a Body no target ends (an unsafe body, SPEC 14.3; a require failure body, SPEC 14.11; until PLAN G427 U1b, a
+    // function's), its items cleaned up where it completes. A target body reaching it breaks the builder's contract (TargetBlock builds
+    // those).
     private bool Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
         if (this.EndingTarget(block) >= 0)
@@ -131,39 +139,52 @@ internal sealed partial class MirBuilder
             this.Record(block, DiagnosticCode.InternalInvariant_Kd);
         }
 
-        var valued = this.Items(destination, block, kind);
+        var valued = this.Last(destination, block, this.Lead(block, kind));
         this.CloseScope(this.lexical);
         return valued;
     }
 
-    // SPEC 16.2: a target body that is a block (TargetBody's, or a defer body), its items cleaned up when it completes, as a block's are;
-    // PLAN G427 U1a leaves them through its target's drop tree instead.
+    // SPEC 16.2: a target body that is a block (TargetBody's, an iteration's, a defer body), its scope left open for its owner's end to
+    // leave (End). Where its route gives it the target's delivery place (Target.Ending), its last item goes to the delivery that item's
+    // Completion takes, taken before it is built (after a departing exit, the Destination is a result temp); a temp of its route keeps
+    // the delivery TargetBody took, as the route places the value from it.
     private bool TargetBlock(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
-        var valued = this.Items(destination, block, kind);
-        this.CloseScope(this.lexical);
-        return valued;
+        var outer = this.Lead(block, kind);
+        ref var target = ref CollectionsMarshal.AsSpan(this.targets)[^1];
+        if (destination == target.Ending.Place)
+        {
+            target.Ending = target.Delivery(Completes(block.Items.Count > 0 ? block.Items[^1] : block));
+            destination = target.Ending.Place;
+        }
+
+        return this.Last(destination, block, outer);
     }
 
-    // SPEC 14.2, 16.2: a block's items in a scope of their own, the innermost one its builder closes (Block, TargetBlock), the last item
-    // its result; the locals and defers it registers are cleaned up when it is left. Its last item's temporaries are those of the Body it
-    // is (SPEC 3.6, 16.2.2 step 3): an arm's, an if clause's or a do's, the function's, else the enclosing statement's. Whether it ends in
-    // its last item's value.
-    private bool Items(MirPlace destination, CodeBlockKoto block, MirScopeKind kind)
+    // A block's items before its last one, in its MIR scope and its scope of locals and defers, which its builder leaves (Block,
+    // TargetBlock); the MIR scope around it.
+    private ushort Lead(CodeBlockKoto block, MirScopeKind kind)
     {
         var outer = this.scope;
         this.scope = (ushort)this.body.AddScope(outer, kind, SourceRef.Of(block));
         this.OpenScope(block: true);
-        var items = block.Items;
-        for (var i = 0; i < items.Count - 1; i++)
+        for (var i = 0; i < block.Items.Count - 1; i++)
         {
-            this.Statement(items[i]);
+            this.Statement(block.Items[i]);
         }
 
+        return outer;
+    }
+
+    // SPEC 14.2, 16.2: a block's last item, its result, or its container's Unit; the locals and defers it registers are cleaned up when
+    // it is left. Its last item's temporaries are those of the Body it is (SPEC 3.6, 16.2.2 step 3): an arm's, an if clause's or a do's,
+    // the function's, else the enclosing statement's. Whether it ends in that item's value; the MIR scope around it restored.
+    private bool Last(MirPlace destination, CodeBlockKoto block, ushort outer)
+    {
         var valued = false;
-        if (items.Count > 0)
+        if (block.Items.Count > 0)
         {
-            valued = this.Result(destination, items[^1], block, input: false);
+            valued = this.Result(destination, block.Items[^1], block, input: false);
         }
         else
         {

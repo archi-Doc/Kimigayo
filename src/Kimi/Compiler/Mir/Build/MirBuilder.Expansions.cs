@@ -44,7 +44,7 @@ internal sealed partial class MirBuilder
         this.Made(subject);
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
         this.Pattern(plan, plan.Arms[0].Pattern, subject, start, none);
-        this.Iteration(loop, head, plan, start, default);
+        this.Iteration(loop, plan, start, default);
         this.current = none;
         this.Pattern(plan, plan.Arms[1].Pattern, subject, start, tail);
         this.Unit(destination, loop);
@@ -75,7 +75,7 @@ internal sealed partial class MirBuilder
         var after = this.Open(loop, destination, step);
         this.current = head;
         this.Compare(test, MirBinaryOp.Lt, MirOperand.Copy(position), MirOperand.Copy(end), done, loop);
-        this.Iteration(loop, step, null, 0, position);
+        this.Iteration(loop, null, 0, position);
         this.current = step;
         var operands = this.body.AddOperand(MirOperand.Copy(position));
         this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, 1))));
@@ -89,7 +89,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 14.6.1: one iteration, its bindings in a scope of their own (the item's by the plan, or the counted position), then the body,
     // whose end goes to the next iteration through the iteration's cleanup.
-    private void Iteration(ForKoto loop, int next, BoundMatch? plan, int start, MirPlace position)
+    private void Iteration(ForKoto loop, BoundMatch? plan, int start, MirPlace position)
     {
         var outer = this.scope;
         this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(loop));
@@ -115,7 +115,7 @@ internal sealed partial class MirBuilder
             this.Use(new(this.locals[symbol]), MirOperand.Copy(position), name);
         }
 
-        this.Iterate(loop.Body, next);
+        this.Iterate(loop.Body);
         this.CloseScope(bindings, clean: false);
         this.scope = outer;
     }

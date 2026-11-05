@@ -663,9 +663,9 @@ fn exited @276
       StorageDead(_19) @327 s1
       StorageLive(_23) @333 s1
     * _23 = &uniq _4: uniq/i32 @334 s8
-      _18 = move _23 @333 s1
+      _22 = move _23 @333 s1
       StorageDead(_23) @333 s1
-      goto bb20 @333 s1
+      goto bb23 @333 s1
   bb23:
       _18 = move _22 @326 s1
       goto bb20 @326 s1

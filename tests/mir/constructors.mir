@@ -500,8 +500,7 @@ fn loopAbandon @270
       StorageDead(_6) @281 s2
       StorageDead(_5) @276 s2
       _4 = const () @275 s2
-      StorageDead(_4) @275 s1
-      goto bb1 @275 s1
+      goto bb8 @275 s1
   bb12:
       StorageLive(_9) @288 s1
       _9 = copy _1 @288 s1
