@@ -195,15 +195,12 @@ public sealed partial class Binding
     }
 
     // The rows of the child positions of `part`, whose position's pattern is `pattern` and Type `type`, appended to childRows (Parent
-    // `parent`, relative to the slice at `sliceStart`); none at a pattern not shaped like the Type, a slot's (R1). False when a child
+    // `parent`, relative to the slice at `sliceStart`). Beneath a pattern not shaped like the Type, a slot's, the children are composed
+    // with no pattern (R5, DECISIONS BU-104): their Types are layers of the slot's solution, not the callee's pattern. False when a child
     // position's Type is not derivable: a trial whose literal shape does not fit its parameter Type, which the fit rejects.
-    private bool ComposePositionRows(int sliceStart, int argument, int parent, Koto part, BoundType pattern, BoundType type)
+    private bool ComposePositionRows(int sliceStart, int argument, int parent, Koto part, BoundType? pattern, BoundType type)
     {
-        if (pattern.Kind != type.Kind)
-        {
-            return true;
-        }
-
+        pattern = pattern is not null && pattern.Kind == type.Kind ? pattern : null;
         var start = this.OpenPosition(part);
         var core = KotoHelper.UnwrapParentheses(part);
         var count = this.ChildPositions(start, start + 1);
@@ -211,14 +208,14 @@ public sealed partial class Binding
         {
             var child = this.positionParts.Count;
             var element = this.AddChildPosition(start, start + 1, i, type);
-            var elementPattern = PartChildPattern(core, i, pattern);
+            var elementPattern = pattern is null ? null : PartChildPattern(core, i, pattern);
             for (int j = child, end = this.positionParts.Count; element is not null && j < end; j++)
             {
                 var node = this.positionParts[j];
                 if (!this.PartFailed(KotoHelper.UnwrapParentheses(node)))
                 {
                     this.childRows.Add(new(argument, parent, i, node, elementPattern, null, this.PartContribution(node)));
-                    element = this.ComposePositionRows(sliceStart, argument, this.childRows.Count - 1 - sliceStart, node, elementPattern!, element) ? element : null;
+                    element = this.ComposePositionRows(sliceStart, argument, this.childRows.Count - 1 - sliceStart, node, elementPattern, element) ? element : null;
                 }
             }
 
@@ -236,14 +233,20 @@ public sealed partial class Binding
     }
 
     // A leaf position's well-formedness at its parameter Type (SPEC 15.6.4 step 3): a typed part only where its fit replaced an Origin;
-    // any other part, and an aggregate whose positions no part fills (`[]`), at every position (RequireInputPremises). A part that failed
-    // after the composition, in its completion, is a wildcard (rule W).
+    // any other part, and an aggregate whose positions no part fills (`[]`), at every position (RequireInputPremises). Beneath a slot (no
+    // pattern, R5) only an Evidence leaf is judged, against the solution's layer with its own Type beside it, where its Origin differs;
+    // a Signature leaf there is the solution's contributor's (BU-99 R1). A part that failed after the composition is a wildcard (rule W).
     private void JudgeLeafPosition(Koto at, in PositionRow row)
     {
         var node = KotoHelper.UnwrapParentheses(row.Part);
-        if (!this.PartFailed(node) && (row.Contribution == Contribution.Signature || node.BoundType is not null))
+        if (this.PartFailed(node) || (row.Pattern is null && row.Contribution != Contribution.Evidence))
         {
-            this.RequireInputPremises(at, row.Pattern!, row.Type!, row.Contribution == Contribution.Evidence ? node.BoundType : null, row.Contribution);
+            return;
+        }
+
+        if (row.Contribution == Contribution.Signature || node.BoundType is not null)
+        {
+            this.RequireInputPremises(at, row.Pattern ?? row.Type!, row.Type!, row.Contribution == Contribution.Evidence ? node.BoundType : null, row.Contribution);
         }
     }
 }
