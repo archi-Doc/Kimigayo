@@ -9396,6 +9396,7 @@ structure is recorded here by the unit that first implements it.
   pipeline gives syntax-free selection. Reason: no speed gain, since the properties already forward to `HirTables`, and R7's
   inline writes and CallPlan pipeline redo these sites. Rejected: R6-check (for the synthetic Kotos, pulling that CallPlan
   entry in, at difficulty 4).
+  - Extended by R5-M190 (2026-11-05, the owner): `BaseReferenceKoto.BasePath` is the postponement's 38th member.
 - **R5-M10 Syntax data in the MIR builder** (owner, 2026-10-18; OQ14, as recommended) ARCH's two rules on syntax-class
   decisions in Mir/Build ("reach 0 by the end of R6"; "no Koto type test or KotoKind dispatch in Mir/Build after R6") are
   amended: an operator token or form read under its published `HirOp`, and a cast to read a child, are syntax data; after R6
@@ -10202,6 +10203,8 @@ structure is recorded here by the unit that first implements it.
   Opaque value, which has no row, so the two never both report.
   - Rejected: a Mir pass (D-A: the table is the Backend's and the driver R4's); checking library bodies per compilation (P5: the
     library test collects them as roots); an exception for literal conversions (no such Cast exists).
+  - Superseded in part by R5-M190 (2026-11-05, the owner): Binding's refusal of the closed forms stays until R7 (PLAN G121's operand
+    residuals and R7-O3), not H7.
 - **R5-M54 The instance-stage capability check** (2026-10-18; plan K9b; under R5-M18 and R5-M53) An operation whose Types depend on
   slots (its first operand's or its result's Type is open) is a template site; replaying an item applies the item's representative
   to those Types (`TyCtxt.Apply`, the storage-nesting gap where it cannot) and checks `Capability.Of` on the instance's Types, so a
@@ -14142,6 +14145,8 @@ structure is recorded here by the unit that first implements it.
     to H11, `LegacyRecords` to H8a, `MirTargetSide` kept).
   - Superseded in part by R5-M189 (2026-11-05, R6-check H10b): H10b splits at the control-flow analysis, which H10b-2 deletes
     after PLAN G428.
+  - Amended by R5-M190 (2026-11-05, the owner's C1 and 「推奨どおり」): R5 designs and implements H7 and H11, BU approving and
+    consenting; H7 leaves G:check-del and R6-check for R7.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -14311,6 +14316,24 @@ structure is recorded here by the unit that first implements it.
     set is PLAN G52's fail-first regression, the Explicit `AJoinPastAnUnresolvedCallPublishesOnlyItsCause`.
   - Ratchets: the four rows over the entry become three zero-reference rows over the old ownership names in `tests`, `src/Benchmark`
     and `src/Playground`; `src/Kimi`'s row is H11's (three comment lines left).
+- **R5-M190 The owner's load division (C1, C3); H7 and `BasePath` postponed to R7** (2026-11-05, the owner, verbatim
+  「C1C3を採用してください」, 「C2は採用しません。」 and 「推奨どおり」, on R5's proposals; amends R5-M182, R5-M53 and R5-M9)
+  - C1: R5 designs and implements R6-check's Binding units H7 and H11, and R4 the newly found MIR defects whose cause is in Binding
+    (such as PLAN G432); BU approves their designs through an independent reviewer and consents to their Binding hunks; BU's items
+    already in flight stay BU's. C3: R4 starts each next item in PLAN's priority order without waiting for the owner's word. C2
+    (G216 (a)'s implementation by its planning session) was declined. Reason: Binding work queued on BU held the other lanes (PLAN
+    G428 waited on G52's second shape).
+  - H7 moves to R7, a postponed removal: Binding's two closed-form capability gates (`Binding.Operators.cs`' wide division,
+    `Binding.Conversions.cs`' wide float conversion) stay until A3b sees every operation: PLAN G121's operand residuals (an operation
+    under a parent Binding rejects is never built) and R7-O3 (a body for a constructorless layer's Field initializers, PLAN G215).
+    H7's probes on dev `4862b9fc7` (`draft/Sketches/R6-check/H7-probes.md`): deleting them accepts such an initializer (an acceptance
+    move) and loses the operation's independent `Unsupported_Kd` under a rejected parent, an annotated `let` whose Type mismatches
+    included (SPEC 23.1.2; Q13). Design: `draft/Sketches/R6-check/H7-design.md`.
+  - `BaseReferenceKoto.BasePath`, a Binding fact stored on syntax that CR-A7's count missed, is the 38th member of R5-M9's postponement:
+    H14 ends its Parsing read and tags it `[Transitional("R7")]`.
+  - Rejected: deleting the gates now with both moves named (an unimplemented form accepted silently and independent records lost on
+    ordinary programs, to remove a 12-line duplicate rule); reading the lost records as dependent (HIR never built the operation, so
+    A3b reads no failed input).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)
