@@ -249,7 +249,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   (DECISIONS R4-M35, A5 plan §8). Their R4 exit rule (a row where the old path rejected and MIR accepted, other than a MIR-only
   relaxation, and a rejection of a library or milestone program blocked until classified (a), (c) or (d) with a SPEC clause;
   location and code-choice differences did not) gave way for R4's exit to the owner's 90% rule (DECISIONS R4-M165). The
-  difference ledger that recorded them ended at R6-check H10a (the last is W-15's `shared-base/37a0c05a6/mir-diff/`). The owner is
+  difference ledger that recorded them ended at R6-check H10a (the last is W-17's `shared-base/382126932/mir-diff/`). The owner is
   consulted after two consecutive working sessions on the A5 plan that land no unit.
 - **Temporary structures**, with the stage that removes them; Transitional attributes identify these declarations (CR-A7):
   - the `KIMI_PIPELINE` switch (R6); the Koto semantic forwarding properties (R7, their Parsing and root-helper reads at R6-check;
