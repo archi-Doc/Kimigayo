@@ -38,8 +38,9 @@ public enum OriginKind : byte
     Unstated,
 
     // SPEC 15.3.4 (DECISIONS BU-100): the Origin of a slot of a binding set that a Constraint names, that its declaration holds and that
-    // no relation fixes; Binder is the set occurrence, Slot the set Type's aggregate slot, shown `set.slot`. A fixed Origin about which
-    // only its declaration's clauses say anything: no caller, conformance or nested signature substitutes it, and storage rejects it.
+    // no relation fixes; Binder is the set occurrence, Slot the set Type's aggregate slot, Name the set's (shown `set.slot`). A fixed
+    // Origin about which only its declaration's clauses say anything: no caller, conformance or nested signature substitutes it, and
+    // storage rejects it.
     ConstraintSet,
 }
 

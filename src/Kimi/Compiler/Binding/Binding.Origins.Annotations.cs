@@ -466,11 +466,11 @@ public sealed partial class Binding
             return this.OriginAtom(use, OriginKind.Inference, aggregateSlot);
         }
 
-        if (aggregateSlot >= 0 && context.Position == TypePosition.Explicit && this.ConstraintSet(use))
+        if (aggregateSlot >= 0 && context.Position == TypePosition.Explicit && this.ConstraintSet(use) && use is TypeSemanticsKoto { BindingSetName: { } set })
         {
             // SPEC 15.3.4 (DECISIONS BU-100): a set named in a Constraint that no relation equates quantifies every choice of its
             // Origins, so its slot's omission is a fixed Origin no caller substitutes and nothing solves: the occurrence's own atom.
-            return this.OriginAtom(use, OriginKind.ConstraintSet, aggregateSlot);
+            return this.OriginAtom(use, OriginKind.ConstraintSet, aggregateSlot, set);
         }
 
         this.Fail(use, BindingFailure.MissingOrigin);
