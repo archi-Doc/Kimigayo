@@ -326,6 +326,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G55 (BU; G420):** closed by the owner's 「Q-a： 削除して」 (2026-11-05); its open findings continue as PLAN G424.
 <a id="g60"></a>
 - **G60 (G420):** the parser recovery remainder (dropped declaration and list-item Name causes, recovered child contexts; STATUS keeps the limit), closed unfixed with PARSING_REVIEW.md by the owner's 「Q-a： 削除して」 (G420, 2026-11-05; the row's text at 4fb6fcdb1).
+<a id="g420"></a>
+- **G420 (R4):** the docs/dev reduction (the owner, 2026-11-05: 「Q-a： 削除して」「Q-b： draft に移して」「Q-c： promptsも削除して」「Q-d： …→認めます」「Q-e： 一度に行って。…」, then 「規則 A」 for DECISIONS and 「(B」 for PLAN_HISTORY) landed in one push, dev bfa96470a: docs/dev 3,114,096 → 2,467,775 B; every DECISIONS id, PLAN G number and linked anchor kept; the pre-compaction text at 4fb6fcdb1.
 
 ## Retired audit records
 
