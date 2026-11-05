@@ -38,7 +38,7 @@ internal sealed partial class MirBuilder
                 this.Transfer((JumpKoto)item);
                 break;
             default:
-                var value = this.Hold(TypeOf(item), item);
+                var value = this.Hold(Held(item), item);
                 this.Into(value, item);
                 this.Made(value);
                 break;
@@ -51,7 +51,7 @@ internal sealed partial class MirBuilder
     // SPEC 14.2.4: bare acquisition of a discarded operand into a temp destroyed with the statement's temporaries.
     private void Discard(DiscardKoto discard)
     {
-        var value = this.Hold(TypeOf(discard.Operand), discard.Operand);
+        var value = this.Hold(Held(discard.Operand), discard.Operand);
         this.Assign(value, discard.Operand);
         this.Made(value);
     }

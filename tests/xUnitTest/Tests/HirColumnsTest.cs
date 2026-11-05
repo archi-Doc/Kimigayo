@@ -279,10 +279,9 @@ public sealed class HirColumnsTest
     // row is a transfer at which Binding publishes InvalidJumpTarget_Kd or UnlabeledYieldTarget_Kd.
     internal static bool HoldsItsTarget(JumpKoto jump)
     {
-        var target = KotoHelper.ResolveTransferTarget(jump);
         if (HirTables.PlanOf(jump).Plan is Koto row)
         {
-            return ReferenceEquals(row, target) && KotoHelper.IsValidTransfer(jump, target);
+            return ReferenceEquals(row, KotoHelper.TransferTarget(jump));
         }
 
         return CompilationTestHelper.BindingErrors(jump.CodeContext.Compilation)

@@ -374,53 +374,6 @@ public sealed class PipelineSwitchTest
         }
     }
 
-    // Tests read a failure that OwnershipIssue.Code maps to several codes through one helper each: its codes are exactly the images
-    // of that failure, whatever the issue's other facts.
-    [Fact]
-    public void TheMultiCodeHelpersAreTheOwnershipMapping()
-    {
-        var images = new Dictionary<OwnershipRequirement, HashSet<DiagnosticCode>>();
-        foreach (var (failure, code) in OwnershipCodes())
-        {
-            Assert.Equal(failure == OwnershipRequirement.ComparisonLoanConflict, code.IsLoanConflict());
-            Assert.Equal(failure == OwnershipRequirement.UnprovenOrigin, code.IsUnprovenOrigin());
-            images.TryAdd(failure, []);
-            images[failure].Add(code);
-        }
-
-        Assert.Equal(4, images[OwnershipRequirement.ComparisonLoanConflict].Count);
-        Assert.Equal(2, images[OwnershipRequirement.UnprovenOrigin].Count); // DECISIONS BU-85: an unjudged non-relation is Internal.
-    }
-
-    /// <summary>Lists the code <see cref="OwnershipIssue.Code"/> gives each failure under every combination of the issue's other facts:
-    /// a call or another source, an Origin obligation refuted or not, another obligation or none, a reservation or not, an activation or
-    /// not.</summary>
-    /// <returns>Each failure with each of its codes, repeated.</returns>
-    internal static IEnumerable<(OwnershipRequirement Failure, DiagnosticCode Code)> OwnershipCodes()
-    {
-        var c = CompilationTestHelper.Parse("f(1)");
-        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
-        BindingObligation[] obligations =
-        [
-            new(BindingObligationKind.OriginOutlives, call, default, Longer: new(OriginKind.Projection), Shorter: BoundOrigin.Static),
-            new(BindingObligationKind.OriginOutlives, call, default, Longer: BoundOrigin.Static, Shorter: BoundOrigin.Static),
-            new(BindingObligationKind.TypeRole, call, default),
-        ];
-        foreach (var failure in Enum.GetValues<OwnershipRequirement>())
-        {
-            foreach (var source in new Koto[] { call, c.Kotonoha.RootKoto })
-            {
-                foreach (var obligation in obligations.Cast<BindingObligation?>().Append(null))
-                {
-                    for (var facts = 0; facts < 4; facts++)
-                    {
-                        yield return (failure, new OwnershipIssue(source, failure, Reservation: (facts & 1) - 1, Activation: facts >= 2, Obligation: obligation).Code);
-                    }
-                }
-            }
-        }
-    }
-
     // A checked program's published diagnostics and IR.
     private static (string Diagnostics, string Ir) Check(Compilation c)
     {

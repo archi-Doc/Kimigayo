@@ -199,19 +199,6 @@ public class OwnershipAnalysisTest
         Assert.False(c.Accepts);
     }
 
-    [Fact]
-    public void ReanalysisClearsPreviousFlowResults()
-    {
-        var invalid = Parse("func f()\n    require true else => ()\n    ()");
-        var valid = Parse("let x = 1");
-        var flow = invalid.AnalyzeControlFlow();
-        Assert.NotEmpty(flow.Issues);
-        flow.Reanalyze(valid.Kotonoha.RootKoto);
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
-        Assert.DoesNotContain(flow.Nodes.Keys, x => ReferenceEquals(x, invalid.Kotonoha.RootKoto));
-    }
-
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);
 
@@ -223,7 +210,7 @@ public class OwnershipAnalysisTest
         [InlineData(1)]
         [InlineData(32)]
         [InlineData(128)]
-        public void WarmBindingAndBothAnalysesReuseStorage(int count)
+        public void WarmBindingAndAnalysisReuseStorage(int count)
         {
             var source = new System.Text.StringBuilder("func f(c: bool)\n");
             for (var i = 0; i < count; i++)

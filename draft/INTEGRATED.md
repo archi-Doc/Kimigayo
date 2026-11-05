@@ -1278,6 +1278,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Unsatisfied; the oracle and the U2 rows follow. No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
 - Revision 2 (2026-11-03, U0's re-review R1 by the middle): rule 6 (§3) covers well-formedness rows; a fit relation keeps DIAGNOSTICS'
   site, the result's fit at the call (BU-51's pin). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 3 (2026-11-05, U2's design by the planning session, `artifacts/verify/g216a-oracle/U2-design.md`): the Result per position
+  is the premise visits' stop at a slot pattern (the pattern beside the instantiated Type; a layer's stored premise ranges over the
+  slot's solution), so the Result column value and `ResultSolved` are superseded (§4, §5, §6's U2 row). No other text changed; the
+  proposal stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
@@ -1300,3 +1304,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   B2′, verbatim 「この方針で」; DECISIONS R4-M170), and `chain<T>` shows B7's reach through retention (its store
   while another Loan lives is 5.2.1's raw access). The owner read the text (RQ10 (a)), verbatim 「SPEC改訂、推奨どおりでOKです」
   (2026-11-04); round 5's alignments change no meaning.
+
+## 2026-11-05 — docs/dev reduction (PLAN G420)
+
+- Correction (the files are frozen): the owner's 「Q-a： 削除して」「Q-c： promptsも削除して」 deleted `G55_G60.md`,
+  `BINDING_REVIEW.md`, `PARSING_REVIEW.md`, `P34_REMAINING.md` and `prompts/` from docs/dev; their text is in git history at
+  4fb6fcdb1. 「Q-b： draft に移して」 moved `LLVM_OPTIMIZATION.md` from docs/dev to [Design](Design/LLVM_OPTIMIZATION.md). The links,
+  paths and item citations to them in `Changes/2026-10-09 G34 G73 G80 Fix Plan.md`, `Design/2026-09-29 Diagnostics.md`,
+  `Obsolete/2026-10-12 AGENTS Restructuring and Workflow Document.md`, `Proposals/2026-10-12 Pre-R5 Work Items.md`,
+  `Proposals/2026-10-12 Post-Reduction Work Items.md` (P34_REMAINING's R3, now in PLAN's U7 row), `Sketches/R5 Step 0/C-design-2.md`,
+  `C-package.md`, `deep-dives/q2-codegen-shape.md` and `Sketches/R6-gen/G8-design.md`, and the older entries above, are unchanged and read at that commit or at the new path.

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The MIR side of a test (DECISIONS R4-M136, refining R4-M50 and R4-M60; R6-check H10a D3, D4, D7): the Error records that
+/// <summary>The MIR side of a test (DECISIONS R5-M188, refining R4-M136, R4-M50 and R4-M60): the Error records that
 /// decide a program's verdict, each at its exact subject, so a changed MIR verdict fails the test. Its rows are Binding's records except
 /// the twins of A5's rows (until H11), then the publisher's MIR rows (<see cref="MirSide"/>).</summary>
 internal static class MirTargetSide

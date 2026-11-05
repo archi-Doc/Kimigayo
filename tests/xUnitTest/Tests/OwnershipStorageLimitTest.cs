@@ -10,15 +10,6 @@ namespace XunitTest;
 
 public class OwnershipStorageLimitTest
 {
-    [Fact]
-    public void OversizedProductsReportResourcesBeforeAllocationOrOverflow()
-    {
-        var failure = Assert.Throws<OwnershipStorageLimitException>(() => OwnershipStorage.Cells(65536, 65536, 2, "borrow dependencies"));
-        Assert.Equal(1L << 30, failure.RequiredBytes);
-        Assert.Equal(OwnershipStorage.DefaultByteLimit, failure.LimitBytes);
-        Assert.Equal("borrow dependencies", failure.Table);
-    }
-
     // R6-check H10a D10 (restored coverage; T-04 N3): the MIR's own arena limit publishes end to end. MirAnalysisTest's A5 program, 2,000
     // reference locals live across 2,000 branches, fits A1's arena but not A5's Loans table, so A5 records one OwnershipStorageLimit_Kd at
     // `func f` with its arguments and stops there (its Loan conflict at `x = 2` is not judged); an independent error elsewhere publishes

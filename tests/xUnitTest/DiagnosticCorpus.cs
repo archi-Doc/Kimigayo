@@ -119,7 +119,7 @@ internal sealed record SpecVariant(string? Uncomment, SpecRecord[] Expected, str
 /// <param name="Basis">Why the code, when neither DIAGNOSTICS nor a catalog message states the rule.</param>
 internal sealed record SpecRecord(string Code, string Line, bool Dependent = false, string? Basis = null);
 
-/// <summary>The MIR's records of a variant where they differ from the SPEC, with the class the difference ledger would give the difference
+/// <summary>The MIR's records of a variant where they differ from the SPEC, with the difference category (COMPILER_ARCHITECTURE) of the difference
 /// ((a) an old-path error, which goes with the old path at R6-check; (b) a new-path error, including Binding's, which both paths share;
 /// (c) a SPEC ambiguity; (d) an intended change, a rule the SPEC changed that MIR alone implements, plan §9.2; or (e) a form MIR does not
 /// build yet) and the SPEC clause.</summary>

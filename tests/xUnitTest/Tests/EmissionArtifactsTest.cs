@@ -216,7 +216,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
         var previous = File.ReadAllBytes(path!);
-        c.Bind(); // Old ownership and startup cannot authorize another publication.
+        c.Bind(); // The earlier analysis and startup check cannot authorize another publication.
         Assert.False(EmissionArtifacts.Publish(c, null, out var failedPath));
         Assert.Null(failedPath);
         Assert.Equal(previous, File.ReadAllBytes(path!));

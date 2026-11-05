@@ -532,8 +532,8 @@ public sealed partial class MirBorrowsTest
     // base's handle), whose element's drop stores through its raw slot, consumed, then the slot used before `y = 5`, are correct errors
     // at `y = 5` by SPEC 15.6 (the owner's 「(B)」 of 2026-10-30, PLAN G264 S1; DECISIONS BU-67): the element, an untied constructor's
     // result (Writer.init's or WLeaf.init's), reaches storage the body does not own through the whole holder, also after its raw Field
-    // was rewritten, so the consuming call's cleanup (PLAN G266) may store y's Loan there. The default pipeline's old analysis reports no
-    // conflict at `y = 5`.
+    // was rewritten, so the consuming call's cleanup (PLAN G266) may store y's Loan there. Before H5 the old analysis reported no conflict
+    // at `y = 5`.
     [Fact]
     public void AnArrayLiteralPlacesItsElementsThroughNoReceiverStore()
         => Assert.Equal(["litDropOk: y = 5", "lit2DropOk: y = 5", "litObjOk: y = 5"], Problems(RawShapes + ReferentShapes + """
@@ -590,7 +590,7 @@ public sealed partial class MirBorrowsTest
     {
         const string Shape = "func shape()\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n«N:    var n{0} = Node.init(next: null, data: null)\n»" +
             "    n0.data = w@raw@raw/u8\n    var a: Array<raw/Node> = []\n«N:    a.append(n{0}@raw)\n»    inspect(a)\n    y = 5\n";
-        long[] work = [.. new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + RawShapes + ReferentShapes + Expand(Shape, n, 0)).Work)];
+        long[] work = [.. new[] { 32, 64, 128 }.Select(n => Measured(Prelude + RawShapes + ReferentShapes + Expand(Shape, n, 0)).Work)];
         output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 4), $"work {string.Join(", ", work)}");
     }

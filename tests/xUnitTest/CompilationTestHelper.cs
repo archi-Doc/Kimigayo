@@ -83,11 +83,22 @@ internal static class CompilationTestHelper
         return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
     }
 
-    // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (OwnershipIssue.Code).
+    // The Errors a check publishes for an analyzed program: Binding's (its HIR lints included), the startup check's and the analysis's
+    // (SPEC 23.1.2). The MIR must exist, so a caller that did not analyze fails instead of passing vacuously.
+    internal static TestDiagnostic[] PublishedErrors(Compilation c)
+    {
+        Assert.NotEqual(0UL, c.ProgramVersion);
+        c.Binding.ReportDiagnostics();
+        c.Binding.ReportStartupDiagnostics();
+        c.ReportAnalysis();
+        return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
+    }
+
+    // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsLoanConflict(this DiagnosticCode code)
         => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;
 
-    // The problem codes of an unproven Origin obligation: what is unproven decides the code (OwnershipIssue.Code).
+    // The problem codes of an unproven Origin obligation: what is unproven decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsUnprovenOrigin(this DiagnosticCode code)
         => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd;
 

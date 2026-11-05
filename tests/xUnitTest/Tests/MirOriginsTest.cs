@@ -319,7 +319,8 @@ public sealed partial class MirOriginsTest
     // completeness (DECISIONS R4-M113): a callee's own Parameter atoms in a caller's rows (I-1, PLAN G195; meet-trans, which Binding rejects
     // by its own relation record). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested result's row with a
     // per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
-    // 15.3.4, R4-M162: the invalid ones are Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front, R7-O3).
+    // 15.3.4, R4-M162: before H5 the invalid ones were Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front,
+    // R7-O3).
     [Theory]
     [InlineData(MeetTrans, "t@uniq")]
     [InlineData(NestedResult + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "ref/(ref/i32 during q)")]

@@ -61,7 +61,7 @@ public sealed partial class MirBorrowsTest
         var (sizes, work, bytes) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
         for (var i = 0; i < sizes.Length; i++)
         {
-            (work[i], bytes[i]) = this.Measured(UnownedShapes + UnownedForm(form, sizes[i]) + "public func main() => ()\n");
+            (work[i], bytes[i]) = Measured(UnownedShapes + UnownedForm(form, sizes[i]) + "public func main() => ()\n");
         }
 
         output.WriteLine($"{form} N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");

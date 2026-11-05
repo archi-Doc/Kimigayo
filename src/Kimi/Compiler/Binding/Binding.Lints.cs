@@ -479,9 +479,9 @@ public sealed partial class Binding
         {
             this.lints.Add((node, LintRow.StaticWhileTrue, null));
         }
-        else if (node is JumpKoto jump && KotoHelper.ResolveTransferTarget(jump) is var target && !KotoHelper.IsValidTransfer(jump, target))
+        else if (node is JumpKoto jump && KotoHelper.TransferTarget(jump) is null)
         {
-            this.lints.Add((node, target is null ? LintRow.InvalidJumpTarget : LintRow.UnlabeledYieldTarget, null));
+            this.lints.Add((node, KotoHelper.ResolveTransferTarget(jump) is null ? LintRow.InvalidJumpTarget : LintRow.UnlabeledYieldTarget, null));
         }
         else if (node is LabeledKoto label && Overlaps(label))
         {

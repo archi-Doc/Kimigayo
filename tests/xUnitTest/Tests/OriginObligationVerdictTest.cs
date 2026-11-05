@@ -9,35 +9,30 @@ using Xunit;
 
 namespace XunitTest;
 
-// PLAN G74 U4: every Binding obligation records the check that discharges it and receives one verdict per analysis of a Binding;
-// an unchecked obligation is an ownership record, so the analysis result that emission reads is unverified.
+// PLAN G74 U4: every Binding obligation records the check that discharges it; an unchecked obligation is an ownership record, so the
+// analysis result that emission reads is unverified.
 public class OriginObligationVerdictTest
 {
     public static TheoryData<string, string?> Families => OriginProofScalingTest.Families;
 
-    // SPEC 15.6.1: each obligation is judged once per analysis; reading the verdicts again judges nothing, and a rebind judges each
-    // of its obligations once more. Since the MIR decides acceptance (R6-check H5, DECISIONS R5-M185), the verdicts counted are the old
-    // analysis's, which runs only through its legacy entry (until H10b), and check's verdict is Accepts with the family's one record:
-    // Binding's, or the analysis rows' on a complete Binding.
+    // SPEC 15.6.1: check's verdict on each family is Accepts with the family's one record, Binding's or, on a complete Binding, the
+    // MIR's (R6-check H5, DECISIONS R5-M185), and a rebind and a new analysis give the same verdict.
     [Theory]
     [MemberData(nameof(Families))]
-    public void EachObligationIsJudgedOncePerAnalysis(string family, string? code)
+    public void EachFamilyKeepsItsOneRecordAcrossARebind(string family, string? code)
     {
-        var (c, metrics) = Analyze(OriginProofWorkloads.Create(family, 2));
-        var count = c.Binding.Result.IsComplete ? c.Binding.Obligations.Count : 0; // Ownership analyzes only a complete Binding.
-        c.AnalyzeLegacyOwnership();
-        Assert.Equal(count, metrics.Verdicts);
+        var c = Analyze(OriginProofWorkloads.Create(family, 2));
+        Assert.Empty(TestDiagnostics.Of(c)); // Nothing is published before the reports, so no syntax record (Analyze checks none).
+        DiagnosticCode[] expected = code is null ? [] : [Enum.Parse<DiagnosticCode>(code)];
         Assert.Equal(code is null, c.Accepts);
-        Assert.Equal(code is null ? [] : [Enum.Parse<DiagnosticCode>(code)], c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
+        Assert.Equal(expected, c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
         c.ReportAnalysis();
-        c.AnalyzeLegacyOwnership();
-        Assert.Equal(count, metrics.Verdicts);
 
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        c.AnalyzeLegacyOwnership();
-        Assert.Equal(2 * count, metrics.Verdicts);
+        Assert.Equal(code is null, c.Accepts);
+        Assert.Equal(expected, c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
     }
 
     // SPEC 8.1.2, 15.6.4: the well-formedness of a direct borrowed struct input belongs to each call's borrow formation; Origins nested
@@ -46,7 +41,7 @@ public class OriginObligationVerdictTest
     [Fact]
     public void ADirectBorrowedInputBelongsToItsCalls()
     {
-        var (c, _) = Analyze(OriginProofWorkloads.Create("valid", 2));
+        var c = Analyze(OriginProofWorkloads.Create("valid", 2));
         Assert.DoesNotContain(c.Binding.Obligations, static x => x.Discharge == OriginDischarge.CallBorrows && x.Shorter?.Binder is FunctionKoto { Name: "g" });
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Analysis.IsVerified);
@@ -56,7 +51,7 @@ public class OriginObligationVerdictTest
     [Fact]
     public void ARebindInvalidatesTheVerdicts()
     {
-        var (c, _) = Analyze(OriginProofWorkloads.Create("valid", 1));
+        var c = Analyze(OriginProofWorkloads.Create("valid", 1));
         Assert.True(c.Analysis.IsVerified);
         c.Bind();
         Assert.False(c.Analysis.IsVerified);
@@ -71,7 +66,7 @@ public class OriginObligationVerdictTest
     [Fact]
     public void AnUnjudgedObligationIsAnInternalInvariantAtItsUse()
     {
-        var (c, _) = Analyze("func f() -> isize\n    let n: isize = 4\n    return n\n");
+        var c = Analyze("func f() -> isize\n    let n: isize = 4\n    return n\n");
         Assert.True(c.Binding.Result.IsComplete);
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).Last(static x => x is IdentifierNameKoto && x.ToString() == "n");
         var compound = new BoundLength(KotoKind.Minus, 0, null, new(KotoKind.NumberLiteral, 1, null, null, null), new(KotoKind.NumberLiteral, 2, null, null, null));
@@ -89,22 +84,20 @@ public class OriginObligationVerdictTest
     [InlineData("func f()\n    let x = 1\n    let r: ref/i32 = x@ref\n", true)]
     public void AnOriginInferenceRestsOnItsLocalsFailure(string source, bool valid)
     {
-        var (c, _) = Analyze(source);
+        var c = Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         Assert.Equal(!valid, c.Binding.Obligations.Any(x => x.Kind == BindingObligationKind.OriginInference && !c.Binding.IsVerifiedOriginObligation(x)));
     }
 
-    private static (Compilation Compilation, OriginProofMetrics Metrics) Analyze(string source)
+    private static Compilation Analyze(string source)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("verdict.kimi", source));
-        var metrics = new OriginProofMetrics();
-        c.Binding.OriginProofMetrics = metrics;
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        return (c, metrics);
+        return c;
     }
 }

@@ -46,7 +46,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
     // A4's record at the Callable use (H0b §5.4) has no label, Note or related location yet (H0a §4.1): Binding's "public effect
     // guarantee" label and its bound and original-slot roles are lost until A4 publishes them.
     [Fact]
-    public void TheItemFailureExplainsTheMissingPublicBoundInCliAndLsp()
+    public void TheItemFailureReachesCliAndLspWithoutEvidence()
     {
         var path = Path.GetFullPath("virtual-item-effects.kimi");
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(false), path);

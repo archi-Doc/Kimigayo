@@ -119,7 +119,7 @@ any explicitly recorded owner decision. The pending diagnostic baselines remain 
 | 37 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Arithmetic completion is recorded in [PLAN_HISTORY](../../docs/dev/PLAN_HISTORY.md#arithmetic-completion); G10/G83 and native 128-bit division remain separate limits. |
 | 38 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | O0/O2 target passes; exclusive receiver projections belong to OCC-X. Completion review remains with the owner. |
 | 39 | YES | FAIL | FAIL (prior native probe) | NOT_RUN | IN_PROGRESS | Binding: `UnresolvedBinding_Kd` at `view.extra`; flow refinement remains incomplete. |
-| 40 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | Original-source O0/O2 passes; U7 defects and completion audit remain in [shared-object work](../../docs/dev/P34_REMAINING.md). |
+| 40 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | Original-source O0/O2 passes; U7 defects and completion audit remain in PLAN's [U7 row](../../docs/dev/PLAN.md#shared-object-track-alternating-sessions). |
 | 41 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; Weak/cyclic construction declarations remain incomplete (G4). |
 | 42 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Binding passes; Ownership: `Unsupported_Kd` at `Registry`; static initialization/shutdown remain incomplete. |
 | 43 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; also depends on refinement, object accessors and OCC-X. |

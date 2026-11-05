@@ -60,7 +60,7 @@ public sealed partial class MirBorrowsTest
         "«N:    setM(p@follow@uniq)\n»«N:    inspect(s{0})\n»")]
     public void AnActivationsParentLoansKeepTheWorkDense(string template)
     {
-        var runs = new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + Expand(template, n, 0))).ToArray();
+        var runs = new[] { 32, 64, 128 }.Select(n => Measured(Prelude + Expand(template, n, 0))).ToArray();
         long[] work = [.. runs.Select(static x => x.Work)];
         long[] bytes = [.. runs.Select(static x => x.Bytes)];
         output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
@@ -88,7 +88,7 @@ public sealed partial class MirBorrowsTest
     {
         const string Nested = "func shape(flag: bool)\n    var a: «N:[1 of »i32«N:]» = «N:[»0«N:]»\n    let i: isize = 0\n" +
             "    var p = a«N:[i]»@uniq\n    setM(p)\n";
-        long[] work = [.. new[] { 8, 16, 32 }.Select(d => this.Measured(Prelude + Expand(Nested, d, 0)).Work)];
+        long[] work = [.. new[] { 8, 16, 32 }.Select(d => Measured(Prelude + Expand(Nested, d, 0)).Work)];
         output.WriteLine($"d 8, 16, 32: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }

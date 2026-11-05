@@ -25,10 +25,12 @@ public class PatternLayerOriginTest
     [Fact]
     public void AnExclusiveLayerBelowASharedOneKeepsTheOuterDependency()
     {
-        var c = MinimalEmissionTest.Analyze("func f(" + Parameter + ") -> ref/i32 during b\n    match r\n        .Some(let v) => return v\n        .None => $abort(\"none\")");
+        var c = MinimalEmissionTest.Analyze("func f(" + Parameter + ") -> ref/i32 during b\n    match r\n        .Some(let v) => return v\n        .None => $abort(\"none\")\npublic func main() => ()");
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(DiagnosticCode.UnprovenOriginRelation_Kd, issue.Code);
-        Assert.Empty(c.AnalyzeControlFlow().Issues); // The failed return reports no dependent result mismatch.
+
+        // The failed return reports no dependent result mismatch: the published Errors are exactly the cause's.
+        Assert.Equal(["UnprovenOriginRelation_Kd v"], CompilationTestHelper.PublishedErrors(c).Select(static x => $"{x.Code} {x.Text}"));
     }
 
     [Theory]

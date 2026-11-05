@@ -366,7 +366,9 @@ public sealed partial class HirFormsTest
     // Reborrow of it (an argument, a bare acquisition, a Subject) and an exclusive receiver of a method or a setter, by its parameter Type
     // also through an object handle's payload, and below another element; a read, a shared borrow, a shared receiver (a base's
     // included), a getter and a raw pointer's pointee or element select index, and an rc payload offers no exclusive receiver. An
-    // exclusive receiver over Binding's in-place read states its own borrow.
+    // exclusive receiver over Binding's in-place read states its own borrow. A discarded element (SPEC 14.2.2) is a bare acquisition: a
+    // stored exclusive reference's Reborrow selects indexUniq through the discard row's claim (PLAN G426) in every Discard Context, in
+    // groups, below a Field and by a pair layer's exclusive case; a Copy element selects index.
     [Fact]
     public void AnExclusiveUseOfTheElementSelectsIndexUniq()
     {
@@ -451,6 +453,36 @@ public sealed partial class HirFormsTest
                 var ptrs = Pair<raw/i32>.init(p, p)
                 unsafe => *ptrs[0] = 5
                 unsafe => ptrs[1][0] = 6
+            struct Shelf {a}
+                public var d: Dictionary<i32, uniq/i32 during a>
+            struct Link {a}
+                public var link: uniq/i32 during a
+            func discards(value: uniq/i32 during a, d: uniq/Dictionary<i32, uniq/i32 during a>, e: uniq/(Dictionary<i32, uniq/i32 during b>) during s, c: bool)
+                var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]
+                entries[1]
+                (entries[1])
+                d[1]
+                (d[1])
+                e[1]
+                (e[1])
+                if c => d[1]
+                do
+                    d[1]
+                match c
+                    true => d[1]
+                    false => ()
+                ((d[1]))
+            func parts(shelf: uniq/(Shelf during a) during s, links: uniq/Dictionary<i32, Link during a>, pair: uniq/(Pair<uniq/i32 during a>) during s)
+                shelf.d[1]
+                links[1].link
+                pair[0]
+                (pair[0])
+            func cases<s/T>(d: uniq/Dictionary<i32, s/T during a>)
+                s is uniq
+                d[1]
+            func copies(d: uniq/Dictionary<i32, i32>, ints: uniq/Pair<i32>)
+                d[1]
+                ints[0]
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
@@ -469,6 +501,9 @@ public sealed partial class HirFormsTest
             "objs[0].bump() indexUniq", "entries[1].bump() indexUniq", "require rcs[0].level() == 2 else => $abort(\"rc\") index",
             "require ds[1].peek() == 0 else => $abort(\"base\") index", "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index",
             "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index", "unsafe => ptrs[1][0] = 6 index",
+            "entries[1] indexUniq", "(entries[1]) indexUniq", "d[1] indexUniq", "(d[1]) indexUniq", "e[1] indexUniq", "(e[1]) indexUniq",
+            "if c => d[1] indexUniq", "d[1] indexUniq", "true => d[1] indexUniq", "((d[1])) indexUniq", "shelf.d[1] indexUniq",
+            "links[1].link indexUniq", "pair[0] indexUniq", "(pair[0]) indexUniq", "d[1] indexUniq", "d[1] index", "ints[0] index",
         ];
         Assert.Equal(expected, selections);
         var receiver = Reachable(c.Kotonoha).Single(x => x is IndexKoto && Line(x.Span.Start) == "pts[0].mutate()");
@@ -679,6 +714,60 @@ public sealed partial class HirFormsTest
         var built = BuiltByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(built);
         Assert.All(built, static x => Assert.NotEqual(HirAcquire.Unset, HirTables.PlanOf(x).Adjust.Acquire));
+        var held = HeldByTheirRow(c.Kotonoha).ToArray();
+        Assert.NotEmpty(held);
+        Assert.All(held, static x => Assert.NotNull(HirTables.PlanOf(x).DiscardedType));
+    }
+
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-98, PLAN G233): the Place a container or an explicit discard takes holds the Type its bare
+    // acquisition supplies in its plan row (DiscardedType), which no consumer states: a stored exclusive reference's Reborrow by Binding's
+    // name, the meet of the layers reaching it (BU-27), the same for `_ = h.link`, `h.link` and `(h.link)`, the last its group's Meaning; a
+    // Copy Place its own Type. A group's operand and a value statement have none (the builder holds a value statement's Meaning). Each row:
+    // the node, its row's Type.
+    [Fact]
+    public void ADiscardedPlaceHoldsTheTypeItsAcquisitionSupplies()
+    {
+        const string Source = "struct Holder2 {a}\n    public var link: uniq/i32 during a\nfunc id(x: i32) -> i32 => x\n" +
+            "func f(h: uniq/(Holder2 during a) during s, n: i32) -> ()\n    _ = h.link\n    h.link\n    (h.link)\n    _ = (h.link)\n    n\n    _ = n\n" +
+            "    id(n)\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var rows = Reachable(c.Kotonoha)
+            .Where(x => IsWithin(x, f) && x is not (FunctionKoto or DiscardKoto) && x.Parent is CodeBlockKoto or ParenthesizedKoto or DiscardKoto)
+            .Select(static x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {(HirTables.PlanOf(x).DiscardedType is { } type ? Binding.HoverTypeName(type) : "-")}");
+        const string Name = "uniq/i32 during (s and a)";
+        Assert.Equal(
+            [$"h.link {Name}", $"h.link {Name}", $"(h.link) {Name}", "h.link -", $"(h.link) {Name}", "h.link -", "n i32", "n i32", "id(n) -"],
+            rows);
+        var group = Reachable(c.Kotonoha).First(x => IsWithin(x, f) && x is ParenthesizedKoto);
+        Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
+    }
+
+    // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that
+    // turns a discarded Place into a value (`let x = 2` replaced, so the statement `x` names the function `x`) leaves no earlier pass's
+    // Type in its row, which MirBuilder.Held would hold the value at.
+    [Fact]
+    public void AnEditedDiscardKeepsNoEarlierType()
+    {
+        const string Source = "func x() -> i32 => 1\nfunc g() -> ()\n    let x = 2\n    x\nfunc donor() -> ()\n    let z = 3\npublic func main() => ()\n";
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source));
+        c.Bind();
+        HirTables.Publish(c);
+        var functions = Reachable(c.Kotonoha).OfType<FunctionKoto>().ToArray();
+        var g = functions.Single(static x => x.Name == "g");
+        var donor = functions.Single(static x => x.Name == "donor");
+        var statement = g.Body!.Items[1];
+        Assert.Equal("i32", Binding.HoverTypeName(HirTables.PlanOf(statement).DiscardedType!));
+        var replaced = g.Body.Items[0];
+        Assert.True(KotoHelper.Replace(replaced.Parent!, replaced, ParseTestHelper.Detach(donor.Body!.Items[0], new CodeBlockKoto(donor.CodeContext))));
+        c.Bind();
+        HirTables.Publish(c);
+        Assert.Equal((HirOp.Name, HirPlaceKind.Value), (HirTables.Op(statement), HirTables.PlaceOf(statement).Kind));
+        Assert.Null(HirTables.PlanOf(statement).DiscardedType);
     }
 
     // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
@@ -703,6 +792,8 @@ public sealed partial class HirFormsTest
         HirTables.Publish(module.Compilation);
         var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Unset);
         Assert.Empty(unset.Select(static x => $"{x.Span.Start} {x}"));
+        var untyped = HeldByTheirRow(module).Where(static x => HirTables.PlanOf(x).DiscardedType is null);
+        Assert.Empty(untyped.Select(static x => $"{x.Span.Start} {x}"));
     }
 
     // The Places the MIR builder acquires by their plan row (MirBuilder.Into's Place case): a Place no consumer's Adjust takes (a
@@ -711,4 +802,10 @@ public sealed partial class HirFormsTest
         HirTables.Op(x) is HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call &&
         HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset ||
         (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !KotoHelper.IsValueContext(x))));
+
+    // The Places the MIR builder holds by their row's Type (MirBuilder.Held, DECISIONS BU-98): a Place outside any group that a container
+    // discards (no consumer's Adjust takes it, in Discard Context) or an explicit discard takes, as the publisher writes them.
+    private static IEnumerable<Koto> HeldByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
+        HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && x.Parent is not ParenthesizedKoto &&
+        (x.Parent is DiscardKoto || (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset && !KotoHelper.IsValueContext(x))));
 }

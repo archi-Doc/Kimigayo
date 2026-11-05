@@ -353,7 +353,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"        T is {premise}\n        effect confined\n        ()\nstruct Derived<U> : Base<U>\n    override func keep(self: objref/Self, item: U)\n        ()\n"));
 
     // virtual-dispatch 6, SPEC 8.11.4: a virtual witness and a virtual function item dispatch, so their slot's bound decides, never the
-    // original's body.
+    // original's body. Getter's requirement forms `objref/Self`, so Getter states `Self is ObjectPayload` (SPEC 8.7.3) and Binding
+    // completes: the rows judge the effect alone.
     [Theory]
     [InlineData(
         "",
@@ -363,12 +364,14 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("", "", "IncompatibleContractImplementation_Kd Self is Reader 1")]
     [InlineData("        effect confined\n", "", "")]
     public void DispatchedCalleesUseTheirSlotsBound(string bound, string witness, string expected)
-        => Assert.Equal(
-            Expected(expected),
-            Problems("contract Getter\n    func get(self: objref/Self) -> i32\n        effect confined\ncontract Reader\n    func read(self: ref/Self, value: objref/Base) -> i32\n" +
-                $"        effect confined\nopen struct Base\n{witness}    public virtual func get(self: objref/Self) -> i32\n{bound}        return 1\n" +
-                "struct Probe\n    Self is Reader\n    public func read(self: ref/Self, value: objref/Base) -> i32\n        let operation = Base.get\n" +
-                "        return operation(value)\n"));
+    {
+        var c = MirBuildTest.Compile("contract Getter\n    Self is ObjectPayload\n    func get(self: objref/Self) -> i32\n        effect confined\ncontract Reader\n" +
+            $"    func read(self: ref/Self, value: objref/Base) -> i32\n        effect confined\nopen struct Base\n{witness}    public virtual func get(self: objref/Self) -> i32\n" +
+            $"{bound}        return 1\nstruct Probe\n    Self is Reader\n    public func read(self: ref/Self, value: objref/Base) -> i32\n        let operation = Base.get\n" +
+            "        return operation(value)\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => x.Code)));
+        Assert.Equal(Expected(expected), Problems(c, c.BuildMir()));
+    }
 
     // R4-M10: an effect only an Opaque site causes is a dependent of the error that made it; an independent environment effect is not.
     [Theory]
