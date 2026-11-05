@@ -29,15 +29,12 @@ public sealed class BoundEnumCase
 public sealed class BoundEnumConstruction
 {
     private BoundArgumentOperation[] operations = [];
-    private AcquisitionKind[] acquisitions = [];
 
     public BoundEnumCase Case { get; private set; } = null!;
 
     public BoundType Type { get; private set; } = null!;
 
     public ReadOnlySpan<BoundArgumentOperation> PayloadOperations => this.operations;
-
-    public ReadOnlySpan<AcquisitionKind> Acquisitions => this.acquisitions;
 
     internal bool IsValid { get; set; }
 
@@ -53,14 +50,11 @@ public sealed class BoundEnumConstruction
         if (this.operations.Length != operations.Length)
         {
             this.operations = new BoundArgumentOperation[operations.Length];
-            this.acquisitions = new AcquisitionKind[operations.Length];
         }
 
         operations.CopyTo(this.operations);
         this.IsValid = true;
     }
-
-    internal void SetAcquisition(int index, AcquisitionKind acquisition) => this.acquisitions[index] = acquisition;
 }
 
 public sealed partial class Binding
@@ -625,8 +619,6 @@ public sealed partial class Binding
                     plan.IsValid = false;
                     this.FailAcquisition(entry.Key, BindingFailure.TransferRequired, payloadSource);
                 }
-
-                plan.SetAcquisition(i, operation.Kind is ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
             }
         }
     }

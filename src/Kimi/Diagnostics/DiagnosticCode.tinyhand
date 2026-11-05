@@ -746,10 +746,6 @@
     Evidence="case:Text"
     Label="the owning value may leave its holder here"
 
-  + Name="DeferredExpansionLimit_Kd"
-    Category="Resource"
-    Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
-
   + Name="InternalInvariant_Kd"
     Category="Internal"
     Message="An internal compiler invariant was violated while analyzing this construct; no artifact is produced. Please report this input"

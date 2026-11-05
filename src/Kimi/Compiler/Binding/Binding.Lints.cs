@@ -11,7 +11,8 @@
 // on syntax a recovery guessed, records nothing when its code is a warning and is derived from those causes when it is an Error.
 // GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), and RestingCauses, the
 // causes a check resting on one of them rests on.
-// LintErrors counts the Error records for the old analysis, which rejects the program with them until H10.
+// LintErrors counts the Error records for its one reader, PLAN G428 (1)'s stopped test, until H10b-2 deletes it; LintErrorRecords lists
+// them, derived ones included, as a lasting fact whose readers are tests only (DECISIONS R5-M189).
 // Invariants: never fails a node; at one node the discard rows keep only the first (SPEC 17.5's priority); a warm rebind
 // allocates nothing (duplicates are resolved by sorting at report time, never by a Koto-keyed set).
 // Must not re-run inference or a proof to explain a record, lint the library's bodies or record from a Provisional pass.
@@ -80,9 +81,9 @@ public sealed partial class Binding
         Target,
     }
 
-    /// <summary>Gets the number of the pass's lint records whose code is an Error, which the old analysis counts with its own errors
-    /// until H10.</summary>
-    [Transitional("R6", Reason = "The old analysis's read of the lint Errors; H10 deletes it with the old analysis.")]
+    /// <summary>Gets the number of the pass's lint records whose code is an Error, which its one reader, PLAN G428 (1)'s stopped test
+    /// (<c>CurrentControlFlowTest.StatementCompletionAndNestedResultsBind</c>), reads until H10b-2 deletes it.</summary>
+    [Transitional("R6", Reason = "Its one reader is PLAN G428 (1)'s stopped test; H10b-2 deletes it with the control-flow analysis.")]
     internal int LintErrors
     {
         get
@@ -97,9 +98,9 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Gets the pass's lint records whose code is an Error, in walk order until ReportDiagnostics sorts them, which the test MIR
-    /// side (<c>MirTargetSide.MirSide</c>) lists beside Binding's issues.</summary>
-    [Transitional("R6", Reason = "The test MIR side's read of the lint Errors; H10b decides its successor.")]
+    /// <summary>Gets the pass's HIR lint records of Error severity, derived ones included, in walk order before <c>ReportDiagnostics</c>
+    /// sorts them; with <c>Issues</c>, Binding's Error records before finalization. Readers: tests only (the test MIR side and R5-M32's
+    /// derived-record test); no compiler path reads it, publication reads the lint list itself.</summary>
     internal IEnumerable<(Koto Node, DiagnosticCode Code)> LintErrorRecords
         => this.lints.Where(static x => IsError(x.Row)).Select(static x => (x.Node, LintTable[(int)x.Row].Code));
 

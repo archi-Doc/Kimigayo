@@ -25,9 +25,6 @@ public class ArchitectureRulesTest
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
-    // A read of the old analysis, through its transitional entry, its only path (R6-check H0b §2.1, review B3; H5 D3).
-    private const string LegacyOwnership = @"\.AnalyzeLegacyOwnership\(\)\.";
-
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
@@ -37,6 +34,15 @@ public class ArchitectureRulesTest
     private const string DeletedByR6Gen =
         @"\b(?:BodyLowerin[g]|EmissionModul[e]|EmissionOpcod[e]|LlvmModuleWrite[r]|LlvmEmitte[r]|GenericStoragePla[n]|StaticScalarEntr[y]|" +
         @"(?:Object|Virtual|Default)GenerationPla[n]|CompilerFunctionAdapter[s]|WindowsLowerin[g]|(?:Failed|Failure|Analyze)Instanc[e]\b)";
+
+    // DECISIONS R5-M189 (R6-check H10b, D8): the old ownership analysis H10b deleted, as its files' top-level types, its transitional
+    // entry and its limit code. A letter in brackets keeps the pattern from matching its source.
+    private const string DeletedByH10b =
+        @"\b(?:Ownershi[p](?:Analysis|Body|Call|CallInput|CallReservation|CleanupPlan|CleanupStep|ComparisonLoan|ConstructionPlan|" +
+        @"DeferredPlan|Edge|EdgeKind|ElementUpdate|Flow|Identity|Issue|Lending|MatchArmPlan|MatchPlan|Operation|OperationKind|PhiInput|" +
+        @"Place|PlaceKind|Projection|Result|Sequence|Storage|StorageLimitException|Transfers|Value|ValueKind)|AcquisitionKin[d]|" +
+        @"BorrowLivenes[s]|CallResultSourc[e]|Cleanu[p](?:Action|Reason)|InterpretationContex[t]|MovePat[h]|PackedAnalysisTabl[e]|" +
+        @"Plac[e](?:State|UseKind)|PlacementKin[d]|SequenceOperatio[n]|AnalyzeLegacyOwnershi[p]|DeferredExpansionLimit_K[d])\b";
 
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
@@ -52,16 +58,9 @@ public class ArchitectureRulesTest
     // from matching its source.
     [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
 
-    // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
-    // where no entry point carries it, until the stage that replaces it: dump goldens (R4). R4-M13a: direct calls of the old
-    // control-flow entries cannot grow. R6-check H5 (H0b §2.1, review B3): the old analysis is read only through its transitional entry,
-    // AnalyzeLegacyOwnership (D3 deleted Compilation's property).
-    [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", LegacyOwnership + @"(?:Analyze|Result|ReportDiagnostics)\b", 0)]
-    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 0)]
-    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 0)]
-    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 0)]
-    // R6-check H8b (D8, D9), H10b (D11): the 3 calls left are stopped methods, which keep their old reads until PLAN G428's fix moves
-    // them: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
+    // R3 U6: tests run and read analysis and generation through the Compilation entry points. R4-M13a: direct calls of the old
+    // control-flow entries cannot grow. R6-check H8b (D8, D9), H10b (D11): the 3 calls left are stopped methods, which keep their old
+    // reads until PLAN G428's fix moves them: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
     // OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning and
     // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. The fix lowers the limit; at 0, H10b-2 replaces the row by
     // zero-reference rows.
@@ -72,6 +71,11 @@ public class ArchitectureRulesTest
     [InlineData("Benchmark references to R6-gen's deleted components", "src/Benchmark", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Playground references to R6-gen's deleted components", "src/Playground", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Test references to R6-gen's deleted components", "tests", "*.cs", DeletedByR6Gen, 0)]
+    // R6-check H10b (D8): the same for the deleted old ownership analysis, replacing the test-read rows of its transitional entry; the
+    // compiler's row is H11's (three Binding comment lines name it).
+    [InlineData("Test references to the old ownership analysis", "tests", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Benchmark references to the old ownership analysis", "src/Benchmark", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Playground references to the old ownership analysis", "src/Playground", "*.cs", DeletedByH10b, 0)]
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
     // them (G163); fixed-fixed entailment has one owner, so OriginPremiseClosure.AddEdge has one caller, the premise catalog's writer
     // (AddPremiseEdge, bu20's C0d).

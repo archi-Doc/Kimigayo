@@ -161,7 +161,6 @@ public enum DiagnosticCode
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,
 
-    DeferredExpansionLimit_Kd,
     InternalInvariant_Kd,
     ComparisonLoanConflict_Kd,
     CallReservationConflict_Kd,

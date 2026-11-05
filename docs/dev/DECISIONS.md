@@ -14140,6 +14140,8 @@ structure is recorded here by the unit that first implements it.
     the same group merge.
   - Superseded in part by R5-M188 (2026-11-05, R6-check H10a, amended by H8a): its departures from H0 and H0c (the twin filter
     to H11, `LegacyRecords` to H8a, `MirTargetSide` kept).
+  - Superseded in part by R5-M189 (2026-11-05, R6-check H10b): H10b splits at the control-flow analysis, which H10b-2 deletes
+    after PLAN G428.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -14285,6 +14287,30 @@ structure is recorded here by the unit that first implements it.
     - "MIR helpers into `CompilationTestHelper`" and H0c's "else goes": `MirTargetSide` keeps its name, `Check` and `At` and owns
       `MirSide` (the group's one record pin, 79 call sites), and the MIR's (requirement, code, analysis) pairs of R4-M67 with
       `BindingComplete` move to their one reader, `MirCensusTest`.
+- **R5-M189 The old ownership analysis ends; the control-flow analysis follows at H10b-2 (R6-check H10b)** (2026-11-05, R5; design
+  `draft/Sketches/R6-check/H10b-design.md` revision 1 with BU's review) Major.
+  - Split: H10b deletes 47 of the 48 files of `C/Analysis` (the old ownership analysis), its transitional entry
+    (`Compilation.AnalyzeLegacyOwnership` with `ownership` and `legacyAnalyzed`; `InvalidateOwnership`, which only clears the MIR, is
+    `InvalidateMir`) and every member only they read. **H10b-2** deletes `ControlFlowAnalysis.cs`, `Compilation.AnalyzeControlFlow`,
+    `Binding.LintErrors` and the control-flow ratchet row when that row is at 0: BU's second shape of PLAN G52, then R4's G428 moving
+    its three stopped tests (the owner's order). Reason: the stops read only `AnalyzeControlFlow()`, whose file names none of the 47
+    files' types, so holding them all would hold H11, H12 and H14 for nothing. Supersedes R5-M182's H10b row in part.
+  - Ended temporaries: the entry's and `OwnershipAnalysis`' four `("R6-check")` tags (its stops and gate, R4-M152's and R4-M159's old
+    halves); the code of the D5 freeze's exceptions (PR-1, BU-10, BU-14, BU-19, BU-24's old reads, BU-44's `SlotLoanRequirement`,
+    R4-M126 and R4-M152's gate, R4-M159's stop, R4-M106's old part, R5-M159 and R5-M160's `AcquireElement`).
+  - `Binding.LintErrorRecords` stays as a lasting Binding fact, untagged (R5-M188's open question Q6): the pass's HIR lint records of
+    Error severity, derived ones included, before finalization; tests are its only readers. Reading the published lint Errors instead
+    would lose the derived records finalization suppresses. BU consents (2026-11-05, H10b design review OQ2). `LintErrors` keeps one
+    reader, the G428 (1) stop, until H10b-2.
+  - Departure from H0c's H11 rows: the root-helper members H10b leaves with only their declaration go with it, `IsIndexerCall`,
+    `DesignatedType`, `MatchTypes` and `StaticScalar` included (remove what the change makes redundant); Binding's nine newly unread
+    members join H11's list.
+  - `DeferredExpansionLimit_Kd` and `OwnershipRequirement.ExpansionLimit` go with their only producers; codes and requirements are
+    catalogued by name, so no ordinal moves a pin.
+  - `ControlFlowAnalysisTest.DefersCoverageWhenAnUnresolvedCallCouldHaveTypeNever` reads the published Errors; the join form's exact
+    set is PLAN G52's fail-first regression, the Explicit `AJoinPastAnUnresolvedCallPublishesOnlyItsCause`.
+  - Ratchets: the four rows over the entry become three zero-reference rows over the old ownership names in `tests`, `src/Benchmark`
+    and `src/Playground`; `src/Kimi`'s row is H11's (three comment lines left).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)

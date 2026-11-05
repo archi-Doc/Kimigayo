@@ -18,7 +18,6 @@ public enum OwnershipRequirement : byte
     PossiblyMovedUse,
     ReassignedLet,
     Unsupported,
-    ExpansionLimit,
     ComparisonLoanConflict,
     DefaultArgumentMove,
     DefaultArgumentAccess,

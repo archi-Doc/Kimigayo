@@ -607,9 +607,6 @@
   + Name="Ownership.Unsupported"
     Description="the operation lies inside the analyzed subset"
 
-  + Name="Ownership.ExpansionLimit"
-    Description="the deferred cleanup expansion stays within its limit"
-
   + Name="Ownership.ComparisonLoanConflict"
     Description="the operation does not conflict with an active loan"
 
