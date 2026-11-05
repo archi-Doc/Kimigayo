@@ -17,7 +17,7 @@ namespace XunitTest;
 /// its writes (M4). One theory per rule; each row is one program of a rule's forms with their twins (an Ok form ends with its use, then
 /// the write of <c>v</c>'s referent, and its Bad twin swaps the two; a form with no Ok order has the write first as its twin). A row states
 /// every MIR record of its program as the function, the subject's first line and the views (bit i for view i), with the code unless it is
-/// <c>ComparisonLoanConflict_Kd</c>. The default pipeline keeps its old rules until R6-check (R4-M50) and is not asserted. Problem r2 §2's
+/// <c>ComparisonLoanConflict_Kd</c>. Problem r2 §2's
 /// D5 (<c>slotBad</c>), D7 (<c>rawBufDead</c>) and D8 (the pinned twoLayers, threeLayers, hiddenLayer, acrossLayers, byUniq,
 /// viaUniqLocal, nestedDead and optionalDead) are held by their existing tests and not repeated here.</summary>
 public sealed partial class MirBorrowsTest

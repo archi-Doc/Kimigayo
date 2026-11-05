@@ -79,7 +79,7 @@ public class CompilerPipelineBenchmark
     }
 
     // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. Stage 3 builds and validates the MIR
-    // (ConstructMir), memoized per program version; stage 4's Analyze, which runs the same on every pipeline (DECISIONS R5-M156), runs the
+    // (ConstructMir), memoized per program version; stage 4's Analyze (DECISIONS R5-M156) runs the
     // MIR analyses and the instance collector over it and keeps them for the generation gate (R6-check H0 D-c5). Stage 5 is empty and
     // stage 6 is the generation entry, MIR code generation (R5-M94, R5-M160).
     internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)

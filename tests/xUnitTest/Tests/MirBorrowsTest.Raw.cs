@@ -550,7 +550,7 @@ public sealed partial class MirBorrowsTest
     // in an enum's payload, optOk in an Option, genPLateOk in a box's Field, arrPlainOk in an Array). Each is a correct error at `y = 5`
     // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
     // names keep their earlier suffix. The old analysis read no retention and accepted the program; since the MIR decides acceptance
-    // (R6-check H5, DECISIONS R5-M185) the default pipeline rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
+    // (R6-check H5, DECISIONS R5-M185) check rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
     [Fact]
     public void ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn()
     {
@@ -1055,7 +1055,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(["getRRRRepl: y = 5"], RejectedProblems(RawShapes + ChainShapes + ChainRepl + "    let unrelated: bool = 3\n"));
 
     // PLAN G255 (C3; DECISIONS R4-M143): popLateOk is SPEC-valid (SPEC 4.9.6; the pointee is replaced and the popped pointer used before
-    // `y = 5`), as the default pipeline accepts it: its literal is one aggregate (DECISIONS R5-M129), which writes no receiver store and leaves
+    // `y = 5`), as check accepts it: its literal is one aggregate (DECISIONS R5-M129), which writes no receiver store and leaves
     // no Φ_E in its elements, so pop's Chain row reads no E; built by appends, each receiver store, a referent store, reaches refs(S) only.
     [Fact]
     public void APopOverElementsAnUntiedStoreReachedIsValid()

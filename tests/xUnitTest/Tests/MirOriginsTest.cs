@@ -272,7 +272,7 @@ public sealed partial class MirOriginsTest
     // SPEC 15.6.5 and 15.6.3: valid counterparts form no Refuted chain: a parameter's Borrow passed on, a Field's Borrow read through its
     // binder, a Reborrow through shared and exclusive layers whose Origins the result names, a Slice element's Borrow (E6), a raw Deref,
     // which stops containment (a-wf), a local region holding only a local's Borrow, an immutable static's storage passed to a
-    // `during static` parameter (row 7', Inferred; SPEC 11.8), which the default pipeline rejects (PLAN G197's residual, ledger (a)),
+    // `during static` parameter (row 7', Inferred; SPEC 11.8), which check rejects (PLAN G197's residual, ledger (a)),
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
     // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
     // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215);

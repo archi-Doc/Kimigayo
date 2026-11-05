@@ -354,7 +354,7 @@ public class RawStorageTest
         Assert.Equal(OriginKind.Intersection, read.Kind);
     }
 
-    // SPEC 5.6, 5.7 (DECISIONS BU-24, the owner's Q-O3 D5 exception): the default pipeline generates and runs the programs Q-O3's
+    // SPEC 5.6, 5.7 (DECISIONS BU-24, the owner's Q-O3 D5 exception): MIR code generation generates and runs the programs Q-O3's
     // measurement found failing (q-o3-measure: `during self` holders, Case payloads built with null and matched, SPEC 5.6's Buffer and
     // BufferView, Lenses, typed paths and pointers stating different Origins), the forms B1 made valid and G212's Moves of a layer's
     // Place restored by null (DECISIONS R4-M110); each runs natively. A generic instance's raw Place borrows of a remainder's

@@ -11,8 +11,8 @@ namespace XunitTest;
 
 public class VirtualEffectObligationTest(ITestOutputHelper output)
 {
-    // The unrelated mutable group storage is still outside generation (P42): the collector's StaticStorage record at check, on every
-    // pipeline (DECISIONS R5-M82, R5-M156); P42 reverts it.
+    // The unrelated mutable group storage is still outside generation (P42): the collector's StaticStorage record at check
+    // (DECISIONS R5-M82, R5-M156); P42 reverts it.
     private const string Storage = "Unsupported_Kd public var count: i32 = 0";
 
     // SPEC 8.11.3 on MIR (H0b §5.4): A4 records the slot's bound at each implementation that breaks it, and Binding reports no effect issue.

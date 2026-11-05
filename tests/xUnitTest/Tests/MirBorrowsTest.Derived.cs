@@ -149,8 +149,8 @@ public sealed partial class MirBorrowsTest
     // SPEC 6.5.1, 23.1.2 (G242, G245's enum half; DECISIONS BU-37): an enum whose Case A Binding did not bind publishes its other Cases, so
     // MIR built over them (a payload-free and a payload construction, a borrowed and a moved payload, inside an Option, as a default and as
     // a Field initializer, a generic instance's, a move out of a payload, a call's result, matches over B) has no validator finding and no
-    // record of construction, and A5 and A1 report the valid twin's records (fail-before: an Arity or Projection finding, InternalInvariant_Kd
-    // under the mir pipeline, nothing analyzed). A conflict that rests on the failed Case is its dependent and goes (Sel's Loan of v is
+    // record of construction, and A5 and A1 report the valid twin's records (fail-before: an Arity or Projection finding, InternalInvariant_Kd,
+    // nothing analyzed). A conflict that rests on the failed Case is its dependent and goes (Sel's Loan of v is
     // held only through the failed Found, its repair's conflict).
     [Theory]
     [InlineData("enum E\n    A(MISSING)\n    B\nfunc g()\n" + Lent + "    let e: E = .B\n" + Written, "Missing", "i32", "g: v = 2")]

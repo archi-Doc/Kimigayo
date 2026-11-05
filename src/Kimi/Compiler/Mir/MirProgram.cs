@@ -29,7 +29,7 @@ internal sealed class MirProgram
     internal ulong Version { get; set; }
 
     /// <summary>Gets the validator's findings, which Compilation's <c>PublishMirRecords</c> publishes as <c>InternalInvariant_Kd</c> after
-    /// the merged problems, on every pipeline (DECISIONS R5-M185).</summary>
+    /// the merged problems (DECISIONS R5-M185).</summary>
     internal List<MirFinding> Findings { get; } = [];
 
     /// <summary>Gets the records and problems of this version: the construction and collection records (<see cref="Report"/>) and the

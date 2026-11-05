@@ -5,7 +5,7 @@ using Xunit;
 namespace XunitTest;
 
 // SPEC 8.15.3 with DECISIONS R5-M144 and R5-M149 (the owner's LayoutNeed): a form whose generated code reads a layout past its root's
-// storage is a use of the Type it reads, InvalidCLayout_Kd at the form for an unavailable C layout on every pipeline. A Field, Case payload
+// storage is a use of the Type it reads, InvalidCLayout_Kd at the form for an unavailable C layout. A Field, Case payload
 // or element projected through a borrow, raw pointer, object handle or a sequence's storage needs its container's offsets or its stride; a
 // raw pointer's displacement, a whole-value update through references (swap, replace, exchange; a value given or taken is a by-value use too)
 // and a Dictionary operation need their Types' sizes; a comparison of a Tuple's parts through a reference needs its offsets (SPEC 13.4). The

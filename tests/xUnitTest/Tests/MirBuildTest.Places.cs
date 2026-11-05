@@ -203,7 +203,7 @@ public sealed partial class MirBuildTest
 
     // SPEC 8.2.3 (DECISIONS BU-72; PLAN G168b): a selection Binding resolved through an identity premise whose subject is the Type
     // parameter of its receiver's Place (an Array, a fixed array or a Tuple, also through a chain, at a position, ^x, a key or a range) is one
-    // located Unsupported_Kd at the selection on every pipeline, its Opaque site naming only the receiver's root, decided before anything
+    // located Unsupported_Kd at the selection, its Opaque site naming only the receiver's root, decided before anything
     // reads the receiver, with no projection or length the MIR validator rejects and no InternalInvariant_Kd (fail-before: a typeless
     // projection or Len, a validator finding and InternalInvariant_Kd beside Unsupported_Kd at the member, for ^x and a key at the
     // selection); a struct Field of such a Place stays Unsupported_Kd (chainTU). A ^x Binding applied directly (Op Range), a position or a

@@ -212,7 +212,7 @@ public class ContextualCaptureTest
     }
 
     // A Closure rejected where it captures the helper borrow is a failure its later uses rest on: called, copied, passed on or captured
-    // by another Closure, each pipeline publishes exactly its one record, and the MIR records no internal fault.
+    // by another Closure, check publishes exactly its one record, and the MIR records no internal fault.
     [Theory]
     [InlineData("        f()\n")]
     [InlineData("        let h = f\n        h()\n")]
@@ -298,8 +298,8 @@ public class ContextualCaptureTest
         Assert.Equal(failure is null ? [] : [(Enum.Parse<BindingFailure>(failure), at!)], c.Binding.Issues.Select(static x => (x.Node.FailureOf(), x.Node.ToString())));
     }
 
-    // The Binding and analysis records a program publishes, which records no internal fault; every pipeline publishes the same (DECISIONS
-    // R5-M156), so one compilation of the process's pipeline judges them (PLAN G314).
+    // The Binding and analysis records a program publishes, which records no internal fault; one compilation judges them (DECISIONS
+    // R5-M156, PLAN G314).
     internal static TestDiagnostic[] PublishedRecords(string source)
     {
         var c = Compilation.CreateForTest();
