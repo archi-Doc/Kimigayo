@@ -101,7 +101,7 @@ public sealed partial class Binding
     // clauses (RejectedRelations). It judges in its own frame (ExecutableBody.Declarations; DECISIONS BU-89), where an enclosing body's
     // Origin a declaration names is fixed (SPEC 15.3.4); a judgment made while a header is bound keeps the forming body's classes and
     // leaves such a relation to this judge as a row. A row whose ends are not declaration atoms (R4-M101 E2) stays, a broken contract
-    // the view reports.
+    // the view throws at (DECISIONS BU-102).
     private void JudgeDeclarationRows()
     {
         this.callRelationScratch.Clear();

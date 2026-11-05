@@ -202,6 +202,32 @@ public sealed partial class HirFormsTest
         Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(receiver), HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust));
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-103): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param whose Move
+    // rests on an Error Copy proof, a typeless local and a group of a typeless alias, and a binding whose Copy proof is Error (Deferred); an
+    // Error node's folds to its derived value (Temporary, None; R4-M109), and a discarded one's plan row is Failed, its column unset (no
+    // consumer takes it). Fail-before: each was the column's default (Unset, None).
+    [Fact]
+    public void AFailedAcquisitionIsPublishedFailed()
+    {
+        const string Source = "struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nstruct Gen\n    Self is Iterator\n" +
+            "    associate Iterator.Item is Bad\n    public init() => ()\n    public func next(self: uniq/Self) -> Option<Bad> => .None\n" +
+            "func a(b: Bad) -> Bad => b\nfunc f(t: (i32, i32)) -> i32 => t.5\nfunc k(c: bool) -> i32\n    let x = missing\n    let z = x\n" +
+            "    let y: i32 = if c => 1 else => x\n    let w: i32 = if c => 1 else => (z)\n    return y + w\nfunc g() -> i32\n    let q = missing\n    q\n" +
+            "func m(it: uniq/Gen)\n    match it.next()\n        .Some(let v) => ()\n        .None => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        HirTables.Publish(c);
+        var rows = Reachable(c.Kotonoha)
+            .Where(static x => x.ToString() == "t.5" || HirTables.AdjustOf(x).Acquire == HirAcquire.Failed ||
+                HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Failed)
+            .Select(static x => $"{x} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire} {HirTables.PlanOf(x).Adjust.Acquire}");
+        string[] expected =
+        [
+            "b Name Failed Unset", "t.5 Error Temporary Unset", "x Name Failed Unset", "(z) Group Failed Unset", "q Name Unset Failed",
+            "let v Syntax Failed Unset",
+        ];
+        Assert.Equal(expected, rows);
+    }
+
     // The 1-based line:column of an offset in a source.
     private static string At(string source, int offset)
     {
