@@ -249,6 +249,8 @@ public sealed partial class Binding
                 return new("omitted", declaration.ToString()); // SPEC 8.1.1, 23.1: the outer Origin `o` of a pair binder.
             case OriginKind.Parameter:
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
+            case OriginKind.ConstraintSet:
+                return new("expression", origin.Name); // SPEC 15.3.4: the set's slot as written, `m.at`.
             case OriginKind.Inference when origin.Binder is VariableKoto local:
                 return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
             case OriginKind.Holder:

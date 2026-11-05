@@ -95,6 +95,13 @@ public sealed partial class Binding
     // needs it valid. Whether `node` failed.
     private bool InvalidRawOrigin(Koto node, BoundOrigin raw, OriginParameter? projected, BoundType? instance)
     {
+        if (raw.Kind == OriginKind.ConstraintSet)
+        {
+            // DECISIONS BU-100: SPEC 5.7 does not settle whether an unrelated Constraint set's slot keeps raw authority (STATUS).
+            this.Fail(node, BindingFailure.Unsupported);
+            return true;
+        }
+
         if ((projected ?? NamedSlot(raw, out instance)) is { } slot && this.RequirementAt(slot, instance).Weakest == LoanRequirement.None)
         {
             var cases = this.FailingCase(slot, instance, LoanRequirement.None);
