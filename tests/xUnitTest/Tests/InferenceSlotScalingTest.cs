@@ -60,6 +60,23 @@ public class InferenceSlotScalingTest
         }
     }
 
+    // G216 (a) U3a (D) (DECISIONS BU-104 Rule E): Π keeps each premise once per entry, so Rule E's reads grow linearly in a literal's
+    // elements when the callee's Origins are free (`mk([.None x N])`: nothing solves `a` or `b`).
+    [Fact]
+    public void FreeOriginPremiseReadsGrowLinearlyInALiteralsElements()
+    {
+        var work = new[] { 200, 400, 800 }.Select(Work).ToArray();
+        Assert.True(work[0] > 0 && MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+
+        static long Work(int count)
+        {
+            var c = MinimalEmissionTest.Analyze(
+                "func mk(p: Array<Option<ref/(ref/i32 during a) during b>>) -> i32 => 0\n" +
+                "func k() -> i32\n    return mk([" + string.Join(", ", Enumerable.Repeat(".None", count)) + "])\n");
+            return c.Binding.FreePremiseWork;
+        }
+    }
+
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void WarmLargeSlotSetsReuseTheirTailStorage()

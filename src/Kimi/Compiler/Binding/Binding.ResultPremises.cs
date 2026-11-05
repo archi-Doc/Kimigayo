@@ -517,11 +517,19 @@ public sealed partial class Binding
             !SameOriginArguments(result, actual) &&
             this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
         {
+            // Rule E decides on the pattern's ends (FreePremise), under a judged operation's free Origins only.
+            var values = (BoundOrigin[])result.OriginArguments;
+            var ends = this.freeBinder is null || pattern.OriginArguments.Count != values.Length ? values : (BoundOrigin[])pattern.OriginArguments;
             foreach (var relation in declaration.Relations)
             {
-                var longer = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])result.OriginArguments);
-                var shorter = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])result.OriginArguments);
-                if (!this.VisitTypeClause(longer, shorter, relation.Equality, relation.Syntax, visit))
+                var longer = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, values);
+                var shorter = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, values);
+                var clause = ReferenceEquals(ends, values) ? new FreePremise(longer, shorter, longer, shorter) : new FreePremise(
+                    this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, ends),
+                    this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, ends),
+                    longer,
+                    shorter);
+                if (!this.VisitTypeClause(clause, relation.Equality, relation.Syntax, visit))
                 {
                     return false;
                 }
@@ -686,7 +694,7 @@ public sealed partial class Binding
                 this.failedResultPremise ??= (value, substituted);
                 return false;
             default:
-                if (visit.Subject == WellFormedSubject.Input)
+                if (visit.Subject == WellFormedSubject.Input && !this.Eliminates(visit.Use, new(longer, outer, value, substituted), null, condition))
                 {
                     this.JudgeCallPosition(visit.Use, value, substituted, false, null, null, wellFormed: true, condition: condition);
                 }
@@ -699,13 +707,19 @@ public sealed partial class Binding
         }
     }
 
-    // An input Type's own clause, substituted with the Origins of its occurrence: a bound of the call's inference, at a selected call a
-    // `declared` relation at the input, or proven by a whole-contract comparison.
-    private bool VisitTypeClause(BoundOrigin longer, BoundOrigin shorter, bool equality, Koto clause, in WellFormedVisit visit)
+    // An input Type's own clause, substituted with the Origins of its occurrence (`premise`'s values; its ends are the pattern's, Rule
+    // E's): a bound of the call's inference, at a selected call a `declared` relation at the input, or proven by a whole-contract
+    // comparison. An equality is both directions, each eliminated by Rule E apart; one without a free end is one record, as without it.
+    private bool VisitTypeClause(in FreePremise premise, bool equality, Koto clause, in WellFormedVisit visit)
     {
+        var (longer, shorter) = (premise.LongerValue, premise.ShorterValue);
         if (visit.Action == WellFormedAction.Require)
         {
-            this.JudgeCallPosition(visit.Use, longer, shorter, equality, null, clause, declared: true);
+            if (!(this.Eliminates(visit.Use, premise, clause, 0) | (equality && this.Eliminates(visit.Use, premise.Reversed, clause, 0))))
+            {
+                this.JudgeCallPosition(visit.Use, longer, shorter, equality, null, clause, declared: true);
+            }
+
             return true;
         }
 

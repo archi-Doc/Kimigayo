@@ -77,6 +77,7 @@ public sealed partial class Binding
             this.JudgeCallFit(selected, operations, argumentCount, i);
         }
 
+        this.BeginFreeOrigins(call, selected, solution.Origins); // Rule E (DECISIONS BU-104), from the final solution.
         for (var i = 0; i < operations.Length; i++)
         {
             var childStart = 0;
@@ -112,6 +113,7 @@ public sealed partial class Binding
             this.RequireInputPremises(call, solution.Pattern(argument.Parameter.Type!)!, argument.ParameterType, null, Contribution.Signature);
         }
 
+        this.EndFreeOrigins();
         this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
         this.PublishCallRelations();
         this.CollectFitBounds(operations, argumentCount);

@@ -25,6 +25,6 @@ public sealed partial class Binding
     {
         this.inferenceMappings = this.inferenceComparisons = this.inferenceCandidateChecks = 0;
         this.inferenceCorrelations = this.inferenceFixedChecks = this.inferenceFixedReuses = 0;
-        this.evidenceNameReads = 0;
+        this.evidenceNameReads = this.premiseSetReads = 0;
     }
 }

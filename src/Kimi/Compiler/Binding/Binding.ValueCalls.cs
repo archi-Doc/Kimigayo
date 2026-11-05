@@ -515,6 +515,7 @@ public sealed partial class Binding
             // SPEC 15.6.1, 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds, also
             // where no input is per-call: a written input's well-formedness is its signature's premise, proven at each call (R4-M137).
             this.callRelationScratch.Clear();
+            this.BeginFreeOrigins(call, ownBinder, origins.AsSpan(0, originCount)); // Rule E (DECISIONS BU-104).
             for (var i = 0; i < count; i++)
             {
                 this.ChildGroup(solution, i, out var childStart, out var childEnd);
@@ -528,6 +529,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.EndFreeOrigins();
             if (conditioned is not null)
             {
                 this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);

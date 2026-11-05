@@ -9298,6 +9298,14 @@ resumed by R4-M86 (2026-10-20).
     value calls, Case constructions), whether or not its operation adapted it; no aggregate of the leaves is formed. A root's
     Contribution is read only for a root without child rows; `EvidenceNames` reads the Evidence leaf rows, the Evidence roots without
     child rows and the receiver, never a composed root's mark. `PartContribution`'s Join row reads "a control-flow part is Evidence".
+  - Rule E (U3-design.md's eleventh amendment; the owner, 2026-11-05, verbatim 「D 葉判定で一度だけ試す」): a judged operation's free
+    Origins, the callee's Origin parameters that its final solution leaves without a value and its result pattern does not name, are
+    eliminated from the input premises its judgment meets (Π: Signature leaves, Evidence leaves where the fit replaced an Origin, the
+    defaults it uses, a Type's own clauses), decided on the pattern's ends. `L outlives S`: neither free is judged as before; `S` free is
+    not judged; `L` alone free is judged as `X outlives S` at its position for each non-free `X` reached upward from `L` through Π's
+    premises with free shorter ends. Nothing is eliminated at a call within its callee's declaration. One place: the Require visit's
+    predicate (`Binding.FreeOrigins.cs`). Rule E and R2′ (BU-99) are temporary until option (A) makes every abstract callee Origin a
+    fresh region of its call; BU-51 is not superseded.
   - Evidence of the cause (the front's step 0, on dev ae112e08f): a join argument took `JudgeSelectedCall`'s rows branch, whose second
     composition read completion state and found no child rows, so the root was judged as one Evidence leaf; each form had one solve,
     whose `PremiseSolved` was empty because `EvidenceNames` read the join root's Evidence mark.
