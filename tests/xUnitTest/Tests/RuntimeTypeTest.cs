@@ -29,10 +29,8 @@ public class RuntimeTypeTest
         Assert.Same(test.Right.TypeOf(), plan.TargetType);
         Assert.Null(test.ConstraintOf());
         Assert.Same(BoundType.Boolean, test.TypeOf());
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.False(flow.Nodes.ContainsKey(test.Right));
-        Assert.Empty(flow.PendingBinding);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal(HirCompletion.Unset, HirTables.CompletionOf(test.Right));
     }
 
     [Theory]
@@ -49,10 +47,6 @@ public class RuntimeTypeTest
         var roundTrip = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => " + test);
         Assert.Equal(negated, Test(roundTrip).IsNegated);
         AssertBound(roundTrip);
-        var flow = c.AnalyzeControlFlow();
-        Assert.DoesNotContain(flow.Issues, x => x.Message.Contains("bool", StringComparison.OrdinalIgnoreCase));
-        Assert.False(flow.Nodes.ContainsKey(test.Right));
-        Assert.Contains(test, flow.PendingBinding);
     }
 
     [Fact]
@@ -65,7 +59,7 @@ public class RuntimeTypeTest
         Assert.False(c.Bind().IsComplete);
         var grouped = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => not (x is Dog)");
         AssertBound(grouped);
-        Assert.Empty(grouped.AnalyzeControlFlow().Issues);
+        Assert.True(grouped.Analyze().IsVerified, MinimalEmissionTest.Describe(grouped));
     }
 
     [Theory]
@@ -76,7 +70,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog, flag: bool) -> bool\n    " + body);
         AssertBound(c);
         Assert.Same(BoundType.Boolean, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "b").TypeOf());
-        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -188,7 +182,6 @@ public class RuntimeTypeTest
         Assert.True(KotoHelper.Replace(test, oldTarget, newTarget));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(test.RuntimeTestOf());
-        Assert.Contains(test, c.AnalyzeControlFlow().PendingBinding);
         Assert.True(KotoHelper.Replace(test, newTarget, oldTarget));
         AssertBound(c);
         Assert.Same(original, test.RuntimeTestOf()!.Value.TargetType);
@@ -211,9 +204,8 @@ public class RuntimeTypeTest
         var test = Test(c);
         Assert.NotNull(test.RuntimeTestOf()!.Value.OperandType.Origin);
         Assert.Same(BoundType.Boolean, test.TypeOf());
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.False(flow.Nodes.ContainsKey(test.Right));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal(HirCompletion.Unset, HirTables.CompletionOf(test.Right));
         var invalid = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> i32\n    return 0\n    return x is Dog");
         Assert.False(invalid.Bind().IsComplete);
     }
@@ -227,10 +219,9 @@ public class RuntimeTypeTest
         AssertBound(c);
         var test = Test(c);
         Assert.Same(BoundType.Never, test.RuntimeTestOf()!.Value.OperandType);
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.False(flow.Nodes[test].CanCompleteNormally);
-        Assert.False(flow.Nodes.ContainsKey(test.Right));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(test));
+        Assert.Equal(HirCompletion.Unset, HirTables.CompletionOf(test.Right));
     }
 
     [Theory]
@@ -281,20 +272,18 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess($"struct Dog\nfunc f(x: objref/Dog, flag: bool) -> bool\n    require x is not Dog {operation} flag else => return false\n    return true");
         AssertBound(c);
         var test = Test(c);
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
-        Assert.False(flow.Nodes.ContainsKey(test.Right));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal(HirCompletion.Unset, HirTables.CompletionOf(test.Right));
     }
 
+    // The operand's exit runs its diverging defer, so the test is never reached: the HIR Completion column holds completion without
+    // cleanup, and the MIR golden blockedTest (tests/mir/objects) holds that fact, its TypeTest reached only through `unreachable check`.
     [Fact]
     public void RequiredCleanupCanStopAValidObjectTypedOperand()
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => (label work: do\n    defer => loop => ()\n    exit to work x\n) is Dog");
         AssertBound(c);
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.False(flow.Nodes[Test(c)].CanCompleteNormally);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 7.5: the leading `is` items of every body are Constraints, selected before lookup whatever the function's
@@ -354,7 +343,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> i32\n    if x is Dog => return 1");
         c.Bind();
-        Assert.Contains(c.Binding.LintErrorRecords, static x => x.Code == DiagnosticCode.FunctionFallthrough_Kd);
+        Assert.Contains(CompilationTestHelper.BindingErrors(c), static x => x is { Code: nameof(DiagnosticCode.FunctionFallthrough_Kd), Text: "if x is Dog => return 1" });
         var refinement = CompilationTestHelper.ParseSuccess("open struct Animal\nstruct Dog: Animal\n    public func bark(self: objref/Self) -> bool => true\nfunc f(x: objref/Animal) -> bool\n    require x is Dog else => return false\n    return x.bark()");
         Assert.False(refinement.Bind().IsComplete);
         Assert.NotNull(Test(refinement).RuntimeTestOf());
@@ -376,13 +365,13 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess(source.ToString());
         AssertBound(c);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
+        var valid = c.Analyze().IsVerified;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Bind();
-            flow.Reanalyze(c.Kotonoha.RootKoto);
+            valid &= c.Analyze().IsVerified;
         }));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
         AssertBound(c);
     }
 
