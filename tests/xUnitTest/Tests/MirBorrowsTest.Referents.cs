@@ -532,8 +532,8 @@ public sealed partial class MirBorrowsTest
     // base's handle), whose element's drop stores through its raw slot, consumed, then the slot used before `y = 5`, are correct errors
     // at `y = 5` by SPEC 15.6 (the owner's 「(B)」 of 2026-10-30, PLAN G264 S1; DECISIONS BU-67): the element, an untied constructor's
     // result (Writer.init's or WLeaf.init's), reaches storage the body does not own through the whole holder, also after its raw Field
-    // was rewritten, so the consuming call's cleanup (PLAN G266) may store y's Loan there. The default pipeline's old analysis reports no
-    // conflict at `y = 5`.
+    // was rewritten, so the consuming call's cleanup (PLAN G266) may store y's Loan there. Before H5 the old analysis reported no conflict
+    // at `y = 5`.
     [Fact]
     public void AnArrayLiteralPlacesItsElementsThroughNoReceiverStore()
         => Assert.Equal(["litDropOk: y = 5", "lit2DropOk: y = 5", "litObjOk: y = 5"], Problems(RawShapes + ReferentShapes + """

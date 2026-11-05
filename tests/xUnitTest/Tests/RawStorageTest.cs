@@ -413,8 +413,8 @@ public class RawStorageTest
 
     // SPEC 5.7 Writing a Field, Typed paths (the final review's B1): a raw Field stating `self` or a slot, read or written through a
     // dereference of a raw pointer stating an Origin (a typed path, a parameter, `static`, an element), checks as through one stating
-    // none: the old analysis compares the stored part's Type without raw Origins (the D5 exception, the owner's 「D5 例外を広げる
-    // (推奨)」), so no InternalInvariant_Kd remains.
+    // none: the old analysis compared the stored part's Type without raw Origins (the D5 exception, the owner's 「D5 例外を広げる
+    // (推奨)」), so no InternalInvariant_Kd remained.
     [Theory]
     [InlineData(SelfField + "func f(x: ref/B) -> raw/u8 during x\n    let p = x@follow@raw\n    unsafe\n        let q = (*p).data\n        return q")]
     [InlineData(SelfField + "func f(x: ref/B, p: raw/B during x) -> raw/u8 during x\n    unsafe => return (*p).data")]

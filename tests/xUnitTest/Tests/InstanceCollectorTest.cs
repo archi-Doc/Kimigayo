@@ -2313,7 +2313,7 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K4b, K7: every milestone analyzed under MIR code generation has a checked set without a record, but Milestone 42 (P42's completion
-    // program, which the old analysis rejects at the same accesses), whose statics of P42's storage (vars, Resource lets, the unused one
+    // program, which the old analysis rejected at the same accesses), whose statics of P42's storage (vars, Resource lets, the unused one
     // included, and the static of a generic container's group, X33 (a)) are the static-storage gap at their declarations (DECISIONS R5-M82).
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]

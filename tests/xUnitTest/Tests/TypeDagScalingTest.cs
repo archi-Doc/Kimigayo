@@ -242,7 +242,7 @@ public partial class TypeDagScalingTest
         Assert.Empty(Problems(Checked(Source)));
     }
 
-    // A warm Analyze of a program whose Types share parts allocates nothing: the old analysis's answer tables keep their capacity.
+    // A warm Analyze of a program whose Types share parts allocates nothing: the MIR's analyses keep their storage.
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void WarmAnalyzeOfSharedTypesAllocatesNothing()
@@ -344,12 +344,12 @@ public partial class TypeDagScalingTest
         return "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
     }
 
-    // A checked compilation: the old analysis's rows judge its walks, the checked set's records publish at check (DECISIONS R5-M156), and
-    // the chain shapes generate through MIR code generation, the old generator's instance analyses having left with its selection at G4
-    // (DECISIONS R5-M160).
+    // A checked compilation: the MIR's analyses judge its walks (R6-check H5, DECISIONS R5-M185), the checked set's records publish at
+    // check (DECISIONS R5-M156), and the chain shapes generate through MIR code generation, the old generator's instance analyses having
+    // left with its selection at G4 (DECISIONS R5-M160).
     private static Compilation Checked(string source) => MinimalEmissionTest.Analyze(source);
 
-    // The codes of the analysis's problems: the old path's, then the MIR's records.
+    // The codes of the analysis's problems, the MIR's.
     private static string[] Problems(Compilation c) => [.. c.Problems.Select(static x => x.Code.ToString())];
 
     // The body instances of the functions whose name starts with a prefix.

@@ -424,7 +424,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 3.5.1, 15.6.3: a bare read of a holder of `uniq/i32` is a Reborrow, a child Loan whose access path the holder prefixes, so
     // Moving the holder while the child is live is an error, whether the holder is a parameter or a local, the child is written or only read
     // after the Move, or a Closure captures it; a child used before the Move or never, and a Copy of a shared `ref` holder, are valid.
-    // PLAN G268: the old analysis accepts the four errors until R6-check (its Loans are keyed by the root referent; frozen, D5).
+    // PLAN G268: before H5 the old analysis accepted the four errors (its Loans were keyed by the root referent; frozen, D5).
     [Fact]
     public void MovingAHolderConflictsWithItsLiveReborrow()
         => Assert.Equal(

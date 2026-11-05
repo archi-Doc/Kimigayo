@@ -418,7 +418,7 @@ public sealed partial class MirBorrowsTest
                 """));
 
     // SPEC 15.8.2, 15.6.4, 7.7.3 (DECISIONS R4-M152, R4-M126 P8, P9): a result over the environment is bound, R1's located Unsupported_Kd
-    // gone from Binding (the old analysis's gate keeps it on the default pipeline). A result naming the receiver ρ takes the acquisition's
+    // gone from Binding (the old analysis's gate kept it until H5). A result naming the receiver ρ takes the acquisition's
     // Origin and carries the receiver's Loan, so the Closure's Move (envMoveBad), a second Exclusive call (envTwiceBad) and the end of a
     // temporary receiver (temporaryBad, movedTemporaryBad) conflict while it lives, as does a write of what a read through the receiver
     // reaches (envReadBad); a Reborrow through a captured `uniq` is contained in ρ too (reborrowBad, sharedThroughUniqBad), while one under a
