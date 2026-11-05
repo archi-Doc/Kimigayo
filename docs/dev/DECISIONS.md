@@ -8879,6 +8879,9 @@ resumed by R4-M86 (2026-10-20).
     the Callable and Constraint facts, as it reads `ConstraintFailure` (`FailPendingJudgment`). The record keeps
     `UnprovenConstraint_Kd` at the call; the adapter (`ReportPendingJudgment`) adds the argument as related location `argument`
     and the Note "The result of c over its environment is no evidence for T".
+  - Superseded in part by BU-104 (2026-11-05): L531's unsubstituted Origin no longer occurs for a callee Origin without a candidate,
+    which is a local region of the call; such a call goes on to its Constraints, and `make(c@ref, .None)` records the Callable
+    Constraint's Note ("Call make requires F is Callable<() -> T>; this condition cannot be proven under the supplied bindings").
   - Not columns: L418, L443 and L531(a) (length forms, revision B and G216 (a) step 2); L153, L314, L374 and FitArgument (not
     reached); L593 (G354 (2)).
   - Amended 2026-11-03 (G354-1c; kept with BU by the owner, PLAN G354). The trial's one first-written judgment counted even when
