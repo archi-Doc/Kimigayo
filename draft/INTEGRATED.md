@@ -673,6 +673,9 @@ ending) and **P12**.
 - Its specification work goes separately: the SETTLED "Instance-evaluated generic defaults" revision at H15 (R5-M11) and
   any SPEC or IMPL change H0's check-only pass finds, each as an explicit revision recorded here when it lands. Adoption
   implies no implementation support.
+  - SETTLED "Instance-evaluated generic defaults" revised at H15 (2026-11-06; R5-M11, the owner's OQ15 decision of
+    2026-10-18): its "Why not applied" mechanism text and reopening conditions now state the inline fold
+    (`MirBuilder.Defaults`); its Problem, Example, Proposed fix, decision and reason stay. No SPEC or IMPL change.
 
 ## 2026-10-19 — A5 step 2 implementation plan
 
