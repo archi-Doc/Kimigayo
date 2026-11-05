@@ -1291,6 +1291,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   formation itself, before and independently of R7-I2 parts d and i; U3 is implemented in two parts, U3a (the retained composition,
   the judgment by rows, value calls) and U3b (composition beneath a slot), one review each (§6's U3 and U6 rows). No other text
   changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 6 (2026-11-05, the planning session): U5 is closed without an implementation: the flip (R6-check H5) made the MIR decide
+  and it gives DIAGNOSTICS' Unsatisfied for G392's forms on both pipelines; the rows hold it (§6's U5 row). No other text changed;
+  the proposal stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
