@@ -131,11 +131,10 @@ construction, defaults). Rows are index-keyed (argument index, parent row, child
 | Parts | the parts at this position: the root part and, for the record, the first leaf part | the final classification walk (the position composition, once) | 10.5.1, 14.9.2 step 2 |
 | Kind | Typed (with or without a Type), Literal, Aggregate, Waiting | the same walk, `PositionKind` at the final solution | 10.5.1's three kinds |
 | ParameterType | the instantiated parameter sub-Type at this position | the same walk | 15.6.4 step 2 |
-| Contribution | Evidence, Signature, Result (Result only where the sub-Type is a slot the expected result solved) | the same walk, from Kind and the solution's `ResultSolved` slot set | 10.3, 15.6.4 step 3 |
+| Contribution | Evidence or Signature; a row whose pattern is a slot is its solution's contributor's: the premise visits take the pattern beside the instantiated Type and stop at the slot, a layer's stored premise ranging over the solution (revision 3, 2026-11-05: U2's design; no Result value, no slot set) | the same walk, from Kind | 10.3, 15.6.4 step 3 |
 | Decided | per Origin and slot of the sub-Type: caller-fixed, fixed by another input's equality, opened by the solve | the solve (`MatchInputOrigins` records the fixing position once) | 15.3.6 |
 
-Readers read rows only: `JudgeSelectedCall` (every Signature row judged under the final solution, the stored visit stopping at a Result
-child), `SolveLate` (Signature rows' `ParameterType` as bounds), `CompletePayloads` (a construction is a call since U4), the record sites
+Readers read rows only: `JudgeSelectedCall` (every Signature row judged under the final solution, the premise visits stopping at a slot pattern, revision 3), `SolveLate` (Signature rows' `ParameterType` as bounds), `CompletePayloads` (a construction is a call since U4), the record sites
 (§3 rule 6 from Decided), `CollectFitBounds`. Candidate trials keep computing `PositionKind` per candidate and persist nothing. Under
 R7-I2 (`InferCtxt`, `SlotSolution` a view), the rows stay the selected solution's table and Decided reads the variable store's binding
 source; the design does not depend on which I2 candidate is chosen.
@@ -145,8 +144,8 @@ source; the design does not depend on which I2 candidate is chosen.
 | Component (file) | Change |
 | --- | --- |
 | Position composition (`C/Binding/Binding.ArgumentKinds.Positions.cs`) | the one final walk writes rows; `ComposedJoin` enters a control-flow part by structure (rule 4), its `WaitingResult` clause and the Join-record test go; `PositionKind` keeps typed-first and loses its join-only rows |
-| `SlotSolution` (`Binding.ArgumentKinds.Solution.cs`, `.Evidence.cs`) | rows replace `Contributions[i]`, `Contribute` and `PartContribution`; `ResultSolved` (a `SlotSet`, one writer: the expected-result fill) replaces the Result encoding; the solve records Decided |
-| Judgment (`Binding.CallRelations.cs`, `Binding.ResultPremises.cs`) | `JudgeSelectedCall` iterates rows; the whole-argument Result guard and `RequireChildPremises`' own recursion go; `RequireInputPremises` takes a row; the stored visit treats a Result child's solution as kept |
+| `SlotSolution` (`Binding.ArgumentKinds.Solution.cs`, `.Evidence.cs`) | rows replace `Contributions[i]`, `Contribute` and `PartContribution`; the Result encoding goes, a slot pattern being the premise visits' stop (revision 3); the solve records Decided |
+| Judgment (`Binding.CallRelations.cs`, `Binding.ResultPremises.cs`) | `JudgeSelectedCall` iterates rows; the whole-argument Result guard and `RequireChildPremises`' own recursion go; `RequireInputPremises` and `CollectInputPremises` take the pattern beside the instantiated Type and stop at a slot pattern, a layer's stored premise ranging over the slot's solution (revision 3) |
 | Constructions (`Binding.Enums.cs`) | `SolveConstructionOrigins`' duplicate premise loop and the construction's derivation of evidence-bound slots go (G391); the construction reads rows |
 | Argument kinds (`Binding.ArgumentKinds.cs`) | `ClassifiedByCall`, `IsArgumentJoin`, `IsProbeJoin`, `ConflictWaits` go; `PartKind` Join/Call/Case/Reference/Function stay as the producer records of waiting parts (10.5.1 Waiting); `AwaitsCall` unchanged |
 | Result propagation (`Binding.ResultPropagation*.cs`) | keeps position waiting (Deferred, AwaitsFor, BU-87's `Awaiting`) only; argument joins no longer decide membership there; `PositionType` is the one formation (rule 5), the survey path for argument joins goes |
@@ -163,7 +162,7 @@ a per-syntax-part fact table; a second completion path beside the rows.
 | --- | --- | --- | --- | --- |
 | U0 | the oracle (§7): the generated family with rule-predicted verdicts; the 13 known forms, U3's rows, G388–G392's rows, revision B's R2-1/R2-2 rows, each with its twin; the planning session checks the predictions against §3 | — | every prediction that differs from dev names a row of §1 | tests; a neutral author |
 | U1 | position rows on the solution, written by the final walk (Parts, Kind, ParameterType, Contribution); root rows replace `Contributions` | — | behavior unchanged (bp triple); Bind and warm allocation measured (RP8) | Major, bp |
-| U2 | the judgment reads rows; Result per sub-Type; the whole-argument guard goes | rb, mk2, c3a | the Result twins valid; one record at the contributor for q10/i01_n | Major |
+| U2 | the premise visits stop at a slot pattern (Result per sub-Type) and leaf rows are `SolveLate`'s bounds; the Result value and the whole-argument guard go (`artifacts/verify/g216a-oracle/U2-design.md`, revision 3) | rb, mk2 (s3p bare and Tuple), the s6/s7 Tuple site rows; c3a if it passes | the Result twins valid; one record at the contributor for q10/i01_n; the Tuple site at the call | Major |
 | U3 | joins as rows by structure, root and nested; the selected candidate's completion reads rows; membership deciders retired | jt1, mj1, jt2, mj2, kd, dn2, lj, ly, nn, nd | the `_ok` twins valid; g046 and g122 valid; B3a/B3c and revision B obsolete | Major (Full if the owner asks two candidates) |
 | U4 | the solve publishes Decided; sites derived (rule 6); constructions read rows | js2–js5, dn2p, same9_n, swap3, dl1 | S3 pins hold (cr5, r03_n, r04_n, r06_n); G391's wf/wt rows | Major |
 | U5 | the shared judge: an annotated local's omitted Origin is a body region | cx2q, cx2e, cx2c, g1, g2, g5 | Unsatisfied where DIAGNOSTICS requires it; c3q stays Unproven | Major |

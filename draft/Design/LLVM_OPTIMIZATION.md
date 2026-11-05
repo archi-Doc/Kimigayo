@@ -2,7 +2,7 @@
 
 ## 1. 目的と読み方
 
-仕様が保証する情報を LLVM に伝え、意味を変えずに最適化するための調査・実装・検証台帳。**本書は非規範の開発ノートであり、言語仕様・実装仕様・正式な作業計画を変更しない。** 着手する範囲と順序は [PLAN.md](PLAN.md)、製品の対応範囲は [STATUS.md](../STATUS.md) に従う。
+仕様が保証する情報を LLVM に伝え、意味を変えずに最適化するための調査・実装・検証台帳。**本書は非規範の開発ノートであり、言語仕様・実装仕様・正式な作業計画を変更しない。** 着手する範囲と順序は [PLAN.md](../../docs/dev/PLAN.md)、製品の対応範囲は [STATUS.md](../../docs/STATUS.md) に従う。
 
 - 対象：windows-x64-v1、LLVM **22.1.8**（[profile.json](../../src/backend/windows-x64/profile.json)）。
 - 初回コード確認：**2026-10-01 19:46 JST**。参照時 HEAD は `cdc62ddad4a4e6229e468e1a68b7146fe529595a`。未コミット変更を含む作業ツリーを確認した。
@@ -620,7 +620,7 @@
 
 ## 4. 段階的な進め方
 
-これは技術的な依存順序。現在の milestone を変更せず、実際に着手するときに [PLAN.md](PLAN.md) へ必要な単位だけ反映する。
+これは技術的な依存順序。現在の milestone を変更せず、実際に着手するときに [PLAN.md](../../docs/dev/PLAN.md) へ必要な単位だけ反映する。
 
 | 段階 | 範囲 | 完了条件 |
 | --- | --- | --- |
@@ -657,7 +657,7 @@
 
 1. **意味の確認**：LLVM の同じ版の定義と、対応する SPEC/IMPL の保証を記録する。属性文字列の存在だけで完了にしない。
 2. **IR と動作**：最適化前後の verifier、関係する native O0/O2、Abort の reason/location、評価・cleanup 順序を確認する。verifier は属性の意味の正しさを証明しない。
-3. **正式検証**：実装 unit は [VERIFICATION.md](VERIFICATION.md) と AGENTS.md の Unit/Session 手順に従う。関係する allocation/reuse 回帰を含め、診断経路の変更は DIAGNOSTICS の workflow も適用する。NativeAOT は明示指示がない限り実行しない。
+3. **正式検証**：実装 unit は [VERIFICATION.md](../../docs/dev/VERIFICATION.md) と AGENTS.md の Unit/Session 手順に従う。関係する allocation/reuse 回帰を含め、診断経路の変更は DIAGNOSTICS の workflow も適用する。NativeAOT は明示指示がない限り実行しない。
 4. **測定**：同一 workload、固定 warm-up/反復条件で速度・code size・compile cost を必要に応じて測る。タイミング測定は `src/Benchmark`、証拠は `artifacts/benchmarks/`。一般に速くなったと推測だけで記さない。
 5. **記録**：成功・失敗を `artifacts/verify/` に保存。対象 source/configuration、LLVM の実体、対象 ID、日時、検証範囲、残る不確実性を結び付ける。両 artifacts root は Git 管理外なので別途保持する。
 
@@ -675,12 +675,12 @@
 
 ### 6.1. Kimigayo の仕様・実装
 
-- [SPEC.md](../SPEC.md) / [IMPL.md](../IMPL.md)：規範の入口。[Chapter 21](../impl/21-layout-runtime-and-code-generation.md) の §21.1.3、§21.3、§21.3、§21.4 が主な根拠。
-- [所有権・借用](../spec/15-ownership-and-lifetime-analysis.md)：§15.6.4 の call-wide 保護、§15.6.7 の reservation/activation。
-- [raw pointer](../spec/05-raw-pointers-and-unsafe-memory.md)：アクセスの権限、provenance、変位の契約。
-- [演算](../spec/13-operators-and-assignment.md) / [失敗](../spec/17-failure-handling.md)：checked/Wrapping、FP、Abort と評価順序。
-- [runtime/FFI](../spec/22-core-execution-and-foreign-functions.md)：§22.6 の外部境界、§22.5 の allocation と失敗。
-- [CODEMAP.md](CODEMAP.md)：変更箇所と代表テストの探索。機能や責務を変更した場合は対応項目も更新する。
+- [SPEC.md](../../docs/SPEC.md) / [IMPL.md](../../docs/IMPL.md)：規範の入口。[Chapter 21](../../docs/impl/21-layout-runtime-and-code-generation.md) の §21.1.3、§21.3、§21.3、§21.4 が主な根拠。
+- [所有権・借用](../../docs/spec/15-ownership-and-lifetime-analysis.md)：§15.6.4 の call-wide 保護、§15.6.7 の reservation/activation。
+- [raw pointer](../../docs/spec/05-raw-pointers-and-unsafe-memory.md)：アクセスの権限、provenance、変位の契約。
+- [演算](../../docs/spec/13-operators-and-assignment.md) / [失敗](../../docs/spec/17-failure-handling.md)：checked/Wrapping、FP、Abort と評価順序。
+- [runtime/FFI](../../docs/spec/22-core-execution-and-foreign-functions.md)：§22.6 の外部境界、§22.5 の allocation と失敗。
+- [CODEMAP.md](../../docs/dev/CODEMAP.md)：変更箇所と代表テストの探索。機能や責務を変更した場合は対応項目も更新する。
 - [Layout.cs](../../src/Kimi/Compiler/Backend/Layout.cs)、[Abi.cs](../../src/Kimi/Compiler/Backend/Abi.cs)、[AbiRecords.cs](../../src/Kimi/Compiler/Backend/AbiRecords.cs)、[RuntimeAbi.cs](../../src/Kimi/Compiler/Backend/RuntimeAbi.cs)：物理表現・属性・ABI。
 - [FunctionCodegen.cs](../../src/Kimi/Compiler/Backend/Codegen/FunctionCodegen.cs)、[Arithmetic](../../src/Kimi/Compiler/Backend/Codegen/FunctionCodegen.Arithmetic.cs)、[Places](../../src/Kimi/Compiler/Backend/Codegen/FunctionCodegen.Places.cs)：MIR からの命令生成と算術/pointer lowering。
 - [ModuleCodegen.cs](../../src/Kimi/Compiler/Backend/Codegen/ModuleCodegen.cs)、[Signatures](../../src/Kimi/Compiler/Backend/Codegen/ModuleCodegen.Signatures.cs)、[Calls](../../src/Kimi/Compiler/Backend/Codegen/FunctionCodegen.Calls.cs)、[LlvmModuleText.cs](../../src/Kimi/Compiler/Backend/LlvmModuleText.cs)：属性・call・命令の出力。
