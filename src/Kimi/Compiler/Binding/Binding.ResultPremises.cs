@@ -196,6 +196,22 @@ public sealed partial class Binding
     private static bool SameLayer(BoundType actual, BoundType result)
         => actual.Kind == result.Kind && actual.Components.Count == result.Components.Count && actual.OriginArguments.Count == result.OriginArguments.Count;
 
+    // Whether an evidence position's pattern names the callee's Origin parameter `slot`: an Evidence root row's or the receiver's
+    // (DiscoverPremiseOrigins).
+    private static bool EvidenceNames(in SlotSolution solution, int slot)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            if (solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } && MentionsOriginSlot(pattern, solution.Binder, slot))
+            {
+                return true;
+            }
+        }
+
+        return solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
+            function.Parameters[receiver].Type.BoundType is { } receiverPattern && MentionsOriginSlot(receiverPattern, solution.Binder, slot);
+    }
+
     // Whether a query of VisitWellFormedPremises meets a pattern part beside these parts for the first time; a leaf, or a part that
     // stores no Origin, is cheaper to visit again than to record.
     private static bool FirstMet(TypeMemo<(BoundType Result, BoundType? Actual)> parts, BoundType pattern, BoundType result, BoundType? actual, uint query)
@@ -255,15 +271,58 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, 15.6.4 step 3: an input's well-formedness, over the parameter pattern that a call collects for that input, shortens
-    // the call's solution where the arguments alone would leave an instantiated input ill formed (SolveOriginInference). Only a call
-    // collects it: a whole-contract comparison proves it instead (ProvesInputPremises), since the required contract's input premises
-    // are no premises at its use.
-    private void CollectInputPremises(BoundType pattern, OriginInference inference, Koto use)
+    // R2' (SPEC 15.3.6; DECISIONS BU-99): a position that gives no evidence, a Signature leaf row or a default the call uses, makes each
+    // Origin of the callee that its instantiated Type `type` names and no evidence position's pattern names (EvidenceNames) a variable of
+    // the solve, published as premise-solved (OriginInference.PremiseSolved): its premise then bounds it from above (SolveOriginInference's
+    // WellFormed step). An Origin that evidence names, also one it fixes after this solve, keeps the step's own rule.
+    private void DiscoverPremiseOrigins(in SlotSolution solution, OriginInference inference, BoundType type)
     {
-        if (pattern.StoresOrigin)
+        if (!type.CarriesOrigin)
         {
-            this.VisitWellFormedPremises(pattern, pattern, null, new(WellFormedSubject.Input, null, use, WellFormedAction.Bound, inference));
+            return;
+        }
+
+        DiscoverPremiseOrigin(solution, inference, type.Origin);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            DiscoverPremiseOrigin(solution, inference, type.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.DiscoverPremiseOrigins(solution, inference, type.Components[i]);
+        }
+
+        static void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
+        {
+            if (origin is null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                DiscoverPremiseOrigin(solution, inference, origin.Operands[i]);
+            }
+
+            if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, inference.Binder) && !inference.PremiseSolved.Contains(origin) &&
+                !EvidenceNames(solution, origin.Slot))
+            {
+                inference.Discover(origin, 0);
+                inference.PremiseSolved.Add(origin);
+            }
+        }
+    }
+
+    // SPEC 15.3.7, 15.6.4 step 3: an input's well-formedness, its parameter pattern beside the Type `instantiated` that a call collects
+    // for that input, shortens the call's solution where the arguments alone would leave an instantiated input ill formed
+    // (SolveOriginInference). Only a call collects it: a whole-contract comparison proves it instead (ProvesInputPremises), since the
+    // required contract's input premises are no premises at its use.
+    private void CollectInputPremises(BoundType pattern, BoundType instantiated, OriginInference inference, Koto use)
+    {
+        if (instantiated.StoresOrigin)
+        {
+            this.VisitWellFormedPremises(pattern, instantiated, null, new(WellFormedSubject.Input, null, use, WellFormedAction.Bound, inference));
         }
     }
 
@@ -271,16 +330,17 @@ public sealed partial class Binding
     // judged at `at` by what the slot's position contributes (Contribution). Evidence, a written argument's or the receiver's own Type
     // `supplied`, is well formed, so only a position that the fit replaced, such as an Origin shared with another input, can fail. A
     // Signature position has every position of its Type judged: a default supplies no Type (SPEC 10.1.1) and is judged at the call (SPEC
-    // 7.2.3). A Result position is proven by its contributor. As for the fit, an argument that carries no Origin, such as one that
-    // transfers control, supplies none; and an input whose fit already failed is no instance of its parameter, so its well-formedness
-    // would only restate that failure.
-    private void RequireInputPremises(Koto at, BoundType parameter, BoundType? supplied, Contribution contribution)
+    // 7.2.3). The visit walks the parameter's pattern `pattern` beside `parameter`, so it stops at a slot of the pattern, whose solution
+    // its contributor proves (SPEC 10.3, 15.6.1; DECISIONS BU-99), while a layer around the slot is this call's. As for the fit, an
+    // argument that carries no Origin, such as one that transfers control, supplies none; and an input whose fit already failed is no
+    // instance of its parameter, so its well-formedness would only restate that failure.
+    private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution)
     {
-        if (contribution != Contribution.Result && parameter.StoresOrigin &&
+        if (parameter.StoresOrigin &&
             (supplied is null || (supplied.StoresOrigin && this.originRelations?.ContainsKey(at) != true && !this.HasCallRelation(at))))
         {
             var actual = contribution == Contribution.Evidence ? supplied : null;
-            this.VisitWellFormedPremises(parameter, parameter, actual, new(WellFormedSubject.Input, null, at, WellFormedAction.Require));
+            this.VisitWellFormedPremises(pattern, parameter, actual, new(WellFormedSubject.Input, null, at, WellFormedAction.Require));
         }
     }
 
@@ -386,7 +446,7 @@ public sealed partial class Binding
         for (var i = 0; i < actuals.Length; i++)
         {
             this.CollectOriginInference(parameters.Components[i], actuals[i], inference);
-            this.CollectInputPremises(parameters.Components[i], inference, use);
+            this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
         }
 
         if (binder is FunctionKoto function)
@@ -485,9 +545,12 @@ public sealed partial class Binding
 
     private bool VisitStoredPremises(BoundType pattern, BoundType result, BoundType? actual, BoundOrigin outer, BoundOrigin substituted, in WellFormedVisit visit)
     {
+        // SPEC 8.1.1, 15.3.7: a layer stores every Origin its stored Type holds, a slot's solution included (DECISIONS BU-99).
+        pattern = pattern.Kind == BoundTypeKind.Parameter ? result : pattern;
+
         // A pair layer of the pattern stores its slot whatever its substitution is; any other layer only beside the same shape.
         var shaped = pattern.Kind == result.Kind && pattern.Components.Count == result.Components.Count;
-        if (!pattern.StoresOrigin || pattern.Kind == BoundTypeKind.Function || (!shaped && !TryPairLayer(pattern, out _, out _)))
+        if (!result.StoresOrigin || pattern.Kind == BoundTypeKind.Function || (!shaped && !TryPairLayer(pattern, out _, out _)))
         {
             return true;
         }

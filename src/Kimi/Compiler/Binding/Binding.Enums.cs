@@ -189,7 +189,6 @@ public sealed partial class Binding
         var operations = this.argumentOperationScratch.Rent(count);
         var lengths = this.lengthScratch.Rent(slots);
         var settled = this.RentSlotSet(count);
-        var solved = this.RentSlotSet(slots);
         var adapted = this.typeScratch.Rent(count);
         var rows = this.rowScratch.Rent(count);
         Array.Clear(arguments, 0, slots);
@@ -216,11 +215,6 @@ public sealed partial class Binding
                     if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
                     {
                         return this.Fail(use, BindingFailure.TypeMismatch);
-                    }
-
-                    if (arguments[i] is null || ReferenceEquals(owner, expected))
-                    {
-                        solved.Add(i); // F1: a slot the expected Type fixes, which a bare qualifier takes (EnumQualifierType).
                     }
 
                     arguments[i] = expected.Components[i];
@@ -255,10 +249,10 @@ public sealed partial class Binding
 
             // SPEC 15.6.4 steps 1, 3, 15.3.6 (F1, DECISIONS R4-M164 U4): a construction is a call. The Origins that its expected Type leaves
             // open are solved by the call's solve, which its clauses and each Signature payload's premises bound (SolveLate).
-            solution.ContributePayloads(payload, solved);
+            solution.ContributePayloads(payload);
             if (expected is null || ReferenceEquals(expected, BoundType.Never))
             {
-                this.SolveConstructionOrigins(payload, ref solution);
+                this.SolveConstructionOrigins(ref solution);
             }
 
             for (var i = 0; i < originCount; i++)
@@ -295,7 +289,7 @@ public sealed partial class Binding
             this.callRelationScratch.Clear();
             for (var i = 0; i < count; i++)
             {
-                this.RequireInputPremises(operations[i].Source!, operations[i].ParameterType!, adapted[i], rows[i].Contribution);
+                this.RequireInputPremises(operations[i].Source!, payload[i].BoundType!, operations[i].ParameterType!, adapted[i], rows[i].Contribution);
             }
 
             this.PublishCallRelations();
@@ -326,7 +320,6 @@ public sealed partial class Binding
         {
             this.rowScratch.Return(rows, clearArray: true);
             this.typeScratch.Return(adapted, clearArray: true);
-            this.ReturnSlotSet(solved);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.lengthScratch.Return(lengths, clearArray: true);
             this.ReturnSlotSet(settled);
@@ -419,33 +412,15 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4 steps 1, 3, 15.3.6 (Rule C): the call's solve of the construction's Origins (SolveOriginInference), which the enum's
-    // clauses and each Signature payload's premises over its instantiated payload Type bound, as SolveLate's do a candidate's.
-    private void SolveConstructionOrigins(ReadOnlySpan<Koto> payload, ref SlotSolution solution)
+    // clauses and each Signature leaf row's premise over its payload's instantiated sub-Type bound (CollectPositionPremises), as
+    // SolveLate's do a candidate's. Evidence that carries an Origin began the inference (InferAdapted); without it or such a row nothing
+    // bounds them.
+    private void SolveConstructionOrigins(ref SlotSolution solution)
     {
-        var signature = false;
-        for (var i = 0; i < payload.Length; i++)
-        {
-            signature |= solution.Rows[i].Contribution == Contribution.Signature && payload[i].BoundType is { StoresOrigin: true };
-        }
-
-        // Evidence that carries an Origin began the inference (InferAdapted); without it or such a Signature payload nothing bounds them.
-        if (signature)
-        {
-            solution.OriginInference ??= this.BeginOriginInference(solution.Call, solution.Binder);
-        }
-
+        this.CollectPositionPremises(ref solution);
         if (solution.OriginInference is not { } inference)
         {
             return;
-        }
-
-        for (var i = 0; i < payload.Length; i++)
-        {
-            if (solution.Rows[i].Contribution == Contribution.Signature &&
-                this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
-            {
-                this.CollectInputPremises(instantiated, inference, solution.Call);
-            }
         }
 
         // A selection's solve never fails (SolveOriginInference with `select`); the payload walk and the Type-formation check judge it.

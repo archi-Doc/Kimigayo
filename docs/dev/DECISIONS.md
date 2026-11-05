@@ -7806,6 +7806,8 @@ resumed by R4-M86 (2026-10-20).
   - Removes: `BindCallCore`'s own rebuild of the winner's slots (`used[]`) and `JudgeSelectedCall`'s `argumentCount`.
   - Rejected: (b) one filled-slot list in `CallPlan`, defaults as operations: a published representation that 18 files on both paths
     read (R7's CallPlan input); judging a default at its declaration (15.6.1: the call's Origins instantiate it).
+  - Superseded in part by BU-99 (2026-11-05): an Origin that a used default's premise bounds is solved by that premise, not opened
+    as the call's region.
   - Open: a contextual argument's Type is the call's and stays unjudged (`ReferenceEquals(adapted, parameter)`; PLAN G269 (C), with
     r2c's false `UnprovenConstraint_Kd`).
 
@@ -9067,6 +9069,41 @@ resumed by R4-M86 (2026-10-20).
     then child rows).
   - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
     holds references; rented ones keep warm allocation at 0 B).
+
+- **BU-99 A position's Result is the stop at its slot, leaf rows bound the solve, and a position without evidence solves the
+  callee's Origins it alone names** (2026-11-05; G216 (a) U2, the Position Rows proposal revision 3 §3 rule 3, §4-§6; the planning
+  session's design `artifacts\verify\g216a-oracle\U2-design.md`, fifth amendment, M's design review 2 ACCEPT) SPEC 10.3, 10.5.1,
+  15.3.6, 15.6.1, 15.6.4 step 3, 8.1.1, 15.3.7. Amends BU-94; supersedes BU-51's region clause in part.
+  - R1: the premise visits walk a position's pattern beside its instantiated Type (`RequireInputPremises`,
+    `CollectInputPremises(pattern, instantiated, ...)`), so `WellFormedPart` stops at a slot of the pattern: the slot's solution is its
+    contributor's (the expected result, another input's evidence, a Type argument (G412), a default, the receiver's Type), while a
+    layer around the slot is the call's; `VisitStoredPremises` continues on the result at a slot and descends by the result's
+    `StoresOrigin`, so a layer's stored premise ranges over every Origin its stored Type holds, the solution's included (mk2:
+    `q outlives static`). `ComposePositionRows` adds no child rows where the pattern's kind differs from the Type's. Replaces
+    `Contribution.Result`, `ContributionAt`, `Contribute`'s `unbound`/`kept` rule, `ContributePayloads`' `solved` derivation (PLAN
+    G391's second copy), `expectedSlots` and `JudgeSelectedCall`'s Result guard.
+  - Representation: `PositionRow(Argument, Parent, Part, Pattern, Type, Contribution)`; `Kind` goes (no reader). `Pattern` is the
+    candidate's member pattern (`SlotSolution.Pattern`: the declaring Type's slots and Self substituted, the callee's own slots kept,
+    so a method's declaring-Type slot is no stop and a constructor keeps its slots), a payload's declared Type, a property update's
+    operation Type; `Type` its instantiation (null: no bound). `Contribute` runs in `SolveLate` after the late evidence pass, so a
+    root row's Type is the instantiation today's collection read.
+  - R2: `SolveLate` and `SolveConstructionOrigins` bound the solve by each Signature leaf row's premise at its own sub-Type
+    (`CollectPositionPremises`, Rows.cs), the rows `JudgePositionRows` judges; the per-parameter whole-Type collection goes. A trial's
+    composition may stop early where the literal's shape does not fit (the fit rejects the candidate); the judgment's fails Internal
+    there, after judging the rows before it (U1's N1 order).
+  - R2': a position that gives no evidence (a Signature leaf row, a used default) discovers each callee Origin its instantiated Type
+    names and no evidence position's pattern names (an Evidence root row's or the receiver's; `MentionsOriginSlot`, shared with
+    `OpenResultOnlyOrigins`), and publishes them as `OriginInference.PremiseSolved` (one writer, `DiscoverPremiseOrigins`); the
+    WellFormed step gives a premise-solved variable the meet of its premises' longer ends as its candidate even without another
+    upper bound, and keeps the gate ("a receiver Borrow formed later") for every other variable. The expected result's relation is a
+    lower bound checked against the candidate, so s6/s7 and rb record the result's fit at its site. Evidence: the front's trace (an
+    input premise was dropped at `KnownToInference` for an Origin no evidence names; the bare form passed only through
+    `CompleteWaiting`'s re-run) and its experiment exp2. Supersedes BU-51's "an Origin that no supplied input and no clause names is a
+    local region" for an Origin a default's premise bounds (15.3.6's candidate first); one that no premise bounds stays the region.
+    `PremiseSolved` is the first published "which position fixes this Origin" fact; U4's `Decided` column takes it over.
+  - Removal conditions that remain: join arguments (U3); `PartContribution` (U6). A non-Result root row is the part's contribution at
+    the last `Contribute`; property rows are Evidence where `PartContribution` may say Signature, inert because the input carries no
+    Origin. Open: `CompleteWaiting` completes a waiting part at a ParameterType that still holds the callee's unsolved Origins (PLAN).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
