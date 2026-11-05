@@ -71,8 +71,8 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         _ => false,
     };
 
-    // The forms a jump inside them can target (KotoHelper.ResolveTransferTarget): an exit targets an iteration or a Do (a continue
-    // an iteration), a yield a selection. Function and Scope Exit targets run no contents here.
+    // The forms a jump inside them can target (KotoHelper.TransferTarget): an exit targets an iteration or a Do (a continue an
+    // iteration), a yield a selection. Function and Scope Exit targets run no contents here.
     private static bool IsTransferTarget(Koto node) => node switch
     {
         LoopKoto or WhileKoto or ForKoto or DoKoto => true,
@@ -269,8 +269,8 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         return result;
     }
 
-    // A jump that targets the node ends at it: an exit or a yield completes the node normally, a continue repeats it. Other jumps
-    // leave it.
+    // A jump that goes to the node ends at it: an exit or a yield completes the node normally, a continue repeats it. Other jumps
+    // leave it, as does an invalid one, which goes to no target and completes nothing (SPEC 14.9.3; DECISIONS BU-101).
     private Completion CloseTransfers(Koto node, Completion result)
     {
         if (result.Transfers is null || !IsTransferTarget(node))
@@ -282,7 +282,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         var outward = this.Transfers(null);
         foreach (var jump in result.Transfers)
         {
-            if (KotoHelper.ResolveTransferTarget(jump) == node)
+            if (KotoHelper.TransferTarget(jump) == node)
             {
                 normal |= jump is not ContinueKoto;
             }

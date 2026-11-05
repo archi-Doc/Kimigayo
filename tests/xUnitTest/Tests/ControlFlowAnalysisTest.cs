@@ -106,7 +106,12 @@ public class ControlFlowAnalysisTest
         Assert.False(KotoHelper.IsResultRequiringSelection(selections[0]));
         Assert.False(KotoHelper.IsResultRequiringSelection(selections[1]));
         Assert.All(analysis.Targets.Where(x => x.Key is YieldKoto), x => Assert.Same(selections[1], x.Value));
-        Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Message.Contains("discarded selection", StringComparison.Ordinal));
+
+        // SPEC 14.9.1, 23.1.2 (DECISIONS BU-101): the invalid yields go to no target, so their operands have no expected Type and no
+        // TypeMismatch_Kd rests on the discarded selection's Unit.
+        var errors = CompilationTestHelper.BindingErrors(c);
+        Assert.Equal(2, errors.Count(x => x.Message.Contains("discarded selection", StringComparison.Ordinal)));
+        Assert.DoesNotContain(errors, static x => x.Code == nameof(Kimi.DiagnosticCode.TypeMismatch_Kd));
     }
 
     [Fact]

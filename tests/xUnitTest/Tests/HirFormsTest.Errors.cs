@@ -146,6 +146,42 @@ public sealed partial class HirFormsTest
             CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
+    // SPEC 14.5.2, 14.9.1-14.9.3, 23.1.2 (DECISIONS BU-101): an invalid transfer goes to no target (KotoHelper.TransferTarget). Its row is
+    // null and Binding records row 9 or 10 at it; it supplies no result source and completes no construct, and its operand is bound with
+    // no expected Type. A selection whose every transfer is invalid is a Never form (Never, Diverges). One with another source takes that
+    // source's Type: an omitted or written `else`'s Unit, a valid labeled yield's, or the enclosing join's sources beside an inner Never
+    // form. No record rests on the target an invalid transfer lacks: the operand's TypeMismatch_Kd, the discarded selection's own (r15) and
+    // an enclosing join's at another source (r4's `2`) go. The operand's own records stay (TransferRequired_Kd at `yield xs`, as row 9
+    // gives it), and so does the fallthrough the Dependent construct hid (FunctionFallthrough_Kd, SPEC 14.9.3's example). A valid labeled
+    // yield to a discarded selection keeps its TypeMismatch_Kd (SPEC 14.7), and its Unit twin is valid. Fail-before: the first six rows'
+    // constructs were Unresolved or `()` and Completes, with a TypeMismatch_Kd at each operand that is not Unit.
+    [Theory]
+    [InlineData("func f(a: i32)\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n    return 0\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: bool)\n    if a\n        yield ()\n    else\n        yield\n    ()\n", "if a: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func f(a: i32)\n    match a\n        0 => yield 1\n        _ => yield 2\n", "match a: Never Diverges", "UnlabeledYieldTarget_Kd 3:14, UnlabeledYieldTarget_Kd 4:14")]
+    [InlineData("func f(a: i32) -> i32\n    var x: i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n    return x\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 4:9, UnlabeledYieldTarget_Kd 6:9")]
+    [InlineData("func r1(a: i32)\n    label s: if a > 0\n        yield to s ()\n    else\n        yield 1\n", "if a > 0: () Completes", "UnlabeledYieldTarget_Kd 5:9")]
+    [InlineData("func r2(a: i32) -> i32\n    let v = if a > 0\n        if a > 1\n            yield 5\n        yield 1\n    else => 2\n    return v\n", "if a > 0: i32 Completes; if a > 1: () Completes", "UnlabeledYieldTarget_Kd 4:13")]
+    [InlineData("func r4(a: i32) -> i32\n    let v = if a > 0\n        if a > 1\n            yield 5\n        else\n            yield 6\n        ()\n    else => 2\n    return v\n", "if a > 0: i32 Completes; if a > 1: Never Diverges", "UnlabeledYieldTarget_Kd 4:13, UnlabeledYieldTarget_Kd 6:13")]
+    [InlineData("func r15(a: i32) -> i32\n    let v = if a > 0\n        if a > 1\n            yield \"s\"\n        yield 1\n    else => 2\n    return v\n", "if a > 0: i32 Completes; if a > 1: () Completes", "UnlabeledYieldTarget_Kd 4:13")]
+    [InlineData("func r19(a: i32) -> Array<i32>\n    let xs: Array<i32> = [1, 2]\n    if a > 0\n        yield xs\n    else\n        ()\n    return xs\n", "if a > 0: () Completes", "TransferRequired_Kd 4:15, TransferRequired_Kd 7:12, UnlabeledYieldTarget_Kd 4:9")]
+    [InlineData("func r19c(a: i32) -> Array<i32>\n    let xs: Array<i32> = [1, 2]\n    loop\n        yield xs\n", "loop: Never Diverges", "InvalidJumpTarget_Kd 4:9, TransferRequired_Kd 4:15")]
+    [InlineData("func p12(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        ()\n", "if a > 0: () Completes", "FunctionFallthrough_Kd 2:5, UnlabeledYieldTarget_Kd 3:9")]
+    [InlineData("func p4(a: i32)\n    label s: if a > 0\n        yield to s 1\n    else\n        ()\n", "if a > 0: null Completes", "TypeMismatch_Kd 3:20")]
+    [InlineData("func p5(a: i32)\n    label s: if a > 0\n        yield to s ()\n    else\n        ()\n", "if a > 0: () Completes", "")]
+    public void AnInvalidTransferSuppliesNoSource(string source, string constructs, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var nodes = Reachable(c.Kotonoha);
+        Assert.All(nodes.OfType<JumpKoto>(), static x => Assert.True(HoldsItsTarget(x)));
+        Assert.Equal(constructs, string.Join("; ", nodes.Where(static x => x is IfKoto or MatchKoto or LoopKoto)
+            .Select(static x => $"{x.ToString()!.Split('\n')[0]}: {x.TypeOf()?.Name ?? "null"} {HirTables.CompletionOf(x)}")));
+        Assert.Equal(records, string.Join(", ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {At(source, x.Span.Start)}").Order(StringComparer.Ordinal)));
+    }
+
     // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): a compound update's getter and setter take its receiver; where they take it by different
     // Adjusts, the column keeps the setter's and the receiver's plan row the getter's, and an input one call takes has none; an Error
     // receiver's both are its derived value (fail-before: no plan-row Adjust, and the Error receiver kept the setter's Reborrow).
@@ -164,5 +200,12 @@ public sealed partial class HirFormsTest
         var receiver = nodes.Single(static x => x.ToString() == "t" && x.Parent?.ToString() == "t.item");
         var derived = new HirAdjust(HirAcquire.Temporary, HirAdaptation.None);
         Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(receiver), HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust));
+    }
+
+    // The 1-based line:column of an offset in a source.
+    private static string At(string source, int offset)
+    {
+        var start = offset == 0 ? 0 : source.LastIndexOf('\n', offset - 1) + 1;
+        return $"{source.AsSpan(0, offset).Count('\n') + 1}:{offset - start + 1}";
     }
 }
