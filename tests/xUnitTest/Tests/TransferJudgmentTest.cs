@@ -32,6 +32,17 @@ public sealed class TransferJudgmentTest
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x")]
     public void ABareMoveIsBindingsRecord(string source, string expected) => Assert.Equal(expected, Records(source));
 
+    // SPEC 4.7.2, 13.5.5 (PLAN G384, resolved by the H5 merge): an index expression denotes an element Place without copying it, and
+    // `E@follow` selects the referent, Copying and Moving nothing, so a write and then a read through an exclusive path's element record
+    // nothing (the old analysis's ComparisonLoanConflict_Kd and TransferRequired_Kd). A borrow of the element or its referent kept past
+    // the write conflicts at the write, and a write through a shared path is SharedPathAccess_Kd.
+    [Theory]
+    [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    items[0]@follow = 7\n    let r = items[0]@follow\n", "")]
+    [InlineData("func run(b: uniq/i32) -> i32\n    var items = [b@move]\n    let r = items[0]@follow@ref\n    items[0]@follow = 7\n    return r@follow\n", "ComparisonLoanConflict_Kd items[0]@follow = 7")]
+    [InlineData("func run(b: uniq/i32) -> i32\n    var items = [b@move]\n    let r = items[0]@ref\n    items[0]@follow = 7\n    return r@follow@follow\n", "ComparisonLoanConflict_Kd items[0]@follow = 7")]
+    [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    let s = items@ref\n    s[0]@follow = 7\n", "SharedPathAccess_Kd s[0]@follow")]
+    public void AnElementIsWrittenAndReadInPlace(string source, string expected) => Assert.Equal(expected, Records(source));
+
     // The old analysis's report sites that H1 deleted, one row per family (R5's condition (b)); the rows above cover a local, the omitted
     // capture list, a default's bare read of a preceding parameter (also parenthesized) and a pair layer, and the shared-layer rows below
     // a selected referent (`first(names)@follow`), a Slice element and a default past a borrow. The Take repair is carried where the path
@@ -71,11 +82,11 @@ public sealed class TransferJudgmentTest
     [InlineData("func f<t/U, s/T>(value: s/t/U)\n    s is owner or uniq\n    t is owner or rc\n    U is Copy\n    let local = value\n    _ = local@move\n", "TransferRequired_Kd value repair case=t = rc, s = owner | Found under the Semantics case t = rc, s = owner (SPEC 8.15)")]
     public void AnOwnerCaseWithoutATargetPlanIsTheMoveRowsError(string source, string expected) => Assert.Equal(expected, Records(source));
 
-    // The transfer records of a source: code, located text, whether a repair is offered, the case fact and the Note.
+    // The transfer, loan and path access records of a source: code, located text, whether a repair is offered, the case fact and the Note.
     private static string Records(string source)
     {
         var records = DiagnosticCorpus.Check(source).Diagnostics
-            .Where(static x => x.Code is "TransferRequired_Kd" or "DefaultArgumentMove_Kd" or "MovedPlace_Kd")
+            .Where(static x => x.Code is "TransferRequired_Kd" or "DefaultArgumentMove_Kd" or "MovedPlace_Kd" or "ComparisonLoanConflict_Kd" or "SharedPathAccess_Kd")
             .Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}" + (x.Repairs is { Length: > 0 } ? " repair" : string.Empty) +
                 string.Concat((x.Reason ?? []).Where(static y => y.Name == "case").Select(static y => " case=" + y.Value)) + (x.Note is { } note ? $" | {note}" : string.Empty));
         return string.Join("; ", records);
