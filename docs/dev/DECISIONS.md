@@ -8331,6 +8331,9 @@ resumed by R4-M86 (2026-10-20).
     `PrepareStorage`. A Case's payload Types, its ordinal and the enum's `Adt.Cases` need no header, so they are prepared once per pass
     after PrepareAssociatedInference and before the header loop: a Field's inferred Type, bound with its header, constructs and
     matches Cases. The `RestPendingOn` write is unchanged.
+  - Amended by R5-M194 (H15, 2026-11-06; the owner, verbatim 「一括承認します。」): the copy's removal stage is R7 with PLAN G318
+    (`[Transitional("R7")]`); "R6-check" in the staged move above reads R7, and H11's fit twins go with H11b to R7 (R5-M192's
+    amendment).
 
 - **BU-63 The Origins a Type names are one Binding-owned summary per interned Type, `originSummaries`; the walks that fold a test over
   them read it** (2026-10-30; PLAN G309, unit bu82) SPEC 3.8, R4's V16: a walk's work is linear in the distinct parts of an interned
@@ -14773,6 +14776,33 @@ structure is recorded here by the unit that first implements it.
     callers (`IsValueContext` recurses, so its 20 callers would repeat its semantic arm, and argument mapping's rule would get two
     owners); ElementAccess moved into Binding now (its reads would wait for R7, against R5-M9's split); waiting for H11 (nothing in
     H14 reads or deletes what H11 changes).
+- **R5-M194 R6-check exits at H15; its items moved to R7** (2026-11-06, R5; the owner, verbatim 「一括承認します。」 on H15's
+  postponements and retags; gate H0c §8, `draft/Sketches/R6-check/H0c-deletions.md`; record
+  `artifacts/benchmarks/2026-11-06-r6-check-exit/`) SPEC 23.1.2.
+  - Gate, on `claude/r5-h15` over dev `2e56a695c`:
+    1. MIR decides acceptance (H5, R5-M185); the latest Session, W-28's on dev `421dde4f0`, passes (27,761 tests, 0 failed; natives
+       6,090/6,090; snapshot 0; 40 milestones); `VerifiedSpecExampleTest` is MIR-only; OldRule, spec-case and pair-case `Old` are 0.
+    2. The zero-reference rows (R6-gen's, the old ownership and control-flow analyses') and the Ownership ratchets are at 0
+       (`ArchitectureRulesTest`); `C/Analysis/` is gone (H10b, H10b-2).
+    3. No `[Transitional("R6")]`, `("R6-check")` or `("R4")` remains: `IsTwinRecord`, `JudgeChains` and BU-72's three are R7
+       (below); 55 R7 and 29 R8 tags.
+    4. `KIMI_PIPELINE`, the pipeline switch, `verify.ps1 -Pipeline` and the `[mir]` mark are gone (H12, R5-M191).
+    5. MIR problems publish through `MirReport` (`Compilation.Publication`, R5-M184); TransferRequired is Binding's (H1, BU-84);
+       only A4's effect checks remain (H5's B-del).
+    6. H13 confirmed the MIR readers' rules (`draft/Sketches/R6-check/H13-confirmation.md` §5); its two violations are fixed (dev
+       `13366c3e6`).
+    7. PLAN10-P3 (T-18): stages 3+4 (BuildMir + collection) are 0.32-0.70 of the R6-gen exit's (median 0.48), their allocation
+       0.51-0.79, the whole pipeline 0.81-0.91; cold collection is unchanged (0.92-1.04), 30-37% of 3+4 on Generic 32-128; the
+       warm `Purpose=Allocation` tests pass in W-28's Session.
+    8. Records: H15's commits (STATUS, DIAGNOSTICS, ARCH, PLAN, DECISIONS, the R7 plan, comments and retags); SETTLED's R5-M11
+       rewrite; the area record: `src/Kimi/Compiler` 148,737 lines (-5.5% since the R6-gen exit; Analysis 16,093 to 0), its
+       hotspots and duplication candidates.
+  - Moved to R7, each by the owner: H7 and `BaseReferenceKoto.BasePath` (2026-11-05, verbatim 「推奨どおり」; R5-M190); R2b-D5's
+    rename (2026-11-06, verbatim 「R7 に送る」); H11b-0 and H11b with their named exceptions (2026-11-06, verbatim 「Cで決定します」;
+    R5-M192's amendment); G318, G258's W with G263 item 4, G289 (5), G220 and G157 (39) to the R7 plan's middle list, and
+    `Binding.JudgeChains` (BU-62) and BU-72's `PublishIdentityPremise`, `ClearIdentityPremise` and `HirTables.IdentityPremise`
+    retagged R7 (2026-11-06, verbatim 「一括承認します。」).
+  - The D5 freeze ends with this exit (COMPILER_ARCHITECTURE).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)

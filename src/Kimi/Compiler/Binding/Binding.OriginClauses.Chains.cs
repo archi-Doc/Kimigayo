@@ -3,7 +3,7 @@
 namespace Kimi.Compiler;
 
 // R4-M118's chain rule for a declaration's rows (SPEC 15.6.5, 23.1.2; DECISIONS R4-M118, BU-62). Those rows reach no slice (R4-M101;
-// Binding.OriginRows.cs), so the declaration judge is their only judge. The rule has two holders until R6-check, one contract: A5's chain
+// Binding.OriginRows.cs), so the declaration judge is their only judge. The rule has two holders until R7's PLAN G318, one contract: A5's chain
 // judgment (MirOrigins.Chains) for a body's rows and this Transitional copy for a declaration's, each judging only the relations Binding
 // does not prove (2a0-D D1), each chain under its rows' minimal conditions; PLAN's unit that moves A5's core below both phases makes it
 // one component and deletes this file.
@@ -48,7 +48,7 @@ public sealed partial class Binding
     // A node of a declaration row's graph is Dependent when an Unbound atom is in it.
     private static bool Dependent(BoundOrigin origin) => UnboundAtom(origin) is not null;
 
-    [Transitional("R6-check", Reason = "PLAN's R4-M118 component (A5's chain core below both phases) replaces this copy (DECISIONS BU-62).")]
+    [Transitional("R7", Reason = "PLAN G318's R4-M118 component (A5's chain core below both phases) replaces this copy (DECISIONS BU-62).")]
     private void JudgeChains()
     {
         for (var r = 0; r < this.unboundRows.Count; r++)

@@ -118,7 +118,7 @@ public sealed partial class Binding
     }
 
     // Queried only after an Origin fit failed: structural Type failures and refuted lifetime relations stay independent. A record with an
-    // Unbound end rests on the nearest failed declaration around its use (PLAN G206 (6), until R6-check); a fixed-fixed one only on a
+    // Unbound end rests on the nearest failed declaration around its use (PLAN G206 (6), until G318 in R7); a fixed-fixed one only on a
     // failed contract whose bound clauses or a repair of whose failed clause could prove it (DependenceCause; DECISIONS BU-69).
     private Koto? FailedOriginEnvironment(Koto use, in OriginRelationFact recorded)
     {
