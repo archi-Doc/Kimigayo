@@ -1304,6 +1304,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   that forms no Type; U6 is rule 5's one formation in `SelectCommonType` plus the closing records; SPEC 10.5.1 is no contradiction
   (its last paragraph states the structure; reading 2 adds explicitness, reported to the owner). No other text changed; the
   proposal stays 一部取り込み (open), nothing frozen.
+- Revision 9 (2026-11-05, the owner, verbatim 「G216 (a) を締めくくる で決定します」, after U6's two design reviews did not converge under
+  Q11): the lane closes after U3 lands; U6 is not implemented (rule 5's array case is an open PLAN row for the join formation's
+  owner); the proposal moves to `draft/Changes` as 取り込み済み when U3 has landed and the closing records are written. No other text
+  changed; the proposal stays 一部取り込み (open) until then, nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
