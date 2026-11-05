@@ -1298,6 +1298,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   rule 6's argument site for a payload's failed fit (D-1) is deferred to its own item after R5's H11b, since the one record is then
   A5's row and a cross-phase report Site would be needed; the site stays DIAGNOSTICS' failed node; Decided is not published (§6's
   U4 row). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 8 (2026-11-05, U6's design review 1 by the middle, B1–B3): the retirements of the Join record, `ClassifiedByCall`,
+  `ConflictWaits` and `PartContribution` are withdrawn (the record is a fact of its own, a waiting join classified position by
+  position, differing from the Waiting outcome; the rows replaced its membership readers only); the survey stays as a classifier
+  that forms no Type; U6 is rule 5's one formation in `SelectCommonType` plus the closing records; SPEC 10.5.1 is no contradiction
+  (its last paragraph states the structure; reading 2 adds explicitness, reported to the owner). No other text changed; the
+  proposal stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
