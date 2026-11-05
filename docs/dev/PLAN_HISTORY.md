@@ -336,6 +336,8 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G217 (R4, R5):** a route reference rewritten during an argument is the MIR's `CallReservationConflict_Kd` at the write since H5 (SPEC 15.6.7; STATUS Reservations; `CallReservationTest.ARouteReferenceRewrittenInAnArgumentConflictsWithTheReservation`); the old path's precision items and their pins (`OldPathGaps`, the recorded-difference test) went with H8a, landed in W-18 (dev `4862b9fc7`). gx9 and its guard rows are rejected at their concrete twins' sites (`AbstractCallReachTest`).
 <a id="g405"></a>
 - **G405 (R4):** `q1_closure_liveness_bad` and `q2_fntype_liveness_bad` (a Closure or Function Type value whose signature Origin is not kept live) are SPEC-valid, not an unsound acceptance (R4's design and an independent review, 2026-11-05: values carry Loans and Origin regions never keep one live, 15.6; a signature's Origin dependencies imply no Loan, 15.2.3). Closed by its guard rows (`MirBorrowsTest.ATypeThatNamesALocalOriginKeepsNoLoanLive`), W-19, dev `66de6a02a`. The pre-existing limit its review found is PLAN G432.
+<a id="g205"></a>
+- **G205 (R5):** the old analysis accepted a borrow of a match guard candidate stored through a call in the guard and used in the body arm after the candidate's storage ends (`.Some(let v) if stash(slot: holder@uniq, value: v@ref) => return holder@follow@follow@follow`); the MIR's `ComparisonLoanConflict_Kd` at `let v` is the verdict since H5, and the old acceptance went with the old ownership analysis at H10b, landed in W-22 (dev `77be9b1be`; DECISIONS R5-M189).
 
 ## Retired audit records
 
