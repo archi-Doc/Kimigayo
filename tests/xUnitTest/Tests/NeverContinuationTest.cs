@@ -136,7 +136,7 @@ public class NeverContinuationTest
     {
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal("(i32, i32)", TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
+        Assert.Equal("(i32, i32)", TyCtxt.Name(HirTables.TypeOf(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
     }
 
     // SPEC 3.1.3, 4.7.1 (DECISIONS R5-M159): an element access is no Never form, so an owned fixed-array element whose key diverges has its
@@ -216,7 +216,7 @@ public class NeverContinuationTest
     {
         var c = MirBuildTest.Compile(Elements + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
-        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.ToString() == element))!));
+        Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.ToString() == element))!));
         var f = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
         Assert.Equal("i32", TyCtxt.Name(f.Locals.ToArray().Single(static x => x.Name == "x").Type));
         BuildsWithoutRecords(c);
@@ -266,7 +266,7 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && x.ToString() == literal);
-        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
+        Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(node)!));
         BuildsWithoutRecords(c);
     }
 
@@ -427,7 +427,7 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
         var tuple = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single(x => x.ToString() == literal);
-        Assert.Equal("(i64, i64)", TyCtxt.Name((BoundType)HirTables.Meaning(tuple)!));
+        Assert.Equal("(i64, i64)", TyCtxt.Name(HirTables.TypeOf(tuple)!));
         BuildsWithoutRecords(c);
     }
 

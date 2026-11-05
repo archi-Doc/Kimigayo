@@ -232,7 +232,7 @@ public sealed class ConversionKoto : BinaryKoto
     [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal ConversionBinding ConversionBinding
     {
-        get => (ConversionBinding)HirTables.PlanOf(this).Mode;
+        get => HirTables.PlanOf(this).Conversion;
         set => HirTables.PlanFor(this, value != ConversionBinding.None).Mode = (byte)value;
     }
 

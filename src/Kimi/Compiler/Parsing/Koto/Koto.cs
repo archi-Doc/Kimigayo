@@ -469,7 +469,7 @@ public abstract partial class Koto
     [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     public BoundType? BoundType
     {
-        get => HirTables.Meaning(this) as BoundType;
+        get => HirTables.TypeOf(this);
         internal set => this.BoundMeaning = value;
     }
 

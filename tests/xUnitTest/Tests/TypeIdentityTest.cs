@@ -116,7 +116,7 @@ public class TypeIdentityTest
             return;
         }
 
-        var receiver = HirTables.Meaning(KotoHelper.UnwrapParentheses(node.Left)) as BoundType;
+        var receiver = HirTables.TypeOf(KotoHelper.UnwrapParentheses(node.Left));
         while (receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
         {
             receiver = receiver.Components[0];

@@ -316,7 +316,7 @@ public sealed class HirColumnsTest
         var found = 0;
         foreach (var node in nodes)
         {
-            var type = HirTables.Meaning(node) as BoundType;
+            var type = HirTables.TypeOf(node);
             for (var i = 0; i < HirTables.PlaceOf(node).Layers; i++)
             {
                 found += TyCtxt.Layer(type, out type, out var binder) == HirPlaceKind.PairLayer && binder is not null ? 1 : 0;

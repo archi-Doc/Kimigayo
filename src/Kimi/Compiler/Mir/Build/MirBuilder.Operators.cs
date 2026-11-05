@@ -147,7 +147,7 @@ internal sealed partial class MirBuilder
     private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type, bool input)
     {
         ref readonly var row = ref HirTables.PlanOf(conversion);
-        var binding = (ConversionBinding)row.Mode;
+        var binding = row.Conversion;
         if (row.Folded is { } folded)
         {
             this.Use(

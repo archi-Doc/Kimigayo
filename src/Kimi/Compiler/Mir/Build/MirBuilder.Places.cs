@@ -189,7 +189,7 @@ internal sealed partial class MirBuilder
             return false;
         }
 
-        var published = HirTables.Meaning(receiverNode) as BoundType;
+        var published = HirTables.TypeOf(receiverNode);
         for (var layers = HirTables.PlaceOf(receiverNode).Layers; layers > 0 && TyCtxt.Layer(published, out var below, out _) != HirPlaceKind.Value; layers--)
         {
             published = below;
@@ -270,7 +270,7 @@ internal sealed partial class MirBuilder
             return located;
         }
 
-        var type = (derived ? expected : null) ?? HirTables.Meaning(node) as BoundType ?? expected ?? BoundType.Unit;
+        var type = (derived ? expected : null) ?? HirTables.TypeOf(node) ?? expected ?? BoundType.Unit;
         if (this.Given(into, type) is { } place)
         {
             this.Into(place, node, input);

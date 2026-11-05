@@ -67,6 +67,9 @@ internal struct HirTables
 
     internal static object? Meaning(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Meanings[node.SyntaxId] : null;
 
+    // The node's resolved Type: its Meaning when that is a Type, else null (an Origin, an unresolved node).
+    internal static BoundType? TypeOf(Koto node) => Meaning(node) as BoundType;
+
     internal static BindingSymbol? Symbol(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Symbols[node.SyntaxId] : null;
 
     internal static BoundType? ErasedType(Koto node) => node.SyntaxOwner is { } table ? table.Hir.ErasedTypes[node.SyntaxId] : null;
@@ -234,4 +237,7 @@ internal struct PlanRow
         readonly get => this.folded ? new Int128(this.foldedHigh, this.foldedLow) : null;
         set => (this.folded, this.foldedHigh, this.foldedLow) = value is { } constant ? (true, (ulong)(constant >> 64), (ulong)constant) : (false, 0UL, 0UL);
     }
+
+    /// <summary>Gets a conversion's kind, which its row's Mode holds.</summary>
+    internal readonly ConversionBinding Conversion => (ConversionBinding)this.Mode;
 }
