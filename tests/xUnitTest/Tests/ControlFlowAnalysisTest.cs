@@ -103,8 +103,8 @@ public class ControlFlowAnalysisTest
         // SPEC 14.9: a yield in a discarded selection has no target, so its plan row is null and Binding reports it.
         var c = Compile("if true\n    if false\n        yield 1\n    else\n        yield 2\nelse\n    ()");
         var selections = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().ToArray();
-        Assert.False(KotoHelper.IsResultRequiringSelection(selections[0]));
-        Assert.False(KotoHelper.IsResultRequiringSelection(selections[1]));
+        Assert.False(Binding.IsResultRequiringSelection(selections[0]));
+        Assert.False(Binding.IsResultRequiringSelection(selections[1]));
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<YieldKoto>(), static x => Assert.Null(HirTables.PlanOf(x).Plan));
 
         // SPEC 14.9.1, 23.1.2 (DECISIONS BU-101): the invalid yields go to no target, so their operands have no expected Type and no
@@ -182,7 +182,7 @@ public class ControlFlowAnalysisTest
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(compilation.Kotonoha), ref restored);
         restored!.OnDeserialized(compilation);
-        var selection = Assert.Single(KotoTree.Walk(restored.RootKoto).OfType<IfKoto>(), KotoHelper.IsResultRequiringSelection);
+        var selection = Assert.Single(KotoTree.Walk(restored.RootKoto).OfType<IfKoto>(), Binding.IsResultRequiringSelection);
         Assert.True(selection.Branches[0].Body.IsExpressionBody);
         Assert.True(selection.Branches[0].Body.HasTrailingExpression);
         Assert.False(selection.ElseBody!.IsExpressionBody);

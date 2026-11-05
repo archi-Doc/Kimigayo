@@ -244,7 +244,7 @@ internal sealed class TestCatalog
                     return;
                 }
 
-                if (!TestDefinition.IsValidSyntax(function) || function.BoundSymbol is not { Type: var type, ReceiverIndex: < 0 } symbol ||
+                if (!TestDefinition.IsValidSyntax(function) || HirTables.Symbol(function) is not { Type: var type, ReceiverIndex: < 0 } symbol ||
                     !ReferenceEquals(type, BoundType.Unit))
                 {
                     throw new InvalidDataException("Invalid test signature: " + function.Name);

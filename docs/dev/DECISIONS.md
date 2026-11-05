@@ -14154,6 +14154,9 @@ structure is recorded here by the unit that first implements it.
     consenting; H7 leaves G:check-del and R6-check for R7.
   - Amended by R5-M191 (2026-11-05, R6-check H12): H12's row keeps and renames the nine entry-point tests, about −200 net instead of
     ≈ −600.
+  - Amended (R6-check H14, R5-M193, 2026-11-05): H14 starts after H10b's C2, not after H11, independent of H11 and H10b-2; its size
+    is +42 source lines (+31 test lines), not about −150, since H10b deleted `StaticScalar.cs`, `IsIndexerCall` and
+    `DesignatedType`, which H0 counted.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -14366,6 +14369,39 @@ structure is recorded here by the unit that first implements it.
   - Supersedes by name, each with its amendment line: R5-M152 S1's `CompilerIdentity` marks, its G1 switch file and the hold pair
     with `Compilation.Switch.cs`; R5-M156's `KIMI_PIPELINE=mir` "until H12"; R5-M160's `KIMI_PIPELINE` and `PipelineSwitchTest`
     loops "until H12", which H12 fulfils; R5-M182's H12 row (its size).
+- **R5-M193 The Koto semantic-slot reads outside Binding end (R6-check H14)** (2026-11-05, R5; design
+  `draft/Sketches/R6-check/H14-design.md` revision 1, an independent design review ACCEPT on re-check and the implementation review
+  ACCEPT; under R5-M9, R5-M182 and R5-M190; BU and R4 consenting) Major: two Binding-only rules' code moves with every reader and
+  only read views are added; no representation, published fact or record changes.
+  - Scope: the reads of the Koto semantic slots outside Binding end (Mir 8, the Backend 2, the root helpers 23, Parsing 4,
+    Documentation 3, Testing 1, the Benchmark 1), except the old control-flow analysis' 25 (`ControlFlowAnalysis.cs`, until
+    H10b-2 deletes it) and the tests' 13 (the test row's limit, until R7). Their write paths (setters, a replaced child's reset,
+    the views and synthetic Kotos Binding builds) and Binding's reads stay with the slots until R7 (R5-M9).
+  - Published views. `BoundClosure.Of(FunctionKoto)`, the literal route beside the Type route, is the closure's definition;
+    `ClosureDefinition` forwards to it, so the `Signature` rule has one copy. `MirBuilder.Formatting` reads the writer acquisition's
+    call as `CallPlan.Of(acquisition)`, equal to `BoundCall`: after a finished pass `HasCurrentBinding` is `Resolved`; the
+    acquisition is a named call, never `CalleeKind.Value`, which `BoundCall` excludes; and `CallPlan.Of`'s Formatting branch does
+    not apply, since `Formatting.Call` builds a plain invocation without a Formatting row. `VTableDef.Owner`, the struct that
+    declares a function (F 4.2), is VTableDef's dispatch rule only; Binding's 43 `Scope.Owner.BoundSymbol` reads are R7-Y4's.
+  - Typed reads: `HirTables.TypeOf` and the readonly `PlanRow.Conversion` replace every spelled-out read and decode. ElementAccess
+    reads the columns and stays a root helper until R7-T2. The documentation model, the Testing catalog and `DiagnosticMeasurements`
+    read `HirTables.Symbol` and `State` (unbound-safe; no `SemanticQuery`). `ScalarTypes.TryFloatLiteral(Koto, out long)` had no
+    reader and goes.
+  - Responsibilities moved from Syntax to Binding (ARCH: Syntax must not read Binding, and a `HirTables` read from Parsing is one;
+    supersedes H0c §4.4's "rewritten to HirTables" for Parsing): Value Context (`Binding.ValueContext`: `IsValueContext`,
+    `DiscardsFunctionBody`, `IsResultRequiringSelection`, `TransferTarget` with BU-101's contract), argument mapping's receiver rule
+    (`AllowsPositionalArgument`, `TryMapArgument` in `Binding.ArgumentMapping`) and `BasePath`'s current-pass gate (`BaseMember`).
+    Their syntactic parts stay in `KotoHelper`; the repair-text helper becomes `TransferDestination`.
+  - Tags: the 37 `[Transitional("R6")]` slots in Parsing and `BaseReferenceKoto.BasePath`, the 38th (R5-M190, the owner verbatim
+    「推奨どおり」), are `[Transitional("R7")]`, citing R5-M9.
+  - Ratchets: `SemanticSlots` names the slots but `Formatting`, `Adaptation`, `Mode`, `Iteration` and `BasePath`, which live members
+    of other types share (`BasePath`'s tag identifies it); `SemanticSlotReads` over that list; zero-reference rows for Mir, the
+    Backend, each root-helper file, Documentation, Testing and the Benchmark; Parsing's sites row (the declarations' files and the
+    write paths).
+  - Rejected: Parsing's reads rewritten to `HirTables` in place (still Syntax reading Binding); the fact passed in by Binding's
+    callers (`IsValueContext` recurses, so its 20 callers would repeat its semantic arm, and argument mapping's rule would get two
+    owners); ElementAccess moved into Binding now (its reads would wait for R7, against R5-M9's split); waiting for H11 (nothing in
+    H14 reads or deletes what H11 changes).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)

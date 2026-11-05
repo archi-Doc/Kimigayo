@@ -213,7 +213,7 @@ public sealed partial class MirBuildTest
             ") -> i32\n    " + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or ArrayLiteralKoto && x.ToString() == literal);
-        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
+        Assert.Equal(type, TyCtxt.Name(HirTables.TypeOf(node)!));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);

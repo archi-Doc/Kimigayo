@@ -270,7 +270,7 @@ public sealed partial class Binding
         this.CalculateMatchCoverage(plan, subject);
 
         var pendingBody = false;
-        var required = KotoHelper.IsResultRequiringSelection(match);
+        var required = IsResultRequiringSelection(match);
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];

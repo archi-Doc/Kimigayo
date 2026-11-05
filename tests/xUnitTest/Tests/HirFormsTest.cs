@@ -801,11 +801,11 @@ public sealed partial class HirFormsTest
     private static IEnumerable<Koto> BuiltByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
         HirTables.Op(x) is HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call &&
         HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset ||
-        (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !KotoHelper.IsValueContext(x))));
+        (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !Binding.IsValueContext(x))));
 
     // The Places the MIR builder holds by their row's Type (MirBuilder.Held, DECISIONS BU-98): a Place outside any group that a container
     // discards (no consumer's Adjust takes it, in Discard Context) or an explicit discard takes, as the publisher writes them.
     private static IEnumerable<Koto> HeldByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
         HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && x.Parent is not ParenthesizedKoto &&
-        (x.Parent is DiscardKoto || (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset && !KotoHelper.IsValueContext(x))));
+        (x.Parent is DiscardKoto || (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset && !Binding.IsValueContext(x))));
 }

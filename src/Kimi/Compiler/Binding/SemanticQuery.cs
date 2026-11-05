@@ -24,7 +24,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
     /// <summary>Gets each declared symbol by its declaration syntax (a parameter by its parameter syntax). Read only.</summary>
     internal Dictionary<object, BindingSymbol> Declarations => declarations;
 
-    internal BoundType? TypeOf(Koto node) => HirTables.Meaning(node) as BoundType;
+    internal BoundType? TypeOf(Koto node) => HirTables.TypeOf(node);
 
     internal BoundOrigin? OriginOf(Koto node) => HirTables.Meaning(node) as BoundOrigin;
 
@@ -49,7 +49,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     // The kind and the folded constant are the conversion's plan row; the creation and the adaptation count only for their kind.
     internal (ConversionBinding Kind, InvocationKoto? Creation, ExplicitAdaptationPlan? Adaptation, Int128? Folded) ConversionOf(ConversionKoto node)
-        => ((ConversionBinding)HirTables.PlanOf(node).Mode, node.CreationCall, node.Adaptation, HirTables.PlanOf(node).Folded);
+        => (HirTables.PlanOf(node).Conversion, node.CreationCall, node.Adaptation, HirTables.PlanOf(node).Folded);
 
     internal (InvocationKoto? Entry, BoundIteration? Plan) IterationOf(ForKoto node)
     {

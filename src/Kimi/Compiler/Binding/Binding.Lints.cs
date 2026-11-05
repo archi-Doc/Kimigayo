@@ -480,7 +480,7 @@ public sealed partial class Binding
         {
             this.lints.Add((node, LintRow.StaticWhileTrue, null));
         }
-        else if (node is JumpKoto jump && KotoHelper.TransferTarget(jump) is null)
+        else if (node is JumpKoto jump && TransferTarget(jump) is null)
         {
             this.lints.Add((node, KotoHelper.ResolveTransferTarget(jump) is null ? LintRow.InvalidJumpTarget : LintRow.UnlabeledYieldTarget, null));
         }
@@ -499,7 +499,7 @@ public sealed partial class Binding
             }
         }
 
-        if (node is ExpressionKoto && node.Parent is not ParenthesizedKoto && !KotoHelper.IsValueContext(node))
+        if (node is ExpressionKoto && node.Parent is not ParenthesizedKoto && !IsValueContext(node))
         {
             var value = KotoHelper.UnwrapParentheses(node);
             var row = this.DiscardRow(value);

@@ -91,9 +91,6 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the written parameter index after the ! boundary, or -1 when absent.</summary>
     public int NameBoundaryIndex { get; internal set; } = -1;
 
-    internal bool AllowsPositionalArgument(int index)
-        => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
-
     internal int FindParameter(string name)
     {
         var parameters = this.parameters;
@@ -126,40 +123,6 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         return this.parameterIndices.GetValueOrDefault(name, -1);
-    }
-
-    internal bool TryMapArgument(string? label, ref int next, ref bool named, Span<bool> used, out int slot)
-    {
-        if (label is not null)
-        {
-            named = true;
-            slot = this.FindParameter(label);
-        }
-        else
-        {
-            slot = -1;
-            if (named)
-            {
-                return false;
-            }
-
-            // Only a receiver can already be supplied during the positional prefix.
-            while (next < this.Parameters.Count && used[next])
-            {
-                next++;
-            }
-
-            slot = next++;
-        }
-
-        if ((uint)slot >= (uint)this.Parameters.Count || used[slot] ||
-            (label is null && !this.AllowsPositionalArgument(slot)))
-        {
-            return false;
-        }
-
-        used[slot] = true;
-        return true;
     }
 
     /// <summary>Gets the return type, if specified.</summary>
@@ -246,16 +209,17 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <summary>Gets the closure's definition (DECISIONS R5-M63 (1), R4-M152): its latest binding's plan once that binding bound the
     /// inputs, the result and the environment, whatever the creation's outcome; null for a named function and until the signature is
-    /// bound. Every reader that needs the closure's definition (its signature, parts or body) reads it (BoundClosure's contract).</summary>
-    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
-    internal BoundClosure? ClosureDefinition => this.ClosureStorage is { Signature: not null } plan ? plan : null;
+    /// bound. Binding's forwarding to <see cref="BoundClosure.Of(FunctionKoto)"/>, the literal route every reader outside Binding
+    /// takes (BoundClosure's contract; DECISIONS R5-M193).</summary>
+    [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
+    internal BoundClosure? ClosureDefinition => BoundClosure.Of(this);
 
     /// <summary>Gets the closure as created at this literal (DECISIONS R4-M152): its definition while the creation is Resolved, null
     /// when the creation failed. Only a reader that asks whether the creation at this position succeeded reads it.</summary>
-    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundClosure? ClosureAsCreated => this.BindingState == BindingState.Resolved ? this.ClosureDefinition : null;
 
-    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundClosure? ClosureStorage
     {
         get => HirTables.PlanOf(this).Plan as BoundClosure;

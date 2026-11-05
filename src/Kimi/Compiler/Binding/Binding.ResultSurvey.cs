@@ -49,14 +49,14 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.1: the target to which the expression is a result source, as a single-item body's value or a valid transfer's operand
-    // (KotoHelper.TransferTarget), or null; the inverse of FindResultEvidence's sources.
+    // (TransferTarget), or null; the inverse of FindResultEvidence's sources.
     private static Koto? ResultTarget(Koto source)
     {
         var node = ResultSourceForm(source);
 
         return node.Parent switch
         {
-            JumpKoto jump when jump is not ContinueKoto && ReferenceEquals(jump.Expression, node) => KotoHelper.TransferTarget(jump),
+            JumpKoto jump when jump is not ContinueKoto && ReferenceEquals(jump.Expression, node) => TransferTarget(jump),
             IfKoto or MatchKoto when KotoHelper.IsSelectionBody(node.Parent, node) => node.Parent,
             DoKoto scoped when ReferenceEquals(scoped.Body, node) => scoped,
             FunctionKoto function when ReferenceEquals(function.ExpressionBody, node) => function,
@@ -362,7 +362,7 @@ public sealed partial class Binding
     {
         scope = this.NodeScope(body, scope);
         var expression = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
-        if (expression is not CodeBlockKoto && KotoHelper.IsValueContext(expression))
+        if (expression is not CodeBlockKoto && IsValueContext(expression))
         {
             this.SourceEvidence(expression, scope, context);
         }
@@ -429,7 +429,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (node is JumpKoto { Expression: { } expression } jump && jump is not ContinueKoto && KotoHelper.TransferTarget(jump) == target)
+        if (node is JumpKoto { Expression: { } expression } jump && jump is not ContinueKoto && TransferTarget(jump) == target)
         {
             this.SourceEvidence(expression, scope, context);
         }

@@ -240,7 +240,7 @@ internal static class DiagnosticMeasurements
         Require(compilation.Bind().IsComplete != rejected);
         var declarations = compilation.Kotonoha.RootKoto.NestedContainers;
         Require(declarations.Count == count);
-        Require(declarations.All(x => (x.BindingState == BindingState.Invalid) == rejected));
+        Require(declarations.All(x => (HirTables.State(x) == BindingState.Invalid) == rejected));
         return compilation;
     }
 
