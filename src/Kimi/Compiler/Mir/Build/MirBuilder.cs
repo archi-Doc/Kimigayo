@@ -72,6 +72,11 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
     private static BoundType TypeOf(Koto node) => HirTables.Meaning(node) as BoundType ?? BoundType.Unit;
 
+    // SPEC 14.2.2, 14.2.4 (DECISIONS BU-98): the Type of the value a statement or an explicit discard holds for its operand: a discarded
+    // Place's published Type (PlanRow.DiscardedType: a stored exclusive reference's Reborrow by Binding's name, BU-27), else, a value
+    // statement's, its Meaning.
+    private static BoundType Held(Koto node) => HirTables.PlanOf(node).DiscardedType ?? TypeOf(node);
+
     // Whether the HIR publishes a definition its walk reached (an Op written; a synthesized executing function, which shares its accessor's
     // body, has none) and evaluates its value node (its body, expression body or initializer, not Syntax): exactly a Body's or a Closure's,
     // and a closure definition's whatever its creation (DECISIONS R5-M63).

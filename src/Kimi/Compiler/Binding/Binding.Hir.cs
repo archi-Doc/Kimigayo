@@ -105,20 +105,18 @@ public sealed partial class Binding
                 res[node.SyntaxId] = this.ResOf(node);
                 completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
                     : (this.completion ??= new(binding.ResultNeverEvidence)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
+                BoundType? discardedType = null;
                 if (completions[node.SyntaxId] != HirCompletion.Unset)
                 {
                     places[node.SyntaxId] = new(this.KindOf(node, op, res[node.SyntaxId]), this.Layers(node));
-
-                    // SPEC 14.2.2 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, its plan row's Adjust
-                    // (Discarded). No consumer takes such a Place but the group around it (Grouped's IsGroup), so only a Place with no
-                    // Adjust or a group's operand is asked for its context, the builder's reach, not every Place.
-                    if (places[node.SyntaxId].Kind != HirPlaceKind.Value && (HirTables.AdjustOf(node).Acquire == HirAcquire.Unset || IsGroup(node.Parent)) &&
-                        !KotoHelper.IsValueContext(node))
+                    if (places[node.SyntaxId].Kind != HirPlaceKind.Value)
                     {
-                        var discarded = binding.Discarded(node);
-                        HirTables.PlanFor(node, discarded != default).Adjust = discarded;
+                        discardedType = this.DiscardRow(node);
                     }
                 }
+
+                // Every node a publish reaches gets its discarded Type, null where it is none, so no row keeps an earlier pass's (BU-98).
+                HirTables.PlanFor(node, discardedType is not null).DiscardedType = discardedType;
             }
 
             Fold(node, op);
@@ -232,6 +230,25 @@ public sealed partial class Binding
                 default:
                     return HirRes.Decl;
             }
+        }
+
+        // SPEC 14.2.2, 14.2.4 (DECISIONS R4-M145, BU-98): a discarded Place's plan row. A Place in Discard Context is acquired by bare
+        // acquisition, its row's Adjust (Discarded); the Place a container or an explicit discard takes (Discards, outside any group) holds
+        // the value its acquisition supplies, its row's DiscardedType (SuppliedType), which no consumer states. No consumer takes such a
+        // Place but the group around it (Grouped's IsGroup) or the explicit discard, so only a Place with no Adjust, a group's operand or
+        // a discard's operand is asked for its context, the builder's reach, not every Place. Returns the discarded Type, which Visit
+        // writes, null for a Place no container or explicit discard takes.
+        private BoundType? DiscardRow(Koto node)
+        {
+            var unset = HirTables.AdjustOf(node).Acquire == HirAcquire.Unset;
+            var grouped = IsGroup(node.Parent);
+            if ((unset || grouped) && !KotoHelper.IsValueContext(node))
+            {
+                var discarded = binding.Discarded(node);
+                HirTables.PlanFor(node, discarded != default).Adjust = discarded;
+            }
+
+            return !grouped && (unset || node.Parent is DiscardKoto) && Discards(node) ? binding.SuppliedType(node) : null;
         }
 
         // SPEC 3.4.3, 3.5, 4.7.1, 13.5.5, 15.1.3: the Place a node designates, as its Op, Res and Binding's element, follow and call facts

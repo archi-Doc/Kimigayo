@@ -447,6 +447,22 @@ public sealed partial class MirBuildTest
         Assert.Equal(["PairAcquire _1", "Copy _2", "Ref Uniq _3*", "Move _4"], acquired);
     }
 
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-98, PLAN G233): a discarded stored exclusive reference is held in a temporary of its
+    // Reborrow's Type, Binding's name for it (the meet of the layers reaching it; BU-27), whether the discard is explicit, bare or
+    // parenthesized, never of the Place's stored Type.
+    [Fact]
+    public void ADiscardedReborrowIsHeldAtBindingsName()
+    {
+        var c = Compile("struct Holder2 {a}\n    public var link: uniq/i32 during a\nfunc f(h: uniq/(Holder2 during a) during s) -> ()\n" +
+            "    _ = h.link\n    h.link\n    (h.link)\n    _ = (h.link)\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var held = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref)
+            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type), Binding.HoverTypeName(x.Rvalue.Type!)));
+        Assert.Equal(Enumerable.Repeat(("uniq/i32 during (s and a)", "uniq/i32 during (s and a)"), 4), held);
+    }
+
     // SPEC 23.1.2 (DECISIONS R4-M145): a Place whose bare acquisition Binding left unset, a Place without a Type (its parameter's Type
     // unresolved), is a derived Opaque with no record, discarded (its plan row unset) or as an item no consumer took (its Adjust unset,
     // which the container reads as a discard), as any consumed child's unset Adjust is; a complete compilation has no such row
