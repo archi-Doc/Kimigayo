@@ -11,7 +11,7 @@ internal readonly record struct SignatureEvidence(Koto? Binder, Koto Source);
 public sealed partial class Binding
 {
     // The key of a call's own open region for the callee's i-th Origin, apart from the keys of argument evidence.
-    private const int ResultOnlyKey = int.MinValue / 2;
+    private const int UnsolvedKey = int.MinValue / 2;
 
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
@@ -140,7 +140,7 @@ public sealed partial class Binding
         }
     }
 
-    // Whether `type` names the Origin parameter `slot` of `binder` (OpenResultOnlyOrigins, DiscoverPremiseOrigins).
+    // Whether `type` names the Origin parameter `slot` of `binder` (EvidenceNames).
     private static bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
     {
         if (!type.CarriesOrigin)
@@ -190,43 +190,36 @@ public sealed partial class Binding
         return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot;
     }
 
-    // SPEC 15.3.6, 15.6.4 step 1: a callee's own Origin that no supplied parameter's Type and no relation clause mentions, such as the
-    // result-only `s` of `constant() -> ref/i32 during s` or one only the Types of the `defaults` the call uses name (SPEC 10.1.1: a
-    // default gives no evidence), has no evidence at a call that no expected result fixes. It is a local region of the call, solved with
-    // the body's other local regions by its uses; it needs no annotation and is never replaced by static. An Origin that a used
-    // default's premise bounds is solved by that premise instead (15.3.6's candidate first; DiscoverPremiseOrigins, DECISIONS BU-99),
-    // so a region is opened only where no premise bounds it. It is the call's open region, keyed apart from argument evidence by
-    // ResultOnlyKey.
-    private bool OpenResultOnlyOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, in SlotSet defaults)
+    // SPEC 15.3.6, 15.6.4 steps 1, 3 (DECISIONS BU-104, superseding BU-51's region clause): after a candidate's solve, every Origin of
+    // the callee that no bound of its inference mentions (evidence, equality, result, clause; a meet's operand included, since 15.3.6
+    // follows bounds through other variables and never splits a meet) is a local region of the call, solved with the body's other local
+    // regions by its uses, whatever premise names it: the premises the call's judgment visits over it (`inference.WellFormed`, no bound)
+    // are that region's bounds (a result-only `s` of `constant() -> ref/i32 during s`, one only a default names, the Origins only a
+    // join's or an aggregate's `.None` leaves name). An Origin a bound mentions keeps its representative or none, its relations judged.
+    // It needs no annotation and is never replaced by static. It is the call's open region, keyed apart from argument evidence by
+    // UnsolvedKey.
+    private void OpenUnsolvedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, OriginInference? inference)
     {
-        var opened = false;
-        var relations = this.originDeclarations.GetValueOrDefault(function)?.Relations;
         for (var i = 0; i < function.Origins.Count; i++)
         {
-            if (origins[i] is not null)
+            if (origins[i] is null && !BoundMentions(inference, function, i))
             {
-                continue;
-            }
-
-            var mentioned = false;
-            for (var p = 0; p < function.Parameters.Count && !mentioned; p++)
-            {
-                mentioned = !defaults.Contains(p) && (function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i));
-            }
-
-            for (var r = 0; relations is not null && r < relations.Count && !mentioned; r++)
-            {
-                mentioned = NamesSlot(relations[r].Longer, function, i) || NamesSlot(relations[r].Shorter, function, i);
-            }
-
-            if (!mentioned)
-            {
-                origins[i] = this.OpenOrigin(call, ResultOnlyKey + i);
-                opened = true;
+                origins[i] = this.OpenOrigin(call, UnsolvedKey + i);
             }
         }
 
-        return opened;
+        static bool BoundMentions(OriginInference? inference, FunctionKoto function, int slot)
+        {
+            for (var i = 0; inference is not null && i < inference.Bounds.Count; i++)
+            {
+                if (NamesSlot(inference.Bounds[i].Longer, function, slot) || NamesSlot(inference.Bounds[i].Shorter, function, slot))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)

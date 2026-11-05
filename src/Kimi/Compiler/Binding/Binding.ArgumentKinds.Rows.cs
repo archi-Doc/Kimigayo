@@ -119,6 +119,15 @@ public sealed partial class Binding
     private void CollectPositionPremises(ref SlotSolution solution)
     {
         this.RetainChildRows(ref solution);
+        solution.EvidenceNamed = this.RentSlotSet(CallOriginCount(solution.Binder));
+        for (var slot = 0; slot < CallOriginCount(solution.Binder); slot++)
+        {
+            if (this.EvidenceNames(solution, slot))
+            {
+                solution.EvidenceNamed.Add(slot);
+            }
+        }
+
         for (var i = 0; i < solution.Rows.Length; i++)
         {
             this.ChildGroup(solution, i, out var start, out var end);

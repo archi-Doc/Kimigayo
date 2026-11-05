@@ -81,6 +81,10 @@ public sealed partial class Binding
         // composes them, RetainChildRows); empty for a property update, whose typed parts have no child positions.
         internal Span<int> ChildSlice;
 
+        // R4' (DECISIONS BU-104): the callee's Origin slots that an evidence position's pattern names (EvidenceNames), built once per solve
+        // from the retained rows (CollectPositionPremises) and read by each discovery (DiscoverPremiseOrigins); its solve returns it.
+        internal SlotSet EvidenceNamed;
+
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
 

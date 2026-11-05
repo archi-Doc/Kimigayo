@@ -263,6 +263,7 @@ public sealed partial class Binding
         for (var i = 0; i < solution.Rows.Length; i++)
         {
             this.ChildGroup(solution, i, out var start, out var end);
+            this.evidenceNameReads += 1 + end - start;
             if (start == end && solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } &&
                 MentionsOriginSlot(pattern, solution.Binder, slot))
             {
@@ -305,7 +306,7 @@ public sealed partial class Binding
             this.DiscoverPremiseOrigins(solution, inference, type.Components[i]);
         }
 
-        void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
+        static void DiscoverPremiseOrigin(in SlotSolution solution, OriginInference inference, BoundOrigin? origin)
         {
             if (origin is null)
             {
@@ -318,7 +319,7 @@ public sealed partial class Binding
             }
 
             if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, inference.Binder) && !inference.PremiseSolved.Contains(origin) &&
-                !this.EvidenceNames(solution, origin.Slot))
+                !solution.EvidenceNamed.Contains(origin.Slot))
             {
                 inference.Discover(origin, 0);
                 inference.PremiseSolved.Add(origin);
@@ -469,7 +470,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.OpenResultOnlyOrigins(use, function, origins, default); // A function reference's call uses no default (SPEC 10.1.1).
+            this.OpenUnsolvedOrigins(use, function, origins, inference); // SPEC 15.3.6: an Origin no bound mentions is a local region.
             return true; // Selected-call clauses are judged at their supplying arguments, never as applicability.
         }
 
