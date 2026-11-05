@@ -12,11 +12,15 @@ namespace Kimi.Compiler.Mir;
 //   meetWords, the words the choices and derived edges add to the class's arena (D20).
 // - Invariants: an operand's bounds are the operand when it is Fixed, else each Fixed node its walk over the class's edges meets (never
 //   past a Fixed node, never along an operand's edge into its own meet: `o outlives (o and ...)` bounds nothing) and each bound of another
-//   meet the walk enters; a choice whose operands include a kept bound's is weaker and not kept; meets close in a worklist, and a meet
-//   closes again when a meet one of its walks entered gains a bound; before a close enumerates, its product times m's in-edges that take
-//   derived edges is added to meetWords, so over MirDataflow.Within the law stops, no choice skipped, and the body gets
-//   OwnershipStorageLimit_Kd; Work counts each walk step and choice; storage is pooled and the view interns each canonical meet once, so
-//   a warm run allocates nothing.
+//   meet the walk enters; each choice's canonical meet is kept once per meet (a per-close stamp; a weaker choice stays, a redundant
+//   consequence of the rows, G's ruling (b)); meets close in a worklist, and a meet closes again when a meet one of its walks entered gains
+//   a bound; before a close enumerates, its product times m's in-edges that take derived edges is added to meetWords, so over
+//   MirDataflow.Within the law stops, no choice skipped, and the body gets OwnershipStorageLimit_Kd; storage is pooled and the view interns
+//   each canonical meet once, so a warm run allocates nothing.
+// - Cost: a close is its operands' walks (stamped, each node once per walk) plus its choices (the product of its operands' bound counts),
+//   each one MeetAtom fold over its operands and one stamp, so it is linear in its choices; a meet closes once, plus once per bound a meet
+//   it waits on gains. Work adds each walk step, each choice's fold and stamp, and each kept bound's stamp at a close; the choices and
+//   derived edges count in the arena (meetWords).
 // - Prohibitions: no cap on the choices; no edge to a non-Fixed node; no record (Join and Chains judge the derived edges).
 internal sealed partial class MirOrigins
 {
@@ -47,30 +51,6 @@ internal sealed partial class MirOrigins
     private int[] choiceStart = [];
     private int[] digits = [];
     private long meetWords;
-
-    // Whether `choice` has each operand of `kept` (a meet's operands, any other atom itself), so it is no stronger than `kept`.
-    private static bool Includes(BoundOrigin choice, BoundOrigin kept)
-    {
-        for (var i = 0; i < Count(kept); i++)
-        {
-            var found = false;
-            for (var j = 0; j < Count(choice) && !found; j++)
-            {
-                found = ReferenceEquals(At(kept, i), At(choice, j));
-            }
-
-            if (!found)
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        static int Count(BoundOrigin origin) => origin.Kind == OriginKind.Intersection ? origin.Operands.Count : 1;
-
-        static BoundOrigin At(BoundOrigin origin, int i) => origin.Kind == OriginKind.Intersection ? origin.Operands[i] : origin;
-    }
 
     // The meet law over the class's edges formed so far (ClassEdges); false when its words are over the limit (D20).
     private bool MeetLaw()
@@ -156,8 +136,8 @@ internal sealed partial class MirOrigins
         (this.operandCount, this.boundCount, this.boundMeetCount, this.waitCount) = (0, 0, 0, 0);
     }
 
-    // One close of meet m: every operand's bounds, then each choice of one bound per operand, whose canonical meet is kept unless a kept
-    // bound is at least as strong; none while an operand has no bound; false when the choices' words are over the limit (D20).
+    // One close of meet m: every operand's bounds, then each choice of one bound per operand, whose canonical meet is kept once; none while
+    // an operand has no bound; false when the choices' words are over the limit (D20).
     private bool Close(int m, out bool gained)
     {
         gained = false;
@@ -185,6 +165,13 @@ internal sealed partial class MirOrigins
             return false;
         }
 
+        var kept = ++this.reachStamp; // The walks are done: this close's stamp marks m's kept bounds and each choice it keeps.
+        for (var b = this.boundFirst[m]; b >= 0; b = this.boundNext[b])
+        {
+            this.reachStamps[this.boundNodes[b]] = kept;
+            this.Work++;
+        }
+
         this.digits.AsSpan(0, operands).Clear();
         for (var k = 0; k < operands;)
         {
@@ -194,8 +181,8 @@ internal sealed partial class MirOrigins
                 choice = types.MeetAtom(this.key, choice, this.choices[this.choiceStart[i] + this.digits[i]], site);
             }
 
-            this.Work += operands;
-            gained |= this.Keep(m, choice);
+            this.Work += operands; // The fold (operands - 1 MeetAtom calls) and the stamp.
+            gained |= this.Keep(m, choice, kept);
             for (k = 0; k < operands && ++this.digits[k] == this.choiceStart[k + 1] - this.choiceStart[k]; k++)
             {
                 this.digits[k] = 0;
@@ -273,18 +260,16 @@ internal sealed partial class MirOrigins
         return found + 1;
     }
 
-    // Keeps a choice as m's bound unless a kept bound's operands are among its own (the choice is then no stronger); true when kept.
-    private bool Keep(int m, int choice)
+    // Keeps a choice as m's bound unless the close's stamp marks it kept (the same interned canonical meet); true when kept.
+    private bool Keep(int m, int choice, int stamp)
     {
-        var atom = this.slice.Atoms[choice].Atom;
-        for (var b = this.boundFirst[m]; b >= 0; b = this.boundNext[b])
+        MirDataflow.Grow(ref this.reachStamps, choice + 1);
+        if (this.reachStamps[choice] == stamp)
         {
-            if (Includes(atom, this.slice.Atoms[this.boundNodes[b]].Atom))
-            {
-                return false;
-            }
+            return false;
         }
 
+        this.reachStamps[choice] = stamp;
         var n = this.boundCount++;
         MirDataflow.Grow(ref this.boundNodes, this.boundCount);
         MirDataflow.Grow(ref this.boundNext, this.boundCount);

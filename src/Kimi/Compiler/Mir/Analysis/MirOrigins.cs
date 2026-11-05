@@ -3,10 +3,10 @@
 // Owns A5's Origin stratum (SPEC 15.6.1, 15.6.3, 15.6.5; 2a0-D §6, D13-D20; DECISIONS R4-M94, R4-M113, R4-M114, R4-M118), per body and per
 // class of its views: the graph of the body's rows (the C1-F4 view) with its Refs' containment edges and the meet law's edges (SPEC
 // 15.3.6: a non-Fixed meet at a shorter end outlives the canonical meet of each choice of one bound per operand, at its in-edge's site
-// and row; MirOrigins.Meets.cs, BU-104), the Refuted and Unknown chains through it and the relations between two fixed Origins
-// (MirOrigins.Chains.cs), and the located limit at an end the view leaves unclassed or at a failing chain with an enclosing body's call
-// region (the nested-body limit); and, for the Loan stratum's rule W, each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs,
-// R4-M132).
+// and row, at the cost of its operands' walks plus its choices, in Work and the arena; MirOrigins.Meets.cs, BU-104), the Refuted and
+// Unknown chains through it and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view
+// leaves unclassed or at a failing chain with an enclosing body's call region (the nested-body limit); and, for the Loan stratum's rule W,
+// each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs, R4-M132).
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, MeetAtom, an atom's part and whether it is an
 //   enclosing body's call region), keyed by MirDefKey.Body, its
