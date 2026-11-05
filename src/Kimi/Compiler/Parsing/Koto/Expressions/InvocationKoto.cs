@@ -36,8 +36,6 @@ public sealed class InvocationKoto : ApplicationKoto
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
 
-    internal bool RightFirstArguments => this.Method is RequirementCalleeKoto && this.Parent is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
-
     // Allocated only when at least one argument is labeled.
     private string?[]? argumentLabels;
 

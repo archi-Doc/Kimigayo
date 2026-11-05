@@ -14583,6 +14583,12 @@ structure is recorded here by the unit that first implements it.
     set is PLAN G52's fail-first regression, the Explicit `AJoinPastAnUnresolvedCallPublishesOnlyItsCause`.
   - Ratchets: the four rows over the entry become three zero-reference rows over the old ownership names in `tests`, `src/Benchmark`
     and `src/Playground`; `src/Kimi`'s row is H11's (three comment lines left).
+  - Amended (H10b-2, 2026-11-05): with the control-flow ratchet row at 0 (G428 landed), H10b-2 deleted `ControlFlowAnalysis.cs` (the
+    `C/Analysis` directory ends), `Compilation.AnalyzeControlFlow`, `Binding.LintErrors` (its `[Transitional("R6")]` tag ends) and the
+    members only the analysis read (`ElementAccess.UpdateOperator`, `MatchCoverage.IsExhaustive`, `InvocationKoto.RightFirstArguments`).
+    The last stopped test's `LintErrors` read is its published Binding Errors (H8b D2). The test-call row (R4-M13a) becomes four
+    zero-reference rows over the analysis's names in `src/Kimi`, `tests`, `src/Benchmark` and `src/Playground`; the D5 freeze's
+    Analysis half and the old Analysis's structure-limit exemption end with it.
 - **R5-M190 The owner's load division (C1, C3); H7 and `BasePath` postponed to R7** (2026-11-05, the owner, verbatim
   「C1C3を採用してください」, 「C2は採用しません。」 and 「推奨どおり」, on R5's proposals; amends R5-M182, R5-M53 and R5-M9)
   - C1: R5 designs and implements R6-check's Binding units H7 and H11, and R4 the newly found MIR defects whose cause is in Binding
@@ -14656,8 +14662,8 @@ structure is recorded here by the unit that first implements it.
   ACCEPT; under R5-M9, R5-M182 and R5-M190; BU and R4 consenting) Major: three Binding-only rules' code moves with every reader and
   only read views are added; no representation, published fact or record changes.
   - Scope: the reads of the Koto semantic slots outside Binding end (Mir 8, the Backend 2, the root helpers 23, Parsing 4,
-    Documentation 3, Testing 1, the Benchmark 1), except the old control-flow analysis' 25 (`ControlFlowAnalysis.cs`, until
-    H10b-2 deletes it) and the tests' 13 (the test row's limit, until R7). Their write paths (setters, a replaced child's reset,
+    Documentation 3, Testing 1, the Benchmark 1), except the old control-flow analysis' 25 (`ControlFlowAnalysis.cs`, which
+    H10b-2 deleted) and the tests' 13 (the test row's limit, until R7). Their write paths (setters, a replaced child's reset,
     the views and synthetic Kotos Binding builds) and Binding's reads stay with the slots until R7 (R5-M9).
   - Published views. `BoundClosure.Of(FunctionKoto)`, the literal route beside the Type route, is the closure's definition;
     `ClosureDefinition` forwards to it, so the `Signature` rule has one copy. `MirBuilder.Formatting` reads the writer acquisition's

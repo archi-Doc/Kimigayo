@@ -3,8 +3,7 @@
 // Owns structural completion: whether a node's evaluation can complete normally and which jumps leave it, from source structure.
 // Input: a node, its creator's Never evidence, optionally which nodes the parser supplied, and an invocation's omitted default
 // arguments, read through InvocationKoto.BoundCall.DefaultArguments (a Koto forwarding property removed at R7, DECISIONS R5-M9).
-// Output: CanComplete, read by Binding's result Types, the HIR Completion column and the old control-flow analysis; the children's
-// evaluation order and the transfer union that the flow analyses share.
+// Output: CanComplete, read by Binding's result Types and the HIR Completion column.
 // A node still being composed (a recursive default) is assumed to complete. Results stay cached until Clear, which a caller calls
 // whenever its Never evidence may change. The cache and the transfer sets are keyed by Koto reference: ARCH "Syntax identity" debt,
 // due by R7's exit.
@@ -38,7 +37,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
     }
 
     // HashSet.UnionWith accepts IEnumerable and boxes its source enumerator.
-    // Both flow analyses already retain concrete sets; enumerate those directly.
+    // The transfer sets are retained concrete sets; enumerate those directly.
     internal static void UnionTransfers(HashSet<JumpKoto> destination, HashSet<JumpKoto> source)
     {
         if (!ReferenceEquals(destination, source))

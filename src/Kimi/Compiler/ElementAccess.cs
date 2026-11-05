@@ -68,13 +68,6 @@ internal static class ElementAccess
             ? (int)magnitude : -1;
     }
 
-    internal static KotoKind UpdateOperator(KotoKind kind) => kind switch
-    {
-        KotoKind.PrefixPlusPlus or KotoKind.PostfixIncrement => KotoKind.Plus,
-        KotoKind.PrefixMinusMinus or KotoKind.PostfixDecrement => KotoKind.Minus,
-        _ => KotoHelper.CompoundOperation(kind),
-    };
-
     internal static IdentifierNameKoto? WritableRoot(Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
