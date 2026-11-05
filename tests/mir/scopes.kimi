@@ -85,3 +85,7 @@ func branchMove(c: bool)
     let s = "a"
     if c
         _ = s@move
+func blockedExit()
+    let b = label work: do
+        defer => loop => ()
+        exit to work 2

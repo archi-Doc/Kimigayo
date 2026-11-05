@@ -28,9 +28,7 @@ public class RequireRecoveryDiagnosticTest
         var require = Assert.Single(Descendants(c.Kotonoha.RootKoto).OfType<RequireKoto>());
 
         // The check runs at the body the recovery supplied, which stands for the syntax Error.
-        var (old, mir) = ControlFlowAnalysisTest.RequireFallthroughs(c);
-        Assert.Same(require.ElseBody, Assert.Single(mir));
-        Assert.Equal(old, mir);
+        Assert.Same(require.ElseBody, Assert.Single(ControlFlowAnalysisTest.RequireFallthroughs(c)));
         Assert.NotNull(require.ElseBody is ErrorKoto error ? error.Cause : require.CodeContext.RecoveryCause(require.ElseBody));
 
         // Its record is derived: without the syntax partition its prerequisite is unresolved and the record is published ...
@@ -59,9 +57,8 @@ public class RequireRecoveryDiagnosticTest
         Assert.Equal(codes, published.Select(static x => x.Code));
         Assert.Equal(body, Assert.Single(published, static x => x.Code == nameof(DiagnosticCode.RequireFallthrough_Kd)).Text);
 
-        // The MIR's A3 has the old analysis's records (DECISIONS R4-M7a), a guessed failure body's included.
-        var (old, mir) = ControlFlowAnalysisTest.RequireFallthroughs(c);
-        Assert.Equal(old, mir);
+        // The MIR's A3 records every falling failure body (DECISIONS R4-M7a), a guessed failure body's included.
+        Assert.Equal(Descendants(c.Kotonoha.RootKoto).OfType<RequireKoto>().Select(static x => (Koto)x.ElseBody), ControlFlowAnalysisTest.RequireFallthroughs(c));
     }
 
     // SPEC 23.1.2: a written failure body is judged on its own also inside an expression whose own check failed: an indented do body
