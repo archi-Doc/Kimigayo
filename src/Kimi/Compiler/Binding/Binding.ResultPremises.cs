@@ -477,6 +477,18 @@ public sealed partial class Binding
 
     private bool WellFormedPart(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {
+        // R1 (DECISIONS BU-99): a slot's solution is its contributor's at a position without evidence; beside an Evidence position's
+        // own Type the visit goes on over the solution, judged where the fit replaced an Origin (SPEC 15.6.1).
+        if (pattern.Kind == BoundTypeKind.Parameter)
+        {
+            if (actual is null)
+            {
+                return true;
+            }
+
+            pattern = result;
+        }
+
         if (!pattern.StoresOrigin || pattern.Kind == BoundTypeKind.Function || pattern.Kind != result.Kind || pattern.Components.Count != result.Components.Count)
         {
             return true;
