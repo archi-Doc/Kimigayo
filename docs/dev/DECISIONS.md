@@ -5498,8 +5498,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
       Copy, a `match` Subject, also of a Case built so, and a part of a construct's value, `(if c => (a, (return 1)) else => (a, a)).1`)
       are `UninitializedPlace_Kd`, where dev accepted all but the `do`'s. A construct nested in an aggregate keeps a real path's read
       valid. SPEC 14.9.2's `pick` and `pickFill` read a part only one arm places, so their reads are errors now (the owner's revision of
-      the examples). Not caught, as on dev: a temp taken whole by a call argument (`g(if c => (a, (return 1)) else => (a, a))` after
-      `return`), as A1 reports no compiler temporary (STATUS).
+      the examples). Not caught, a pre-existing acceptance in unreachable code only, as on dev: a temp consumed without an Assign,
+      such as a call argument (`g(if c => (a, (return 1)) else => (a, a))` after `return`), a returned value or a comparison operand,
+      keeps its uninitialized part on the temp or the return place, which A1 does not report (STATUS). Removal, R4's next step: A1
+      reports a temp's or the return place's uninitialized part where it is consumed.
   - Why: the builder stood in proxies for the Never form: joins by HIR Completion, `Transfer`'s early return for an operand that
     does not complete, and `Acquire` by the Place's Type.
   - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
