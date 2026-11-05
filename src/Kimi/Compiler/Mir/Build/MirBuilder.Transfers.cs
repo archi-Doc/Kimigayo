@@ -78,12 +78,7 @@ internal sealed partial class MirBuilder
         var assumed = operand is not null && !Completes(operand);
         value = continues || assumed ? value : this.Secure(value, operand ?? jump);
         var info = this.Info(jump);
-        ref var target = ref CollectionsMarshal.AsSpan(this.targets)[index];
-        if (target.Break < 0)
-        {
-            this.body.Terminate(target.Break = target.Join = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
-        }
-
+        ref var target = ref this.Reach(index);
         target.Joined |= !continues;
         var inner = info with { StatementStart = false };
         if (!continues && !assumed && !target.Delivers && this.Departs(target.At.Depth))
@@ -160,11 +155,24 @@ internal sealed partial class MirBuilder
 
     private bool IsTemp(MirPlace place) => place is { Projection: 0, Root: >= 0 } && this.body.Locals[place.Root].Kind == MirLocalKind.Temp;
 
-    // Opens a construct a transfer may target, with the block after it, where its exits go.
+    // The target at an index, its join built: a function's return block is built where a transfer first reaches it, at the declaration.
+    private ref Target Reach(int index)
+    {
+        ref var target = ref CollectionsMarshal.AsSpan(this.targets)[index];
+        if (target.Break < 0)
+        {
+            this.body.Terminate(target.Break = target.Join = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
+        }
+
+        return ref target;
+    }
+
+    // Opens a construct a transfer may target, with the block after it, where its exits go, and for the checks only its non-value ends
+    // where it is a Never form (SPEC 14.10.3).
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
-        this.targets.Add(new(node, destination, after, next, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
+        this.targets.Add(new(node, destination, after, next, IsNeverForm(node) ? after : -1, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
         return after;
     }
 
@@ -177,13 +185,13 @@ internal sealed partial class MirBuilder
     }
 
     // Closes the innermost construct, building on after it. SPEC 14.10.3: an assumed path adds no normal completion, so its non-value
-    // ends go on to after for the checks only where it is a Never form; that check target, -1 for none, a loop's head takes too. A
-    // construct no edge joins is a Never form (SPEC 14.9.2), which Binding publishes so (BU-101): one that is not breaks the HIR contract,
-    // and its ends join, so the body stays valid and the record is the only one.
+    // ends go on to its Check; that check target, -1 for none, a loop's head takes too. A construct no edge joins is a Never form (SPEC
+    // 14.9.2), which Binding publishes so (BU-101): one that is not breaks the HIR contract, and its ends join, so the body stays valid
+    // and the record is the only one.
     private int Close(int after)
     {
         var target = this.targets[^1];
-        var check = IsNeverForm(target.Node) ? after : -1;
+        var check = target.Check;
         if (!target.Joined && check < 0)
         {
             this.Record(target.Node, DiagnosticCode.InternalInvariant_Kd);
@@ -216,8 +224,10 @@ internal sealed partial class MirBuilder
     }
 
     // A construct a transfer may target (SPEC 14.5.2): where its result goes, its join, the block after it (-1: the function's return
-    // block, not built yet), its next iteration's block and the builder's position where it opened; whether an edge joins it.
-    private record struct Target(Koto Node, MirPlace Destination, int Join, int Continue, Opening At)
+    // block, not built yet, Reach), its next iteration's block, where a non-value end of its body goes on for the checks only (Check: a
+    // construct's join where it is a Never form, SPEC 14.10.3, a defer body's rest of its Scope Exit; -1 for none) and the builder's
+    // position where it opened; whether an edge joins it.
+    private record struct Target(Koto Node, MirPlace Destination, int Join, int Continue, int Check, Opening At)
     {
         // The block a delivery goes to: its Join, or the block delivering a result temp to the Destination after a Scope Exit (Delivers).
         internal int Break { get; set; } = Join;

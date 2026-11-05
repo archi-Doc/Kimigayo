@@ -256,7 +256,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var temporaries = this.OpenScope(block: false);
         var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
-        this.targets.Add(new(declaration, done, -1, -1, At: default)); // A return's target, opened at the body's scope.
+        this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.
         if (self is not null)
         {
             this.Construct(self, (FunctionKoto)declaration);
