@@ -332,7 +332,7 @@ public class ClosureEnvironmentOriginTest
     // The Closure keeps its Type and its calls bind (DECISIONS R4-M152, R4-M126 P8; OQ-F7-2 (a)): an indented body's record was at the
     // Closure, which failed with a `Never` result, NotCallable_Kd or UnresolvedBinding_Kd at its calls and two MIR validator findings.
     // Each row: the published records by code and text, then Binding's (the one related at the header) at `text`. Since the MIR decides
-    // (R6-check H5; H3b T50, class 4), A5's twin of Binding's record stands beside it until H11 (H0b §5.4, R4-M108), at the returned value
+    // (R6-check H5; H3b T50, class 4), A5's twin of Binding's record stands beside it until R7 (H0b §5.4, R4-M108), at the returned value
     // or at its `return`, and the Consuming row also publishes A5's MovedPlace_Kd at its `return`.
     [Theory]
     [InlineData(
@@ -396,7 +396,7 @@ public class ClosureEnvironmentOriginTest
     // DECISIONS R4-M126 P8, R4-M152: each published position is the meet of its admissible sources, so where one returned value is a
     // Borrow of an environment binding (ρ under the Shared receiver) and another a body local's, the position is ρ and only the local's
     // Borrow is Refuted, at its returned value; the call carries the receiver's Origin. Since the MIR decides (R6-check H5; H3b T50,
-    // class 4), A5's twin of Binding's record stands at its `return` until H11 (H0b §5.4, R4-M108).
+    // class 4), A5's twin of Binding's record stands at its `return` until R7 (H0b §5.4, R4-M108).
     [Fact]
     public void ACallLocalSourceBesideAnAdmissibleOneIsRefutedAgainstIt()
     {
@@ -691,7 +691,7 @@ public class ClosureEnvironmentOriginTest
     // local's declaration, before the receiver (the Supplier): directly, through a moved local and at the clause's second slot; the
     // plain and Consuming twins name it too. An implicit Borrow of a Field shows by its Place, `s.f`, plain or through the environment.
     // Each is its function's one Binding record, also beside an unrelated Binding error (SPEC 23.1.2). Since the MIR decides (R6-check H5;
-    // H3b T50, class 4), a Refuted row also has A5's twin of Binding's record until H11 (H0b §5.4, R4-M108), at `twin`'s exact text: the
+    // H3b T50, class 4), a Refuted row also has A5's twin of Binding's record until R7 (H0b §5.4, R4-M108), at `twin`'s exact text: the
     // clause, or the `return`.
     [Theory]
     [InlineData(ClauseOverEnv, Unproven, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
@@ -730,7 +730,7 @@ public class ClosureEnvironmentOriginTest
     // b1: `p outlives zz`'s repairs `p outlives static` and `p outlives q`, and the form with no clause, all report the Unknown at `p`).
     // They were at the whole declaration and an independent record. Since the MIR decides (R6-check H5; H3b T50/T51, class 4: records
     // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), d3 also has A5's MovedPlace_Kd and its twin of
-    // Binding's record (H0b §5.4, until H11) at the declaration.
+    // Binding's record (H0b §5.4, until R7) at the declaration.
     [Theory]
     [InlineData(LocalAnnotatedConsuming, "MovedPlace_Kd let r: ref/i32 during p = n@ref; " + Unsatisfied + " let r: ref/i32 during p = n@ref; " + Unsatisfied + " n@ref")]
     [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]

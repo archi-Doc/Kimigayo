@@ -40,7 +40,7 @@ public sealed partial class Binding
     /// test MIR side (<c>MirTargetSide.MirSide</c>) leaves out for A5's row (DECISIONS R4-M108, R4-M111).</summary>
     /// <param name="node">The records' node.</param>
     /// <returns>Whether its records are twins.</returns>
-    [Transitional("R6", Reason = "The test MIR side's twin filter; H11 deletes it with the twins (DECISIONS R4-M111).")]
+    [Transitional("R7", Reason = "The test MIR side's twin filter; R7's Problem records unit deletes it with the twins (the owner, 2026-11-06, 「Cで決定します」; DECISIONS R4-M111).")]
     internal bool IsTwinRecord(Koto node) => this.originTwins?.Contains(node) == true;
 
     // DIAGNOSTICS (Origin relations): an obligation's record is at its use, a local annotation's fit at the local's initializer, the
@@ -82,7 +82,7 @@ public sealed partial class Binding
     // records (RecordOriginChains). A position the relation judge fails records every failed chain; a position that is only unproven is
     // recorded when an end is unresolved and is otherwise Unsupported, unless a failed Origin environment explains it. A record at a
     // body chain (2a0-D D1, ends resolved at the use) gives every position of the fit, fixed-fixed ones included, a row of its body for
-    // A5 (CheckTypeUse's obligations, up to its first differing Function Type component); the records stay Binding's until H11
+    // A5 (CheckTypeUse's obligations, up to its first differing Function Type component); the records stay Binding's until R7
     // (DECISIONS R4-M108).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {

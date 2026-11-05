@@ -104,7 +104,7 @@ public partial class OriginRelationDiagnosticTest
     // The failures above that A5 judges (R6-check H5: the MIR decides, DECISIONS R5-M185): A5's record is at the statement, initializer
     // or Borrow where it judges the relation (H3b T45), with the same Reason, relates the borrow that created the Loan with the role
     // `borrow` where it finds one and names a borrow reached through a local by its Loan's place (`local`; T49, as A5 publishes them until
-    // A6). A relation Binding also records at the value stays Binding's record there, and A5's precedes it as its twin until H11 (H0b §5.4,
+    // A6). A relation Binding also records at the value stays Binding's record there, and A5's precedes it as its twin until R7 (H0b §5.4,
     // DECISIONS R4-M108; T50). Each record: its primary, label, longer end and related roles.
     [Theory]
     [InlineData(Bad, "return r: requires the borrow local outlives x, which is false; borrow local; borrow local@ref, origin return r | r: requires the borrow local@ref outlives x, which is false; borrow local@ref; origin local@ref")]
@@ -200,7 +200,7 @@ public partial class OriginRelationDiagnosticTest
     }
 
     // The rows of ABorrowThroughLayersIsContainedInEach that Binding records at the returned value X: A5's record at `return X` precedes
-    // Binding's as its twin until H11 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50), and names a meet reached through a
+    // Binding's as its twin until R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50), and names a meet reached through a
     // local by its Loan's place (`entries`). Each record: its primary and label.
     [Theory]
     [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    let found = entries[1]@follow@ref\n    return found\n", "return found: requires the borrow entries outlives a, which is false | found: requires the borrow entries[1]@follow@ref outlives a, which is false")]
@@ -386,7 +386,7 @@ public partial class OriginRelationDiagnosticTest
 
     // SPEC 23.1.2 (DECISIONS BU-26): a declaration's failed relation is an independent record beside a body's failed fit, and a declared
     // relation whose end its declaration left unbound rests on that end's MissingOriginBinding_Kd alone. The body's fit is Binding's record
-    // at `r` and A5's twin at `return r` until H11 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50).
+    // at `r` and A5's twin at `return r` until R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50).
     [Fact]
     public void ADeclarationsRelationStaysIndependentOfOtherRecords()
     {
@@ -477,7 +477,7 @@ public partial class OriginRelationDiagnosticTest
 
     // SPEC 23.3: the console names the borrow and relates it, the language server sends the record with its related location,
     // and the JSON form carries the display kind beside each Origin value. Binding's record at `r` has A5's twin at `return r`, published
-    // before it, until H11 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50).
+    // before it, until R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50).
     [Fact]
     public void EveryOutputCarriesTheOriginDisplay()
     {

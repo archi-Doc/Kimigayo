@@ -435,7 +435,7 @@ public partial class CallableOriginForwardingTest
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 
     // WeakerHead's result needs `q outlives r`, which no clause states, so it is its declaration's record (DECISIONS R4-M162), a
-    // Binding-level record beside which an independent TransferRequired_Kd is lost until H11 (R4-M162's lost records; PLAN G56). Since
+    // Binding-level record beside which an independent TransferRequired_Kd is lost until R7 (R4-M162's lost records; PLAN G56). Since
     // H5 the MIR decides and publishes its records directly (R5-M184, until A6's 2g-1), so the independent Loan conflict at `x = 2` is
     // kept beside it (c2bg, c2dg, c15). Each twin's head is well-formed, its conversion holds and it keeps the independent record.
     [Theory]

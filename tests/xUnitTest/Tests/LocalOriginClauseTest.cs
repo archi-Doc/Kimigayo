@@ -169,7 +169,7 @@ public class LocalOriginClauseTest
         => AssertDeclared(body + Main, code, at, label, borrow, clause);
 
     // A body-local Borrow can never outlive a fixed Origin. Binding's record at the initializer stays, and A5's record of the same clause
-    // at the clause follows it as its twin until H11 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50): A5 names the borrow by
+    // at the clause follows it as its twin until R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50): A5 names the borrow by
     // its Loan's place, `local`, and relates the borrow, the clause as the origin and the clause.
     [Fact]
     public void ABodyLocalBorrowsClauseIsBindingsRecordBesideA5sTwin()
@@ -343,7 +343,7 @@ public class LocalOriginClauseTest
     // a fit names the failing operand that decides its judgment, the Refuted Borrow before the Unknown `a` (SPEC 15.3.6, 15.6.5), and
     // reports every failed chain (SPEC 15.6.1), so the Unknown `a` is its own record at that value. Those are Binding's records at `at`;
     // A5's records of the same relation, one per failed chain at the clause or at `return X`, precede or follow them as their twins until
-    // H11 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50): each `twins` record is its primary, code, label and related roles.
+    // R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50): each `twins` record is its primary, code, label and related roles.
     [Theory]
     [InlineData("func f(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n        origin x.s outlives static\n    return 0\n", "h0@move", "(a and a@ref)", "origin x.s outlives static: UnprovenOriginRelation_Kd requires a outlives static, which is not proven; relation origin x.s outlives static | origin x.s outlives static: UnsatisfiedOriginRelation_Kd requires the borrow a outlives static, which is false; borrow a@ref, origin origin x.s outlives static, relation origin x.s outlives static")]
     [InlineData("func f(a: uniq/i32) -> ref/i32 during static\n    let h0 = H.init(a@ref)\n    return h0.item\n", "h0.item", "a@ref", "return h0.item: UnprovenOriginRelation_Kd requires a outlives static, which is not proven | return h0.item: UnsatisfiedOriginRelation_Kd requires the borrow a outlives static, which is false; borrow a@ref, origin return h0.item")]

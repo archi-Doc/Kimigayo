@@ -235,7 +235,7 @@ public partial class ResultPremiseTest
         var written = direct.Replace("    return (.None, q)", "    origin q outlives p\n    return (.None, q)", StringComparison.Ordinal);
         foreach (var source in new[] { direct, throughReference, written })
         {
-            // H5 (H3b T50): A5 publishes its twin of the Binding record at the return statement beside the value, until H11 (R4-M108).
+            // H5 (H3b T50): A5 publishes its twin of the Binding record at the return statement beside the value, until R7 (R4-M108).
             AssertTwinAtTheReturn(source);
             var errors = DiagnosticCorpus.Check(source).Diagnostics;
             var error = Assert.Single(errors, x => Text(source, x.Span) == "pair.1");
@@ -449,7 +449,7 @@ public partial class ResultPremiseTest
         var related = Assert.Single(error.Related!);
         Assert.Equal(("origin", borrow), (related.Role, related.Span!.Value.Start));
 
-        // H5 (H3b T50): A5 publishes its twin of each Binding record at the return statement beside the value, until H11 (R4-M108).
+        // H5 (H3b T50): A5 publishes its twin of each Binding record at the return statement beside the value, until R7 (R4-M108).
         var twin = Assert.Single(errors, x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) && x.Span!.Value.Start == statement);
         Assert.Equal(("return " + at, "requires the borrow local outlives x, which is false"), (Text(source, twin.Span), twin.Label));
         Assert.Equal(["outlives", "local", "x", "fit", "ref/i32 during x"], twin.Reason!.Select(static x => x.Value));
@@ -549,7 +549,7 @@ public partial class ResultPremiseTest
     [InlineData(ClauseType + "func k(q: ref/i32) -> i32\n    let c = func [] (f: () -> Option<T during q>) -> i32 => 0\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a Closure parameter
     [InlineData(ClauseType + "func k(q: ref/i32, h: () -> Option<T during static>) -> i32\n    let g: () -> Option<T during q> = h@move\n    return 0\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven")] // t7 in a local annotation
     [InlineData(SelfReturning, Unproven + "Option<R during q>|requires q outlives static, which is not proven")] // a Type whose Field returns itself
-    [InlineData(Nested + Clause + "    return q\n\n" + NestedShort, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|return k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false")] // z1d: and A5's twin at the return statement until H11 (H3b T50, R4-M108)
+    [InlineData(Nested + Clause + "    return q\n\n" + NestedShort, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|return k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|k(sq, lr, func [] () => Option.None)|requires the borrow short outlives lr, which is false")] // z1d: and A5's twin at the return statement until R7 (H3b T50, R4-M108)
     [InlineData(Nested + Clause + "    return q\n\n" + NestedLong)] // z1t
     [InlineData(Nested + Clause + "    let c = func [f@move] () -> i32 => 0\n    return q\n\n")] // cap
     [InlineData("func g(q: ref/i32, cb: (ref/(ref/i32 during q)) -> ref/(ref/i32 during q)) -> i32 => 0\n\n")] // inwf
@@ -648,7 +648,7 @@ public partial class ResultPremiseTest
         }));
     }
 
-    // H5 (H3b T50): Binding's fit record at `pair.1` and A5's twin at its return statement, until H11 (R4-M108).
+    // H5 (H3b T50): Binding's fit record at `pair.1` and A5's twin at its return statement, until R7 (R4-M108).
     private static void AssertTwinAtTheReturn(string escape)
         => Assert.Equal(
             [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "return pair.1", "requires the borrow local outlives x, which is false"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "pair.1", "requires the borrow local@ref outlives x, which is false")],

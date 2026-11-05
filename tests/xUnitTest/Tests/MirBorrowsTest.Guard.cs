@@ -752,8 +752,8 @@ public sealed partial class MirBorrowsTest
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
     // verdict is its written twin ER's (eh, er: no Loan is held past `.A(null)`). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
-    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which reads AdtDef's view, gives each form its twin's record (none: it
-    // accepts the stated forms until R6-check, DECISIONS BU-46).
+    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
+    // accepted the stated forms, DECISIONS BU-46) until R6-check H10b deleted it.
     [Fact]
     public void ACompletedProjectionGivesItsSubjectsLayer()
     {

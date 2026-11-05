@@ -141,8 +141,8 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredLayer", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (the owner's whitelist, until R6-check): an exclusive use of a part below a user index's element storing one
-    // reference layer generates where the index's receiver path is a local's stored Field, a Field or Tuple
+    // DECISIONS BU-10 (the owner's whitelist of the old paths, deleted at R6-check H10b): an exclusive use of a part below a user
+    // index's element storing one reference layer generates where the index's receiver path is a local's stored Field, a Field or Tuple
     // element reached through a `uniq/` parameter, another user index's element or a capture.
     [Fact]
     public void WhitelistedReceiverPathsReachTheReferent()
@@ -190,8 +190,8 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredPaths", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (the owner's whitelist, until R6-check): a shared read of a part below a built-in element storing one reference
-    // layer generates where the sequence is a local or a parameter: a for loop over a part's Array and a
+    // DECISIONS BU-10 (the owner's whitelist of the old paths, deleted at R6-check H10b): a shared read of a part below a built-in
+    // element storing one reference layer generates where the sequence is a local or a parameter: a for loop over a part's Array and a
     // comparison of a nested part through a `ref/Array` parameter.
     [Fact]
     public void SharedReadsBelowANamedSequenceReachTheReferent()
@@ -249,8 +249,8 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredField", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (until R6-check): the old paths reached the referent of the reference an element stores only one layer deep and
-    // only on the whitelisted paths, so the old analysis reported any other use through an element's stored layers, a comparison's
+    // DECISIONS BU-10 (the old paths, deleted at R6-check H10b): they reached the referent of the reference an element stores only one
+    // layer deep and only on the whitelisted paths, so the old analysis reported any other use through an element's stored layers, a comparison's
     // included, as the located Unsupported_Kd at the element. Binding accepts these programs and the MIR builds them in place, so since
     // the MIR decides acceptance (H5; 1a, the owner 2026-11-03) each has no record, and a Library build (every root, K11) generates its
     // function.

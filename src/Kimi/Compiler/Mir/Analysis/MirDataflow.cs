@@ -61,8 +61,8 @@ internal interface IMirFlow
 /// <param name="reach">The one reachability walk, whose post-order over every edge orders the blocks and whose runtime walk decides P1.</param>
 internal sealed class MirDataflow(MirReach reach)
 {
-    // R4-M15a: the byte size of an analysis arena above which a body is not analyzed (OwnershipStorageLimit_Kd), the old path's limit
-    // value until R6 states it in IMPL 21.3.2.
+    // R4-M15a: the byte size of an analysis arena above which a body is not analyzed (OwnershipStorageLimit_Kd), an implementation-defined
+    // analysis storage limit (IMPL 21.3.2).
     private const long ByteLimit = 64L * 1024 * 1024;
     private int[] order = []; // The blocks in reverse postorder.
     private int[] next = []; // Each block's successor in its chain, or -1 at the chain's tail.
