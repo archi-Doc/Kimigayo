@@ -86,9 +86,9 @@ public sealed class HirColumnsTest
     // Pattern plan, an expansion the calls it names), and every parsed node in the tree has an Op, a selected symbol its Res (the prepared
     // slot exactly where the parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated
     // node its completion; every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a
-    // call that takes them, unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a closure has its
-    // environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a built-in
-    // witness (a Shim), and an Abort or Fail call diverges.
+    // call that takes them, unless Binding recorded one at the node itself (an erasure among them), and a Pattern binding its acquisition;
+    // a closure has its environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its
+    // target is a built-in witness (a Shim), and an Abort or Fail call diverges.
     internal static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
@@ -99,7 +99,9 @@ public sealed class HirColumnsTest
         {
             if (!binding.TryGetAdaptation(source, out _))
             {
-                (operations.TryGetValue(source, out var set) ? set : operations[source] = []).Add(adaptation);
+                // An erasure is the node's own record, its ErasedType, which no operation states (DECISIONS BU-83, G386).
+                var expected = HirTables.ErasedType(source) is null ? adaptation : HirAdaptation.Erasure;
+                (operations.TryGetValue(source, out var set) ? set : operations[source] = []).Add(expected);
             }
         }
 

@@ -25,6 +25,12 @@ public class ErasureAfterSelectionTest
 
     private const string NonCopy = "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n";
 
+    private const string FnK = "func k(g: (i32) -> i32) -> i32\n    return 0\n";
+
+    private const string GenericK = "func k<T>(g: (T) -> T, x: T) -> T\n    return x@move\n";
+
+    private const string BoxApply = "struct Box\n    public var v: i32\n    public init() => self.v = 1\n    public func apply(self: ref/Self, g: (i32) -> i32) -> i32 => 0\n";
+
     [Theory]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
@@ -128,6 +134,29 @@ public class ErasureAfterSelectionTest
     [InlineData("p_gen_useafter_ok", "enum Act<T>\n    Run((T) -> T)\nfunc k() -> i32\n" + Copied + "    let a: Act<i32> = .Run(f)\n    return f(1)\n", "")]
     [InlineData("p_twice_nc", ActRun + NonCopy + "    let a = Act.Run(f)\n    let b = Act.Run(f)\n    return 1\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
     public void APayloadErasureLeavesACopySourceUsable(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 12.4.1, 10.5.1 (G386; DECISIONS BU-83's rule E): a parenthesized anonymous function or function group at a Function
+    // parameter is the unparenthesized argument, erased once, at a plain, generic, method or initializer call; an invalid one keeps its
+    // record: a header that does not fit (NoApplicableOverload_Kd), an environment that is not Owned (UnprovenConstraint_Kd).
+    [Theory]
+    [InlineData("v2", FnK + "func run() -> i32\n    return k((func [] (o) => 0))\n", "")]
+    [InlineData("g386", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return 0\nfunc run(a: ref/i32, b: ref/i32) -> i32\n    return k(a, b, (func [] (o) => 0))\n", "")]
+    [InlineData("w1", FnK + "func run() -> i32\n    return k((func [] (o: i32) => 0))\n", "")]
+    [InlineData("w4", "func k(g: () -> i32) -> i32\n    return 0\nfunc run() -> i32\n    return k((func [] () => 0))\n", "")]
+    [InlineData("w6", "func k(g: (i32) -> i32) -> i32\n    return g(1)\nfunc run() -> i32\n    return k((func [] (o) => o))\n", "")]
+    [InlineData("x3", FnK + "func run() -> i32\n    return k(((func [] (o) => 0)))\n", "")]
+    [InlineData("x4", GenericK + "func run() -> i32\n    return k((func [] (o: i32) => o), 1)\n", "")]
+    [InlineData("b1", "func g1(o: i32) -> i32\n    return o\nfunc g1(o: bool) -> i32\n    return 0\n" + FnK + "func run() -> i32\n    return k((g1))\n", "")]
+    [InlineData("b3", "func gid<T>(o: T) -> T\n    return o@move\n" + FnK + "func run() -> i32\n    return k((gid))\n", "")]
+    [InlineData("c3", "struct Holder\n    public var v: i32\n    public init(g: (i32) -> i32) => self.v = 1\nfunc run() -> i32\n    let h = Holder.init((func [] (o) => o))\n    return 0\n", "")]
+    [InlineData("c5", BoxApply + "func run() -> i32\n    let b = Box.init()\n    return b.apply((func [] (o) => o))\n", "")]
+    [InlineData("i386a", FnK + "func run() -> i32\n    return k((func [] (o: bool) => 0))\n", "NoApplicableOverload_Kd k((func [] (o: bool) => 0))")]
+    [InlineData("a7", FnK + "func run() -> i32\n    return k(((func [] (o: bool) => 0)))\n", "NoApplicableOverload_Kd k(((func [] (o: bool) => 0)))")]
+    [InlineData("a13", GenericK + "func run() -> i32\n    return k((func [] (o: bool) => o), 1)\n", "NoApplicableOverload_Kd k((func [] (o: bool) => o), 1)")]
+    [InlineData("i386c", FnK + "func run(x: ref/i32) -> i32\n    return k((func [x] (o) => x@follow))\n", "UnprovenConstraint_Kd (func [x] (o) => x@follow)")]
+    [InlineData("a8", FnK + "func run(x: ref/i32) -> i32\n    return k(((func [x] (o) => x@follow)))\n", "UnprovenConstraint_Kd ((func [x] (o) => x@follow))")]
+    public void AGroupedCallableArgumentIsErasedOnce(string form, string source, string records)
         => AssertRecords(form, source, records);
 
     // The program's records, each `Code text` in report order ("; " between them), with a startup body.
