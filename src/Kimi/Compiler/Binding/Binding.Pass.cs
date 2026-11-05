@@ -79,7 +79,6 @@ public sealed partial class Binding
             symbol.Next = null;
             symbol.ConditionalDeclaration = null;
             symbol.Resolving = false;
-            symbol.HeaderBound = false;
             symbol.ReceiverIndex = -1;
             symbol.ObjectPayloadOptOut = null;
         }
