@@ -228,7 +228,6 @@ internal enum BindingFailure : byte
     OverrideContractMismatch,
     DuplicateOverride,
     UnprovenOverrideCondition,
-    VirtualEffectBound,
     BaseCall,
 
     // SPEC 7.3: value.method without invocation forms no bound-method value.

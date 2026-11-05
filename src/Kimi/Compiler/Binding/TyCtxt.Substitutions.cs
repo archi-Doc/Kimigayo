@@ -161,10 +161,10 @@ internal sealed partial class TyCtxt
     }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
-    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of
-    // a generic body (InstantiateForwardedCall), so Instance(t, Compose(inner, outer).Subst) is that call's instantiation of t; with the
+    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, so applying
+    // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with the
     // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
-    // keeps the composed substitution, as the forwarded call keeps its Types; null and Limit when the outer instance does not substitute an
+    // keeps the composed substitution, its Types instantiated; null and Limit when the outer instance does not substitute an
     // inner Type, length, conforming Self or declaring Type, or one's storage is a limit. Part is the verdict's deciding part (R4-M139):
     // the instance of the first part reaching it in the order Compose walks (conforming Self, declaring Type, Types by index); null when
     // Prepared, when a length decides, or when that part has no instance. Instance gives a Limit exactly where it gives no instance, so

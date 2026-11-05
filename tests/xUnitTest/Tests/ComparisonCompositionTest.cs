@@ -424,9 +424,10 @@ public class ComparisonCompositionTest
     }
 
     // DECISIONS R5-M68 (F package 4.6, 4.7): every comparison of the library, the milestones and this class's programs has, under its
-    // Contract, Self and mode, the legacy plan's leaves for a closed Self (each has a plan: an inherited witness, which the plan refuses,
-    // implements no comparison requirement, whose `other` is `ref/Self`); for a Self with an abstract part, which has no plan, the view's
-    // leaves answer: the requirement on each leaf with an abstract part. The views leave Binding's records and the HIR version unchanged.
+    // Contract and Self, for a closed Self under the Contract's mapping the leaves A4 reads (Binding.Witnesses: the legacy plan's, each
+    // with a plan: an inherited witness, which the plan refuses, implements no comparison requirement, whose `other` is `ref/Self`); for a
+    // tuple operator, whose view A4 reads (R5-M166), and for a Self with an abstract part, which has no plan, the view's leaves answer: the
+    // requirement on each leaf with an abstract part. The views leave Binding's records and the HIR version unchanged.
     [Fact]
     public void TheViewHasTheLegacyPlansLeaves()
     {
@@ -557,8 +558,9 @@ public class ComparisonCompositionTest
         _ => "none",
     };
 
-    // Each comparison's view against the legacy plan: for a closed Self the plan's leaves; for a Self with an abstract part the Contract's
-    // requirement at each leaf with one. Counts the nodes by kind.
+    // Each comparison's view against A4's live resolver: for a closed Self under the Contract's mapping the leaves Witnesses gives for the
+    // comparison's own requirement; for a tuple operator or a Self with an abstract part the Contract's requirement at each leaf with one.
+    // Counts the nodes by kind.
     private static void Twin(Compilation c, Kotonoha module, string label, IDictionary<string, int> kinds, List<string> problems)
     {
         var version = HirTables.Publish(c);
@@ -572,9 +574,8 @@ public class ComparisonCompositionTest
         foreach (var (call, node) in views)
         {
             var self = call.ConformingType!;
-            var plan = self.HasAbstractPart ? null : c.Binding.ComparisonPlan(call);
             var where = $"{label} {TyCtxt.Name(self)} {call.Target.Name} {call.TupleOperator}: {(node is null ? "null" : Show(node))}";
-            if (node is null || !(self.HasAbstractPart ? Answers(node) : plan is not null && Same(node, plan)))
+            if (node is null || !(self.HasAbstractPart || call.TupleOperator ? Answers(node) : Same(c, call, node)))
             {
                 problems.Add(where);
                 continue;
@@ -592,16 +593,34 @@ public class ComparisonCompositionTest
             }
         }
 
-        // The same Types and kinds and, for a witness, the same function under the same declaring instance.
-        static bool Same(ComparisonNode node, BoundComparison plan) => ReferenceEquals(node.Type, plan.Type) && node.Kind switch
+        // Witnesses resolves the comparison's own requirement on Self (DECISIONS R5-M68: Binding.Witnesses, TyCtxt.Effects, MirEffects),
+        // and its targets are the view's witness leaves, each under the same declaring instance, in walk order.
+        static bool Same(Compilation c, CallPlan call, ComparisonNode node)
         {
-            ComparisonKind.Composite => plan.Implementation is null && node.Parts.Length == plan.Parts.Length &&
-                node.Parts.Zip(plan.Parts).All(static x => Same(x.First, x.Second)),
-            ComparisonKind.Builtin => plan is { Implementation: null, Parts.Length: 0 },
-            ComparisonKind.Witness => plan.Implementation is { } leaf && ReferenceEquals(node.Target, leaf.Target) &&
-                ReferenceEquals(node.Subst!.Declaring, leaf.DeclaringType),
-            _ => false,
-        };
+            var contract = c.Library.GetSymbol(call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
+            var expected = new List<(BindingSymbol Target, BoundType? Declaring)>();
+            var leaves = new List<(BindingSymbol Target, BoundType? Declaring)>();
+            return c.Types.Witnesses(contract.Contract!.OwnRequirement()!, call.ConformingType!, contract, null, null, expected) && Leaves(node, leaves) &&
+                expected.Count == leaves.Count && expected.Zip(leaves).All(static x => ReferenceEquals(x.First.Target, x.Second.Target) &&
+                    ReferenceEquals(x.First.Declaring, x.Second.Declaring));
+        }
+
+        // A closed view's witness leaves in walk order; false at a node a closed Self has not.
+        static bool Leaves(ComparisonNode node, List<(BindingSymbol Target, BoundType? Declaring)> into)
+        {
+            switch (node.Kind)
+            {
+                case ComparisonKind.Composite:
+                    return node.Parts.All(x => Leaves(x, into));
+                case ComparisonKind.Builtin:
+                    return true;
+                case ComparisonKind.Witness:
+                    into.Add((node.Target!, node.Subst!.Declaring));
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         // Every leaf answers: a closed one by its witness, one with an abstract part by the requirement on it.
         static bool Answers(ComparisonNode node) => node.Kind switch

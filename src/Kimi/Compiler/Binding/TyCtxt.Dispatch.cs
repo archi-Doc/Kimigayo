@@ -20,8 +20,9 @@
 // storage rests on a part Binding rejected passes through, since what the call runs does not depend on that part (DECISIONS BU-38), and
 // the instance its target needs is its reader's to admit. None: no answer, also for an abstract Self, which for a closed accepted Self is
 // a broken contract that its reader records as InternalInvariant_Kd.
-// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance (TyCtxtTest's
-// twin); no receiver projection is returned, since a base subobject is a layout prefix (Layout.Of, X1).
+// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance
+// (InstanceCollectorTest's K 4.5 rows, TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
+// since a base subobject is a layout prefix (Layout.Of, X1).
 // Must not: forward an abstract Self (the materializer's SPEC 8.15 rule), create a bridge or a CallPlan, write a diagnostic, HIR or pass
 // state, or prove on an erased value.
 

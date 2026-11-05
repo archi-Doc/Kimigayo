@@ -8275,6 +8275,8 @@ resumed by R4-M86 (2026-10-20).
   - Cost: with BU-64's, G309's three units together. Pinned Bind A/B: B/A' median 1.012-1.015 cold and 1.004-1.010 warm on Hello /
     Milestone 26 / Milestone 27, cold +45 KB, warm 0 B, above the 1.01 gate; the trim unit bu88 kept no trim. The owner accepted the
     cost (2026-10-31, verbatim 「(a) Accept, fix, land」; PLAN G309).
+  - Ended by R5-M192 (2026-11-05, R6-check H11a): the `ContainsOrigin(BoundType, …)` stay walk and the summary readers
+    `ResultFixedForCall` and `FixedInBody` (R4-M152's gate) are deleted.
 
 - **BU-64 ContractType rewrites each distinct part once per call: a per-query table, `contractParts`, superseding BU-19's rejection of
   a table for it** (2026-10-30; PLAN G309, unit bu82) SPEC 8.2, 8.4; R4's V16.
@@ -8999,6 +9001,7 @@ resumed by R4-M86 (2026-10-20).
     "TryResolveFormattingCallback's (H11)".
   - X2 (adopted): `BindingFailure.VirtualEffectBound` (no producer since F), its code arm and description row stay to H11: the
     ledger row `MirDifferenceLedger.ComparedSet` reads it until H10a, and removing it shifts the requirement catalog.
+  - Ended by R5-M192 (2026-11-05, R6-check H11a): X2's member, code arm and description row are deleted.
 - **BU-91 Raw storage a value holds holds any Type in retention's fits** (2026-11-04; PLAN G415, found by R4) SPEC 15.6.4 ("a borrow
   formed through it", "a result the call forms within the argument's storage"), 5.7 (a `during self` pointee is stored content of the
   holding value; raw storage holds what is written there), 5.2 (a punned Place of a punnable Type over raw bytes). Refines R4-M154's
@@ -14147,6 +14150,8 @@ structure is recorded here by the unit that first implements it.
     after PLAN G428.
   - Amended by R5-M190 (2026-11-05, the owner's C1 and 「推奨どおり」): R5 designs and implements H7 and H11, BU approving and
     consenting; H7 leaves G:check-del and R6-check for R7.
+  - Superseded in part by R5-M192 (2026-11-05, R6-check H11a): H11 splits into H11a (the deletions, behavior-preserving) and H11b
+    (R4-M108's list, which changes published records).
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -14334,6 +14339,29 @@ structure is recorded here by the unit that first implements it.
   - Rejected: deleting the gates now with both moves named (an unimplemented form accepted silently and independent records lost on
     ordinary programs, to remove a 12-line duplicate rule); reading the lost records as dependent (HIR never built the operation, so
     A3b reads no failed input).
+- **R5-M192 The Binding members only the old analysis read end; H11 splits at R4-M108's twins (R6-check H11a)** (2026-11-05, R5;
+  design `draft/Sketches/R6-check/H11-design.md` revision 1) Major.
+  - Split: H11a deletes every Binding member only the old analysis read, behavior-preserving, and adds the `src/Kimi` zero-reference
+    row over H10b's names. H11b carries out R4-M108's list (the twins, the fit-failure gate, verdict-independent non-call rows) with
+    R4-M111's `IsTwinRecord` and MirSide's filter, in its own design with probes, since it changes published records; its entry
+    records R4's per-position reading of "as JudgeCallPosition's" (board C-26) with "Superseded in part" lines on R4-M108 and R4-M111.
+    R4-M108's `CallLocalOrigin` item was done at 2c-5 (R4-M152). Supersedes R5-M182's H11 row in part.
+  - Ended temporaries: R4-M152's receiver-dependence gate (`Binding.ValueCallGate`, `CallPlan.ReceiverDependentResult` and
+    `ReceiverDependentListed`, seven `("R6-check")` tags); BU-63's `ContainsOrigin(BoundType, …)` copy; BU-90 X2's
+    `BindingFailure.VirtualEffectBound` with its arm and row (requirements are catalogued by name); D-c8's `ComparisonPlan(CallPlan)`
+    and, with it, the legacy plan's constant `operators` and `BoundComparison.Operators`.
+  - Oracles: R5-M61's forwarding comparison ends with `InstantiateForwardedCall` and `InstantiateDefaultCall`, which no compiler
+    reads. TyCtxtTest keeps Compose's two-step instantiation over every nested call and Witness's per-kind counts; Witness's targets
+    stay observed by InstanceCollectorTest's K 4.5 rows, TyCtxtTest's direct Witness assertions and the native fixtures;
+    VirtualCallSelectionTest reads the composed substitution of a direct base call and its slot's declaring Type's instance. R5-M68's
+    agreement stays where both resolvers live: ComparisonCompositionTest compares a closed Self's view leaves with
+    `Binding.Witnesses` (A4's path), each call resolving; a tuple operator or an abstract Self answers per leaf.
+  - Test-only queries stay as the one observation of a SPEC fact, untagged: `ProvePrimitiveInteger` (WrappingIntegerTest: a wrapping
+    integer Type satisfies no PrimitiveInteger, SPEC 3.1.1; no program of that class reaches the Contract with one) and
+    `TryGetReceiverOperation` (InheritedReceiverBindingTest: an inherited member's receiver operation; the HIR publishes only its
+    adaptation, and `BaseReferenceKoto.BasePath` is postponed to R7 by R5-M190).
+  - BU consents (2026-11-05, board C-25: design approval after one REVISE, every Binding hunk); R4 consents to `MirCases.cs:19`'s
+    wording (board C-26).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)

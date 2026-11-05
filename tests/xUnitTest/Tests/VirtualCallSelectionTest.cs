@@ -83,13 +83,12 @@ public class VirtualCallSelectionTest
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "use");
         var outer = new CallPlan();
         outer.Set(implementation.SymbolOf()!, BoundType.I32, null, [], [], declaringType: use.Parameters[0].Type.TypeOf()!.Components[0]);
-        Assert.NotNull(syntax.CallOf());
-        var concrete = c.Binding.InstantiateForwardedCall(syntax.CallOf()!, outer)!;
-        Assert.Same(BoundType.I32, concrete.VirtualSlot.DeclaringType.Components[0]);
-        Assert.Equal("B", concrete.VirtualImplementingType!.Symbol!.Name);
-        Assert.Same(BoundType.I32, concrete.VirtualImplementingType.Components[0]);
-        Assert.Same(concrete, c.Binding.InstantiateForwardedCall(syntax.CallOf()!, outer, concrete));
-        Assert.Same(BoundType.I32, concrete.VirtualImplementingType!.Components[0]);
+        var inner = syntax.CallOf()!;
+        var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst!;
+        Assert.Same(inner.VirtualImplementation, composed.Binder);
+        Assert.Equal("B", composed.Declaring!.Symbol!.Name);
+        Assert.Same(BoundType.I32, composed.Declaring.Components[0]);
+        Assert.Same(BoundType.I32, c.Types.Instance(inner.VirtualSlot.DeclaringType, c.Types.SubstOf(outer)!).Type!.Components[0]);
     }
 
     [Fact]
