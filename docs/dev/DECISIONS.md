@@ -14324,9 +14324,12 @@ structure is recorded here by the unit that first implements it.
     `Pipeline`, `PipelineOf`, `CompilerPipeline`, the five `[Transitional("R6")]` declarations, and `CompilerIdentity`), the test
     manifest's `pipeline mir` rows, `verify.ps1 -Pipeline` with `summary.json`'s `pipeline` field and its readers in
     `compare-fixtures.ps1`, `benchmark-o2-corpus.ps1`'s inherited-selector guard and `test-library.ps1`'s `selectors` record.
+    Benchmark (D9): `CollectionCostMeasurements.Checked` stops selecting `Mir`, and `DiagnosticMeasurements`' JSON report loses its
+    `pipeline` field.
     - Nothing reads `KIMI_PIPELINE`: a stale value selects nothing, and no guard reads it (a second reading of a removed name, as
-      R5-M160's `KIMI_CODEGEN`). A caller still passing `-Pipeline` fails at parameter binding; an old summary with `pipeline` still
-      compares.
+      R5-M160's `KIMI_CODEGEN`). `-Pipeline` is removed; a leftover `-Pipeline` binds the common `-PipelineVariable` by prefix and
+      has no effect; callers drop it. An old summary with `pipeline` still compares.
+    - Rejected: a guard that fails a leftover `-Pipeline` loudly (a wrapper for a removed option; the run it does is the right one).
   - Identity: the check document's `compiler` and the benchmark reports read `Compilation.CompilerVersion`; without the mark the two
     were equal (one concept, one name). Default output is unchanged (check documents, the test manifest and its `ArtifactId`,
     benchmark `compiler` fields, Kotonoha's source cache, the diagnostic snapshot); only artifacts made under `KIMI_PIPELINE=mir`
