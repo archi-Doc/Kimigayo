@@ -7551,7 +7551,7 @@ resumed by R4-M86 (2026-10-20).
     never repeats a Type); a mode on the completion for the read form (the read form is the kept part without its marks).
 
 - **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
-  position; Never supplies nothing at any position** (2026-10-26; superseded in part by BU-78 and BU-79; PLAN G159 (2), unit bu47; SPEC
+  position; Never supplies nothing at any position** (2026-10-26; superseded in part by BU-78, BU-79 and BU-97; PLAN G159 (2), unit bu47; SPEC
   14.9.2 step 2 (R4-M134) and 10.5.1 as R4's SPEC revision 2 writes ② and ③; the owner's answers of 2026-10-26 in BU's dialog,
   verbatim: fills 「(a) 配列リテラルと同様 (推奨)」, a control-flow argument's results 「(b) 要素ごとに統一 (推奨)」, the scalar rule 「(a) どの位置でも Never は供給なし
   (推奨)」, its consequences 「はい、Tuple 引数に揃える (推奨)」)
@@ -7883,7 +7883,7 @@ resumed by R4-M86 (2026-10-20).
   - `Binding.ObjectViews.FindObjectErasure` (6.4.5's lexical self of an override body) reads the same `EnclosingFunction`; its own walk
     is deleted too, so `BaseReceiver`'s `lexical` has one producer.
 - **BU-54 A fixed expected Type Reborrows a stored exclusive reference by one predicate; the default pipeline's newly accepted forms
-  are a recorded difference** (2026-10-30; PLAN G232, unit bu67; the owner, 2026-10-30, verbatim 「すべて推奨の内容でOkです」 on BU's pending
+  are a recorded difference** (2026-10-30; superseded in part by BU-97; PLAN G232, unit bu67; the owner, 2026-10-30, verbatim 「すべて推奨の内容でOkです」 on BU's pending
   questions, among them: record the forms the default pipeline newly accepts with bu67, valid ones and the G231-class invalid one, as a
   recorded difference until R6-check, and land bu67) SPEC 3.5.1, 10.2.2, 7.7.3.
   - Rule: `Binding.StoresExclusiveReference` is the one predicate the fixed-expected clause and `StoredReborrow` read, so a stored
@@ -9031,7 +9031,7 @@ resumed by R4-M86 (2026-10-20).
 
 - **BU-93 A whole-contract comparison judges its Origin part from premises alone, at its use** (2026-11-04; PLAN G404, found by BU's
   2c-9 review N3 and G216 (b)'s design; R4 agreeing as R4-M155's owner) SPEC 15.6.1 ("judged under 15.3.7 from premises alone, so it is
-  Proven or Unknown"), 15.3.7, 10.7. Amends R4-M155's A1.
+  Proven or Unknown"), 15.3.7, 10.7. Amends R4-M155's A1. Amended by BU-97.
   - Cause: `CallableSignatureFits` (a Closure's conversion, a Callable proof's subject) walked without a Binding, so a member between
     fixed Origins was judged without the use's premises: `(ref/i32 during b) -> i32` from `func [] (p: ref/i32 during a)` under
     `origin b outlives a`, and the two-clause and `uniq` forms, were rejected.
@@ -9131,6 +9131,29 @@ resumed by R4-M86 (2026-10-20).
     - `ResolveTransferTarget` returning null (the lint and the old analysis need the lexical target);
     - a failed source (14.9.1: no source);
     - the MIR's `|| !Reached` (a consumer deciding what Binding owns).
+
+- **BU-97 Three BU entries' stated conditions after H5 and G216 (a) Part 1** (2026-11-05; BU's record of decisions already made and
+  of removal conditions met; G420's d7 review, T-34's review N2) The entries keep their text; this one states what changed.
+  - BU-43, superseded in part by G216 (a) Part 1 (dev, `claude/bu84-g216a-u11`; SPEC 10.5.1, 14.9.2 step 2):
+    - U1.5 (BU's decision in U1.5's design, accepted at R4's review 3, under the owner's one rule for every position, 2026-10-31,
+      relayed by R4, verbatim 「(a)：F 案の U15e をこの回に取り込み、すべての位置で同じ規則にする。」): `PositionKind` decides typed
+      first. A position with a typed part is typed at its common Type, and only a position with no typed part waits. This supersedes
+      BU-43's "one with a waiting part waits".
+    - U1.6g (a) (BU's decision, with R4: BU-43's clause narrowed SPEC 10.5.1 for a call argument; `Binding.ArgumentKinds.ConflictWaits`):
+      a join under the argument probe whose typed parts have no common Type fixes no complete Type without its call's expectation, so
+      it waits as a Join, which its call completes at the selected candidate's Type. Once the call has selected and taken the argument
+      (`TakenByCall`, BU-74), the conflict is the join's own record, as outside a call argument; that clause is the owner's (i), errors
+      by the letter (2026-10-31, verbatim 「U1.6e (i) エラーにする でお願いします」). This supersedes BU-43's "its typed parts conflict,
+      which fails it at once" and "fails at once also when nested" for call arguments.
+  - BU-93's lost records: "until H11 and H3" was met at H5 (dev 70fd9deb9) through H3-2 (R5-M184) and H5, without H11. The
+    annotation's `UnprovenOriginRelation_Kd` (pl_n 8:19, p3_n 8:20, pl_n_written 8:19 and 8:66, pmv_let 11:19) and pmv_let's
+    `MovedPlace_Kd` (10:13) are published again (T-34's rows). BU-93's list missed one loss of the same G56 family: pk_noclause_int's
+    Closure parameter annotation `UnprovenOriginRelation_Kd` (12:35), also restored at H5. G418's two records (k's clause record at
+    `s`, 12:14; the call's `UnprovenConstraint_Kd` at `k`, 12:12) stay lost until G418.
+  - BU-54's recorded difference ended at H5: the MIR decides acceptance on every pipeline, so the default pipeline rejects
+    `let r2: objuniq/P during a = h.o; r1.x = 1` with A5's `ComparisonLoanConflict_Kd`, as the MIR pipeline did (BU's H5 sweep,
+    rechecked on dev 70fd9deb9). Its rule (one `StoresExclusiveReference` predicate) stands.
+  - Rejected: editing the three entries' text in place (DECISIONS keeps a superseded entry and names its replacement).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
