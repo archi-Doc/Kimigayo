@@ -108,6 +108,9 @@ public class ArchitectureRulesTest
     // (AddPremiseEdge, bu20's C0d).
     [InlineData("Mir reads of an Origin's slot, binder or forming body", "src/Kimi/Compiler/Mir", "*.cs", @"(\b[Oo]rigin|[Aa]tom)\w*\??\.(Slot|Binder|Body)\b|\.EvaluatingBody\b", 0)]
     [InlineData("Premise edges written outside the premise catalog's writer", "src/Kimi/Compiler", "*.cs", @"(?<!this)\.AddEdge\(", 1)]
+    // DECISIONS BU-105 (R7-D1): BindingSymbol.Resolving is the variable binding's own Running flag until R7-D2 d4 makes the variable
+    // binding a declaration query; the header's use of it went to Binding.DeclQuery. A property pattern reads it too.
+    [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
@@ -127,6 +130,8 @@ public class ArchitectureRulesTest
     // R6-check H14 (D7): Parsing reads the Koto semantic slots only in their declarations' bodies and on their write paths (a replaced
     // child's reset, the views and synthetic Kotos Binding builds), which R7 removes with the slots (DECISIONS R5-M9).
     [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
+    // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions.
+    [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, or MeasureOnce for one run that cannot
     // repeat, which retire the thread's allocation context first; a window that reads the thread's counter itself can be charged a
     // runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks (src/Benchmark) are not tests. A letter in brackets keeps

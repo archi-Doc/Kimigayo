@@ -279,7 +279,6 @@ public sealed partial class Binding
         plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        symbol.HeaderBound = true;
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {

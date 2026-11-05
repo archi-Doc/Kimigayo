@@ -1,0 +1,83 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+
+namespace Kimi.Compiler;
+
+// DeclQuery (R7-D1; DECISIONS BU-105): the state of a declaration query, a fact Binding computes at most once per pass for one
+// declaration and kind, which every step that needs it demands.
+// - Inputs: the declaration's own BindingSymbol (its identity, kept across passes) and a DeclQueryKind; the pass stamp storageVersion.
+// - Outputs: the state, NotStarted, Running or Done, valid in the pass that set it. The output stays where the kind's owner publishes
+//   it (Signature, owned by BindHeader: the symbol's and its parameters' Types).
+// - Invariants: a state set in an earlier pass reads NotStarted (no per-symbol reset), up to the stamp's uint copy: a state not written
+//   in any of the 2^32 - 1 passes before a read aliases one 2^32 passes old (about 4.3 * 10^9 Binds of one Binding). NotStarted
+//   becomes Running only through BeginQuery, which answers the prior state (the caller computes only on NotStarted); Running becomes
+//   Done (CompleteQuery) or NotStarted (AbandonQuery: the output waits on a fact not yet published). Done is final in the pass. A
+//   demand of a Running query is a re-entry, answered by its kind's rule, never by computing again.
+// - Kinds (one row each): Signature. Re-entry: an inferred stored Property's is CyclicBinding_Kd at the declaration; another header's
+//   reads no evidence and records nothing. Not ready: a header waiting on an associated Type is abandoned. No Error state before its
+//   writer (R7-D2 d2).
+// - Interims (removal stages): a Signature re-entry's CyclicBinding_Kd is recorded by the demanders that record it today
+//   (BindReference, BindVariableCore) until R7-D2 d2 moves it into the kind's rule with the Error state; BindHeader's guard reads the
+//   variable binding's Resolving and BindVariableCore's guard reads Signature's Running state until R7-D2 d4 makes the variable binding
+//   a kind. These two are the only reads of a state outside this file.
+// - Prohibitions: no output, record or message here; no per-symbol reset; no second pass stamp; no mode or bool parameter; no
+//   allocation; no write of a state outside this file (BindingSymbol.SetQueryState).
+
+/// <summary>A declaration query's kind: a fact Binding computes once per pass for one declaration (Binding.DeclQuery).</summary>
+internal enum DeclQueryKind : byte
+{
+    /// <summary>A function's, property's or annotated variable's header (Binding.BindHeader).</summary>
+    Signature,
+}
+
+/// <summary>A declaration query's state in a pass.</summary>
+internal enum DeclState : byte
+{
+    /// <summary>Not demanded in this pass.</summary>
+    NotStarted,
+
+    /// <summary>Being computed; a demand now is a re-entry.</summary>
+    Running,
+
+    /// <summary>Computed in this pass.</summary>
+    Done,
+}
+
+/// <summary>One state per <see cref="DeclQueryKind"/>.</summary>
+[InlineArray(Kinds)]
+internal struct DeclStates
+{
+    internal const int Kinds = 1;
+
+    private DeclState element;
+}
+
+public sealed partial class Binding
+{
+    private DeclState QueryState(BindingSymbol symbol, DeclQueryKind kind) => symbol.QueryState(kind, this.storageVersion);
+
+    private DeclState BeginQuery(BindingSymbol symbol, DeclQueryKind kind)
+    {
+        var state = this.QueryState(symbol, kind);
+        if (state == DeclState.NotStarted)
+        {
+            symbol.SetQueryState(kind, this.storageVersion, DeclState.Running);
+        }
+
+        return state;
+    }
+
+    private void CompleteQuery(BindingSymbol symbol, DeclQueryKind kind)
+    {
+        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running, "Only a running query completes.");
+        symbol.SetQueryState(kind, this.storageVersion, DeclState.Done);
+    }
+
+    private void AbandonQuery(BindingSymbol symbol, DeclQueryKind kind)
+    {
+        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running, "Only a running query is abandoned.");
+        symbol.SetQueryState(kind, this.storageVersion, DeclState.NotStarted);
+    }
+}
