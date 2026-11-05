@@ -102,7 +102,7 @@ public class BuiltinArithmeticContractTest
 
     // IMPL 21.3.3 (DECISIONS R5-M54, R5-M126): a 128-bit division through Dividable conforms, but the backend does not generate it: the
     // shim's operation is the checked set's record, so check rejects the program (K13a), also when only an unused function reaches the
-    // instance, on every pipeline (DECISIONS R5-M156).
+    // instance (DECISIONS R5-M156).
     [Theory]
     [InlineData("let value: i128 = 6\nlet result = quotient(value, 2)")]
     [InlineData("let value: Wrapping<u128> = 6\nlet result = quotient(value, 2)")]

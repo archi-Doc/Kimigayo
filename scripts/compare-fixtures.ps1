@@ -63,7 +63,7 @@ function Read-Run([string] $path) {
     foreach ($fixture in @($outcomes.Keys)) { $outcomes[$fixture] = @($outcomes[$fixture] | Sort-Object -Unique -CaseSensitive) -join '; ' }
     $files = @(Get-ChildItem -LiteralPath $fixtures -File -Name | Sort-Object)
     [pscustomobject]@{
-        directory = $directory; head = $summary.head; configuration = $summary.configuration; pipeline = $summary.pipeline
+        directory = $directory; head = $summary.head; configuration = $summary.configuration
         fixtures = $fixtures; names = $files; outcomes = $outcomes; logs = $logs; o2 = $o2
         files = [Collections.Generic.HashSet[string]]::new([string[]]$files, [StringComparer]::Ordinal)
     }
@@ -101,7 +101,7 @@ foreach ($fixture in $nativeFixtures) {
 }
 $identical = $missing.Count + $added.Count + $differing.Count + $differingNative.Count -eq 0
 $runs = foreach ($run in @($baseRun, $candidateRun)) {
-    [ordered]@{ directory = $run.directory; head = $run.head; configuration = $run.configuration; pipeline = $run.pipeline }
+    [ordered]@{ directory = $run.directory; head = $run.head; configuration = $run.configuration }
 }
 $report = [ordered]@{
     identical = $identical; baseline = $runs[0]; candidate = $runs[1]
@@ -115,7 +115,7 @@ New-Item -ItemType Directory -Force $Output | Out-Null
 $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Output 'fixture-comparison.json')
 $text = [Collections.Generic.List[string]]::new()
 foreach ($run in @(@('Baseline: ', $baseRun), @('Candidate:', $candidateRun))) {
-    $text.Add("$($run[0]) $($run[1].directory) ($($run[1].head), $($run[1].configuration), $($run[1].pipeline))")
+    $text.Add("$($run[0]) $($run[1].directory) ($($run[1].head), $($run[1].configuration))")
 }
 $text.Add("Files: $($report.files.identical) identical, $($differing.Count) differing, $($missing.Count) missing, $($added.Count) added")
 $text.Add("IR: $irIdentical of $irCount common .ll identical")

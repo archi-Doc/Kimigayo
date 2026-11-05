@@ -224,20 +224,16 @@ public sealed partial class MirBuildTest
     {
         var source = "struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\nfunc pos(y: string) -> isize => 0\n" +
             $"func f<{types}>({parameters}) -> i32\n    {premises}\n    {statement}\npublic func main() => ()\n";
-        foreach (var pipeline in (CompilerPipeline[])[CompilerPipeline.Legacy, CompilerPipeline.Mir])
-        {
-            var c = Compilation.CreateForTest();
-            c.Pipeline = pipeline;
-            Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
-            c.Bind();
-            c.Binding.CheckStartup(OutputKind.Application);
-            c.Analyze();
-            c.Binding.ReportDiagnostics();
-            c.ReportAnalysis();
-            var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
-            Assert.Equal([("Unsupported_Kd", selection)], errors);
-        }
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
+        Assert.Equal([("Unsupported_Kd", selection)], errors);
 
         var program = Compile(source).BuildMir();
         Assert.Empty(program.Findings);

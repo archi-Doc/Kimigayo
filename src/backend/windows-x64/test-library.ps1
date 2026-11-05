@@ -22,7 +22,7 @@ function Invoke-Tool([string] $Name, [string[]] $Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Library verification failed: $Name" }
 }
 # The Library sources, LibraryEmissionTest's too (tests/library-sources.json), emitted through the CLI, so their IR is MIR code
-# generation's on the pipeline this process selects (KIMI_PIPELINE).
+# generation's.
 $sources = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tests/library-sources.json') -Raw | ConvertFrom-Json
 $checks = [Collections.Generic.List[object]]::new()
 $status = 'FAIL'
@@ -72,8 +72,7 @@ try {
     $status = 'PASS'
 }
 finally {
-    $selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE' | ForEach-Object { "$($_.Name)=$($_.Value)" })
-    @{ status = $status; configuration = $Configuration; compilerSha256 = (Get-FileHash -LiteralPath $compiler).Hash; selectors = $selectors; tools = $identities; checks = $checks } |
+    @{ status = $status; configuration = $Configuration; compilerSha256 = (Get-FileHash -LiteralPath $compiler).Hash; tools = $identities; checks = $checks } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $work 'result.json') -Encoding utf8
 }
 Write-Output "Passed $($checks.Count) Library LLVM/object checks and emit/build/run boundaries: $work"

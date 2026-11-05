@@ -30,7 +30,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
 
-        // Check, then generation, as a build runs them: check reports the instance's operation (K13a), on every pipeline (DECISIONS R5-M156).
+        // Check, then generation, as a build runs them: check reports the instance's operation (K13a; DECISIONS R5-M156).
         Assert.Equal("Unsupported_Kd " + (remainder ? "value % 2" : "value / 2"), MinimalEmissionTest.Problems(c));
         c.ReportAnalysis();
         using var writer = new StringWriter();

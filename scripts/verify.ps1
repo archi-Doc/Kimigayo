@@ -22,10 +22,6 @@
 #   ./scripts/verify.ps1 -Mode Session -Configuration Debug
 # Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
-# -Pipeline mir (R3-R6) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy. Since G2 it publishes what the
-# default does (DECISIONS R5-M156), so it adds only the compiler identity mark.
-#   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
-#
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
 # parallelization on test collections. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
@@ -38,7 +34,6 @@
 param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
-    [ValidateSet('legacy', 'mir')] [string] $Pipeline = 'legacy',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
     [ValidateSet('All', 'Functional', 'Allocation')] [string] $TestPurpose = 'All',
@@ -66,9 +61,6 @@ $requestedMethod = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Me
 $Class = @(Join-KimiCommonTestSelections $requestedClass)
 $Method = @(Join-KimiCommonTestSelections $requestedMethod -Method)
 $Mode = if ($Mode -eq 'Session') { 'Session' } else { 'Unit' } # summary.json records the canonical spelling.
-$Pipeline = $Pipeline.ToLowerInvariant()
-$previousPipeline = $env:KIMI_PIPELINE
-$env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.
 $repo = Split-Path -Parent $PSScriptRoot
 $buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
@@ -325,8 +317,7 @@ if ($null -ne $beforeInputs) {
         Add-Step 'input stability' $false $_.Exception.Message $timer.Elapsed.TotalSeconds
     }
 }
-$env:KIMI_PIPELINE = $previousPipeline
-$summary = [ordered]@{ mode = $Mode; configuration = $Configuration; pipeline = $Pipeline; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps }
+$summary = [ordered]@{ mode = $Mode; configuration = $Configuration; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps }
 $summary | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

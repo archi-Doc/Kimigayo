@@ -8,22 +8,17 @@ namespace XunitTest;
 /// <summary>The one form of a test that needs the state of a fresh process (a type initializer not yet run, the pools under High memory
 /// pressure): an Explicit test of this assembly, run alone in a child process of the test apphost. Never a collectible load context:
 /// its collection flushes process-wide runtime caches and charges the rebuild to another test's measuring thread
-/// (<c>ArchitectureRulesTest</c> forbids it). The child runs that one test with the parent's pipeline selection and takes no part in the
-/// run's evidence collection (snapshots, census and fixture directories), which belongs to the parent run: it would write into the
-/// parent's evidence.</summary>
+/// (<c>ArchitectureRulesTest</c> forbids it). The child runs that one test and takes no part in the run's evidence collection
+/// (snapshots, census and fixture directories), which belongs to the parent run: it would write into the parent's evidence.</summary>
 internal static class FreshProcess
 {
-    // The variables of the KIMI_ namespace a child keeps, a whitelist: the pipeline selection (src/Kimi's Compilation reads it, and the
-    // children's tests compare their default with it). Every other KIMI_ variable selects evidence or a location of the run.
-    private static readonly string[] SelectionVariables = ["KIMI_PIPELINE"];
-
-    /// <summary>Gets the environment of a child process.</summary>
+    /// <summary>Gets the environment of a child process: every KIMI_ variable selects evidence or a location of the run, so the child
+    /// keeps none of them.</summary>
     /// <param name="parent">The parent's environment.</param>
-    /// <returns>Every variable of the parent that is not in the KIMI_ namespace, and its pipeline selection. Names keep the parent's
-    /// identity: distinct by case outside Windows (<c>HTTPS_PROXY</c> beside <c>https_proxy</c>), so they are compared ordinally.</returns>
+    /// <returns>Every variable of the parent that is not in the KIMI_ namespace. Names keep the parent's identity: distinct by case outside
+    /// Windows (<c>HTTPS_PROXY</c> beside <c>https_proxy</c>), so they are compared ordinally.</returns>
     internal static Dictionary<string, string?> ChildEnvironment(IDictionary<string, string?> parent)
-        => parent.Where(static x => !x.Key.StartsWith("KIMI_", StringComparison.OrdinalIgnoreCase)
-                || SelectionVariables.Contains(x.Key, StringComparer.OrdinalIgnoreCase))
+        => parent.Where(static x => !x.Key.StartsWith("KIMI_", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(static x => x.Key, static x => x.Value, StringComparer.Ordinal);
 
     /// <summary>Runs an Explicit test in a new process of the test apphost and asserts that the process ran that test as its only case

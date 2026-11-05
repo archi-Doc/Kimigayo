@@ -12987,6 +12987,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M162 (G7): S7's G7 step is done; `StaticScalarEntry`, `LegacyRuntimeHelpers`' formatting requests and
     `AggregateLayoutPool`'s remaining hooks join G8, `AdtDef.IsOrInherits` and `KimiLibraryCatalog.IsArrayOperation` G9.
   - Amended by R5-M163 (G8): S7's G8 step is done.
+  - Amended by R5-M191 (H12): `CompilerIdentity` with its marks and G1's `Compilation.Switch.cs` are deleted; the hold pair is
+    `Compilation.Pipeline.cs` alone.
 - **R5-M153 A Library output root is a declaration's own body: a Closure or a body-declared function is reached through the mark (unit
   g157-15)** (2026-10-29, PLAN G157 (15); amends R5-M77's Library roots) K 4.4 makes every closed body of a root module a root, a
   Closure's and a body-declared function's included, and R5-M77 made a Library's every root but the checked-only ones an output root, so
@@ -13153,6 +13155,7 @@ structure is recorded here by the unit that first implements it.
     half kept until G4 moved to MIR code generation.
   - Superseded in part by R5-M185 (2026-11-04, H5): `MirRecords` is gone, and `PublishMirRecords` publishes every merged problem
     (`MirReport.Merged`: the records and the analyses' problems) and the validator findings; the MIR decides acceptance.
+  - Amended by R5-M191 (H12): `KIMI_PIPELINE`, the identity mark and the manifest entry are deleted.
 - **R5-M158 MIR code generation is the default (R6-gen G3)** (2026-10-29, plan §4.9 row G3, §5.2, §5.4; R5-M152 S3, S6, S7 and OI-3 as
   applied, with Q1 (b) and Q2 (a) on G3's census; under R5-M6, R5-M85, R5-M106 and R5-M156)
   - Rule: `KIMI_CODEGEN` unset, empty or `mir` selects MIR code generation on either pipeline; `legacy` selects the old generator, G3's
@@ -13284,6 +13287,8 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M161 (G5, G6): no test reads `Compilation.Emission`, and G6's reads left with G5's methods and four other sites.
   - Amended by R5-M162 (G7): no reader of `Compilation.Emission` is left, so it is deleted with `LlvmEmitter`; a
     publication failure's record is `Compilation.ReportPublicationFailure` until G9b.
+  - Amended by R5-M191 (H12): `KIMI_PIPELINE` and `PipelineSwitchTest`'s switch loops are gone; its entry-point tests are
+    `CompilationEntryTest`'s.
 - **R5-M161 The old generator's structure and plan tests removed (R6-gen G5, G6)** (2026-10-30, plan §4.9 rows G5 and G6, PD14, §5.1 M8;
   R5-M152 S7; under R5-M12 and R5-M160; G:R6-gen-del)
   - Rule: a test that observes the old generator's own representation goes; a rule it stood for stays where MIR code generation
@@ -14147,6 +14152,8 @@ structure is recorded here by the unit that first implements it.
     after PLAN G428.
   - Amended by R5-M190 (2026-11-05, the owner's C1 and 「推奨どおり」): R5 designs and implements H7 and H11, BU approving and
     consenting; H7 leaves G:check-del and R6-check for R7.
+  - Amended by R5-M191 (2026-11-05, R6-check H12): H12's row keeps and renames the nine entry-point tests, about −200 net instead of
+    ≈ −600.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -14334,6 +14341,31 @@ structure is recorded here by the unit that first implements it.
   - Rejected: deleting the gates now with both moves named (an unimplemented form accepted silently and independent records lost on
     ordinary programs, to remove a 12-line duplicate rule); reading the lost records as dependent (HIR never built the operation, so
     A3b reads no failed input).
+- **R5-M191 The pipeline switch ends (R6-check H12)** (2026-11-05, R5; design `draft/Sketches/R6-check/H12-design.md` revision 0 with
+  R5's rulings §6) Major.
+  - Rule: MIR is the only pipeline, so nothing remains to select. Removed: `Compilation.Switch.cs` whole (`DefaultPipeline`,
+    `Pipeline`, `PipelineOf`, `CompilerPipeline`, the five `[Transitional("R6")]` declarations, and `CompilerIdentity`), the test
+    manifest's `pipeline mir` rows, `verify.ps1 -Pipeline` with `summary.json`'s `pipeline` field and its readers in
+    `compare-fixtures.ps1`, `benchmark-o2-corpus.ps1`'s inherited-selector guard and `test-library.ps1`'s `selectors` record.
+    Benchmark (D9): `CollectionCostMeasurements.Checked` stops selecting `Mir`, and `DiagnosticMeasurements`' JSON report loses its
+    `pipeline` field.
+    - Nothing reads `KIMI_PIPELINE`: a stale value selects nothing, and no guard reads it (a second reading of a removed name, as
+      R5-M160's `KIMI_CODEGEN`). `-Pipeline` is removed; a leftover `-Pipeline` binds the common `-PipelineVariable` by prefix and
+      has no effect; callers drop it. An old summary with `pipeline` still compares.
+    - Rejected: a guard that fails a leftover `-Pipeline` loudly (a wrapper for a removed option; the run it does is the right one).
+  - Identity: the check document's `compiler` and the benchmark reports read `Compilation.CompilerVersion`; without the mark the two
+    were equal (one concept, one name). Default output is unchanged (check documents, the test manifest and its `ArtifactId`,
+    benchmark `compiler` fields, Kotonoha's source cache, the diagnostic snapshot); only artifacts made under `KIMI_PIPELINE=mir`
+    (` [mir]` documents, test artifact ids with the pipeline rows) are not reproduced, and `kimi test`'s artifact cache rebuilds them.
+    `--analyze-cost` keeps schema 3.
+  - `FreshProcess` loses its whitelist: a child keeps no `KIMI_` variable (an empty whitelist would be a mechanism without a member).
+  - Tests: `PipelineSwitchTest` is `CompilationEntryTest` (R5's ruling OQ1). Its four switch tests, the race child and their helpers go
+    with the switch (PLAN G199's once-per-process read ends); its nine entry-point tests stay, one compilation each (R5-M52, R5-M64,
+    R5-M156, R5-M165, R4-M71, R5-M185): deleting them would weaken coverage, so H12 is about −200 net, not R5-M182's ≈ −600 or H0c
+    §4.2's "`T/PipelineSwitchTest.cs` (449)".
+  - Supersedes by name, each with its amendment line: R5-M152 S1's `CompilerIdentity` marks, its G1 switch file and the hold pair
+    with `Compilation.Switch.cs`; R5-M156's `KIMI_PIPELINE=mir` "until H12"; R5-M160's `KIMI_PIPELINE` and `PipelineSwitchTest`
+    loops "until H12", which H12 fulfils; R5-M182's H12 row (its size).
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)
