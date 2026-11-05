@@ -11,6 +11,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     private readonly List<Target> targets = []; // The constructs around the code being built that a transfer may target, innermost last.
+    private readonly List<(int Block, SourceInfo Info)> ends = []; // The open constructs' non-value ends, innermost last, which Close ends.
 
     // The root of a derived jump's operand (Transfer): a Place its Adjust would acquire (bare: Copied, moved, Reborrowed or by case)
     // designated in place, any other operand built; -1 for a constant.
@@ -29,7 +30,9 @@ internal sealed partial class MirBuilder
     // SPEC 14.5, 16.2.2, 15.6.7: a transfer evaluates and secures its operand, then branches: at run time it ends the borrows of the calls
     // it abandons (its operands pending since its target began), places its result and goes on through its target's drop tree to the
     // target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code after it,
-    // where those calls continue with their reservations. An operand that does not complete leaves no transfer.
+    // where those calls continue with their reservations. SPEC 14.10.3: an explicit source counts in unreachable code, so an operand that
+    // does not complete leaves an assumed delivery, secured by none, through the drop tree to the target's join (Join), which places the
+    // operand's value as Set places it.
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
@@ -72,22 +75,18 @@ internal sealed partial class MirBuilder
             value = operand is null ? this.UnitOperand() : this.Operand(operand, this.body.TypeOf(this.targets[index].Destination));
         }
 
-        if (operand is not null && !Completes(operand))
-        {
-            return;
-        }
-
-        value = continues ? value : this.Secure(value, operand ?? jump);
+        var assumed = operand is not null && !Completes(operand);
+        value = continues || assumed ? value : this.Secure(value, operand ?? jump);
         var info = this.Info(jump);
         ref var target = ref CollectionsMarshal.AsSpan(this.targets)[index];
         if (target.Break < 0)
         {
-            this.body.Terminate(target.Break = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
+            this.body.Terminate(target.Break = target.Join = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
         }
 
-        target.Reached |= !continues;
+        target.Joined |= !continues;
         var inner = info with { StatementStart = false };
-        if (!continues && !target.Delivers && this.Departs(target.At.Depth))
+        if (!continues && !assumed && !target.Delivers && this.Departs(target.At.Depth))
         {
             // SPEC 16.2.2: the secured result is delivered after the Scope Exit of the scopes left: the target's Destination becomes a
             // result temp in the target's scope, with no storage of its own, and its Break the block that delivers that temp to the old
@@ -100,11 +99,11 @@ internal sealed partial class MirBuilder
             var deliver = this.body.AddBlock();
             this.body.Push(deliver, MirStatement.Assign(target.Destination, MirRvalue.Use(this.body.AddOperand(MirOperand.Move(result))), at));
             this.body.Terminate(deliver, MirTerminator.Goto(target.Break, at));
-            (target.Destination, target.Break, target.Delivers) = (result, deliver, true);
+            (target.Destination, target.Break) = (result, deliver);
         }
 
         var (place, mark) = (target.Destination, target.At.Mark);
-        var entry = this.Exit(target.At.Depth, continues ? target.Continue : target.Break);
+        var entry = this.Exit(target.At.Depth, continues ? target.Continue : assumed ? target.Join : target.Break);
         var runtime = continues ? -1 : this.body.AddBlock(); // The runtime edge's first block: the abandoned borrows end, the result is placed.
         for (var i = mark; i < this.arguments.Count; i++)
         {
@@ -116,7 +115,16 @@ internal sealed partial class MirBuilder
             }
         }
 
-        if (!continues)
+        if (!continues && assumed)
+        {
+            // SPEC 14.10.3: an assumed delivery places its operand's value as Set places any: nothing of the Never value, and of a
+            // construction holding a Never part its other parts (MirMoveData's Never parts), into the join's own Destination (Into),
+            // before the Scope Exit, which no cleanup there can observe (DECISIONS R4-M175).
+            (var at, this.current) = (this.current, runtime);
+            this.Set(target.Into, MirRvalue.Use(this.body.AddOperand(value)), jump);
+            this.current = at;
+        }
+        else if (!continues)
         {
             this.body.Push(runtime, MirStatement.Assign(place, MirRvalue.Use(this.body.AddOperand(value)), inner));
             if (index == 0 && this.constructed is not null)
@@ -156,17 +164,41 @@ internal sealed partial class MirBuilder
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
-        this.targets.Add(new(node, destination, after, next, new(this.arguments.Count, this.scopes.Count, this.scope), Reached: false));
+        this.targets.Add(new(node, destination, after, next, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
         return after;
     }
 
-    // Closes the innermost construct, building on after it; whether an exit or a yield reached it.
-    private bool Close(int after)
+    // The current block's edge into the innermost construct's join, which it marks Joined: a completing or value end, an implicit
+    // completion on a runtime path or a for's exhaustion, as a delivery is (Transfer).
+    private void Joins(in MirTerminator edge)
     {
-        var reached = this.targets[^1].Reached;
+        this.body.Terminate(this.current, edge);
+        CollectionsMarshal.AsSpan(this.targets)[^1].Joined = true;
+    }
+
+    // Closes the innermost construct, building on after it. SPEC 14.10.3: an assumed path adds no normal completion, so its non-value
+    // ends go on to after for the checks only where it is a Never form; that check target, -1 for none, a loop's head takes too. A
+    // construct no edge joins is a Never form (SPEC 14.9.2), which Binding publishes so (BU-101): one that is not breaks the HIR contract,
+    // and its ends join, so the body stays valid and the record is the only one.
+    private int Close(int after)
+    {
+        var target = this.targets[^1];
+        var check = IsNeverForm(target.Node) ? after : -1;
+        if (!target.Joined && check < 0)
+        {
+            this.Record(target.Node, DiagnosticCode.InternalInvariant_Kd);
+            check = after;
+        }
+
+        for (var i = target.At.Ends; i < this.ends.Count; i++)
+        {
+            this.body.Terminate(this.ends[i].Block, MirTerminator.Unreachable(this.ends[i].Info, check));
+        }
+
+        this.ends.RemoveRange(target.At.Ends, this.ends.Count - target.At.Ends);
         this.targets.RemoveAt(this.targets.Count - 1);
         this.current = after;
-        return reached;
+        return check;
     }
 
     // Whether leaving the scopes from a depth cleans anything up: a departing scope registered a cleanup.
@@ -183,15 +215,24 @@ internal sealed partial class MirBuilder
         return false;
     }
 
-    // A construct a transfer may target (SPEC 14.5.2): where its result goes, the block after it (-1: the function's return block, not built
-    // yet), its next iteration's block, the builder's position where it opened, and whether an exit or a yield reached it.
-    private record struct Target(Koto Node, MirPlace Destination, int Break, int Continue, Opening At, bool Reached)
+    // A construct a transfer may target (SPEC 14.5.2): where its result goes, its join, the block after it (-1: the function's return
+    // block, not built yet), its next iteration's block and the builder's position where it opened; whether an edge joins it.
+    private record struct Target(Koto Node, MirPlace Destination, int Join, int Continue, Opening At)
     {
+        // The block a delivery goes to: its Join, or the block delivering a result temp to the Destination after a Scope Exit (Delivers).
+        internal int Break { get; set; } = Join;
+
         // Whether its Destination and Break are a result temp and the block delivering it after a Scope Exit (SPEC 16.2.2).
-        internal bool Delivers { get; set; }
+        internal readonly bool Delivers => this.Break != this.Join;
+
+        // Whether an edge reaches its join: a delivery, assumed too, or another edge Joins builds.
+        internal bool Joined { get; set; }
+
+        // Its own Destination, which an assumed delivery places into: Destination before a delivery made it a result temp (Delivers).
+        internal MirPlace Into { get; } = Destination;
     }
 
-    // The builder's position where a construct opened: the pending operands below its transfers (Mark), the open scopes around it (Depth)
-    // and the MIR scope it opened in, which its delivered result temp takes (SPEC 16.2.2).
-    private readonly record struct Opening(int Mark, int Depth, ushort Scope);
+    // The builder's position where a construct opened: the pending operands below its transfers (Mark), the open scopes around it (Depth),
+    // the MIR scope it opened in, which its delivered result temp takes (SPEC 16.2.2), and its first non-value end (Ends).
+    private readonly record struct Opening(int Mark, int Depth, ushort Scope, int Ends);
 }

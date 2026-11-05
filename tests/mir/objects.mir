@@ -308,7 +308,7 @@ fn blockedTest @133
       StorageLive(_10) @144 s4
     * goto bb12 @144 s4
   bb11:
-      unreachable check bb1 @141
+      unreachable @141
   bb12:
       goto bb13 check bb14 @144 s4
   bb13:

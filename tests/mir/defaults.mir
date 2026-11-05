@@ -154,7 +154,7 @@ defaulttemplate evaluate#1 @139
       drop _2 -> bb22 @142 s1
   bb22:
       StorageDead(_2) @142 s1
-      unreachable check bb1 @141
+      unreachable @141
 fn init @6
   _0: Box return (Receiver) @6
   _1: i32 arg size @7
@@ -579,7 +579,7 @@ fn replicas @169
       drop _4 -> bb23 @142 s3
   bb23:
       StorageDead(_4) @142 s3
-      unreachable check bb2 @141 s2
+      unreachable @141 s2
   bb24:
       StorageDead(_3) @173 s1
       drop _2 -> bb25 [elide] @175 s1
@@ -661,7 +661,7 @@ fn replicas @169
       goto bb48 @142 s7
   bb48:
       StorageDead(_14) @142 s7
-      unreachable check bb27 @141 s6
+      unreachable @141 s6
   bb49:
       StorageDead(_13) @178 s1
       StorageDead(_12) @180 s1

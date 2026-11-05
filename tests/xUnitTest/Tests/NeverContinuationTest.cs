@@ -227,7 +227,8 @@ public class NeverContinuationTest
     // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; where no source
     // supplies a candidate, the Type is formed part by part over the sources other than Never (step 2; DECISIONS R4-M134, BU-43): Tuples
     // by element, arrays as Array<T>, fills at their length and Dictionaries by key and value, through nested selections, `do` and `loop`;
-    // MIR builds it at that Type with no record and no finding.
+    // MIR builds it at that Type with no record and no finding, also where each exit or yield of an indented body is an assumed delivery
+    // (SPEC 14.10.3; DECISIONS R4-M175).
     [Theory]
     [InlineData("let t = if c => (a, (return 1)) else => ((return 2), a)", "((return 2), a)")]
     [InlineData("let t = match c\n        true => (a, (return 1))\n        false => ((return 2), a)", "((return 2), a)")]
@@ -236,6 +237,9 @@ public class NeverContinuationTest
     [InlineData("let t = if c => (a, (return 1)) else if d => ((return 2), a) else => ((return 3), (return 4))", "((return 2), a)")]
     [InlineData("let t = if c => (do => (a, (return 1))) else => ((return 2), a)", "(a, (return 1))")]
     [InlineData("let t = loop\n        if c => exit (a, (return 1))\n        exit ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = label s: match c\n        true\n            yield to s (a, (return 1))\n        false\n            yield to s ((return 2), a)", "((return 2), a)")]
+    [InlineData("let t = label s: if c\n        yield to s (a, (return 1))\n    else\n        yield to s ((return 2), a)", "((return 2), a)")]
     [InlineData("let g = func [a] (e: bool) => if e => (a, $abort(\"x\")) else => ($abort(\"y\"), a)", "($abort(\"y\"), a)")]
     [InlineData("let t = if c => ((a, (return 1)), a) else => (((return 2), a), a)", "((return 2), a)")]
     [InlineData("let t = if c => [(a, (return 1))] else => [((return 2), a)]", "[((return 2), a)]", "Array<(i64, i64)>")]
@@ -356,14 +360,15 @@ public class NeverContinuationTest
     }
 
     // SPEC 23.1.2 (DECISIONS BU-43): an unreadable character literal is bound as `char`, its lexer record standing for it, so a join
-    // forms its Type over it and a later use keeps its own record.
+    // forms its Type over it and a later use keeps its own record. The read is unreachable and only the first arm places `t.0`, so it is
+    // also UninitializedPlace_Kd, as in SPEC 14.9.2's `pick` (14.10.3 per part; the owner's 「A で進める（推奨）」, DECISIONS R4-M175).
     [Fact]
     public void AnUnreadableLiteralIsATypedPartOfItsJoin()
     {
         const string Source = "func f(c: bool, a: i64) -> i64\n    let t = if c => ('ab', (return 1)) else => ((return 2), 'x')\n    let z: i64 = t.0\n    return 0\n" +
             "public func main() => ()\n";
         var codes = DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code).Order();
-        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], codes);
+        Assert.Equal([nameof(DiagnosticCode.InvalidCharLiteral_Kd), nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UninitializedPlace_Kd)], codes);
     }
 
     // DECISIONS BU-9 r1, BU-43: a failed part is no waiting part, so no Type is formed over it and no literal is bound twice; its join
@@ -507,6 +512,112 @@ public class NeverContinuationTest
     {
         var c = MinimalEmissionTest.Analyze("func f(a: Option<(string, Never)>)\n    let b = a\n    let c = a\n");
         Assert.Equal([(DiagnosticCode.TransferRequired_Kd, "a"), (DiagnosticCode.TransferRequired_Kd, "a")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
+    // SPEC 14.9.1, 14.10.3 (the owner's 「SPEC's letter」; DECISIONS R4-M175): an explicit source in unreachable code counts and is assumed
+    // delivered, and a construct that is no Never form gets no completion from its body's end arrival, so a do and a loop whose bodies end
+    // after a transfer or a Never call initialize their local through their exits (fail-before: UninitializedPlace_Kd at `r`). An
+    // assumed completion initializes nothing: a value end or a delivery of a Never value places nothing, and a Never form (a `loop` or an
+    // `if` whose condition diverges) nothing it is placed into, so each read below is UninitializedPlace_Kd; an exit's drop tree runs.
+    // After `return`, a loop whose other exit's operand does not complete initializes its local only on the completing exit's path, as
+    // a labeled do does (fail-before: accepted, the Never exit built no transfer); its reachable twin is accepted.
+    [Theory]
+    [InlineData("func f() -> i32\n    let r = label w: do\n        return 1\n        exit to w 3\n    return r\n", "")]
+    [InlineData("func f() -> i32\n    let r = loop\n        return 1\n        exit 3\n    return r\n", "")]
+    [InlineData("func f() -> i32\n    let r = label w: do\n        fail()\n        exit to w 3\n    return r\n", "")]
+    [InlineData("func f() -> i32\n    var p: i32\n    let r = label w: do\n        return 1\n        exit to w 3\n    return p\n", "UninitializedPlace_Kd p")]
+    [InlineData("func f() -> i32\n    let r: i32 = label w: do\n        return 1\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool) -> i32\n    let r: i32 = label w: do\n        exit to w fail()\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func g()\n    let r = loop => fail()\n    let s = r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    return 9\n    let t = loop\n        if c => exit a\n        exit fail()\n    let u = t\n    return u\n", "UninitializedPlace_Kd t")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = loop\n        if c => exit a\n        exit fail()\n    let u = t\n    return u\n", "")]
+    [InlineData("func f() -> i32\n    let r = if (return 1) => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f() -> i32\n    let r = if fail() => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool) -> i32\n    return 0\n    let r = if c => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func g(c: bool) -> i32\n    let r = match fail()\n        _ if c => fail()\n        _ => 2\n    return r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool) -> bool\n    return true\n    let b = c and fail()\n    return b\n", "UninitializedPlace_Kd b")]
+    [InlineData(
+        "struct T\n    drop => ()\nfunc take(x: T) => ()\nfunc f(x: T) -> i32\n    label w: do\n        defer => take(x@move)\n        exit to w fail()\n" +
+        "    take(x@move)\n    return 1\n",
+        "MovedPlace_Kd x")]
+    public void AnAssumedSourceCountsAndInitializesNothing(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\n" + source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // SPEC 14.10.3 per part (the owner's 「A で進める（推奨）」; DECISIONS R4-M175): a construction holding a Never part places its other parts
+    // and nothing into the Never part, as a value end, through an exit (an assumed delivery places its operand's value) and nested, in any
+    // position, a Tuple or a fixed array; a read of a placed part is valid, of the Never part UninitializedPlace_Kd. Each read is
+    // unreachable (after `return`, or after an `if` whose arms both diverge). Fail-before on dev 66de6a02a: it rejected the do rows'
+    // placed-part reads (an exit holding a Never part built no delivery) and accepted every Never-part read but the do's, and the whole read.
+    // An exit's operand `(a, (return 1)).0` reads the placed part, so it is valid. A dynamic Array's element has no Place of its own, so
+    // `arr[1]` is accepted: the stated limit (STATUS). A construct nested in an aggregate gives its component what each path placed (the
+    // owner's 「修正して進める」): on a real path the read is valid (fail-before at 878717d52: UninitializedPlace_Kd, the parts applied on every
+    // path); after `return` the Never part's read is UninitializedPlace_Kd, also through a part of the construct's value (dev: accepted).
+    [Theory]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit ((return 2), a)\n    return t.1", "")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, fail())\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, (return 2))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, (return 2))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = if c => (a, a) else => (a, (return 1))\n    return t.0", "")]
+    [InlineData("return 9\n    let t = if c => (a, a) else => (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = match c\n        true => (a, a)\n        false => ((return 2), a)\n    return t.1", "")]
+    [InlineData("return 9\n    let t = match c\n        true => (a, a)\n        false => ((return 2), a)\n    return t.0", "UninitializedPlace_Kd t.0")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))\n    return t.0", "")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, (return 2))\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = ((return 1), a, a)\n    return t.1 + t.2", "")]
+    [InlineData("return 9\n    let t = ((return 1), a, a)\n    return t.0", "UninitializedPlace_Kd t.0")]
+    [InlineData("return 9\n    let t = (a, (return 1), a)\n    return t.0 + t.2", "")]
+    [InlineData("return 9\n    let t = (a, (return 1), a)\n    return t.1", "UninitializedPlace_Kd t.1")]
+    [InlineData("return 9\n    let t = (a, a, fail())\n    return t.0 + t.1", "")]
+    [InlineData("return 9\n    let t = (a, a, fail())\n    return t.2", "UninitializedPlace_Kd t.2")]
+    [InlineData("return 9\n    let t = ((a, (return 1)), a)\n    return t.0.0 + t.1", "")]
+    [InlineData("return 9\n    let t = ((a, (return 1)), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t: [2 of i64] = [a, (return 1)]\n    return t[0]", "")]
+    [InlineData("return 9\n    let t: [2 of i64] = [a, (return 1)]\n    return t[1]", "UninitializedPlace_Kd t[1]")]
+    [InlineData("return 9\n    let t = (a, (return 1))\n    let u = t\n    return u.0", "UninitializedPlace_Kd t")]
+    [InlineData("return 9\n    let t = loop\n        if c => exit a\n        exit (a, (return 1)).0\n    return t", "")]
+    [InlineData("return 9\n    let t = label s: if c\n        yield to s a\n    else\n        yield to s (a, (return 1)).0\n    return t", "")]
+    [InlineData("return 9\n    let t: Array<i64> = [a, (return 1)]\n    return t[1]", "")]
+    [InlineData("let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.1", "")]
+    [InlineData("let t = ((if c => (a, fail()) else => (a, a)), a)\n    return t.0.1", "")]
+    [InlineData("let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "")]
+    [InlineData("let t = ((label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, a)\n    ), a)\n    return t.0.1", "")]
+    [InlineData("let t = (a, (if c => (a, (return 1)) else => (a, a)))\n    return t.1.1", "")]
+    [InlineData("return 9\n    let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.0", "")]
+    [InlineData("return 9\n    let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].0", "")]
+    [InlineData("return 9\n    let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "UninitializedPlace_Kd t[1].1")]
+    [InlineData("return 9\n    let t = ((label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, a)\n    ), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t = (a, (if c => (a, (return 1)) else => (a, a)))\n    return t.1.1", "UninitializedPlace_Kd t.1.1")]
+    [InlineData("return 9\n    let t = (if c => (a, (return 1)) else => (a, a)).1\n    return t", "UninitializedPlace_Kd t")]
+    public void AConstructionHoldingANeverPartPlacesItsOtherParts(string body, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\nfunc f(c: bool, a: i64) -> i64\n    " + body + "\n", output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // SPEC 14.9.1, 14.9.2 (DECISIONS BU-101, R4-M175): a construct whose every transfer Binding rejected has no source and is a Never form,
+    // so its join is reached and the MIR adds no InternalInvariant_Kd: the program keeps its two published records.
+    [Theory]
+    [InlineData("func f(c: bool)\n    match c\n        true\n            yield 1\n        false\n            yield 2\n")]
+    [InlineData("func f(a: i32)\n    if a > 0\n        yield 1\n    else\n        yield 2\n    let z = 1\n")]
+    public void AConstructOfRejectedTransfersIsANeverForm(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.Equal(
+            [nameof(DiagnosticCode.UnlabeledYieldTarget_Kd), nameof(DiagnosticCode.UnlabeledYieldTarget_Kd)],
+            TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code));
     }
 
     [Fact]

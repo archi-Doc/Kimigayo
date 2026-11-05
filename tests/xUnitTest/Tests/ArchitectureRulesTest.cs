@@ -71,12 +71,10 @@ public class ArchitectureRulesTest
     [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
 
     // R3 U6: tests run and read analysis and generation through the Compilation entry points. R4-M13a: direct calls of the old
-    // control-flow entries cannot grow. R6-check H8b (D8, D9), H10b (D11): the 3 calls left are stopped methods, which keep their old
-    // reads until PLAN G428's fix moves them: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
-    // OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning and
-    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. The fix lowers the limit; at 0, H10b-2 replaces the row by
-    // zero-reference rows.
-    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 3)]
+    // control-flow entries cannot grow. R6-check H8b (D8, D9), H10b (D11): PLAN G428's fix moved the three stopped methods
+    // (CurrentControlFlowTest.StatementCompletionAndNestedResultsBind, OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning,
+    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers), so no call is left; H10b-2 replaces the row by zero-reference rows.
+    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 0)]
     // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
     // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.
     [InlineData("Compiler references to R6-gen's deleted components", "src/Kimi", "*.cs", DeletedByR6Gen, 0)]

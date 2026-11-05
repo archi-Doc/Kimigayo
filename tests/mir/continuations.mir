@@ -129,7 +129,7 @@ fn consumedThenReturned @42
       _8 = const 1_i32 @57 s3
       goto bb12 @57 s3
   bb14:
-      unreachable check bb2 @51 s2
+      unreachable @51 s2
   bb15:
       _8 = const 2_i32 @59 s2
       goto bb11 @59 s2
@@ -177,7 +177,7 @@ fn returnThenExit @68
       _1 = const () @76 s2
       goto bb1 @76 s2
   bb8:
-      unreachable check bb1 @73 s1
+      unreachable @73 s1
   bb9:
       _2 = const 2_i32 @77 s1
       goto bb3 @77 s1
@@ -199,6 +199,18 @@ fn divergingArgument @79
   bb1:
       _2 = take(move _3, move _4) -> bb2 @84 s1
   bb2:
+      goto bb5 check bb6 @83 s1
+  bb3:
+      return @79
+  bb4:
+      StorageDead(_4) @87 s1
+      StorageDead(_3) @86 s1
+      StorageDead(_2) @84 s1
+      goto bb3 @79
+  bb5:
+      _0 = move _2 @83 s1
+      goto bb4 @83 s1
+  bb6:
       StorageDead(_4) @87 s1
       StorageDead(_3) @86 s1
       StorageDead(_2) @84 s1
@@ -225,7 +237,7 @@ fn divergingCondition @89
     * goto bb10 check bb11 @97 s2
   bb3:
       StorageDead(_3) @94 s1
-      goto bb4 @93 s1
+      unreachable check bb4 @93 s1
   bb4:
       StorageDead(_2) @93 s1
       StorageLive(_6) @100 s1

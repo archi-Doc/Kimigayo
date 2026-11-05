@@ -354,7 +354,7 @@ fn returnInPayload @222
       drop _5 -> bb11 @233 s2
   bb11:
       StorageDead(_5) @233 s2
-      unreachable check bb1 @232 s1
+      unreachable @232 s1
   bb12:
       StorageDead(_3) @230 s1
       StorageDead(_2) @225 s1

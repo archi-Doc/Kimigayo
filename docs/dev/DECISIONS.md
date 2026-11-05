@@ -1496,6 +1496,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   early at a Never writer: its status and writes take the Never value as R5-M38's `Acquire` does, so the embedded expressions are
   built and checked (`MovedPlace_Kd`, `UninitializedPlace_Kd` as with a real writer), and the result is placed (no
   `UninitializedPlace_Kd` at `let r = $tryWrite(<Never>, ...)`).
+  Amended by R4-M175 (PLAN G428): edge structure follows SPEC 14.10.3's Never form: a construct's non-value ends and a `loop`'s head
+  go on to its join for the checks only where it is a Never form, and an operand that does not complete leaves an assumed delivery,
+  which places the operand's value through `Set`, instead of no transfer. The aggregate sentence per part: an aggregate with a
+  Never-value component places nothing into that component, which A1 tracks (`MirMoveData`'s Never parts), and its other parts.
 - **R4-M63** (2026-10-18; A3 §12 E14; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every
   operand to the result"; its store target refs(val(a_j)) superseded by R4-M73's W) A Call retains as its callee's contract says
   (SPEC 15.6, 15.6.4).
@@ -5449,6 +5453,59 @@ and migration obligations remain in force; no numeric cap changes are authorized
     what this rule lets it write; A4 and A5 share `MirTypes.SealedPayload`. count<S> stays valid by this rule, yet A5 errs at its
     `for` (`$for.iterator`, `for _ in items`) until PLAN G416: the lent item's composed destruction passes the item by next()'s
     exclusive Loan on the iterator (route (1)) and stores that Loan into the iterator, a self-row; an (e) row (R4-M150's S2 line).
+- **R4-M175 MIR construction follows SPEC 14.10.3's Never form (PLAN G428)** (2026-11-05; the owner, R4's dialog, verbatim
+  「推奨どおり開始して下さい」 and 「SPEC's letter」; after BU-101, the owner's 「BU の G52 の修正を先にする で決定です」; per part, the owner,
+  R4's dialog, verbatim 「A で進める（推奨）」 (14.10.3's letter per part; SPEC 14.9.2's examples `pick` and `pickFill` revised), and after
+  the third implementation non-ACCEPT, verbatim 「修正して進める」 (the per-path carry below); amends R4-M62
+  and R5-M38; class Major) SPEC 14.10.3, 14.9.1-14.9.2, 17.3.
+  - Rule (`MirBuilder`): one predicate, `IsNeverForm` (HIR Completion Diverges and Binding Type Never), at the joins and in `Acquire`.
+  - Joins: every edge into a construct's join marks it `Joined` (`Joins`): a body's completing or value end, an implicit completion on
+    a runtime path, a `for`'s exhaustion and each delivery. A value end that does not complete goes there for the checks only and
+    places nothing (R4-M62). A non-value end (an Indented body's end arrival, which `Result` reports to `End`; an implicit completion
+    entered only by a check edge; a `loop`'s head) places no Unit and goes on to the join for the checks only where the construct is
+    a Never form (`Close`).
+  - Transfer: a jump with a published target always builds its delivery. Where its operand does not complete, the delivery is
+    assumed: not secured, with no constructor exit request and no `Delivers` temp, through the drop tree to the target's join
+    (`Target.Join`), as `Goto(entry, check next)`. It places its operand's value through `Set`, as a value end does, into the join's
+    own Destination (`Target.Into`, the Destination before a `Delivers` rewrite): nothing of the Never value, and of a construction
+    holding a Never part its other parts. It places before the Scope Exit, where SPEC 16.2.2 delivers after it; the order is not
+    observable, because the destination is the construct's own result, which no cleanup of the left scopes can name, and a Loan the
+    value holds is held across the exit either way.
+  - Per part (SPEC 14.10.3's letter, the owner's 「A で進める（推奨）」): an aggregate places nothing into a component whose operand is the
+    Never value (in any position; a Tuple's Field, a fixed array's or a Fill's ConstIndex, an enum Case's payload). `Set` is unchanged:
+    `MirMoveData` publishes each Assign's direct Never parts as move paths, created below the destination so a whole use sees them, and
+    A1's definition leaves them uninitialized. Where an Assign takes a temp's Place, whole or a part (a `Use` or a component), its carries
+    pair the temp's tracked paths with the component's, and A1 copies their state on each path (the owner's 「修正して進める」): a
+    construction's Never part reaches the outer value only on the paths that built it, so a real path's read stays valid. Rejected: a
+    temp's parts as the union over its definitions applied at every use (fix round 2), which put an assumed path's fact onto the real
+    one. Measured alternative, rejected: placing the parts as Field writes in `Set` makes A1's
+    ancestor rule (SPEC 15.1.1) report every placement into a `let`, and telling the two apart needs a new statement kind. A dynamic
+    `Array`'s element has no Place (its buffer is read through `Index`), so its Never element stays placed: the stated limit (STATUS).
+  - A construct that is no Never form and that no edge joins breaks the HIR contract (BU-101 publishes a construct with no source as a
+    Never form): `InternalInvariant_Kd` at the construct, its ends joined so the body stays valid.
+  - Effect: an assumed completion initializes nothing.
+    - Accepted now: `while fail()`, `try` on a `Result<Never, E>`, a Never payload binding (no false record at its reads), and in
+      unreachable code (after `return`) a construct that is no Never form whose exits or yields deliver (a labeled `do` over an
+      abrupt match, a labeled `if` or `match` with `yield`, a `do` with exits): its body end no longer reaches the join.
+    - Newly rejected, `UninitializedPlace_Kd` at the read: `let r: () = while fail() => ()` then a read of `r`; and after `return`,
+      `let t = loop` with `if c => exit a` and an exit of the Never value (`exit fail()`, `exit (return 1)`; either order) then a
+      read of `t`. Dev accepted the loop only because such an exit built no transfer and `&& Completes(loop)` hid the head, while it
+      rejected the same shape with a labeled `do`; that inconsistency goes. `exit (a, (return 1)).0` reads the placed part, so it
+      stays valid.
+    - Per part, decided on each path: a Never part is built only on an assumed path, so only a read that no real path reaches can
+      see it (14.10.3: a read with a real incoming path uses the real paths). There a read of a placed part is accepted, also where dev
+      rejected it (a labeled `do` whose exit holds a Never part); a read of a Never part and a whole read of such a value (a Move, a
+      Copy, a `match` Subject, also of a Case built so, and a part of a construct's value, `(if c => (a, (return 1)) else => (a, a)).1`)
+      are `UninitializedPlace_Kd`, where dev accepted all but the `do`'s. A construct nested in an aggregate keeps a real path's read
+      valid. SPEC 14.9.2's `pick` and `pickFill` read a part only one arm places, so their reads are errors now (the owner's revision of
+      the examples). Not caught, a pre-existing acceptance in unreachable code only, as on dev: a temp consumed without an Assign,
+      such as a call argument (`g(if c => (a, (return 1)) else => (a, a))` after `return`), a returned value or a comparison operand,
+      keeps its uninitialized part on the temp or the return place, which A1 does not report (STATUS). Removal, R4's next step: A1
+      reports a temp's or the return place's uninitialized part where it is consumed.
+  - Why: the builder stood in proxies for the Never form: joins by HIR Completion, `Transfer`'s early return for an operand that
+    does not complete, and `Acquire` by the Place's Type.
+  - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
+    `|| !Reached` clause at `Close` (a fallback keyed on an absence; BU-101 removed its need).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10143,6 +10200,12 @@ structure is recorded here by the unit that first implements it.
   Place's value (a written and an unwritten Never temp were one spelling, and `let y: i32 = x` initialized y, against SPEC 14.10.3);
   the owner's rejected options 「変換せず Move/Copy にする」 (the published kind never adapted: a binding in an arm whose payload is Never
   would hold no Loan) and 「F12 を保留する」.
+  Amended by R4-M175 (PLAN G428): the Never value is what a Never form gives (a node Diverges and of Type Never); a node that is no
+  Never form: a Pattern binding (no Completion row), a capture (its closure), is acquired as Binding publishes it, so `.Ok(let v)` of
+  a `Result<Never, E>` initializes v. Reason: the Place's Type was a proxy for SPEC 14.10.3's Never form. The other clauses stand:
+  every consumer takes the Never temp as it is, and the placement rule is unchanged. R5 consented (2026-11-05) on these conditions:
+  this line names G428 and its reason and keeps the other clauses, and a Never writer reaching `MirBuilder.Format` (G410) and
+  R5-M159's diverging index stay Diverges nodes (G428's design review 3 measured both unchanged).
 - **R5-M39 `TyCtxt.Erase`** (2026-10-18; plan K3; under R5-M18) `TyCtxt.Erase(BoundType)` and `TyCtxt.Erase(Subst)`
   (`Binding/TyCtxt.Instances.cs`, X26's placement) give the Origin-erased form, the one identity rule of instance keys, descriptors,
   glue and layouts (SPEC 3.3.1, 8.13.3). Every Origin becomes `BoundOrigin.Static`: a reference's (`ref`, `uniq`, `objref`,

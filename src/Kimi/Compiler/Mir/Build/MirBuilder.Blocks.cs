@@ -59,41 +59,48 @@ internal sealed partial class MirBuilder
     // The value a body or a block's last item leaves in the destination: the item as its consumer takes it, a block's own result, or the
     // container's Unit after the item as a statement where the container completes (SPEC 7.1, 14.2). As a call's input that reserves
     // (input; MirCases.Reserves), which several bodies and exits write, the value goes through a temp of its own, moved there where the
-    // container completes, as an exit's secured value is, so no Ref writes the input (A5's lent, G136; DECISIONS R5-M72).
-    private void Result(MirPlace destination, Koto item, Koto container, bool input)
+    // container completes, as an exit's secured value is, so no Ref writes the input (A5's lent, G136; DECISIONS R5-M72). Whether the
+    // body ends in its value rather than its end arrival (SPEC 14.9.1), which its construct's End takes.
+    private bool Result(MirPlace destination, Koto item, Koto container, bool input)
     {
         if (input)
         {
             var value = this.Hold(this.body.TypeOf(destination)!, item);
-            this.Result(value, item, container, input: false);
+            var held = this.Result(value, item, container, input: false);
             this.Made(value);
             if (Completes(container))
             {
                 this.Use(destination, MirOperand.Move(value), item);
             }
 
-            return;
+            return held;
         }
 
         this.statementStart = true;
-        if (HirTables.AdjustOf(item).Acquire != HirAcquire.Unset)
+        var adjust = HirTables.AdjustOf(item);
+        bool valued;
+        if (HirTables.Op(item) == HirOp.Block && (adjust.Acquire == HirAcquire.Unset || InPlace(adjust)))
+        {
+            valued = this.Block(destination, (CodeBlockKoto)item); // As Assign and Into build it.
+        }
+        else if (adjust.Acquire != HirAcquire.Unset)
         {
             this.Assign(destination, item);
-        }
-        else if (HirTables.Op(item) == HirOp.Block)
-        {
-            this.Into(destination, item);
+            valued = true;
         }
         else
         {
             this.Statement(item);
             this.Leave(destination, container);
+            valued = false;
         }
 
         if (ReferenceEquals(item, this.constructed) && HirTables.Op(item) != HirOp.Block && Completes(item))
         {
             this.RequestExit(this.current, this.Info(this.declaration, local: true)); // An expression body completes; a block body's block.
         }
+
+        return valued;
     }
 
     // SPEC 7.1, 14.2: the Unit a container leaves where it completes into a Unit destination; one completing into another Type falls
@@ -112,8 +119,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 14.2, 16.2: a block's items in a scope of their own (an unsafe block's, SPEC 14.3), the last one its result; the locals and
     // defers it registers are cleaned up when it is left. Its last item's temporaries are those of the Body it is (SPEC 3.6, 16.2.2 step
-    // 3): an arm's, an if clause's or a do's, the function's, else the enclosing statement's.
-    private void Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
+    // 3): an arm's, an if clause's or a do's, the function's, else the enclosing statement's. Whether it ends in its last item's value.
+    private bool Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
         var outer = this.scope;
         this.scope = (ushort)this.body.AddScope(outer, kind, SourceRef.Of(block));
@@ -124,9 +131,10 @@ internal sealed partial class MirBuilder
             this.Statement(items[i]);
         }
 
+        var valued = false;
         if (items.Count > 0)
         {
-            this.Result(destination, items[^1], block, input: false);
+            valued = this.Result(destination, items[^1], block, input: false);
         }
         else
         {
@@ -140,6 +148,7 @@ internal sealed partial class MirBuilder
 
         this.CloseScope(lexical);
         this.scope = outer;
+        return valued;
     }
 
     // SPEC 6.6: a local of its symbol's Type, visible after its declaration, initialized as its initializer's Adjust takes it. A

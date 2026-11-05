@@ -5,11 +5,17 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Control flow (SPEC 14): selections, iterations, do and require, their conditions, the bodies whose values they take and the joins
-// after them; where a body's continuation ends is its HIR Completion. Transfers and their targets are MirBuilder.Transfers.cs's.
+// after them; where a body's continuation ends is its HIR Completion, and where a construct's non-value end goes on is whether it is
+// a Never form (SPEC 14.10.3). Transfers, their targets and the joins' edges are MirBuilder.Transfers.cs's.
 internal sealed partial class MirBuilder
 {
     // Whether a node's evaluation can complete normally (its HIR Completion).
     private static bool Completes(Koto node) => HirTables.CompletionOf(node) != HirCompletion.Diverges;
+
+    // SPEC 14.10.3: a Never form, an expression of Type Never, which does not complete (its HIR Completion and Binding's Type); a node
+    // with no Completion row (a Pattern binding) is none.
+    private static bool IsNeverForm(Koto node)
+        => HirTables.CompletionOf(node) == HirCompletion.Diverges && ReferenceEquals(TypeOf(node), BoundType.Never);
 
     // SPEC 14.7: the conditions in order, the first true clause's body into the destination, else the else body or, omitted, Unit; as a
     // call's input, each body's value as Result places it (input).
@@ -32,15 +38,14 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            this.Unit(destination, conditional);
-            this.body.Terminate(this.current, MirTerminator.Goto(after, this.Info(conditional)));
+            this.Implicit(destination, after, conditional, conditional.Branches[^1].Condition);
         }
 
         this.Close(after);
     }
 
-    // SPEC 14.6.3: the body repeats from the head, as a continue does, and only an exit completes the loop. Where no exit completes it,
-    // the code after it is checked from the head (plan 5.6.3).
+    // SPEC 14.6.3: the body repeats from the head, as a continue does, and only an exit completes the loop. The head is its non-value
+    // end: the code after a loop that is a Never form, one no exit completes, is checked from the head (plan 5.6.3).
     private void Loop(MirPlace destination, LoopKoto loop)
     {
         var head = this.body.AddBlock();
@@ -49,8 +54,8 @@ internal sealed partial class MirBuilder
         var after = this.Open(loop, destination, head);
         this.current = start;
         this.Iterate(loop.Body, head);
-        var exits = this.Close(after) && Completes(loop);
-        this.body.Terminate(head, MirTerminator.Goto(start, this.Info(loop), exits ? -1 : after));
+        var check = this.Close(after);
+        this.body.Terminate(head, MirTerminator.Goto(start, this.Info(loop), check));
     }
 
     // SPEC 14.6.1: the condition before each iteration; a false one completes the while with Unit, as an exit does.
@@ -66,8 +71,7 @@ internal sealed partial class MirBuilder
         this.Enter(start, test);
         this.Iterate(loop.Body, head);
         this.Enter(done, test);
-        this.Unit(destination, loop);
-        this.body.Terminate(done, MirTerminator.Goto(after, this.Info(loop)));
+        this.Implicit(destination, after, loop, loop.Condition);
         this.Close(after);
     }
 
@@ -137,9 +141,38 @@ internal sealed partial class MirBuilder
     private void Arm(MirPlace destination, Koto body, int after, bool input)
     {
         var scope = this.temporaries = this.OpenScope(block: true);
-        this.Result(destination, body, body, input);
+        var value = this.Result(destination, body, body, input);
         this.CloseScope(scope);
-        this.Join(after, body);
+        this.End(after, body, value);
+    }
+
+    // SPEC 14.9.1, 14.10.3: a construct's body's end, after its value (a value end) or its end arrival: one that completes, or a value
+    // end, joins (Join), a Never value for the checks only, placing nothing (DECISIONS R4-M62); an end arrival that does not complete
+    // supplies no completion, a non-value end that Close ends.
+    private void End(int after, Koto body, bool value)
+    {
+        if (Completes(body) || value)
+        {
+            this.Joins(this.Edge(after, body));
+        }
+        else
+        {
+            this.ends.Add((this.current, this.Info(body)));
+        }
+    }
+
+    // SPEC 14.9.1: a construct's implicit completion with Unit (an omitted else, a while's false path), at its source, after the
+    // condition that leads there: where that completes, the Unit placed and the join, else a non-value end that Close ends.
+    private void Implicit(MirPlace destination, int after, Koto construct, Koto condition)
+    {
+        if (!Completes(condition))
+        {
+            this.ends.Add((this.current, this.Info(construct)));
+            return;
+        }
+
+        this.Unit(destination, construct);
+        this.Joins(MirTerminator.Goto(after, this.Info(construct)));
     }
 
     // An iteration: the body for its effect, then back to the head, through the cleanup of the iteration's scopes as a continue goes.
@@ -151,9 +184,12 @@ internal sealed partial class MirBuilder
 
     // The end of a body: a runtime edge to the block where the body completes, else only its check-only continuation ends there (plan
     // 5.6.3: the body's Completion decides).
-    private void Join(int block, Koto body)
+    private void Join(int block, Koto body) => this.body.Terminate(this.current, this.Edge(block, body));
+
+    // That edge (Join).
+    private MirTerminator Edge(int block, Koto body)
     {
         var info = this.Info(body);
-        this.body.Terminate(this.current, Completes(body) ? MirTerminator.Goto(block, info) : MirTerminator.Unreachable(info, block));
+        return Completes(body) ? MirTerminator.Goto(block, info) : MirTerminator.Unreachable(info, block);
     }
 }

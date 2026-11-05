@@ -609,7 +609,7 @@ fn exited @276
       goto bb8 @298 s3
   bb10:
       StorageDead(_10) @299 s3
-      unreachable check bb2 @297 s2
+      unreachable @297 s2
   bb11:
       StorageDead(_12) @303 s2
       goto bb6 @276
@@ -619,7 +619,7 @@ fn exited @276
   bb13:
       StorageDead(_12) @303 s2
       StorageDead(_7) @294 s1
-      unreachable check bb1 @294 s1
+      unreachable @294 s1
   bb14:
       StorageDead(_6) @291 s1
       StorageDead(_5) @289 s1
@@ -681,7 +681,7 @@ fn exited @276
   bb27:
       StorageDead(_21) @330 s7
       StorageDead(_20) @328 s1
-      unreachable check bb20 @328 s1
+      unreachable @328 s1
   bb28:
       StorageDead(_18) @324 s1
       StorageDead(_17) @322 s1
