@@ -19,7 +19,8 @@
 //   walk state.
 // - Prohibitions: the rule writes nothing; no record keeps a second copy of a use's Adjust.
 // The publisher's record of the uses (PublisherUses, over its claims, ExclusiveUse, Derived and column writes) is the Transitional walk's,
-// until R7 (DECISIONS R4-M142).
+// until R7 (DECISIONS R4-M142). Every take of a node records its claim through the one Claims(child, adjust) before ExclusiveUse reads it:
+// its consumer's (FixAdjust) and its container's discard (the publisher's DiscardRow) share one member, Claim (PLAN G426).
 
 using Kimi.Compiler.Parsing;
 
@@ -248,7 +249,8 @@ public sealed partial class Binding
     }
 
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, as at a value position, and
-    // discarded; no operation of its container takes it, so no claim completes it.
+    // discarded; no operation of its container takes it, so no claim completes it, while its own Adjust claims as a fixed one does (Claims,
+    // which the publisher's discard row records).
     private HirAdjust Discarded(Koto place) => this.ChildAdjust(place, HirAdaptation.None, UseKind.Acquisition, claimed: false);
 
     // Binding's bare acquisition of a Place (BareAcquire) as it is: a Move there is the explicit Move a Place whose Copy is unproven needs
@@ -344,7 +346,7 @@ public sealed partial class Binding
                 }
 
                 column = adjust;
-                this.claims[child.SyntaxId] |= binding.Claims(child, adjust);
+                this.Claim(child, adjust);
                 if (place.Kind != HirPlaceKind.Unset)
                 {
                     this.table.Hir.Places![child.SyntaxId] = place;
@@ -370,8 +372,12 @@ public sealed partial class Binding
             }
         }
 
+        // The one record of a take's claim on an owned node (Claims): an Adjust its consumer fixed (FixAdjust) or its container's discard
+        // row (DiscardRow), each recorded before ExclusiveUse reads the node's claims.
+        private void Claim(Koto node, HirAdjust adjust) => this.claims[node.SyntaxId] |= binding.Claims(node, adjust);
+
         // Whether a node's use needs write or exclusive capability, which selects a user index's indexUniq (SPEC 4.7.1; DECISIONS BU-8): the
-        // capability its consumer's operation needs, which Use and FixAdjust recorded (claims), or it is updated or exclusively borrowed, or an
+        // capability its takes need, which Use, FixAdjust and the discard row recorded (claims), or it is updated or exclusively borrowed, or an
         // exclusive use reaches it as the receiver of a Field or an element, as a group's operand or as the reference, handle or pair layer a
         // follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw Place, whose capability its
         // path does not decide (SPEC 5.2). The parent is the node's while the node is visited.

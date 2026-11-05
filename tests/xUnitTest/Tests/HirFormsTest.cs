@@ -366,7 +366,9 @@ public sealed partial class HirFormsTest
     // Reborrow of it (an argument, a bare acquisition, a Subject) and an exclusive receiver of a method or a setter, by its parameter Type
     // also through an object handle's payload, and below another element; a read, a shared borrow, a shared receiver (a base's
     // included), a getter and a raw pointer's pointee or element select index, and an rc payload offers no exclusive receiver. An
-    // exclusive receiver over Binding's in-place read states its own borrow.
+    // exclusive receiver over Binding's in-place read states its own borrow. A discarded element (SPEC 14.2.2) is a bare acquisition: a
+    // stored exclusive reference's Reborrow selects indexUniq through the discard row's claim (PLAN G426) in every Discard Context, in
+    // groups, below a Field and by a pair layer's exclusive case; a Copy element selects index.
     [Fact]
     public void AnExclusiveUseOfTheElementSelectsIndexUniq()
     {
@@ -451,6 +453,36 @@ public sealed partial class HirFormsTest
                 var ptrs = Pair<raw/i32>.init(p, p)
                 unsafe => *ptrs[0] = 5
                 unsafe => ptrs[1][0] = 6
+            struct Shelf {a}
+                public var d: Dictionary<i32, uniq/i32 during a>
+            struct Link {a}
+                public var link: uniq/i32 during a
+            func discards(value: uniq/i32 during a, d: uniq/Dictionary<i32, uniq/i32 during a>, e: uniq/(Dictionary<i32, uniq/i32 during b>) during s, c: bool)
+                var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]
+                entries[1]
+                (entries[1])
+                d[1]
+                (d[1])
+                e[1]
+                (e[1])
+                if c => d[1]
+                do
+                    d[1]
+                match c
+                    true => d[1]
+                    false => ()
+                ((d[1]))
+            func parts(shelf: uniq/(Shelf during a) during s, links: uniq/Dictionary<i32, Link during a>, pair: uniq/(Pair<uniq/i32 during a>) during s)
+                shelf.d[1]
+                links[1].link
+                pair[0]
+                (pair[0])
+            func cases<s/T>(d: uniq/Dictionary<i32, s/T during a>)
+                s is uniq
+                d[1]
+            func copies(d: uniq/Dictionary<i32, i32>, ints: uniq/Pair<i32>)
+                d[1]
+                ints[0]
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
@@ -469,6 +501,9 @@ public sealed partial class HirFormsTest
             "objs[0].bump() indexUniq", "entries[1].bump() indexUniq", "require rcs[0].level() == 2 else => $abort(\"rc\") index",
             "require ds[1].peek() == 0 else => $abort(\"base\") index", "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index",
             "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index", "unsafe => ptrs[1][0] = 6 index",
+            "entries[1] indexUniq", "(entries[1]) indexUniq", "d[1] indexUniq", "(d[1]) indexUniq", "e[1] indexUniq", "(e[1]) indexUniq",
+            "if c => d[1] indexUniq", "d[1] indexUniq", "true => d[1] indexUniq", "((d[1])) indexUniq", "shelf.d[1] indexUniq",
+            "links[1].link indexUniq", "pair[0] indexUniq", "(pair[0]) indexUniq", "d[1] indexUniq", "d[1] index", "ints[0] index",
         ];
         Assert.Equal(expected, selections);
         var receiver = Reachable(c.Kotonoha).Single(x => x is IndexKoto && Line(x.Span.Start) == "pts[0].mutate()");

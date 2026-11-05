@@ -157,11 +157,16 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
 
     // SPEC 4.7.1, 15.6.2 (DECISIONS BU-8): on the MIR a write, an exclusive borrow or an exclusive Reborrow through the stored reference
     // selects indexUniq, whose exclusive receiver Loan conflicts with a live shared borrow of the Dictionary; a read through it does not.
+    // A discarded element's bare acquisition Reborrows it, so a bare statement and a group conflict as the explicit discard does (PLAN
+    // G426), with no validator finding.
     [Theory]
     [InlineData("change(entries[1])", true)]
     [InlineData("entries[1]@follow = 99", true)]
     [InlineData("let child = entries[1]@follow@uniq\n    child@follow = 3", true)]
     [InlineData("let read: i32 = entries[1]@follow", false)]
+    [InlineData("entries[1]", true)]
+    [InlineData("(entries[1])", true)]
+    [InlineData("_ = entries[1]", true)]
     public void AnExclusiveUseConflictsWithASharedBorrowOnTheMir(string use, bool conflicts)
     {
         var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + Header + "    let view = entries@ref\n    " + use + "\n    inspect(view)\n");
