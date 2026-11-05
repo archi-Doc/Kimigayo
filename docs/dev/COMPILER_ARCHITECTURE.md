@@ -209,37 +209,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
 
 - **Freeze (D5).** From R0 until R6-check completes (DECISIONS R4-M35), the old Analysis path receives no new accepted forms;
   the Emission half ended with R6-gen on 2026-10-31, the old Emission deleted (DECISIONS R5-M167). Allowed: deletion, miscompile fixes
-  mirrored on the new path, the mechanical follow-up that a stage of the plan names, and the owner's exceptions below, each until
-  R6-check unless it says otherwise:
-  - the Place result removal (DECISIONS PR-1);
-  - G147 (2b): the old analysis accepts the forms its Binding correction makes valid on the owner's whitelist of receiver paths, and a
-    guard in it reports the others as `Unsupported_Kd` (DECISIONS BU-10);
-  - 2x-E7 (re-approved on its corrected premise): a guard in the old analysis reports `Unsupported_Kd` for a Pattern Binding that
-    borrows a part of an owned Subject or item past a pair layer admitting owner (`OwnedPart` with access other than Owned) and for a
-    Binding that selects a pair layer, including forms dev bound by value or followed structurally and ran (DECISIONS BU-14);
-  - G140 (2026-10-21, 「例外を認める (推奨)」): performance fixes of the old Analysis's walks W1 and W5 with identical verdicts, nothing
-    else of the frozen path (CleanupObservesBorrows' per-query depth-monotone memo, HasProjection's gate, AggregateCanComplete's memo,
-    VerifyBorrows' per-Place AddType set; DECISIONS BU-19);
-  - G160 (2026-10-22): by Q-O3 (「D5 例外を認める (推奨)」) the old paths read Types without raw Origins (`Binding.WithoutRawOrigins`)
-    at `OwnershipAnalysis.Place` and `OwnershipBody.Resolve`, and by its third exception (「D5 例外を広げる (推奨)」) the old analysis's
-    `ProjectPointer` compares a stored part's Type with the node's without them (DECISIONS BU-24; its old-Emission exceptions ended with that code at
-    R6-gen's G7, DECISIONS R5-M162);
-  - G86 (2026-10-26, 「(a) 場合ごとの読みを許可 (推奨)」): the old analysis's `AddType` and `NamedOriginRequirement` read a slot's Loan
-    requirement in the strongest Semantics case its Type selects (`Binding.RequirementAt` through `OwnershipBody.SlotLoanRequirement`;
-    DECISIONS BU-44);
-  - A5-F7's 2c-5 (OQ-F7-1 (vi), 2026-10-25): the old analysis's gate reports `Unsupported_Kd` at each value call whose result depends
-    on its call receiver and analyzes nothing else of the program (DECISIONS R4-M126, R4-M152);
-  - Abstract Calls Reach by Paths (2026-10-22): the old Analysis and `PublishesIndependentResults` drop rule 1's Origin reach, rule 3
-    and `preserves results` (units U1, U2; Binding's `EffectSummary` too until B-del deleted it at H5, DECISIONS BU-90), so the default
-    pipeline accepts the forms that proposal makes valid and rejects G193's forms by containment; a form U1 or U2 newly accepts that
-    SPEC does not make valid stops the unit for the owner (DECISIONS R4-M106, the proposal's adoption entry);
-  - g2never (2026-10-30, 「(a) D5 の例外として認める」 and 「推奨の内容で決定します」): the old analysis accepts the forms Binding's
-    element typing makes valid (an owned fixed-array element whose key diverges, its Field written or updated, updated by a user
-    operator, read through a Tuple element, borrowed into a local, for a call or as an intrinsic's exclusive input) and applies the
-    reachable Move rules where such an element's access cannot complete normally (`AcquireElement`); its old-generator half ended
-    when G4 ended that generator's selection (DECISIONS R5-M159, R5-M160);
-  - G273 (2026-10-31): a maker-returned Closure value whose Type carries Origin arguments is a located `Unsupported_Kd` on the default
-    pipeline, the old Analysis stopping at that refusal (DECISIONS R4-M159; listed here on the owner's 「はい」, R5-M182).
+  mirrored on the new path and the mechanical follow-up that a stage of the plan names. The owner's exceptions (DECISIONS PR-1, BU-10,
+  BU-14, BU-19, BU-24, BU-44, R4-M106, R4-M126 and R4-M152, R5-M159 and R5-M160, R4-M159) ended with their code when R6-check H10b
+  deleted the old ownership analysis (DECISIONS R5-M189); the freeze holds for the old control-flow analysis until H10b-2.
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.
@@ -291,7 +263,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   merges dev before its next change to that file. R5 puts new Binding views in new partial files and holds its batched shared MIR edits the same way (windows W1, W2, the R5 plan §3.5).
 - **The three sessions and the board (from 2026-11-03; DECISIONS R7-M2, the owner's RQ1 and RQ7).** The planning sessions are the
   front (Syntax and Binding), middle (`Mir`, the HIR columns' builder readers, `tests/mir`, Documentation; it runs the merge windows) and
-  back (Backend, the templates, the library and its index files, Testing, the old Analysis until H10b, `C/Emission` until R9-M2) sessions
+  back (Backend, the templates, the library and its index files, Testing, the old Analysis until H10b-2, `C/Emission` until R9-M2) sessions
   of the R7, R8 and R9 plan; today's BU, R4 and R5 are these three. The hold protocol above keeps its meaning and its record moves to the
   board `artifacts/board/BOARD.md`: a hold is a board row taken before the first edit of a shared file and released in the window that
   lands the unit; PLAN §3 keeps area ownership. The board's tables are the windows, the queue, holds, heavy runs (the registry
@@ -313,7 +285,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
 | R3 | Done 2026-10-11 (DECISIONS R3-1–R3-10) | MIR model, descriptor table, validator with its Type tier, dump and builder (shadow) |
 | R4 | Done 2026-11-03 under the owner's 90% rule (DECISIONS R4-M165; its exceptions carried as PLAN G396) | MIR analyses A1–A6 and the difference ledger (shadow); its exit gate (DECISIONS R4-M35, R4-M95, R4-M106; A5 plan §6.2, §8) gave way to R4-M165 |
 | R5 | Done 2026-10-29 (DECISIONS R5-M148; the [R5 and R6 Implementation Plan](../../draft/Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md), R5-M1, R5-M2; area record `artifacts/benchmarks/r5-exit-areas.md`) | Monomorphization, shims, layout/ABI, code generation, capability table (shadow) |
-| R6 | Active: R6-gen done 2026-10-31 (DECISIONS R5-M167: the exit gate, §5.4, item by item, and the owner's review of its exceptions and Transitional declarations; area record `artifacts/benchmarks/r6-gen-exit-areas.md`), begun 2026-10-29 on the owner's go (G0, DECISIONS R5-M152); R6-check after R4's exit; two stages (DECISIONS R4-M35): R6-gen after R5, R6-check after R4 and R6-gen; units and exit gates in the R5 and R6 plan §4.9–§4.10 and §5.4–§5.5 (DECISIONS R5-M1) | R6-gen switches code generation to MIR and deletes the old Emission (`AnalyzeInstance` with it, at G7; DECISIONS R5-M88); R6-check switches acceptance to MIR and deletes the old Analysis, `OwnershipAnalysis.TypeDepth` with it (DECISIONS BU-71). An R6 item that only Emission concerns belongs to R6-gen, any other to R6-check. Removing the lint checks from the old `ControlFlowAnalysis` is an R6-check item landed early, with the HIR lints (R5 and R6 plan Q9-Q12, DECISIONS R5-M23). Unit a publishes the MIR problems; the MIR construction and collection records are `MirReport`'s since R6-check H3-1 (DECISIONS R4-M3a, R5-M182's amendment). TransferRequired moves to Binding/HIR (R4-M4), which makes A1's StaticMovePathRequired at the bare acquisitions it rejects derived. H5's B-del deleted the old effect checks and the old twins of A4's rules; an obligation follows the conformance's and the function's own validity (DECISIONS R4-M23, BU-90); the Array `append`/`insert`/`pop`/`remove` rows join the catalog (DECISIONS R4-M28). At R6-check PLAN G318 moves A5's chain core (`MirOrigins.Chains`) below both phases and deletes the declaration judge's Transitional copy of R4-M118's rule (`Binding.OriginClauses.Chains`, DECISIONS BU-62) |
+| R6 | Active: R6-gen done 2026-10-31 (DECISIONS R5-M167: the exit gate, §5.4, item by item, and the owner's review of its exceptions and Transitional declarations; area record `artifacts/benchmarks/r6-gen-exit-areas.md`), begun 2026-10-29 on the owner's go (G0, DECISIONS R5-M152); R6-check after R4's exit (H10b deleted the old ownership analysis; the control-flow analysis goes at H10b-2, DECISIONS R5-M189); two stages (DECISIONS R4-M35): R6-gen after R5, R6-check after R4 and R6-gen; units and exit gates in the R5 and R6 plan §4.9–§4.10 and §5.4–§5.5 (DECISIONS R5-M1) | R6-gen switches code generation to MIR and deletes the old Emission (`AnalyzeInstance` with it, at G7; DECISIONS R5-M88); R6-check switches acceptance to MIR and deletes the old Analysis, `OwnershipAnalysis.TypeDepth` with it (DECISIONS BU-71). An R6 item that only Emission concerns belongs to R6-gen, any other to R6-check. Removing the lint checks from the old `ControlFlowAnalysis` is an R6-check item landed early, with the HIR lints (R5 and R6 plan Q9-Q12, DECISIONS R5-M23). Unit a publishes the MIR problems; the MIR construction and collection records are `MirReport`'s since R6-check H3-1 (DECISIONS R4-M3a, R5-M182's amendment). TransferRequired moves to Binding/HIR (R4-M4), which makes A1's StaticMovePathRequired at the bare acquisitions it rejects derived. H5's B-del deleted the old effect checks and the old twins of A4's rules; an obligation follows the conformance's and the function's own validity (DECISIONS R4-M23, BU-90); the Array `append`/`insert`/`pop`/`remove` rows join the catalog (DECISIONS R4-M28). At R6-check PLAN G318 moves A5's chain core (`MirOrigins.Chains`) below both phases and deletes the declaration judge's Transitional copy of R4-M118's rule (`Binding.OriginClauses.Chains`, DECISIONS BU-62) |
 | R7 | Active: adopted 2026-11-03 under the [R7, R8 and R9 Implementation Plan](../../draft/Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md) (DECISIONS R7-M1, the owner's RQ1–RQ17); the front session's; its design, census, prototype and behavior-preserving units start beside R6-check, its acceptance-changing units after H5 (RQ3; RP4, RP5); exit gate the plan's §10.1 | Binding consolidation: resolver, inference context, Contract solver (its premise supply moved to `Binding.ContractSolver` by G170, DECISIONS BU-29), CallPlan pipeline, Problem records. The Binding facts A5 and R5 read are published before them, in R7's target shape, and leave R7's scope (A5 plan §7, DECISIONS R4-M35) |
 | R8 | Active: adopted 2026-11-03 (DECISIONS R7-M1); the back session's; R8-L0 now, library or Backend-only units once the old Analysis accepts their bodies and their O2 A/B holds, units needing MIR-only forms after H5 (RQ4; RP14); exit gate the plan's §10.2 | Library algorithms in Kimigayo, 28 intrinsics (`IntrinsicId` 32 → 28), `CompilerFunctionKind` deleted (RQ9) |
 | R9 | Planned: adopted 2026-11-03 (DECISIONS R7-M1); the middle session's, its Parsing units reviewed by the front (RP17); its units follow the plan's §4.2 gates; exit gate the plan's §10.3 | Remaining front-end cleanup, Documentation (`src/Kimi/Documentation`) and the toolchain (`src/Kimi/Build`) moved out, IMPL §20.8.3's manifest, final documentation |
