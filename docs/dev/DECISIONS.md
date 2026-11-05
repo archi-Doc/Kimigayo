@@ -9067,6 +9067,26 @@ resumed by R4-M86 (2026-10-20).
     then child rows).
   - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
     holds references; rented ones keep warm allocation at 0 B).
+- **BU-101 An invalid transfer goes to no target** (2026-11-05; PLAN G52's second shape, before R4's G428; the planning session's
+  design, its review ACCEPT) SPEC 14.5.2, 14.9.1-14.9.3, 23.1.2. Amends R5-M31's Q11 rule.
+  - Rule: `KotoHelper.TransferTarget(jump)` replaces `IsValidTransfer`. It gives the resolved target when the transfer may go there
+    (R5-M31's rule, unchanged), else null. The jump binding writes it as the target row and binds the operand at that target only.
+    Binding's result sources (`ResultTarget`, `TransferEvidence`) and Structural Completion (`CloseTransfers`) read it too.
+  - So an invalid transfer (rows 9-10) supplies no source and completes no construct, and its operand has no expected Type, as
+    R5-M42's builder builds it. A construct whose every transfer is invalid is a Never form (Type Never, Completion Diverges); one
+    with another source takes that source's Type. The row stays null.
+  - The lint picks row 9 or 10 by the lexical target (`ResolveTransferTarget`). The lexical target also stays for the `return`-only
+    readers, for `ValidMessageTransfers` (a barrier) and for the old analysis until H10.
+  - Records (rejected programs only, each keeping row 10): the dependent `TypeMismatch_Kd` records that rested on a discarded target's
+    Unit go, at the operand, at the selection and at an enclosing join's other source. The operand's own records and a fallthrough
+    the Dependent construct hid appear (`TransferRequired_Kd`, `FunctionFallthrough_Kd`). No acceptance moves.
+  - Rejected:
+    - skipping the operand's fit (the source and the completion stay);
+    - no Unit expectation for a discarded selection (SPEC 14.7's labeled `yield` supplies Unit);
+    - Binding reading the published row (the survey and conversion probes run before the jump binds);
+    - `ResolveTransferTarget` returning null (the lint and the old analysis need the lexical target);
+    - a failed source (14.9.1: no source);
+    - the MIR's `|| !Reached` (a consumer deciding what Binding owns).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -9729,7 +9749,8 @@ structure is recorded here by the unit that first implements it.
     and `LegacyRecords` lists as Binding records, until H10. The old analysis's copy of `UnsafeFunctionValue_Kd` goes: Binding
     rejects every form at the reference (its four sites), and the copy only repeated it at a requirement item's inner name.
   - Q11, rows 9-11 (`InvalidJumpTarget`, `UnlabeledYieldTarget`, `OverlappingLabel`; SPEC 14.5.2, 14.7, 14.4): one rule,
-    `KotoHelper.IsValidTransfer` (a target exists; an unlabeled yield's selection uses its result), decides a transfer; the jump
+    `KotoHelper.IsValidTransfer` (a target exists; an unlabeled yield's selection uses its result; amended by BU-101:
+    `KotoHelper.TransferTarget`, which result sources and Structural Completion read too), decides a transfer; the jump
     binding writes the target row (`PlanRow.Plan`) only for a valid transfer, so the HIR publisher no longer resolves targets, and
     the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means Binding
     recorded row 9 or 10 there (ask A-8), or, the lints being dropped there, that the jump lies in a function part whose `#switch`
