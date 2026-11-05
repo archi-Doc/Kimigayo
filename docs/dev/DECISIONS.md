@@ -1495,6 +1495,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   early at a Never writer: its status and writes take the Never value as R5-M38's `Acquire` does, so the embedded expressions are
   built and checked (`MovedPlace_Kd`, `UninitializedPlace_Kd` as with a real writer), and the result is placed (no
   `UninitializedPlace_Kd` at `let r = $tryWrite(<Never>, ...)`).
+  Amended by R4-M175 (PLAN G428): edge structure follows SPEC 14.10.3's Never form: a construct's non-value ends and a `loop`'s head
+  go on to its join for the checks only where it is a Never form, and an operand that does not complete leaves an assumed delivery,
+  placing nothing, instead of no transfer.
 - **R4-M63** (2026-10-18; A3 §12 E14; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every
   operand to the result"; its store target refs(val(a_j)) superseded by R4-M73's W) A Call retains as its callee's contract says
   (SPEC 15.6, 15.6.4).
@@ -5442,6 +5445,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
     what this rule lets it write; A4 and A5 share `MirTypes.SealedPayload`. count<S> stays valid by this rule, yet A5 errs at its
     `for` (`$for.iterator`, `for _ in items`) until PLAN G416: the lent item's composed destruction passes the item by next()'s
     exclusive Loan on the iterator (route (1)) and stores that Loan into the iterator, a self-row; an (e) row (R4-M150's S2 line).
+- **R4-M175 MIR construction follows SPEC 14.10.3's Never form (PLAN G428)** (2026-11-05; the owner, R4's dialog, verbatim
+  「推奨どおり開始して下さい」 and 「SPEC's letter」; after BU-101, the owner's 「BU の G52 の修正を先にする で決定です」; amends R4-M62 and R5-M38;
+  class Major) SPEC 14.10.3, 14.9.1-14.9.2, 17.3.
+  - Rule (`MirBuilder`): one predicate, `IsNeverForm` (HIR Completion Diverges and Binding Type Never), at the joins and in `Acquire`.
+  - Joins: every edge into a construct's join marks it `Joined` (`Joins`): a body's completing or value end, an implicit completion on
+    a runtime path, a `for`'s exhaustion and each delivery. A value end that does not complete goes there for the checks only and
+    places nothing (R4-M62). A non-value end (an Indented body's end arrival, which `Result` reports to `End`; an implicit completion
+    entered only by a check edge; a `loop`'s head) places no Unit and goes on to the join for the checks only where the construct is
+    a Never form (`Close`).
+  - Transfer: a jump with a published target always builds its delivery. Where its operand does not complete, the delivery is
+    assumed: not secured, placing nothing, with no constructor exit request and no `Delivers` temp, through the drop tree to the
+    target's join (`Target.Join`), as `Goto(entry, check next)`. Placing nothing is the interim model until PLAN G428's per-part
+    placement around a Never part.
+  - A construct that is no Never form and that no edge joins breaks the HIR contract (BU-101 publishes a construct with no source as a
+    Never form): `InternalInvariant_Kd` at the construct, its ends joined so the body stays valid.
+  - Effect: an assumed completion initializes nothing. `while fail()`, `try` on a `Result<Never, E>`, a Never payload binding and a
+    labeled `do` over an abrupt match are accepted; `let r: () = while fail() => ()` then a read of `r` is `UninitializedPlace_Kd`.
+  - Why: the builder stood in proxies for the Never form: joins by HIR Completion, `Transfer`'s early return for an operand that
+    does not complete, and `Acquire` by the Place's Type.
+  - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
+    `|| !Reached` clause at `Close` (a fallback keyed on an absence; BU-101 removed its need).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9970,6 +9994,12 @@ structure is recorded here by the unit that first implements it.
   Place's value (a written and an unwritten Never temp were one spelling, and `let y: i32 = x` initialized y, against SPEC 14.10.3);
   the owner's rejected options 「変換せず Move/Copy にする」 (the published kind never adapted: a binding in an arm whose payload is Never
   would hold no Loan) and 「F12 を保留する」.
+  Amended by R4-M175 (PLAN G428): the Never value is what a Never form gives (a node Diverges and of Type Never); a node that is no
+  Never form: a Pattern binding (no Completion row), a capture (its closure), is acquired as Binding publishes it, so `.Ok(let v)` of
+  a `Result<Never, E>` initializes v. Reason: the Place's Type was a proxy for SPEC 14.10.3's Never form. The other clauses stand:
+  every consumer takes the Never temp as it is, and the placement rule is unchanged. R5 consented (2026-11-05) on these conditions:
+  this line names G428 and its reason and keeps the other clauses, and a Never writer reaching `MirBuilder.Format` (G410) and
+  R5-M159's diverging index stay Diverges nodes (G428's design review 3 measured both unchanged).
 - **R5-M39 `TyCtxt.Erase`** (2026-10-18; plan K3; under R5-M18) `TyCtxt.Erase(BoundType)` and `TyCtxt.Erase(Subst)`
   (`Binding/TyCtxt.Instances.cs`, X26's placement) give the Origin-erased form, the one identity rule of instance keys, descriptors,
   glue and layouts (SPEC 3.3.1, 8.13.3). Every Origin becomes `BoundOrigin.Static`: a reference's (`ref`, `uniq`, `objref`,

@@ -334,6 +334,36 @@ public class PatternBindingTest
         Assert.Equal(twin, Records(Head + body.Replace("SUBJECT", subject, StringComparison.Ordinal).Replace("OTHER", other, StringComparison.Ordinal)));
     }
 
+    // SPEC 14.8.1, 15.1.6, 14.10.3 (DECISIONS R4-M175): a Pattern binding of a Never payload is no Never form, so it initializes its
+    // local from the selected Place, and each read of the local is the Never form (fail-before: UninitializedPlace_Kd at each read); the
+    // twin Moves it twice, one MovedPlace_Kd (fail-before: also UninitializedPlace_Kd at the first). A labeled do whose exits both deliver
+    // gets no completion from its body's end arrival, as it is no Never form (fail-before: UninitializedPlace_Kd at `result`); the twin's
+    // exit of a Never value is assumed delivered and places nothing.
+    [Theory]
+    [InlineData("func run() -> Result<(), i32>\n    match source()\n        .Ok(let v) => v@move\n        .Err(let e) => return .Err(e)\n", "")]
+    [InlineData(
+        "func use(x: Never) => ()\nfunc run() -> Result<(), i32>\n    match source()\n        .Ok(let v)\n            use(v)\n            use(v)\n" +
+        "        .Err(let e) => return .Err(e)\n    return .Ok(())\n",
+        "")]
+    [InlineData(
+        "func take(x: Never) => ()\nfunc run() -> Result<(), i32>\n    match source()\n        .Ok(let v)\n            take(v@move)\n            take(v@move)\n" +
+        "        .Err(let e) => return .Err(e)\n    return .Ok(())\n",
+        "MovedPlace_Kd v")]
+    [InlineData(
+        "func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n" +
+        "        exit to work 3\n    return result\n",
+        "")]
+    [InlineData(
+        "func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n" +
+        "        exit to work (return 3)\n    return result\n",
+        "UninitializedPlace_Kd result")]
+    public void ANeverPayloadBindingInitializesItsLocal(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func source() -> Result<Never, i32> => .Err(1)\n" + source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
     [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {

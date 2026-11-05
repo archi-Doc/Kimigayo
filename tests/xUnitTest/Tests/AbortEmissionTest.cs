@@ -83,6 +83,7 @@ public class AbortEmissionTest
     [Theory]
     [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", "text", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", "x", DiagnosticCode.UninitializedPlace_Kd)]
+    [InlineData("let x: i32 = $abort(\"stop\")\nlet y = x", "x", DiagnosticCode.UninitializedPlace_Kd)] // SPEC 14.10.3: a Never form initializes nothing (R4-M175).
     public void AnUnreachableLocalUseIsCheckedOnTheAssumedPath(string source, string at, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

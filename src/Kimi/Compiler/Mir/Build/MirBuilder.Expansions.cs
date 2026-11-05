@@ -48,7 +48,7 @@ internal sealed partial class MirBuilder
         this.current = none;
         this.Pattern(plan, plan.Arms[1].Pattern, subject, start, tail);
         this.Unit(destination, loop);
-        this.body.Terminate(this.current, MirTerminator.Goto(this.Exit(this.targets[^1].At.Depth, after), this.Info(loop)));
+        this.Joins(MirTerminator.Goto(this.Exit(this.targets[^1].At.Depth, after), this.Info(loop)));
         this.body.Terminate(tail, MirTerminator.Unreachable(this.Info(loop)));
         CollectionsMarshal.SetCount(this.selected, start);
         this.CloseScope(iteration, clean: false);
@@ -83,7 +83,7 @@ internal sealed partial class MirBuilder
         this.body.Terminate(step, MirTerminator.Goto(head, this.Info(loop)));
         this.current = done;
         this.Unit(destination, loop);
-        this.body.Terminate(done, MirTerminator.Goto(after, this.Info(loop)));
+        this.Joins(MirTerminator.Goto(after, this.Info(loop)));
         this.Close(after);
     }
 

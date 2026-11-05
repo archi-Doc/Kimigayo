@@ -132,7 +132,7 @@ fn drop @49
       _4 = const () @59 s2
       goto bb10 @59 s2
   bb12:
-      unreachable check bb1 @58 s1
+      unreachable @58 s1
   bb13:
       drop _1.0 -> bb14 [keep] @49
   bb14:
@@ -291,7 +291,7 @@ fn cleanup @79
       _7 = const 1_i32 @97 s2
       goto bb13 @97 s2
   bb15:
-      unreachable check bb2 @96 s1
+      unreachable @96 s1
   bb16:
       StorageLive(_12) @116 s1
       _12 = Lt(copy _10, copy _2) proven @116 s1
@@ -347,7 +347,7 @@ fn cleanup @79
       StorageDead(_15) @129 s4
       goto bb25 @79
   bb30:
-      unreachable check bb21 @133 s4
+      unreachable @133 s4
   bb31:
       StorageDead(_19) @135 s4
       StorageLive(_24) @141 s4
@@ -395,7 +395,7 @@ fn cleanup @79
       _21 = const () @140 s7
       goto bb40 @140 s7
   bb42:
-      unreachable check bb31 @139 s4
+      unreachable @139 s4
   bb43:
       drop _14 -> bb45 [keep] @120 s4
   bb44:
@@ -444,7 +444,7 @@ fn cleanup @79
       _32 = const () @107 s11
       goto bb54 @107 s11
   bb56:
-      unreachable check bb49 @106 s10
+      unreachable @106 s10
   bb57:
       StorageDead(_33) @108 s10
       _28 = const () @100 s10
@@ -492,7 +492,7 @@ fn cleanup @79
       _38 = const () @107 s13
       goto bb67 @107 s13
   bb69:
-      unreachable check bb62 @106 s12
+      unreachable @106 s12
   bb70:
       StorageDead(_39) @108 s12
       _34 = const () @100 s12
@@ -561,7 +561,7 @@ fn divergingDefer @148
       _4 = const 1_i32 @159 s2
       goto bb9 @159 s2
   bb11:
-      unreachable check bb1 @158 s1
+      unreachable @158 s1
   bb12:
       _4 = const 2_i32 @161 s1
       goto bb6 @161 s1
@@ -629,7 +629,7 @@ fn conditionTemporaries @163
       _7 = const 1_i32 @173 s2
       goto bb10 @173 s2
   bb12:
-      unreachable check bb1 @172 s1
+      unreachable @172 s1
   bb13:
       _7 = const 2_i32 @175 s1
       goto bb8 @175 s1
@@ -857,7 +857,7 @@ fn returnInArgument @226
       drop _6 -> bb13 @236 s2
   bb13:
       StorageDead(_6) @236 s2
-      unreachable check bb2 @235 s1
+      unreachable @235 s1
   bb14:
       StorageDead(_4) @233 s1
       drop _3 -> bb15 [elide] @231 s1

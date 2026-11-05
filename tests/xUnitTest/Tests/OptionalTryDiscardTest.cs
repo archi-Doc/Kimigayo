@@ -237,6 +237,21 @@ public partial class OptionalTryDiscardTest
         Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
+    // SPEC 17.3, 14.8.1, 14.10.3 (DECISIONS R4-M175): a Never success payload is valid: the try's Pattern binding is no Never form, so it
+    // initializes `$try.value` from the payload, whose Move is the Never form (fail-before: UninitializedPlace_Kd at the try, or at `x`).
+    // The twin reads a local the try does not initialize: one record, at `.Err(n)` (fail-before: also at the try).
+    [Theory]
+    [InlineData("func source() -> Result<Never, i32> => .Err(1)\nfunc run() -> Result<(), i32>\n    try source()\n", "")]
+    [InlineData("func source() -> Option<Never> => .None\nfunc run() -> Option<()>\n    try source()\n", "")]
+    [InlineData("func source() -> Result<Never, i32> => .Err(1)\nfunc run() -> Result<(), i32>\n    let x = try source()\n    return .Ok(())\n", "")]
+    [InlineData("func source() -> Result<Never, i32> => .Err(1)\nfunc run() -> Result<(), i32>\n    let n: i32\n    try source()\n    return .Err(n)\n", "UninitializedPlace_Kd .Err(n)")]
+    public void ANeverSuccessPayloadInitializesTheTryValue(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
     [Fact]
     public void TryDiagnosticExplainsTheNormalPayload()
     {

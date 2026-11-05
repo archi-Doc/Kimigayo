@@ -91,7 +91,7 @@ fn area @28
       _2 = const 0_i32 @65 s6
       goto bb1 @65 s6
   bb11:
-      unreachable check bb1 @64 s1
+      unreachable @64 s1
   bb12:
       unreachable @33 s1
   bb13:
@@ -459,7 +459,7 @@ fn half @151
   bb9:
       StorageDead(_6) @169 s2
       StorageDead(_5) @166 s2
-      unreachable check bb1 @164 s1
+      unreachable @164 s1
   bb10:
       StorageDead(_8) @173 s1
       goto bb5 @151

@@ -2313,17 +2313,19 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the block or `if` it leaves, is witnessed by its
-    // declaration, the value retaining the Loan: an undecided holder and its decided twin (BlockEscapeLoanTest), a chain between body Origins
-    // (OriginRelationDiagnosticTest) and a fixed input's capture (InputDependentValueCallTest).
+    // declaration, the value retaining the Loan: a chain between body Origins (OriginRelationDiagnosticTest) and a fixed input's capture
+    // (InputDependentValueCallTest). An undecided holder and its decided twin (BlockEscapeLoanTest) leave a labeled do by its exits only,
+    // whose drop chain reaches the use, so the use witnesses (the do's body end, no completion since R4-M175, no longer stops the walk;
+    // DECISIONS Q13: the same code, subject and count).
     [Theory]
     [InlineData(
         "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n    let k = label block: do\n        let n = 5\n" +
         "        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
-        "let n = 5: Anchor n@ref, Store var o: Option<ref/i32> = .Some(z@ref)")]
+        "let n = 5: Anchor n@ref, Use o@ref")]
     [InlineData(
         "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o = z@ref\n    let k = label block: do\n        let n = 5\n        o = n@ref\n" +
         "        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
-        "let n = 5: Anchor n@ref, Store var o = z@ref")]
+        "let n = 5: Anchor n@ref, Use o@ref")]
     [InlineData(
         "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
         "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",

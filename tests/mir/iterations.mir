@@ -101,7 +101,7 @@ fn sum @4
       StorageDead(_10) @18 s3
       goto bb13 @4
   bb15:
-      unreachable check bb8 @22 s3
+      unreachable @22 s3
   bb16:
       _3 = const () @14 s1
       goto bb17 @14 s1
@@ -232,7 +232,7 @@ fn positions @29
       _13 = const () @50 s4
       goto bb12 @50 s4
   bb14:
-      unreachable check bb6 @49 s3
+      unreachable @49 s3
   bb15:
       StorageDead(_9) @40 s2
       goto bb2 @29

@@ -57,10 +57,10 @@ internal sealed partial class MirBuilder
             this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
             var bindings = this.temporaries = this.OpenScope(block: true);
             this.Bind(plan, arm.Pattern, start);
-            this.Result(destination, arm.Syntax.Body, arm.Syntax.Body, input);
+            var value = this.Result(destination, arm.Syntax.Body, arm.Syntax.Body, input);
             this.CloseScope(bindings);
             this.scope = outer;
-            this.Join(after, arm.Syntax.Body);
+            this.End(after, arm.Syntax.Body, value);
             this.current = next;
         }
 
