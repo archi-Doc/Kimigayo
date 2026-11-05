@@ -228,13 +228,13 @@ public partial class OptionalTryDiscardTest
         Assert.Equal("try x@move", warning.Text);
     }
 
+    // The MIR's verdict on the program is ANeverSuccessPayloadInitializesTheTryValue's first row (DECISIONS R4-M175).
     [Fact]
     public void NeverSuccessStillChecksFailureAndHasNoDiscardWarning()
     {
         var c = MinimalEmissionTest.Analyze("func source() -> Result<Never, i32> => .Err(1)\nfunc run() -> Result<(), i32>\n    try source()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Empty(CompilationTestHelper.BindingWarnings(c));
-        Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
     // SPEC 17.3, 14.8.1, 14.10.3 (DECISIONS R4-M175): a Never success payload is valid: the try's Pattern binding is no Never form, so it
@@ -281,13 +281,13 @@ public partial class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> i32? => .Some(try x)");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
+        var valid = c.Analyze().IsVerified;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Bind();
-            flow.Reanalyze(c.Kotonoha.RootKoto);
+            valid &= c.Analyze().IsVerified;
         }));
-        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.True(c.Binding.Result.IsComplete && valid, Describe(c));
     }
 
     [Fact]
@@ -295,8 +295,7 @@ public partial class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> ()?\n    try x\n    return .Some(())");
         var propagation = Assert.Single(Descendants(c.Kotonoha.RootKoto).OfType<TryKoto>());
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
+        Assert.True(c.Analysis.IsVerified, Describe(c));
         Assert.Same(BoundType.I32, propagation.TypeOf());
     }
 

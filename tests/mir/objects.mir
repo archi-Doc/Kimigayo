@@ -244,3 +244,86 @@ fn eitherCell @115
       StorageDead(_8) @130 s1
       StorageDead(_7) @130 s1
       unreachable @120
+fn blockedTest @133
+  _0: bool return @136
+  _1: objref/Cell arg x @134
+  _2: objref/Cell temp @138
+  _3: objref/Cell temp @148 s1
+  _4: objref/Cell temp @140
+  _5: () temp @142 s1
+  _6: Never temp @144 s2
+  _7: () temp @145 s2
+  _8: () temp @146 s3
+  _9: () temp @142 s1
+  _10: Never temp @144 s4
+  _11: () temp @145 s4
+  _12: () temp @146 s5
+  _13: objref/Cell temp @137
+  s1: lexical in s0 @141
+  s2: deferred in s1 @143
+  s3: lexical in s2 @145
+  s4: deferred in s1 @143
+  s5: lexical in s4 @145
+  bb0:
+      StorageLive(_2) @138
+      StorageLive(_3) @148 s1
+    * _3 = copy _1 @148 s1
+      goto bb9 check bb10 @147 s1
+  bb1:
+      StorageLive(_13) @137
+      _13 = &(*_2): objref/Cell @137
+      _0 = intrinsic TypeTest(move _13, const type Cell) -> bb15 @137
+  bb2:
+      _2 = move _4 @140
+      goto bb1 @140
+  bb3:
+      StorageLive(_5) @142 s1
+      StorageLive(_6) @144 s2
+    * goto bb5 @144 s2
+  bb4:
+      goto bb2 @133
+  bb5:
+      goto bb6 check bb7 @144 s2
+  bb6:
+      StorageLive(_7) @145 s2
+      StorageLive(_8) @146 s3
+    * _8 = const () @146 s3
+      StorageDead(_8) @146 s3
+      _7 = const () @145 s3
+      StorageDead(_7) @145 s2
+      goto bb5 @145 s2
+  bb7:
+      StorageDead(_6) @144 s2
+      StorageDead(_5) @142 s1
+      unreachable check bb4 @143 s1
+  bb8:
+      StorageDead(_3) @148 s1
+      goto bb3 @133
+  bb9:
+      _4 = move _3 @147 s1
+      goto bb8 @147 s1
+  bb10:
+      StorageDead(_3) @148 s1
+      StorageLive(_9) @142 s1
+      StorageLive(_10) @144 s4
+    * goto bb12 @144 s4
+  bb11:
+      unreachable @141
+  bb12:
+      goto bb13 check bb14 @144 s4
+  bb13:
+      StorageLive(_11) @145 s4
+      StorageLive(_12) @146 s5
+    * _12 = const () @146 s5
+      StorageDead(_12) @146 s5
+      _11 = const () @145 s5
+      StorageDead(_11) @145 s4
+      goto bb12 @145 s4
+  bb14:
+      StorageDead(_10) @144 s4
+      StorageDead(_9) @142 s1
+      unreachable check bb11 @143 s1
+  bb15:
+      StorageDead(_13) @137
+      StorageDead(_2) @138
+      return @137

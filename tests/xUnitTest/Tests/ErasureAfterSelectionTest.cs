@@ -25,6 +25,10 @@ public class ErasureAfterSelectionTest
 
     private const string NonCopy = "    let s = \"abc\"\n    let f = func [s@move] (n: i32) => n + 1\n";
 
+    private const string FnK = "func k(g: (i32) -> i32) -> i32\n    return 0\n";
+
+    private const string GenericK = "func k<T>(g: (T) -> T, x: T) -> T\n    return x@move\n";
+
     [Theory]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
     [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
@@ -128,6 +132,21 @@ public class ErasureAfterSelectionTest
     [InlineData("p_gen_useafter_ok", "enum Act<T>\n    Run((T) -> T)\nfunc k() -> i32\n" + Copied + "    let a: Act<i32> = .Run(f)\n    return f(1)\n", "")]
     [InlineData("p_twice_nc", ActRun + NonCopy + "    let a = Act.Run(f)\n    let b = Act.Run(f)\n    return 1\n", "TransferRequired_Kd f; TransferRequired_Kd f")]
     public void APayloadErasureLeavesACopySourceUsable(string form, string source, string records)
+        => AssertRecords(form, source, records);
+
+    // SPEC 7.7.4, 12.4.1, 10.5.1 (G386; DECISIONS BU-83's rule E): a parenthesized anonymous function at a Function parameter is the
+    // unparenthesized argument, erased once (HirFormsTest.AnErasureIsAdjustedOnceAtTheNodeBindingErased holds the other forms), also at a
+    // parameter holding Origins and in a callee that calls it; an invalid one keeps its record: a header that does not fit
+    // (NoApplicableOverload_Kd), an environment that is not Owned (UnprovenConstraint_Kd).
+    [Theory]
+    [InlineData("g386", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return 0\nfunc run(a: ref/i32, b: ref/i32) -> i32\n    return k(a, b, (func [] (o) => 0))\n", "")]
+    [InlineData("w6", "func k(g: (i32) -> i32) -> i32\n    return g(1)\nfunc run() -> i32\n    return k((func [] (o) => o))\n", "")]
+    [InlineData("i386a", FnK + "func run() -> i32\n    return k((func [] (o: bool) => 0))\n", "NoApplicableOverload_Kd k((func [] (o: bool) => 0))")]
+    [InlineData("a7", FnK + "func run() -> i32\n    return k(((func [] (o: bool) => 0)))\n", "NoApplicableOverload_Kd k(((func [] (o: bool) => 0)))")]
+    [InlineData("a13", GenericK + "func run() -> i32\n    return k((func [] (o: bool) => o), 1)\n", "NoApplicableOverload_Kd k((func [] (o: bool) => o), 1)")]
+    [InlineData("i386c", FnK + "func run(x: ref/i32) -> i32\n    return k((func [x] (o) => x@follow))\n", "UnprovenConstraint_Kd (func [x] (o) => x@follow)")]
+    [InlineData("a8", FnK + "func run(x: ref/i32) -> i32\n    return k(((func [x] (o) => x@follow)))\n", "UnprovenConstraint_Kd ((func [x] (o) => x@follow))")]
+    public void AGroupedCallableArgumentIsErasedOnce(string form, string source, string records)
         => AssertRecords(form, source, records);
 
     // The program's records, each `Code text` in report order ("; " between them), with a startup body.

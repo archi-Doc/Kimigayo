@@ -69,10 +69,11 @@ public class EnumBindingTest
         Assert.True(c.Binding.TryGetEnumConstruction(invocation, out var plan));
         Assert.Null(invocation.CallOf());
         Assert.Equal(0, plan!.Case.Ordinal);
-        Assert.Equal(AcquisitionKind.CopyOrMove, plan.Acquisitions[0]);
-        Assert.Equal(AcquisitionKind.Move, plan.Acquisitions[1]);
         for (var i = 0; i < 2; i++)
         {
+            // SPEC 13.5.3: each payload operand Place's own acquisition, its explicit `@move` (the conversion's own Temporary is its
+            // materialization, another fact).
+            Assert.Equal(HirAcquire.Move, HirTables.AdjustOf(((ConversionKoto)invocation.ArgumentNodes[i]).Left).Acquire);
             Assert.Same(invocation.ArgumentNodes[i], plan.PayloadOperations[i].Source);
             Assert.Equal(i, plan.PayloadOperations[i].ParameterIndex);
         }

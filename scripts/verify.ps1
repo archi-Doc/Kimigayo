@@ -23,7 +23,7 @@
 # Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
 # -Pipeline mir (R3-R6) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy. Since G2 it publishes what the
-# default does (DECISIONS R5-M156), so its run is the difference ledger's (KIMI_MIR_DIFF).
+# default does (DECISIONS R5-M156), so it adds only the compiler identity mark.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
 #
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled

@@ -656,6 +656,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Functional/Allocation split is simpler), its positional split of `Compilation.Problems` (order-dependent; computing SourceRefs
   numbers unnumbered nodes under the observer) and its shipping only the hook in U0b (two parallel analysis units would invent
   the driver and record).
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): the difference harness ends; the last ledger is W-17's (`shared-base/382126932/mir-diff/`).
 - **R4-M18** (2026-10-12) The Semantics case bound (`PairBinder.CaseBound`,
   64; SPEC 8.15, 23.1.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
   signature and before the parts are bound: a function or Property whose defaults, base initializer, body, initializer or accessor
@@ -2787,6 +2788,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Twin field"); `BodyChain` over published records (it marks the Closure result and re-runs the formation test); rows at the record's
     node (a call argument's fixed-fixed record shares its node with that position's rows); the code (Closure results are Unsatisfied,
     and a mixed twin is Unproven); one more `twinOnly` branch (a second special case where the canonical table takes a column).
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): with the ledger gone, the twin subset is the test MIR side's
+    filter (`Binding.IsTwinRecord`), until H11.
 - **R4-M112 Every no-candidate body variable of a local is its local's region** (2026-10-22; under R4-M94's package, 2a0-D §5.2 and
   D10, OQ12 (a), OQ7 (a); redone after BU's review blocked round 1 (B1, B2), under redo rulings R1–R3; round 1 never landed, so this
   entry supersedes nothing on dev)
@@ -3909,6 +3912,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     needs its own resolution (a Binding target side or its removal) before R4's exit, not an exemption.
   - Rejected: a second copy of the ledger's hash rule in the helper; a strict "every OldRule method" row now (F8 and B3.3 cannot reach
     the helper); comparing by line as the SPEC-example oracle does (R5's condition: the exact record at its subject).
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): the MIR target side is `MirTargetSide.MirSide`, the publisher's
+    rows.
 - **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (superseded in part by
   R4-M155: its result half, the owner's (A), and R4-M162) (2026-10-26, under R4-M126 §2.15 (P10) and D-11; supersedes R4-M101 O1)
   - Rule (SPEC 15.3.4 "Nested signatures", which names Function Types, Callable and anonymous functions together as nested signatures
@@ -7575,7 +7580,7 @@ resumed by R4-M86 (2026-10-20).
     never repeats a Type); a mode on the completion for the read form (the read form is the kept part without its marks).
 
 - **BU-43 Where no source supplies a candidate, a join's Type is formed part by part; a call classifies such a join's results by
-  position; Never supplies nothing at any position** (2026-10-26; superseded in part by BU-78 and BU-79; PLAN G159 (2), unit bu47; SPEC
+  position; Never supplies nothing at any position** (2026-10-26; superseded in part by BU-78, BU-79 and BU-97; PLAN G159 (2), unit bu47; SPEC
   14.9.2 step 2 (R4-M134) and 10.5.1 as R4's SPEC revision 2 writes ② and ③; the owner's answers of 2026-10-26 in BU's dialog,
   verbatim: fills 「(a) 配列リテラルと同様 (推奨)」, a control-flow argument's results 「(b) 要素ごとに統一 (推奨)」, the scalar rule 「(a) どの位置でも Never は供給なし
   (推奨)」, its consequences 「はい、Tuple 引数に揃える (推奨)」)
@@ -7907,7 +7912,7 @@ resumed by R4-M86 (2026-10-20).
   - `Binding.ObjectViews.FindObjectErasure` (6.4.5's lexical self of an override body) reads the same `EnclosingFunction`; its own walk
     is deleted too, so `BaseReceiver`'s `lexical` has one producer.
 - **BU-54 A fixed expected Type Reborrows a stored exclusive reference by one predicate; the default pipeline's newly accepted forms
-  are a recorded difference** (2026-10-30; PLAN G232, unit bu67; the owner, 2026-10-30, verbatim 「すべて推奨の内容でOkです」 on BU's pending
+  are a recorded difference** (2026-10-30; superseded in part by BU-97; PLAN G232, unit bu67; the owner, 2026-10-30, verbatim 「すべて推奨の内容でOkです」 on BU's pending
   questions, among them: record the forms the default pipeline newly accepts with bu67, valid ones and the G231-class invalid one, as a
   recorded difference until R6-check, and land bu67) SPEC 3.5.1, 10.2.2, 7.7.3.
   - Rule: `Binding.StoresExclusiveReference` is the one predicate the fixed-expected clause and `StoredReborrow` read, so a stored
@@ -8822,6 +8827,9 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: (a) skipping `AdaptInput` for an erased value-call part, a clause for one form that leaves payloads broken; (b) fitting
     the source's own Type structurally, which the check refuses (Closure against Function: `NoApplicableOverload_Kd`); (c) waiting for
     H1, which never sees a call Binding failed; (d) leaving the value call's Non-Copy record to the old Analysis.
+  - Applied to the Adjust column by G386 (2026-11-05): the ErasedType column alone says where an erasure is applied, at the node Binding
+    erased (`ChildAdjust`, a group's operand); a value operation's Erasure is only the selection's quality, so `HirAdjust.Of` gives it
+    no adaptation, and a parenthesized callable argument is erased once.
 
 - **BU-82 The Semantics-case renderer is one Binding component** (2026-11-03; R6-check Q8-6, behavior-preserving; the owner's Q8
   approval 「Q8を承認」 with proposal Q8-6, R5-M23; H0's division, R5-M182)
@@ -9055,7 +9063,7 @@ resumed by R4-M86 (2026-10-20).
 
 - **BU-93 A whole-contract comparison judges its Origin part from premises alone, at its use** (2026-11-04; PLAN G404, found by BU's
   2c-9 review N3 and G216 (b)'s design; R4 agreeing as R4-M155's owner) SPEC 15.6.1 ("judged under 15.3.7 from premises alone, so it is
-  Proven or Unknown"), 15.3.7, 10.7. Amends R4-M155's A1.
+  Proven or Unknown"), 15.3.7, 10.7. Amends R4-M155's A1. Amended by BU-97.
   - Cause: `CallableSignatureFits` (a Closure's conversion, a Callable proof's subject) walked without a Binding, so a member between
     fixed Origins was judged without the use's premises: `(ref/i32 during b) -> i32` from `func [] (p: ref/i32 during a)` under
     `origin b outlives a`, and the two-clause and `uniq` forms, were rejected.
@@ -9156,6 +9164,73 @@ resumed by R4-M86 (2026-10-20).
     - a failed source (14.9.1: no source);
     - the MIR's `|| !Reached` (a consumer deciding what Binding owns).
 
+- **BU-97 Three BU entries' stated conditions after H5 and G216 (a) Part 1** (2026-11-05; BU's record of decisions already made and
+  of removal conditions met; G420's d7 review, T-34's review N2) The entries keep their text; this one states what changed.
+  - BU-43, superseded in part by G216 (a) Part 1 (dev, `claude/bu84-g216a-u11`; SPEC 10.5.1, 14.9.2 step 2):
+    - U1.5 (BU's decision in U1.5's design, accepted at R4's review 3, under the owner's one rule for every position, 2026-10-31,
+      relayed by R4, verbatim 「(a)：F 案の U15e をこの回に取り込み、すべての位置で同じ規則にする。」): `PositionKind` decides typed
+      first. A position with a typed part is typed at its common Type, and only a position with no typed part waits. This supersedes
+      BU-43's "one with a waiting part waits".
+    - U1.6g (a) (BU's decision, with R4: BU-43's clause narrowed SPEC 10.5.1 for a call argument; `Binding.ArgumentKinds.ConflictWaits`):
+      a join under the argument probe whose typed parts have no common Type fixes no complete Type without its call's expectation, so
+      it waits as a Join, which its call completes at the selected candidate's Type. Once the call has selected and taken the argument
+      (`TakenByCall`, BU-74), the conflict is the join's own record, as outside a call argument; that clause is the owner's (i), errors
+      by the letter (2026-10-31, verbatim 「U1.6e (i) エラーにする でお願いします」). This supersedes BU-43's "its typed parts conflict,
+      which fails it at once" and "fails at once also when nested" for call arguments.
+  - BU-93's lost records: "until H11 and H3" was met at H5 (dev 70fd9deb9) through H3-2 (R5-M184) and H5, without H11. The
+    annotation's `UnprovenOriginRelation_Kd` (pl_n 8:19, p3_n 8:20, pl_n_written 8:19 and 8:66, pmv_let 11:19) and pmv_let's
+    `MovedPlace_Kd` (10:13) are published again (T-34's rows). BU-93's list missed one loss of the same G56 family: pk_noclause_int's
+    Closure parameter annotation `UnprovenOriginRelation_Kd` (12:35), also restored at H5. G418's two records (k's clause record at
+    `s`, 12:14; the call's `UnprovenConstraint_Kd` at `k`, 12:12) stay lost until G418.
+  - BU-54's recorded difference ended at H5: the MIR decides acceptance on every pipeline, so the default pipeline rejects
+    `let r2: objuniq/P during a = h.o; r1.x = 1` with A5's `ComparisonLoanConflict_Kd`, as the MIR pipeline did (BU's H5 sweep,
+    rechecked on dev 70fd9deb9). Its rule (one `StoresExclusiveReference` predicate) stands.
+  - Rejected: editing the three entries' text in place (DECISIONS keeps a superseded entry and names its replacement).
+
+- **BU-95 A function's set binds inside its header's Origin declaration** (2026-11-05; PLAN G417 (3) U1; the owner's
+  「(c) に切り替えます」 and 「123を推奨どおり、4を承認する」; BU's design `bu\batch\G417\binding-design.md` revision 6, design review 5 ACCEPT with
+  condition C-1) SPEC 15.3.4, 23.1.2. The cause it removes: `BindConstraints` runs before `BindHeader`, so a Constraint's set Type
+  bound in State 0 and kept `MissingOriginBinding_Kd`.
+  - Rule (`Binding.Types.BindType`, before `resolvingTypes.Add`): binding a binding-set annotation whose `OriginOwner` is a named
+    function with an unbound header binds that header first, with the consultation frame suspended, because a header is its
+    declaration's (R4-M101 E3).
+    - Inside the header `Resolving` makes the step a no-op, so the header's relations pull the set Types into its window.
+    - It covers an occurrence, a use's `BindOriginSetType` pull, and a set in a nested Function Type or Callable. It replaces
+      `BindCallableRequirement`'s header-first line.
+  - Owners (`OriginOwner`'s table, SPEC 15.3.4 Q-B, Q-C): a conditional conformance owns its `when` list's and implementation
+    block's sets, and a Contract-wide clause owns its own.
+  - Rejected:
+    - a Constraint region as owner (superseded by (c));
+    - triggering on a clause's syntax, which depends on order (h5, cx1);
+    - binding every header before every Constraint.
+- **BU-100 An unrelated Constraint set's slot is an Origin of its own kind, `OriginKind.ConstraintSet`** (2026-11-05; PLAN G417 (3)
+  U2, an Owner-class unit; the owner's 「(c) に切り替えます」, 「123を推奨どおり、4を承認する」, 「G417 の U2　aで」 and, approving the
+  vocabulary entry, 「(a) 新しい Origin の種類を足す で決定します」 (board O-18); BU's design `bu\batch\G417\binding-design.md`
+  revision 8, design review 7 ACCEPT; R4's consent C-19 for the view row) SPEC 15.3.2, 15.3.4. The cause it removes: the omitted
+  slot of a set that no relation equates had no completion, so it kept `MissingOriginBinding_Kd` and its declaration's
+  Constraints their dependent `InvalidConstraint_Kd`, though SPEC 15.3.4 makes such a set quantify every choice of its Origins.
+  - The kind's one contract: the Origin of a slot of a binding set that a Constraint names (not an associated specification),
+    that its owner's declaration holds and that no relation fixes. It is a fixed Origin about which only its declaration's
+    clauses say anything (P(ρ0)). No caller, conformance or nested signature substitutes it, so a caller proves a Constraint over
+    it for every choice. In storage (`Binding.Storage.StorageType`) it is a hidden Origin, `InvalidOriginBinding_Kd` at the
+    Origin expression (`ValidateOriginRequirements`). Binder: the set occurrence; Slot: the set Type's aggregate slot; shown
+    `m.at`. It is appended after `Unstated`, so no value renumbers.
+  - Producer: only `OmittedOrigin`'s last step, through `Binding.ConstraintSet`, in an explicit position (C-2: only the
+    Constraint position's omission).
+  - Readers (the design's table of every `OriginKind.` line): `FixedOrigin` and `FixedInBodyOrigin` true; `Declared` true; the
+    display and Type text show `m.at`; `StepOf` an explicit Exclusive arm. A raw layer stating it is a located `Unsupported_Kd`,
+    since SPEC 5.7 does not settle whether it keeps raw authority. Every substitution, quantification and schema reader keys on
+    `Parameter` or `Input` and a binder, so it never matches. The frozen old path and Mir/** are unchanged.
+  - The C1-F4 view's row (`ClassifyAtom`, 2a0-D §3): Fixed in every body. This is sound by vacuity. A caller proves a Constraint
+    over ρ0 for every choice, so a value carrying ρ0 exists only if a caller supplied one, through an argument proven to outlive
+    a fixed unknown: only `static` is. So reading ρ0 as outliving a body admits no dangling borrow.
+  - Rejected:
+    - `Parameter` with the set occurrence as Binder (U2's implementation review D1): `InContract` finds no scope it owns, so A5
+      leaves it Unclassed, and it gives `Parameter` a second meaning;
+    - a Projection atom: `OriginClasses` reads a body's Projection as body-local (finite), not fixed;
+    - extending `InContract` to a set occurrence: it keeps `Parameter`'s second meaning;
+    - completing the slot in `CompletePendingOrigins`: an unrelated set binds after its declaration completed, so it never
+      reaches that step.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -14161,6 +14236,8 @@ structure is recorded here by the unit that first implements it.
     2g-D–2g-7, A-4) → … → H3-2'. Removal condition: 2g-1.
   - Amended (the H5 split plan's ruling X1, 2026-11-03): PD29 holds per merge: F stops both old producers; the dead code goes in D1-D3 of
     the same group merge.
+  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a, amended by H8a): its departures from H0 and H0c (the twin filter
+    to H11, `LegacyRecords` to H8a, `MirTargetSide` kept).
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -14287,6 +14364,25 @@ structure is recorded here by the unit that first implements it.
     Emission-partition record between G2 and H5 (only A1's and A2's problems refusing), is gone, since every Error row rejects at
     check (R5-M185); an inexact body that reaches generation is `InternalInvariant_Kd` (R5-M96's amendment). Supersedes R5-M4's
     step 2.
+- **R5-M188 The ledger harness ends; the test MIR side reads the publisher's rows (R6-check H10a)** (2026-11-05, R5; design
+  `draft/Sketches/R6-check/H10a-design.md` revision 1 with §9's fixes, two design reviews) Major. Amended in place by R6-check H8a
+  (2026-11-05, R5's ruling on its OQ1; design `draft/Sketches/R6-check/H8a-design.md` D4) before the entry landed: `LegacyRecords`.
+  - The difference ledger (R4-M17) ends: its observer, compared set, matcher, aggregation, classification table and tests, and
+    `Compilation.Analyzed`. Nothing classifies against it since H5 (D-c2); the last ledger is the last window's before H10a's merge, W-17's `shared-base/382126932/mir-diff/`. The difference categories (a)–(e) stay defined (COMPILER_ARCHITECTURE).
+  - The test MIR side is `MirTargetSide.MirSide`: after `Analyze`, Binding's records without the twins, then
+    `Compilation.Problems`' rows as the publisher has them (every merged problem under its own code, then the validator findings).
+    Supersedes R4-M136's side (the ledger's common and MIR sides, without collection records and derived problems): those were the
+    ledger's comparison rules, and a second copy of the publisher's selection; the semantic snapshot prints it (H0c row 1).
+  - Departures from R5-M182 (H0's row and H0c), each with the reason that no longer holds:
+    - `Binding.IsTwinRecord` stays to H11 (D-c2 named H10a): Binding's twins publish beside A5's since H5 (T50), so dropping the
+      filter now would move every twin-node expectation twice; MirSide's filter is its reader, and H11 removes both.
+    - `LegacyRecords` ends at H8a (H10a's text, which its review accepted, kept `LegacyRecords.Of` to H10b because its remaining
+      readers asserted the old analysis for its own subject): H8a deletes those readers' old halves (its D1) and re-points the
+      Binding-subject reads to `MirTargetSide.MirSide` or `Binding.Issues`, so H10b finds no reader. Only `Location`, `Document` and
+      `Library` move to `CompilationTestHelper` (H10a).
+    - "MIR helpers into `CompilationTestHelper`" and H0c's "else goes": `MirTargetSide` keeps its name, `Check` and `At` and owns
+      `MirSide` (the group's one record pin, 79 call sites), and the MIR's (requirement, code, analysis) pairs of R4-M67 with
+      `BindingComplete` move to their one reader, `MirCensusTest`.
 
 
 ## R7, R8 and R9 (adopted 2026-11-03)

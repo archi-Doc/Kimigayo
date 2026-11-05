@@ -224,13 +224,14 @@ public sealed partial class Binding
     }
 
     // The Adjust of a child its consumer acquires or uses: an adaptation Binding recorded at the node itself (at its fixed expected Type,
-    // or as a receiver; an erasure to its Function Type, SPEC 7.7.4) wins over its consumer's operation, except Binding's in-place read of
-    // a selection (a shared borrow of the child's own stored Type, ElementAccess.IsSynthesizedAccess), which this use's exclusive borrow of
-    // the child or the child's claim overrides (claimed: this use's operation's target or an earlier use needed exclusive capability of
-    // it, as the contract states; SPEC 4.7.1, 7.3). A Place adapted or used in place is not acquired, an adapted value is a Temporary, and
-    // an unadapted one acquired by value, or erased, is acquired by the bare rule. A built-in operator's operand that is not Copy, a
-    // comparison's, is inspected through a shared Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other than a
-    // literal in its temporary.
+    // or as a receiver) wins over its consumer's operation, except Binding's in-place read of a selection (a shared borrow of the child's
+    // own stored Type, ElementAccess.IsSynthesizedAccess), which this use's exclusive borrow of the child or the child's claim overrides
+    // (claimed: this use's operation's target or an earlier use needed exclusive capability of it, as the contract states; SPEC 4.7.1,
+    // 7.3). An erasure to its Function Type (SPEC 7.7.4) is the node's own record, its ErasedType: that column, never a consumer's
+    // operation, owns where an erasure is applied (DECISIONS BU-83). A Place adapted or used in place is not acquired, an adapted value is
+    // a Temporary, and an unadapted one acquired by value, or erased, is acquired by the bare rule. A built-in operator's operand that is
+    // not Copy, a comparison's, is inspected through a shared Loan from its evaluation instead (SPEC 13.4): a Place in place, a value
+    // other than a literal in its temporary.
     private HirAdjust ChildAdjust(Koto child, HirAdaptation adaptation, UseKind kind, bool claimed)
     {
         var recordedWins = this.adaptations.TryGetValue(child, out var recorded) && !(ElementAccess.IsSynthesizedAccess(child) &&

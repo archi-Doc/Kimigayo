@@ -97,9 +97,9 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Gets the pass's lint records whose code is an Error, in walk order until ReportDiagnostics sorts them, which tests list
-    /// with the old path's records (LegacyRecords) until H10.</summary>
-    [Transitional("R6", Reason = "LegacyRecords' read of the lint Errors; H10 deletes it with the old path.")]
+    /// <summary>Gets the pass's lint records whose code is an Error, in walk order until ReportDiagnostics sorts them, which the test MIR
+    /// side (<c>MirTargetSide.MirSide</c>) lists beside Binding's issues.</summary>
+    [Transitional("R6", Reason = "The test MIR side's read of the lint Errors; H10b decides its successor.")]
     internal IEnumerable<(Koto Node, DiagnosticCode Code)> LintErrorRecords
         => this.lints.Where(static x => IsError(x.Row)).Select(static x => (x.Node, LintTable[(int)x.Row].Code));
 

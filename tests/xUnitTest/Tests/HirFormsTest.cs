@@ -277,6 +277,43 @@ public sealed partial class HirFormsTest
         Assert.Equal(["value@move Temporary/None", "value None/None"], operands);
     }
 
+    // SPEC 7.7.4, 12.4.1, 10.5.4 (G386; DECISIONS BU-83's rule E): an erasure is adjusted once, at the node Binding erased, whatever
+    // groups enclose it: a named call's anonymous function or function group, also at a generic callee, a method or an initializer, as
+    // its unparenthesized twin is; a Closure local's group, erased itself; a `let` initializer's group and a payload's.
+    [Theory]
+    [InlineData("return k(func [] (o) => 0)", "func [] (o) => 0")]
+    [InlineData("return k((func [] (o) => 0))", "func [] (o) => 0")]
+    [InlineData("return k(((func [] (o) => 0)))", "func [] (o) => 0")]
+    [InlineData("return k((func [] (o: i32) => 0))", "func [] (o: i32) => 0")]
+    [InlineData("return k0((func [] () => 0))", "func [] () => 0")]
+    [InlineData("return gk(func [] (o: i32) => o, 1)", "func [] (o: i32) => o")]
+    [InlineData("return gk((func [] (o: i32) => o), 1)", "func [] (o: i32) => o")]
+    [InlineData("return k(g1)", "g1")]
+    [InlineData("return k((g1))", "g1")]
+    [InlineData("return k((gid))", "gid")]
+    [InlineData("let b = Box.init()\n    return b.apply((func [] (o) => o))", "func [] (o) => o")]
+    [InlineData("let h = Holder.init((func [] (o) => o))\n    return 0", "func [] (o) => o")]
+    [InlineData("let c = func [] (o: i32) => 0\n    return k((c))", "(c)")]
+    [InlineData("let f: (i32) -> i32 = (func [] (o) => 0)\n    return 0", "func [] (o) => 0")]
+    [InlineData("let f: Option<(i32) -> i32> = .Some((func [] (o) => 0))\n    return 0", "func [] (o) => 0")]
+    public void AnErasureIsAdjustedOnceAtTheNodeBindingErased(string body, string erased)
+    {
+        const string Callees = "func k(g: (i32) -> i32) -> i32 => 0\nfunc k0(g: () -> i32) -> i32 => 0\nfunc gk<T>(g: (T) -> T, x: T) -> T => x@move\n" +
+            "func g1(o: i32) -> i32 => o\nfunc g1(o: bool) -> i32 => 0\nfunc gid<T>(o: T) -> T => o@move\n" +
+            "struct Box\n    public var v: i32\n    public init() => self.v = 1\n    public func apply(self: ref/Self, g: (i32) -> i32) -> i32 => 0\n" +
+            "struct Holder\n    public var v: i32\n    public init(g: (i32) -> i32) => self.v = 1\n";
+        var source = Callees + "func run() -> i32\n    " + body + "\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var adjusted = Reachable(c.Kotonoha).Where(static x => HirTables.AdjustOf(x).Adaptation == HirAdaptation.Erasure)
+            .Select(x => source.Substring(x.Span.Start, x.Span.Length));
+        var recorded = Reachable(c.Kotonoha).Where(static x => HirTables.ErasedType(x) is not null).Select(x => source.Substring(x.Span.Start, x.Span.Length));
+        Assert.Equal([erased], adjusted);
+        Assert.Equal([erased], recorded);
+    }
+
     // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
     // ConstIndex and a runtime one an Index, a user index designates the referent of its selected call's reference, which an update through its Field takes by indexUniq
     // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.

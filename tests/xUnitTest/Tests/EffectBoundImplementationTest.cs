@@ -26,6 +26,11 @@ public partial class EffectBoundImplementationTest
 
     private const string Main = "public func main() => ()\n";
 
+    // P42's StaticStorage record at Sink's settable static, Metrics.puts (DECISIONS R5-M82; STATUS Static members): a MIR row of every
+    // program with Sink.
+    private static readonly (DiagnosticCode Code, SyntaxLocation At) PutsStorage =
+        (DiagnosticCode.Unsupported_Kd, MirTargetSide.At(Sink, "var puts: isize = 0"));
+
     [Theory]
     [InlineData("struct CountingSink\n    Self is Sink\n    var count: isize = 0\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        self.count += 1\n        return .Ok(())\n", true)]
     [InlineData("struct Forward<W>\n    W is Sink\n    Self is Sink\n    var inner: W\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        return self.inner.put(value)\n", true)]
@@ -33,7 +38,7 @@ public partial class EffectBoundImplementationTest
     [InlineData("struct ConsoleSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        Console.writeLine(\"put\")\n        return .Ok(())\n", false)]
     [InlineData("contract Plain\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\nstruct Loose<W>\n    W is Plain\n    Self is Sink\n    var inner: W\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        return self.inner.put(value)\n", false)]
     public void ConfinedRejectsEnvironmentEffects(string declarations, bool valid)
-        => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink");
+        => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink", PutsStorage);
 
     // SPEC 8.11.2: an environment effect obtains authority over mutable state from the environment; accesses made with
     // authority from the inputs are none, even through a raw pointer or a borrow of static storage.
@@ -46,7 +51,7 @@ public partial class EffectBoundImplementationTest
     [InlineData("contract Maker\n    func make(self: ref/Self) -> Array<i32>\n        effect confined\nstruct M\n    Self is Maker\n    var n: i32 = 4\n    public func make(self: ref/Self) -> Array<i32>\n        let values: [2 of i32] = [self.n, self.n]\n        return values.slice().toArray()\n", true)]
     [InlineData("contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n    public func fill(self: ref/Self, values: uniq/Array<i32>)\n        var view = values.sliceUniq()\n        view[0] = 7\n", true)]
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
-        => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink");
+        => AssertBound(MinimalEmissionTest.Analyze(Sink + declarations + Main), valid, "Self is Sink", PutsStorage);
 
     // SPEC 8.11.2: reading an immutable static of a Transferable Type (`i32`) is no environment effect; its initializer (`2 + 3`) enters
     // the summary and has none, so the confined witness keeps its bound. Binding refused the initializer's destructions with one
@@ -248,12 +253,14 @@ public partial class EffectBoundImplementationTest
 
     // R6-check H3b T40: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges an effect bound where Binding did. Binding
     // completes; a violated bound refuses the program with A4's IncompatibleContractImplementation_Kd at the conformance's `Self is C`
-    // clause, and a kept one leaves no record. Binding's and the MIR's records are compared exactly (MirTargetSide), so P42's StaticStorage
-    // record, which the collector reports at a settable static such as Metrics.puts (DECISIONS R5-M82), is not among them.
-    internal static void AssertBound(Compilation c, bool valid, string conformance)
+    // clause, and a kept one leaves no record. The MIR side is compared exactly (MirTargetSide): beside the bound's record it holds the
+    // program's other records, such as P42's StaticStorage record, which the collector reports at a settable static such as Metrics.puts
+    // (DECISIONS R5-M82; STATUS Static members).
+    internal static void AssertBound(Compilation c, bool valid, string conformance, params (DiagnosticCode Code, SyntaxLocation At)[] others)
     {
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(valid || !c.Accepts, MinimalEmissionTest.Describe(c));
-        MirTargetSide.Check(c, valid ? [] : [(DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At(conformance))]);
+        (DiagnosticCode, SyntaxLocation)[] bound = valid ? [] : [(DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At(conformance))];
+        MirTargetSide.Check(c, [.. bound, .. others]);
     }
 }

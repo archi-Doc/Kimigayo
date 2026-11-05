@@ -35,7 +35,7 @@ public class DiagnosticPrecisionTest
     [InlineData("missing", "UnresolvedBinding_Kd missing")]
     [InlineData("0..3", "UnresolvedBinding_Kd i.foo")]
     public void ALoopBindingRestsOnItsFailedIterable(string iterable, string records)
-        => Assert.Equal(records, string.Join(" | ", PublishedErrors(MinimalEmissionTest.Analyze($"public func main()\n    for i in {iterable}\n        i.foo()")).Select(static x => $"{x.Code} {x.Text}")));
+        => Assert.Equal(records, string.Join(" | ", CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze($"public func main()\n    for i in {iterable}\n        i.foo()")).Select(static x => $"{x.Code} {x.Text}")));
 
     // DIAGNOSTICS.md rule 3: an implementation limit is Unsupported where it is met; a check that rests on a failed Type
     // (expected Type, candidate signature, generic Name) is derived and published only through that failure.
@@ -89,7 +89,7 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    let counter = 1\n    counter += 1", "counter", "counter cannot be written")]
     public void TargetChecksShowTheirLocationAndFacts(string source, string text, string label)
     {
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
         Assert.Equal(text, error.Text);
         Assert.Equal(label, error.Label);
     }
@@ -99,7 +99,7 @@ public class DiagnosticPrecisionTest
     public void AFailedSelectionRelatesItsCandidates()
     {
         var c = MinimalEmissionTest.Analyze("func pick(value: i32) -> i32 => value\nfunc pick(value: string) -> i32 => 0\npublic func main()\n    let x = pick(true)");
-        Assert.Single(PublishedErrors(c));
+        Assert.Single(CompilationTestHelper.PublishedErrors(c));
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
         Assert.Equal(nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd), record.Code);
         Assert.Equal("none of 2 candidates applies", record.Label);
@@ -143,7 +143,7 @@ public class DiagnosticPrecisionTest
     // The valid twin of a failed explicit Type argument (DECISIONS BU-86): an argument that binds selects the candidate.
     [InlineData("func g<T>(x: i32) -> i32 => 0\npublic func main()\n    let v = g<i32>(1)", "")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
-        => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
+        => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
     [Theory]
     [InlineData("Return", "func read(o: objref/P) -> P => o@follow", "read(owner@objref).v")]
@@ -153,7 +153,7 @@ public class DiagnosticPrecisionTest
     {
         var source = Payload.Replace("struct P\n", "struct P\n    Self is Copy\n", StringComparison.Ordinal) + function +
             "\nlet owner = Kimi.Intrinsics.makeObj(P.init(7))\nrequire " + result + " == 7 else => $abort(\"copy\")";
-        Assert.Empty(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        Assert.Empty(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
         ScalarEmissionTest.EmitFixture("ObjectPayloadPrecision" + name, source, string.Empty);
     }
 
@@ -165,7 +165,7 @@ public class DiagnosticPrecisionTest
     {
         var mutation = DiagnosticCorpus.Mutation(name);
         var c = MinimalEmissionTest.Analyze(DiagnosticCorpus.Apply(mutation));
-        var errors = PublishedErrors(c);
+        var errors = CompilationTestHelper.PublishedErrors(c);
         var detail = string.Join("\n", errors.Select(static x => x.ToString()));
         Assert.True(errors.Length != 0, detail);
         Assert.True(errors.All(x => mutation.Expected.Contains(x.Code)), detail);
@@ -184,14 +184,14 @@ public class DiagnosticPrecisionTest
     [InlineData("func f() -> i32\n\nfunc g()\n\nlet y = 1", "MissingSyntax_Kd,MissingSyntax_Kd")]
     [InlineData("func f() ->\nlet y = 1", "MissingReturnType_Kd")]
     public void RecoveredSyntaxExplainsItsDependents(string source, string codes)
-        => Assert.Equal(codes.Split(','), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
+        => Assert.Equal(codes.Split(','), CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
     // SPEC 23.3, 23.1.2: a name missing at the end of a line is an insertion point after the dot, not the next line.
     [Fact]
     public void AMissingMemberNameIsAnInsertionPointAfterTheDot()
     {
         const string Source = "let a = 1\nlet v = a.\nlet w = 2";
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(Source)));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(Source)));
         Assert.Equal(nameof(Kimi.DiagnosticCode.MissingSyntax_Kd), error.Code);
         Assert.Equal(Source.IndexOf("a.\n", StringComparison.Ordinal) + 2, error.Span.Start);
         Assert.Equal(0, error.Span.Length);
@@ -202,7 +202,7 @@ public class DiagnosticPrecisionTest
     [Fact]
     public void FailedInterpolationWritesAreLocatedAtTheirValues()
     {
-        var errors = PublishedErrors(MinimalEmissionTest.Analyze("let a: Option<isize> = Option.None\nlet b: Option<i32> = Option.None\nConsole.writeLine(\"\\(a) \\(b) \\(a)\")"));
+        var errors = CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze("let a: Option<isize> = Option.None\nlet b: Option<i32> = Option.None\nConsole.writeLine(\"\\(a) \\(b) \\(a)\")"));
         Assert.Equal(3, errors.Length);
         Assert.All(errors, static x => Assert.Equal(nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd), x.Code));
         Assert.Equal(["a", "b", "a"], errors.Select(static x => x.Text));
@@ -223,7 +223,7 @@ public class DiagnosticPrecisionTest
     {
         const string View = "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
             "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\nlet v = View.init(value: 7)\n";
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(View + statement)));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(View + statement)));
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
         Assert.Equal(label, label is null ? null : error.Label);
@@ -243,7 +243,7 @@ public class DiagnosticPrecisionTest
     {
         const string Types = "public func main()\n    return\nstruct Q\n    public var w: i32\n    public init(w: i32) => self.w = w\n" +
             "struct P\n    public var v: i32\n    public var inner: Q\n    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n";
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(Types + function)));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(Types + function)));
         Assert.Equal(code, error.Code);
         Assert.Contains($"The Place is reached through {layer}", error.Note);
         Assert.DoesNotContain("exclusive reference", error.Message);
@@ -257,7 +257,7 @@ public class DiagnosticPrecisionTest
     [InlineData("let a = (0..1)@u8", "(0..1)@u8", "expected u8, found Kimi.Range<i32, i32>")]
     public void PositionConversionsAreTypeErrors(string statement, string text, string label)
     {
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(statement)));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(statement)));
         Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal(text, error.Text);
         Assert.Equal(label, error.Label);
@@ -269,7 +269,7 @@ public class DiagnosticPrecisionTest
     [InlineData("var entries = [1: 2]\nfor (a, a) in entries => ()")]
     public void ARepeatedLoopBindingIsReportedOnceAtTheLaterName(string source)
     {
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
         Assert.Equal(nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), error.Code);
         Assert.Equal(new Kimi.Diagnostics.SourceSpan(source.IndexOf("a, a)", StringComparison.Ordinal) + 3, 1), error.Span);
     }
@@ -280,7 +280,7 @@ public class DiagnosticPrecisionTest
     [InlineData("let a = [missingLength of 0]", "missingLength")]
     public void AFillLiteralRestsOnItsFailedPart(string source, string text)
     {
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
         Assert.Equal(nameof(Kimi.DiagnosticCode.UnresolvedBinding_Kd), error.Code);
         Assert.Equal(text, error.Text);
     }
@@ -290,7 +290,7 @@ public class DiagnosticPrecisionTest
     [Fact]
     public void AClosureTypeIsShownByItsSignature()
     {
-        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze("let offset: i32 = 1\nlet f = func [offset] (value: i32) -> i32 => value + offset\nlet n: i32 = f")));
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze("let offset: i32 = 1\nlet f = func [offset] (value: i32) -> i32 => value + offset\nlet n: i32 = f")));
         Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal("expected i32, found closure (i32) -> i32", error.Label);
     }
@@ -313,7 +313,7 @@ public class DiagnosticPrecisionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\npublic func main() => ()");
         Assert.Contains(c.Binding.LintErrorRecords, static x => x.Code == Kimi.DiagnosticCode.FunctionFallthrough_Kd);
-        Assert.Equal(["UnresolvedBinding_Kd"], PublishedErrors(c).Select(static x => x.Code));
+        Assert.Equal(["UnresolvedBinding_Kd"], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
     // SPEC 23.1.2: attribute legality and dependent declaration validity are one cause, in every attribute owner.
@@ -336,13 +336,5 @@ public class DiagnosticPrecisionTest
             Assert.Equal(code, error.Code);
             Assert.Equal(token, error.Text);
         }
-    }
-
-    private static TestDiagnostic[] PublishedErrors(Compilation c)
-    {
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.ReportAnalysis();
-        return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
     }
 }

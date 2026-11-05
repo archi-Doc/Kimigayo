@@ -178,6 +178,6 @@ public class CharLiteralParseTest
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
         Assert.True(parsed.Compilation.Bind().IsComplete);
         Assert.Same(BoundType.Char, function.ReturnType!.TypeOf());
-        Assert.Empty(parsed.Compilation.AnalyzeControlFlow().Issues);
+        Assert.True(parsed.Compilation.Analyze().IsVerified, MinimalEmissionTest.Describe(parsed.Compilation));
     }
 }

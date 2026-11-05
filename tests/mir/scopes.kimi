@@ -61,3 +61,38 @@ func returnInArgument(c: bool)
             return
         else => 1
     )
+func nestedDefer()
+    var x = 1
+    defer
+        var y = 2
+        defer => y = 3
+        x = y
+    var z = 4
+func exitOrder(first: string, second: string)
+    let a = "a"
+    let b: string
+    b = "b"
+    _ = a@move
+    return
+func showText(s: ref/string) => ()
+func borrowedArgument()
+    let s = "a"
+    showText(s)
+    showText(s)
+func discardedLiteral()
+    "discarded"
+func branchMove(c: bool)
+    let s = "a"
+    if c
+        _ = s@move
+func blockedExit()
+    let b = label work: do
+        defer => loop => ()
+        exit to work 2
+func branchBlockedExit(flag: bool) -> i32
+    if flag
+        defer
+            loop
+                continue
+        return 2
+    return 1

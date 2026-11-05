@@ -76,10 +76,8 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Equal(0, c.Binding.LintErrors);
-        Assert.Empty(flow.PendingBinding);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
     }
 
     [Theory]
@@ -95,21 +93,23 @@ public class CurrentControlFlowTest
     public void RejectsInvalidResultContracts(string source)
     {
         var c = Parse(source);
-        var bound = c.Bind();
-        var flow = c.AnalyzeControlFlow();
-        Assert.True(!bound.IsComplete || c.Binding.LintErrors > 0 || flow.Issues.Count > 0, source);
+        c.Bind();
+        c.Analyze();
+        Assert.NotEmpty(CompilationTestHelper.PublishedErrors(c));
     }
 
+    // SPEC 14.10, 16.1: `a` diverges by its loop. `b` cannot complete, its exit running its diverging defer; the HIR Completion column
+    // holds completion without cleanup, so the MIR golden blockedExit (tests/mir/scopes) holds that fact: the exit enters the deferred
+    // loop, and what follows the labeled do is reached only through an `unreachable check`.
     [Fact]
     public void UnreachableExitAndBlockedCleanupRetainTheirTypes()
     {
         var c = Parse("let a = loop\n    continue\n    exit 1\nlet b = label work: do\n    defer => loop => ()\n    exit to work 2");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var results = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FieldKoto>().ToArray();
         Assert.All(results, field => Assert.Equal("i32", field.TypeOf()?.Name));
-        Assert.All(results, field => Assert.False(flow.Nodes[field.InitializerKoto!].CanCompleteNormally));
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(results[0].InitializerKoto!));
     }
 
     [Theory]
@@ -121,10 +121,8 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c)); // The MIR decides acceptance (H5; the while row: R4-M175).
         Assert.Equal(0, c.Binding.LintErrors);
-        Assert.Empty(flow.PendingBinding);
     }
 
     [Theory]
@@ -160,7 +158,7 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var warnings = CompilationTestHelper.BindingWarnings(c);
         Assert.Contains(warnings, warning => warning.Code == code.ToString());
         Assert.True(c.Bind().IsComplete);
@@ -191,13 +189,14 @@ public class CurrentControlFlowTest
         var c = Parse(Source);
         Assert.True(c.Bind().IsComplete, Describe(c));
         string[] codes = ["DiscardedResult_Kd", "UnusedTrySuccess_Kd", "DiscardedTail_Kd", "DiscardedValue_Kd", "DiscardedValue_Kd", "StaticWhileTrue_Kd", "UnnecessaryUnsafeBlock_Kd"];
+        string[] errors = ["FunctionFallthrough_Kd", "InvalidJumpTarget_Kd", "UnsafeBlockRequired_Kd"];
         Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
-        Assert.Equal(3, c.Binding.LintErrors);
+        Assert.Equal(errors, CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid);
         Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
-        Assert.Equal(3, c.Binding.LintErrors);
+        Assert.Equal(errors, CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
     // SPEC 17.5.2: each nested `do` whose Unit Binding inferred is a descent root over its whole body. The walk shares one structural

@@ -243,22 +243,22 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.
-- **Difference ledger (R4–R6).** Each difference between the paths is one row in `artifacts/verify/mir-diff`, classified
-  as (a) an old-path error, (b) a new-path error, fixed, (c) a SPEC ambiguity, clarified, (d) an intended change (D4 and
-  the like) with its clause and plan Appendix B item, or (e) a form not ported under D2, recorded in STATUS and PLAN. The
-  ledger is information (DECISIONS R4-M35, A5 plan §8). Its R4 exit rule (a row where the old path rejects and MIR accepts,
-  other than a MIR-only relaxation, and a rejection of a library or milestone program blocked until classified (a), (c) or (d)
-  with a SPEC clause; location and code-choice differences did not) gave way for R4's exit to the owner's 90% rule (DECISIONS
-  R4-M165). The owner is consulted after two consecutive working sessions on the A5 plan that land no unit.
+- **Difference categories (R4–R6).** A difference between the paths is (a) an old-path error, (b) a new-path error, fixed,
+  (c) a SPEC ambiguity, clarified, (d) an intended change (D4 and the like) with its clause and plan Appendix B item, or (e) a
+  form not ported under D2, recorded in STATUS and PLAN; exit-gate item 1, spec-cases' `Category` and the (e) list use them
+  (DECISIONS R4-M35, A5 plan §8). Their R4 exit rule (a row where the old path rejected and MIR accepted, other than a MIR-only
+  relaxation, and a rejection of a library or milestone program blocked until classified (a), (c) or (d) with a SPEC clause;
+  location and code-choice differences did not) gave way for R4's exit to the owner's 90% rule (DECISIONS R4-M165). The
+  difference ledger that recorded them ended at R6-check H10a (the last is W-17's `shared-base/382126932/mir-diff/`). The owner is
+  consulted after two consecutive working sessions on the A5 plan that land no unit.
 - **Temporary structures**, with the stage that removes them; Transitional attributes identify these declarations (CR-A7):
   - the `KIMI_PIPELINE` switch (R6); the Koto semantic forwarding properties (R7, their Parsing and root-helper reads at R6-check;
     DECISIONS R5-M9); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the lasting HIR publication/version
     contract is unmarked, and only its publisher walk and private state disappear at R7;
   - the temporary intrinsics `Capacity`, `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and
     `FormatFinish` that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137);
-  - the `Compilation.Analyzed` event, the difference ledger's observation point, and `Binding.IsTwinRecord`, the ledger's old-side twin
-    subset (R6, the twin set with the twins at H11; DECISIONS R4-M17, R4-M23, R4-M111); `BindingFailure.VirtualEffectBound`, with no
-    producer since H5's F, its code arm and its description row (H11; DECISIONS BU-90 X2);
+  - `Binding.IsTwinRecord`, the test MIR side's twin filter (H11, with the twins; DECISIONS R4-M111, R5-M188);
+    `BindingFailure.VirtualEffectBound`, with no producer since H5's F, its code arm and its description row (H11; DECISIONS BU-90 X2);
   - the old analysis's receiver-dependence gate, its `CallPlan.ReceiverDependentResult` fact, `ReceiverDependentListed` flag and
     `Binding.ValueCallGate` (R6-check; DECISIONS R4-M152); F1's located `Unsupported_Kd` at a returned Closure's call,
     `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's representation unit; DECISIONS R4-M152);
@@ -285,8 +285,8 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   is PLAN §3's (next rule). The hold protocol stays: one stream at a time changes a shared file (the rest of `Mir`, the driver
   included, the `tests/mir` goldens and, outside Mir, `Core/Compilation.Pipeline.cs` with `Compilation.Switch.cs`, `Binding/TyCtxt.cs`
   with `TyCtxt.Substitutions.cs`, `TyCtxt.Effects.cs`, `TyCtxt.Retention.cs` with `TyCtxt.Retention.Calls.cs`, `BindingModel.cs`,
-  `Binding.ClosureInstances.cs`, `Binding.RequirementInstances.cs`, `KimiLibraryCatalog*.cs`, `src/Kimi/Checking/Hover/HoverBuilder.cs`,
-  `src/Kimi/Diagnostics/DiagnosticRequirement.cs` and `tests/xUnitTest/MirDifferenceLedger.cs`; DECISIONS R5-M7); a test file follows
+  `Binding.ClosureInstances.cs`, `Binding.RequirementInstances.cs`, `KimiLibraryCatalog*.cs`, `src/Kimi/Checking/Hover/HoverBuilder.cs`
+  and `src/Kimi/Diagnostics/DiagnosticRequirement.cs`; DECISIONS R5-M7); a test file follows
   the file it tests; the hold is taken before the unit starts and released in the merge that brings it into dev, and the other stream
   merges dev before its next change to that file. R5 puts new Binding views in new partial files and holds its batched shared MIR edits the same way (windows W1, W2, the R5 plan §3.5).
 - **The three sessions and the board (from 2026-11-03; DECISIONS R7-M2, the owner's RQ1 and RQ7).** The planning sessions are the

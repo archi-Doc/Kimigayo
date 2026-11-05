@@ -17,8 +17,7 @@ public sealed partial class Binding
     {
         for (var current = node; current is not null; current = current.Parent)
         {
-            if (current is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto or IsKoto { IsAssociatedConstraint: true } ||
-                current is VariableKoto || current.Akind is KotoKind.EnumCase or KotoKind.AssociatedType)
+            if (IsOriginOwner(current))
             {
                 // SPEC 15.3.3, 15.3.4: a Case's payload list is an inner form of the same kind; the Case, which the clauses attach to,
                 // owns the sets of all its payloads.
@@ -28,6 +27,18 @@ public sealed partial class Binding
 
         return null;
     }
+
+    // SPEC 15.3.3, 15.3.4: the declarations that own Origin sets and clauses, one row per kind; OriginOwner returns the nearest.
+    private static bool IsOriginOwner(Koto node) => node switch
+    {
+        FunctionKoto or PropertyAccessorKoto or AliasKoto or VariableKoto => true,
+        DeclarationContainerKoto or IsKoto { IsAssociatedConstraint: true } => true,
+
+        // SPEC 15.3.4: a set named in a Constraint is its declaration's; a conditional conformance owns its `when` list's and its
+        // implementation block's, and a Contract-wide clause its own (a Contract has no Origins).
+        IsKoto { Parent: ContractKoto } or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto } => true,
+        _ => node.Akind is KotoKind.EnumCase or KotoKind.AssociatedType,
+    };
 
     private static bool OriginVisible(BoundOrigin origin, Koto use)
     {
@@ -84,6 +95,32 @@ public sealed partial class Binding
     private static OriginVariance OriginArgumentVariance(BoundType type, int index, Binding? binding)
         => type.Kind == BoundTypeKind.Closure ? ClosureArgumentVariance(type, index, binding)
             : type.Symbol?.Schema?.Origins[index].Variance ?? OriginVariance.Invariant;
+
+    // SPEC 15.3.4: whether a use is a binding set named in a Constraint (not an associated specification) that its declaration holds.
+    private bool ConstraintSet(Koto use)
+    {
+        if (use is not TypeSemanticsKoto { BindingSetName: { } label } || OriginOwner(use) is not { } owner ||
+            this.originDeclarations.GetValueOrDefault(owner)?.Sets.GetValueOrDefault(label) is not { } set || !ReferenceEquals(set, use))
+        {
+            return false;
+        }
+
+        // The Constraint lies between the occurrence and its owner, or is the owner (a Contract-wide clause).
+        for (var node = use.Parent; node is not null; node = node.Parent)
+        {
+            if (node is IsKoto { IsAssociatedConstraint: false })
+            {
+                return true;
+            }
+
+            if (ReferenceEquals(node, owner))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
 
     private OriginDeclaration OriginDeclarationFor(Koto owner)
     {

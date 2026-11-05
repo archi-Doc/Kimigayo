@@ -45,6 +45,55 @@ public sealed partial class Binding
     // producer's Type (KeptType, its projections completed); null where it does not substitute.
     internal BoundType? StoredType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.PartType(written, owner) : null;
 
+    // SPEC 15.3.2, 5.7: the struct or enum whose storage contains a node: a stored Field's Type, an enum Case's payload or a base
+    // clause, read from OriginOwner and the owners' published members; null for any other position, such as an accessor signature or
+    // an attached relation. The one storage predicate: the raw `self` test and the storage Origin checks read it.
+    private static DeclarationContainerKoto? StorageType(Koto use)
+    {
+        var owner = OriginOwner(use);
+        if (owner is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var, Parent: StructKoto structure } property)
+        {
+            return IsWithin(use, property.TypeKoto) ? structure : null;
+        }
+
+        // A Case's payload list is an inner form of the same kind as the Case.
+        while (owner is { Akind: KotoKind.EnumCase, Parent: { Akind: KotoKind.EnumCase } outer })
+        {
+            owner = outer;
+        }
+
+        if (owner is { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration })
+        {
+            return enumeration;
+        }
+
+        if (owner is StructKoto { Bases: { } bases } declared)
+        {
+            foreach (var parent in bases)
+            {
+                if (IsWithin(use, parent))
+                {
+                    return declared;
+                }
+            }
+        }
+
+        return null;
+
+        static bool IsWithin(Koto node, Koto? root)
+        {
+            for (var current = node; current is not null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, root))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     // The Type a Field or Case payload declaration writes, before any instance substitutes it; null for none.
     private static BoundType? WrittenType(Koto? declaration) => declaration?.BoundType ?? (declaration as PropertyKoto)?.BoundSymbol?.Type;
 

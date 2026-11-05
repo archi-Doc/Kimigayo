@@ -299,6 +299,7 @@ ContainerPath      := "::"? TypeSegment PathSuffix*
                     | BoundContainerQualifier PathSuffix+
 PlainContainerPath := "::"? TypeSegment ("." TypeSegment)*
 BoundContainerQualifier := "(" ContainerPath OriginBindingSet ")"
+                         | "(" ContainerPath BorrowOrigin ")"
 PathSuffix         := "." TypeSegment | "." "(" ContractReference ")" "." Name
 TypeSegment        := TypeName TypeArguments?
 TypeName           := Name | PrimitiveType | "Self"
@@ -314,7 +315,7 @@ GenericParameter   := Name | Name "/" Name | "length" Name
 - `Name "/" Name` declares a pair parameter: its pair binder and pair target ([§8.1.1](../08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)). `length Name` declares a function length slot ([§4.4](../04-arrays-indexing-and-slices.md#44-function-length-parameters)). A GenericArgument that is a Name or grouped expression is classified by the declared slot kind, never by its uses ([§4.4](../04-arrays-indexing-and-slices.md#44-function-length-parameters)).
 - `_` as an ArrayLength or ArrayElementType is valid only in an initialized local annotation ([§4.3.1](../04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)).
 - Where a borrow annotation attaches is defined in [§3.3.2](../03-types-and-values.md#332-nested-semantics-and-origin-annotations). A `ContainerPath` may name a Contract or associated Type in the positions that [§9.7.1](../09-names-signatures-and-access.md#971-bound-container-paths) and [§8.5](../08-generics-constraints-and-contracts.md#85-associated-types) allow; a named target may denote a runtime Contract View ([§8.12](../08-generics-constraints-and-contracts.md#812-runtime-contracts)).
-- A BoundContainerQualifier is a Type-side form only; it is unavailable in adaptation targets.
+- A BoundContainerQualifier is a Type-side form only; it is unavailable in adaptation targets. Its BorrowOrigin form is the single-slot binding in a qualifier ([§15.3.1](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets)): `(S during y).Item` means `(S{v}).Item` with `origin v.s == y`. That form is valid only on the Type side, through a NamedReference, BaseClause, ContractReference, ContractSelector or TypeQualifier; in an expression, the BoundContainerQualifier of a ConstructionExpression or BoundContainerExpression, and one that begins a ConstructionExpression's PlainNamedType, takes only an OriginBindingSet, while a Type argument there is a Type.
 - OriginApplication, OriginBindingSet and BorrowOrigin are defined in [§F.8](#f8-origins).
 
 ```kimi

@@ -131,11 +131,14 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
 
     // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Semantics and the referent,
     // the bare acquisition, its Origin being Binding's name, the Type the consumer expects (DECISIONS BU-27), and an explicit borrow is the
-    // reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1).
+    // reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1). A value operation adapts nothing:
+    // where an erasure is applied is the ErasedType column's, at the node Binding erased, which the Adjust rule reads (ChildAdjust, a
+    // group's operand; SPEC 7.7.4, DECISIONS BU-83's rule E); the operation's Erasure is only the selection's quality (its ranking, the
+    // ErasePart trigger), and its Source, the argument as written, may be a group around that node.
     internal static HirAdaptation Of(in BoundArgumentOperation operation) => operation.Kind switch
     {
         ArgumentOperationKind.Borrow when operation.Source is { } source && KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } => HirAdaptation.None,
-        ArgumentOperationKind.Value => operation.Adaptation == ArgumentAdaptation.Erasure ? HirAdaptation.Erasure : HirAdaptation.None,
+        ArgumentOperationKind.Value => HirAdaptation.None,
         ArgumentOperationKind.Borrow => operation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow,
         ArgumentOperationKind.Reborrow => operation.Adaptation == ArgumentAdaptation.SameSemanticsReborrow ? HirAdaptation.None : HirAdaptation.ReferenceRead,
         ArgumentOperationKind.BaseBorrow => HirAdaptation.BaseBorrow,

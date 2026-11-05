@@ -52,9 +52,7 @@ public class PatternBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.PendingBinding);
-        Assert.True(flow.Issues.Count == 0, string.Join("\n", flow.Issues.Select(x => x.Message)));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.All(Matches(c), m => Assert.True(c.Binding.TryGetMatch(m, out _)));
     }
 
@@ -76,8 +74,6 @@ public class PatternBindingTest
         var plan = Plan(c);
         Assert.Equal(MatchCoverageState.Invalid, plan.Coverage.State);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        var flow = c.AnalyzeControlFlow();
-        Assert.DoesNotContain(flow.Issues, x => x.Message.Contains("exhaustive", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -437,18 +433,16 @@ public class PatternBindingTest
         var c = Parse(source);
         c.Bind();
         Assert.Equal(expected, Plan(c).Coverage.State);
-        var flow = c.AnalyzeControlFlow();
-        Assert.DoesNotContain(Matches(c)[0].Arms[0].Guard!, flow.PendingBinding);
     }
 
     [Fact]
     public void GuardReturnTargetsFunctionAndChecksUnsafeOperations()
     {
-        var c = Parse("func f(x: bool) -> i32 => match x\n    true if return 1 => 2\n    false => 3");
-        c.Bind();
-        var flow = c.AnalyzeControlFlow();
-        Assert.IsType<FunctionKoto>(Assert.Single(flow.Targets, t => t.Key is ReturnKoto).Value);
-        Assert.DoesNotContain(Matches(c)[0].Arms[0].Guard!, flow.PendingBinding);
+        var c = Parse("func f(x: bool) -> i32 => match x\n    true if return 1 => 2\n    true => 4\n    false => 3");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.IsType<FunctionKoto>(HirTables.PlanOf(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ReturnKoto>().Single()).Plan);
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(Matches(c)[0].Arms[0].Guard!));
         var unsafeGuard = Parse("func f(x: bool, p: raw/bool) => match x\n    _ if *p => ()");
         unsafeGuard.Bind();
         Assert.Contains(unsafeGuard.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
@@ -456,17 +450,19 @@ public class PatternBindingTest
         Assert.Contains(TestDiagnostics.Of(unsafeGuard), x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd) && x.Text == "*p");
     }
 
+    // The HIR publishes the guard's exit to the do and neither the match nor the do completing; the MIR's verdict on the program is
+    // ANeverPayloadBindingInitializesItsLocal's F3 row (DECISIONS R4-M175).
     [Fact]
     public void AbruptSubjectDoesNotPropagateGuardTransfers()
     {
         var c = Parse("func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n        exit to work 3\n    return result");
-        c.Bind();
-        var flow = c.AnalyzeControlFlow();
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        HirTables.Publish(c);
         var match = Matches(c)[0];
         var guardExit = Assert.IsType<ExitKoto>(KotoHelper.UnwrapParentheses(match.Arms[0].Guard!));
-        var target = Assert.IsType<DoKoto>(flow.Targets[guardExit]);
-        Assert.False(flow.Nodes[match].CanCompleteNormally);
-        Assert.False(flow.Nodes[target].CanCompleteNormally);
+        var target = Assert.IsType<DoKoto>(HirTables.PlanOf(guardExit).Plan);
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(match));
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(target));
     }
 
     [Fact]
@@ -570,13 +566,13 @@ public class PatternBindingTest
             Assert.True(c.Binding.TryGetMatch(match, out var plan));
             var positions = plan!.Positions;
             var symbol = positions.Single(x => x.Kind == BoundPatternKind.Binding).BodySymbol;
-            var flow = c.AnalyzeControlFlow();
-            Assert.Empty(flow.PendingBinding);
+            var valid = c.Analyze().IsVerified;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 c.Bind();
-                flow.Reanalyze(c.Kotonoha.RootKoto);
+                valid &= c.Analyze().IsVerified;
             }));
+            Assert.True(valid, MinimalEmissionTest.Describe(c));
             Assert.True(c.Binding.Result.IsComplete, Describe(c));
             Assert.True(c.Binding.TryGetMatch(match, out var rebound));
             Assert.Same(plan, rebound);

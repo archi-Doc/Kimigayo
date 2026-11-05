@@ -9,8 +9,8 @@ namespace XunitTest;
 /// pressure): an Explicit test of this assembly, run alone in a child process of the test apphost. Never a collectible load context:
 /// its collection flushes process-wide runtime caches and charges the rebuild to another test's measuring thread
 /// (<c>ArchitectureRulesTest</c> forbids it). The child runs that one test with the parent's pipeline selection and takes no part in the
-/// run's evidence collection (<c>KIMI_MIR_DIFF</c>, snapshots, fixture directories), which belongs to the parent run: its assembly
-/// fixtures would run <c>Compilation</c>'s type initializer before the test and write into the parent's evidence.</summary>
+/// run's evidence collection (snapshots, census and fixture directories), which belongs to the parent run: it would write into the
+/// parent's evidence.</summary>
 internal static class FreshProcess
 {
     // The variables of the KIMI_ namespace a child keeps, a whitelist: the pipeline selection (src/Kimi's Compilation reads it, and the

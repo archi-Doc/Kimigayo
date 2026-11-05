@@ -1712,7 +1712,11 @@ CloseParameters:
 
     private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false, bool optionalSuffix = true)
     {
+        // SPEC F.5: a grouped head takes a "." suffix only as ContinuesGroupedType allows. A Semantics prefix's Type has read its own
+        // suffixes, so a "." after it belongs to the enclosing construct.
         var start = reader.CurrentTokenRange.Start;
+        var grouped = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
+        var qualifier = grouped && IsBoundContainerQualifier(ref reader, out _);
         var left = ParseTypeInternal(ref reader, disambiguateGenerics);
         if (left is ErrorKoto)
         {
@@ -1724,6 +1728,12 @@ CloseParameters:
             var tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Dot)
             {
+                if (left is TypeSemanticsKoto { Type: not null } || (grouped && !ContinuesGroupedType(ref reader, qualifier)))
+                {
+                    break;
+                }
+
+                grouped = false;
                 var operatorRange = reader.CurrentTokenRange;
                 reader.Advance();
 
@@ -4241,7 +4251,7 @@ Separator:
                 return ParseJumpExpression(ref reader);
 
             case TokenKind.OpenParenthesis:
-                return IsBoundContainerQualifier(ref reader)
+                return IsBoundContainerQualifier(ref reader, out var borrowOrigin) && !borrowOrigin
                     ? ParseDeclarationType(ref reader, parseFunctionType: false, parseContainerSuffix: false)
                     : ParseParenthesizedExpression(ref reader);
 
@@ -4647,6 +4657,8 @@ Separator:
         var parameterList = false;
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
         {
+            // SPEC F.5: only a BoundContainerQualifier takes a PathSuffix .Name.
+            var qualifier = parseContainerSuffix && IsBoundContainerQualifier(ref reader, out _);
             var openRange = reader.CurrentTokenRange;
             reader.Advance();
 
@@ -4689,7 +4701,7 @@ Separator:
             }
 
             parameterList = true;
-            if (parseContainerSuffix && reader.CurrentTokenKind == TokenKind.Dot)
+            if (parseContainerSuffix && ContinuesGroupedType(ref reader, qualifier))
             {
                 type = ParseGroupedContainerSuffix(ref reader, type);
                 parameterList = false;

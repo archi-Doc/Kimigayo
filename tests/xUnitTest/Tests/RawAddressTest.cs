@@ -70,12 +70,14 @@ public class RawAddressTest
 
         // R6-check H3b T40: the bound is A4's record at `Self is Sink` (EffectBoundImplementationTest.AssertBound), beside Binding's located
         // Unsupported_Kd at the static's address (no static raw authority, DECISIONS BU-24), which keeps Binding incomplete. Since Binding
-        // is incomplete, its completeness cannot show a returning Binding effect record, and MirTargetSide leaves out Binding's records
-        // that pair with an analysis (the compared set), which that record would; so Binding's issues are counted: only the address's.
+        // is incomplete, its completeness cannot show a returning Binding effect record, so Binding's issues are counted: only the
+        // address's. Every row also has P42's StaticStorage record at the settable Metrics.puts (DECISIONS R5-M82; STATUS Static members),
+        // so a valid row is refused by it until P42 (group review tests-b N1).
         Assert.Equal(valid ? 0 : 1, c.Binding.Issues.Count);
+        (DiagnosticCode, SyntaxLocation) storage = (DiagnosticCode.Unsupported_Kd, MirTargetSide.At(Sink, "var puts: i32 = 0"));
         (DiagnosticCode, SyntaxLocation)[] records =
-            [(DiagnosticCode.Unsupported_Kd, new("Metrics.puts@raw")), (DiagnosticCode.IncompatibleContractImplementation_Kd, new("Self is Sink"))];
-        MirTargetSide.Check(c, valid ? [] : records);
+            [(DiagnosticCode.Unsupported_Kd, new("Metrics.puts@raw")), (DiagnosticCode.IncompatibleContractImplementation_Kd, new("Self is Sink")), storage];
+        MirTargetSide.Check(c, valid ? [storage] : records);
     }
 
     // SPEC 13.5.6: a slot storing a raw pointer is borrowed like any other slot.
