@@ -12,11 +12,12 @@
 //   MIR builder and the old analysis); the cause for the write record; for a view of one admitted case, that case's
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
 //   case Type, else Shared.
-// - Access (DECISIONS R5-M63 (1), R4-M152; agreed with BU, the Binding owner): two accessors with two meanings, so each reader
-//   chooses. FunctionKoto.ClosureDefinition is the definition, the binding's plan once its signature is bound, whatever the creation's
-//   outcome: every reader that needs the closure's definition (its signature, parts or body) reads it, through a Closure Type, a
-//   signature or an Origin's binder (Of, the Type route, answers only for a Closure Type) or through the literal (R5-M63 (1)'s HIR
-//   publisher and MIR builder, and Binding's judgments of a literal's parts). FunctionKoto.ClosureAsCreated is the closure as created,
+// - Access (DECISIONS R5-M63 (1), R4-M152, R5-M193; agreed with BU, the Binding owner): two accessors with two meanings, so each
+//   reader chooses. Of is the definition, the binding's plan once its signature is bound, whatever the creation's outcome: every reader
+//   that needs the closure's definition (its signature, parts or body) reads it, through a Closure Type, a signature or an Origin's
+//   binder (the Type route, which answers only for a Closure Type) or through the literal (the literal route: R5-M63 (1)'s HIR
+//   publisher and MIR builder, and Binding's judgments of a literal's parts, which read it as FunctionKoto.ClosureDefinition until R7).
+//   FunctionKoto.ClosureAsCreated is the closure as created,
 //   that definition while the literal's creation is Resolved and null when the creation failed: only a reader that asks whether the
 //   creation at its position succeeded reads it (the old Analysis per creation, control flow's created closure).
 // - Invariants: Receiver is CaseFreeReceiver raised to Exclusive when a capture has BareReborrows, so Consuming never depends on a

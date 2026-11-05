@@ -56,7 +56,7 @@ public sealed partial class Binding
         => index == function.BoundSymbol?.ReceiverIndex || function.NameBoundaryIndex < 0 || index < function.NameBoundaryIndex;
 
     // SPEC 10.1: maps one argument to its parameter slot, by its label or by position, and marks the slot used; false for an unknown
-    // label, a slot already supplied and a positional argument after a named one or past the `!` boundary.
+    // label, a slot already supplied, and a positional argument after a named one, past the last parameter or past the `!` boundary.
     internal static bool TryMapArgument(FunctionKoto function, string? label, ref int next, ref bool named, Span<bool> used, out int slot)
     {
         if (label is not null)

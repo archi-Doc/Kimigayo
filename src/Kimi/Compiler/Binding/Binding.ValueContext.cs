@@ -8,12 +8,14 @@ namespace Kimi.Compiler;
 // - Responsibility: Value Context (IsValueContext); a function or accessor body its Unit result discards (DiscardsFunctionBody); a
 //   selection whose result is required (IsResultRequiringSelection); the construct a transfer goes to (TransferTarget, DECISIONS BU-101).
 // - Inputs: the attached syntax tree, through Syntax's own rules (KotoHelper.ResolveTransferTarget, IsSelectionBody,
-//   IsParameterDefault), and Binding's facts: a written result Type resolved to Unit, and a function's bound result Type (an anonymous
-//   function's inferred one included: PLAN G431).
+//   IsParameterDefault), and Binding's facts: a written result Type resolved to Unit, and a function's bound result Type. Known open
+//   defect (PLAN G431): for an anonymous function that Type is its inferred result, so its discard rule can change during binding.
 // - Outputs: the four answers, read by Binding only: the jump binding, result sources and Structural Completion, bare acquisition and
 //   discarded Places, the Adjust rule, the HIR publication and the lints.
-// - Invariants: expected Unit alone does not discard a value; a result is Unit only as the written `()` or a resolved Type identical
-//   to Unit; an invalid transfer goes to no construct.
+// - Invariants: expected Unit alone does not discard a value. A body is discarded only by its declaration's form (a generated
+//   function, a constructor, a destructor, a named function other than a static initializer without a written result, a setter) or by
+//   a Unit result: the written `()`, a written or bound result Type identical to Unit, or a getter without a written result in a
+//   property of such a Type. An invalid transfer goes to no construct.
 // - Prohibitions: no reader outside Binding; Syntax keeps only the syntactic rules these read.
 public sealed partial class Binding
 {
