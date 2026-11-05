@@ -4,7 +4,8 @@
 // the body's fixed-fixed oracle, which A5 judges with (MirOrigins); Binding.OriginRows.cs computes them.
 // Input: a body as an ExecutableBody (MIR's key form, MirDefKey.Body; a Getter's or Setter's execution function names its accessor), after
 // Bind, and for an atom MIR reads the MIR site it is read at.
-// Output: OriginRows, OriginAtom (an atom's index in the body's table), UniversalRelations and OriginLayers (the layer units with rows).
+// Output: OriginRows, OriginAtom (an atom's index in the body's table), MeetAtom (a canonical meet's), UniversalRelations and OriginLayers
+// (the layer units with rows).
 // Every site the view publishes or takes is a SourceRef, the one way MIR names syntax (ARCH rows 29 and 90; DECISIONS R4-M113): the view
 // converts its rows' sites once and reads a MIR site's syntax itself.
 // Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved at its use
@@ -71,8 +72,9 @@ internal readonly record struct OriginRow(
     BoundType? Destination,
     ulong CaseMask);
 
-/// <summary>An atom of a body's table with its class there.</summary>
-internal readonly record struct OriginAtomEntry(BoundOrigin Atom, OriginAtomKind Kind, ProjectionRole Role);
+/// <summary>An atom of a body's table with its class there; <c>EnclosingCallRegion</c>: the atom is an enclosing body's call region, or a meet
+/// with such an operand (row 6), which A5's failing chains read (the nested-body limit).</summary>
+internal readonly record struct OriginAtomEntry(BoundOrigin Atom, OriginAtomKind Kind, ProjectionRole Role, bool EnclosingCallRegion = false);
 
 internal sealed partial class TyCtxt
 {
@@ -81,6 +83,10 @@ internal sealed partial class TyCtxt
 
     // SPEC 15.6.5: an atom's index in a body's table, resolved at its use (a MIR site) and classed there; an atom no row names is appended.
     internal int OriginAtom(ExecutableBody body, BoundOrigin origin, SourceRef site) => binding.OriginAtomIn(body, origin, site);
+
+    // SPEC 15.3.6: the index of the canonical meet of two atoms of a body's table (A5's meet law), interned there once; a meet of Fixed atoms
+    // is Fixed, and its part is its operands' union (PartOf), as for every meet, also when their parts differ.
+    internal int MeetAtom(ExecutableBody body, int a, int b, SourceRef site) => binding.MeetAtomIn(body, a, b, site);
 
     // SPEC 15.3.6, 15.6.5: the body's fixed-fixed oracle, extracted at its root (a layer's at its struct); disposed after use.
     internal Binding.UniversalRelations UniversalRelations(ExecutableBody body) => binding.UniversalRelationsOf(body);
