@@ -10,7 +10,8 @@
 // lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and numbered after the flow
 // roots, so a head stores only the flow paths. A path admits one placement when its root is a let binding or it lies in a constructor's
 // Field placed once (SPEC 15.1.1, 11.7). Each Assign's Never parts: the components of its destination that its construction leaves
-// unplaced, as their operand is the Never value (SPEC 14.10.3; DECISIONS R4-M175), which A1's definition applies.
+// unplaced, as their operand is the Never value (SPEC 14.10.3; DECISIONS R4-M175), which A1's definition applies, and its carries, the
+// paths of a temp it takes whole that A1 copies onto the destination's component on each path.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -46,9 +47,10 @@ internal sealed class MirMoveData
 
     private readonly MirTable<(int Parent, MirProjectionKind Kind, int Arg)> children = new(); // Each child by creation index.
     private readonly MirTable<MirPlace> places = new(); // Each projected Place's path by creation index << 2 | access.
-    private readonly MirTable<int> nevers = new(); // The Never parts' newest run of an Assign, by statement index, and of a temp, by ~local.
-    private int[] runs = []; // Runs of Never parts: a count, the next run of the same temp (-1: none), then the parts' paths.
-    private int[] trail = []; // Rebase's steps from a part up to its temp.
+    private readonly MirTable<int> nevers = new(); // An Assign's Never parts' run, by statement index; a temp's newest tracked run, by ~local.
+    private readonly MirTable<int> carried = new(); // An Assign's carries' run (pairs of a temp's path and the component's), by statement.
+    private int[] runs = []; // Runs of paths: a count, the next run of the same temp (-1: none), then the paths.
+    private int[] trail = []; // Mirror's steps from a path up to its temp.
     private int runCount;
     private int[] parents = []; // By creation index; locals first.
     private (MirProjectionKind Kind, int Arg)[] steps = []; // By creation index: the step from the parent.
@@ -74,6 +76,9 @@ internal sealed class MirMoveData
     /// <summary>Gets a value indicating whether the body constructs its object in _0 from fresh storage (SPEC 6.3).</summary>
     internal bool Constructing { get; private set; }
 
+    /// <summary>Gets the most carries of one Assign (<see cref="Carries"/>).</summary>
+    internal int MaxCarried { get; private set; }
+
     /// <summary>Collects the move paths of a body and numbers them.</summary>
     /// <param name="body">The validated body.</param>
     /// <param name="flow">The dataflow, begun with the body.</param>
@@ -81,10 +86,11 @@ internal sealed class MirMoveData
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent, this.runCount) = (0, false, 0);
+        (this.created, this.ViewDependent, this.runCount, this.MaxCarried) = (0, false, 0, 0);
         this.children.Clear();
         this.places.Clear();
         this.nevers.Clear();
+        this.carried.Clear();
         MirDataflow.Grow(ref this.chains, locals);
         MirDataflow.Grow(ref this.live, locals);
         Array.Fill(this.chains, -1, 0, locals);
@@ -136,11 +142,18 @@ internal sealed class MirMoveData
     }
 
     /// <summary>Gets the Never parts of an Assign of the built body (SPEC 14.10.3): the paths of its destination's components that its
-    /// construction places nothing into, their operand being the Never value, directly or through a temp such a construction formed.</summary>
+    /// construction places nothing into, their operand being the Never value.</summary>
     /// <param name="statement">The Assign's statement index.</param>
     /// <returns>The parts' paths; empty for most.</returns>
     internal ReadOnlySpan<int> NeverParts(int statement)
         => this.nevers.TryGetValue(statement, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
+
+    /// <summary>Gets the carries of an Assign of the built body (SPEC 14.10.3): pairs of a path below a temp Place it takes, where a
+    /// construction may have left a Never part, and the same path below the destination's component, whose state A1 takes on each path.</summary>
+    /// <param name="statement">The Assign's statement index.</param>
+    /// <returns>The pairs, source then destination; empty for most.</returns>
+    internal ReadOnlySpan<int> Carries(int statement)
+        => this.carried.TryGetValue(statement, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
 
     /// <summary>Gets the path of a Place of the built body and how the Place is below it.</summary>
     /// <param name="place">A local's Place.</param>
@@ -219,74 +232,127 @@ internal sealed class MirMoveData
         return path;
     }
 
-    // SPEC 14.10.3 (DECISIONS R4-M175): an Assign's Never parts, as paths created below its destination's, so a whole use sees them: each
-    // component of its aggregate whose operand is the Never value (a temp of Type Never), each element's for a Fill, and the Never parts of
-    // a temp an operand or a Use takes whole, at the component. A temp's parts are those of every definition of it (its runs), as A1 joins
-    // paths by union; a Closure environment or an Array buffer has no component path.
+    // SPEC 14.10.3 (DECISIONS R4-M175): an Assign's Never parts and carries, as paths created below its destination's, so a whole use sees
+    // them. A Never part is a component of its aggregate whose operand is the Never value (a temp of Type Never), each element's for a
+    // Fill. A carry pairs each tracked path below the temp Place an operand or a Use takes (whole or a part) with the same path at the
+    // component, so A1 copies the temp's state there on each path. A temp's tracked paths are those its Never parts and carries created
+    // (its runs): structure only; a Closure environment or an Array buffer has no component path.
     private void Nevers(int statement, MirPlace destination, in MirRvalue rvalue)
     {
         var kind = (MirAggregateKind)rvalue.Op;
-        if (destination.IsStatic || rvalue.Kind is not (MirRvalueKind.Aggregate or MirRvalueKind.Use) ||
+        var found = destination.IsStatic ? NoPath : this.Resolve(destination);
+        if ((found & 3) != Direct || rvalue.Kind is not (MirRvalueKind.Aggregate or MirRvalueKind.Use) ||
             (rvalue.Kind == MirRvalueKind.Aggregate && kind is MirAggregateKind.Closure or MirAggregateKind.Array))
         {
             return;
         }
 
-        var found = this.Resolve(destination);
-        var run = this.runCount;
-        if ((found & 3) != Direct)
-        {
-            return;
-        }
-
-        this.Push(0);
-        this.Push(-1);
-        var type = rvalue.Type;
         var fill = rvalue.Kind == MirRvalueKind.Aggregate && kind == MirAggregateKind.Fill;
-        var copies = fill ? type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } ? (int)type.Length : 0 : 1;
+        var copies = fill ? rvalue.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } type ? (int)type.Length : 0 : 1;
+        var parts = this.Open();
         for (var i = 0; i < rvalue.Count; i++)
         {
-            ref readonly var operand = ref this.body.Operands[rvalue.Start + i];
-            if (operand.Kind == MirOperandKind.Const || operand.Place.IsStatic || operand.Place.Projection != 0 ||
-                this.body.Locals[operand.Place.Root].Kind != MirLocalKind.Temp)
+            var taken = this.Taken(rvalue, i);
+            var never = taken >= 0 && taken < this.body.Locals.Length && ReferenceEquals(this.body.Locals[taken].Type, BoundType.Never);
+            for (var k = 0; never && k < copies; k++)
             {
-                continue;
+                this.Push(rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, fill ? k : i) : found >> 2);
             }
+        }
 
-            var never = ReferenceEquals(this.body.Locals[operand.Place.Root].Type, BoundType.Never);
-            var source = never || !this.nevers.TryGetValue(~operand.Place.Root, out var newest) ? -1 : newest;
-            for (var k = 0; (never || source >= 0) && k < copies; k++)
+        parts = this.Close(parts);
+        var carries = this.Open();
+        for (var i = 0; i < rvalue.Count; i++)
+        {
+            var taken = this.Taken(rvalue, i);
+            var temp = taken < 0 ? -1 : this.body.Operands[rvalue.Start + i].Place.Root;
+            for (var k = 0; temp >= 0 && this.nevers.TryGetValue(~temp, out var run) && k < copies; k++)
             {
-                var part = found >> 2;
-                if (rvalue.Kind == MirRvalueKind.Aggregate)
+                var component = rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, fill ? k : i) : found >> 2;
+                for (; run >= 0; run = this.runs[run + 1])
                 {
-                    part = this.Component(part, rvalue, fill ? k : i);
-                }
+                    for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
+                    {
+                        var tracked = this.runs[at];
+                        var above = tracked;
+                        while (above >= 0 && above != taken)
+                        {
+                            above = this.parents[above];
+                        }
 
-                if (never)
-                {
-                    this.Push(part);
-                }
-                else
-                {
-                    this.Rebase(source, operand.Place.Root, part);
+                        if (above == taken)
+                        {
+                            this.Push(tracked);
+                            this.Push(this.Mirror(tracked, taken, component));
+                        }
+                    }
                 }
             }
         }
 
-        this.runs[run] = this.runCount - run - 2;
-        if (this.runs[run] == 0)
+        carries = this.Close(carries);
+        if (parts >= 0)
         {
-            this.runCount = run;
-            return;
+            this.nevers.Add(statement, parts);
         }
 
-        this.nevers.Add(statement, run);
-        if (destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp)
+        if (carries >= 0)
         {
+            this.carried.Add(statement, carries);
+            this.MaxCarried = Math.Max(this.MaxCarried, this.runs[carries] >> 1);
+        }
+
+        if ((parts >= 0 || carries >= 0) && destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp)
+        {
+            var tracked = this.Open();
+            for (var at = parts + 2; parts >= 0 && at < parts + 2 + this.runs[parts]; at++)
+            {
+                this.Push(this.runs[at]);
+            }
+
+            for (var at = carries + 3; carries >= 0 && at < carries + 2 + this.runs[carries]; at += 2)
+            {
+                this.Push(this.runs[at]);
+            }
+
+            tracked = this.Close(tracked);
             ref var newest = ref this.nevers.Entry(~destination.Root, out var exists);
-            (this.runs[run + 1], newest) = (exists ? newest : -1, run);
+            (this.runs[tracked + 1], newest) = (exists ? newest : -1, tracked);
         }
+    }
+
+    // The path of the temp's Place, whole or a part, that an aggregate's or a Use's operand at a position takes, -1 for any other operand.
+    private int Taken(in MirRvalue rvalue, int i)
+    {
+        ref readonly var operand = ref this.body.Operands[rvalue.Start + i];
+        if (operand.Kind == MirOperandKind.Const || operand.Place.IsStatic || this.body.Locals[operand.Place.Root].Kind != MirLocalKind.Temp)
+        {
+            return -1;
+        }
+
+        var found = this.Resolve(operand.Place);
+        return (found & 3) == Direct ? found >> 2 : -1;
+    }
+
+    // A run of paths: its count and next run (-1) reserved; Close fills the count, or drops an empty run and gives -1.
+    private int Open()
+    {
+        var run = this.runCount;
+        this.Push(0);
+        this.Push(-1);
+        return run;
+    }
+
+    private int Close(int run)
+    {
+        this.runs[run] = this.runCount - run - 2;
+        if (this.runs[run] > 0)
+        {
+            return run;
+        }
+
+        this.runCount = run;
+        return -1;
     }
 
     // The path of an aggregate's component (its operand at position i, or a Fill's element i): a Tuple's Field, a fixed array's ConstIndex,
@@ -301,30 +367,23 @@ internal sealed class MirMoveData
         _ => this.Child(path, MirProjectionKind.Field, i),
     };
 
-    // A temp's Never parts, each run of them, at a path: each part's steps from the temp, taken again from the path.
-    private void Rebase(int run, int temp, int path)
+    // The path below another that a path is below a path above it (top): its steps from top, taken again from the other.
+    private int Mirror(int path, int top, int at)
     {
-        for (; run >= 0; run = this.runs[run + 1])
+        var depth = 0;
+        for (var c = path; c != top; c = this.parents[c])
         {
-            for (var i = run + 2; i < run + 2 + this.runs[run]; i++)
-            {
-                var depth = 0;
-                for (var c = this.runs[i]; c != temp; c = this.parents[c])
-                {
-                    MirDataflow.Grow(ref this.trail, depth + 1);
-                    this.trail[depth++] = c;
-                }
-
-                var part = path;
-                while (depth > 0)
-                {
-                    var step = this.steps[this.trail[--depth]];
-                    part = this.Child(part, step.Kind, step.Arg);
-                }
-
-                this.Push(part);
-            }
+            MirDataflow.Grow(ref this.trail, depth + 1);
+            this.trail[depth++] = c;
         }
+
+        while (depth > 0)
+        {
+            var step = this.steps[this.trail[--depth]];
+            at = this.Child(at, step.Kind, step.Arg);
+        }
+
+        return at;
     }
 
     private void Push(int value)

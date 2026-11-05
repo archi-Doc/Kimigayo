@@ -553,7 +553,9 @@ public class NeverContinuationTest
     // unreachable (after `return`, or after an `if` whose arms both diverge). Fail-before on dev 66de6a02a: it rejected the do rows'
     // placed-part reads (an exit holding a Never part built no delivery) and accepted every Never-part read but the do's, and the whole read.
     // An exit's operand `(a, (return 1)).0` reads the placed part, so it is valid. A dynamic Array's element has no Place of its own, so
-    // `arr[1]` is accepted: the stated limit (STATUS).
+    // `arr[1]` is accepted: the stated limit (STATUS). A construct nested in an aggregate gives its component what each path placed (the
+    // owner's 「修正して進める」): on a real path the read is valid (fail-before at 878717d52: UninitializedPlace_Kd, the parts applied on every
+    // path); after `return` the Never part's read is UninitializedPlace_Kd, also through a part of the construct's value (dev: accepted).
     [Theory]
     [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.0", "")]
     [InlineData("return 9\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.1", "UninitializedPlace_Kd t.1")]
@@ -583,6 +585,18 @@ public class NeverContinuationTest
     [InlineData("return 9\n    let t = loop\n        if c => exit a\n        exit (a, (return 1)).0\n    return t", "")]
     [InlineData("return 9\n    let t = label s: if c\n        yield to s a\n    else\n        yield to s (a, (return 1)).0\n    return t", "")]
     [InlineData("return 9\n    let t: Array<i64> = [a, (return 1)]\n    return t[1]", "")]
+    [InlineData("let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.1", "")]
+    [InlineData("let t = ((if c => (a, fail()) else => (a, a)), a)\n    return t.0.1", "")]
+    [InlineData("let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "")]
+    [InlineData("let t = ((label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, a)\n    ), a)\n    return t.0.1", "")]
+    [InlineData("let t = (a, (if c => (a, (return 1)) else => (a, a)))\n    return t.1.1", "")]
+    [InlineData("return 9\n    let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.0", "")]
+    [InlineData("return 9\n    let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].0", "")]
+    [InlineData("return 9\n    let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "UninitializedPlace_Kd t[1].1")]
+    [InlineData("return 9\n    let t = ((label w: do\n        if c => exit to w (a, (return 1))\n        exit to w (a, a)\n    ), a)\n    return t.0.1", "UninitializedPlace_Kd t.0.1")]
+    [InlineData("return 9\n    let t = (a, (if c => (a, (return 1)) else => (a, a)))\n    return t.1.1", "UninitializedPlace_Kd t.1.1")]
+    [InlineData("return 9\n    let t = (if c => (a, (return 1)) else => (a, a)).1\n    return t", "UninitializedPlace_Kd t")]
     public void AConstructionHoldingANeverPartPlacesItsOtherParts(string body, string records)
     {
         var c = MinimalEmissionTest.Analyze("func fail() -> Never => fail()\nfunc f(c: bool, a: i64) -> i64\n    " + body + "\n", output: OutputKind.Library);

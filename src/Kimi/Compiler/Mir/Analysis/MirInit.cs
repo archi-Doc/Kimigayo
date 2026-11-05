@@ -9,7 +9,8 @@
 // before each Drop the runtime edges reach and each state event there.
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree
-// but its Never parts (MirMoveData.NeverParts, SPEC 14.10.3), a Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
+// but its Never parts and what a temp it takes whole left uninitialized on the path (MirMoveData's NeverParts and Carries, SPEC 14.10.3),
+// a Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
 // every incoming path, its own bit being the construction fact; a use through a runtime Index of storage reports on its receiver under
 // the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
 // contract, DECISIONS R4-M56), so the two are one problem unless the receiver changed in between. Every root is tracked (A2 reads
@@ -47,6 +48,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     private const int Ever = 2; // EverInit.
     private const int Fresh = (1 << Moved) | (1 << Ever) | (1 << Init) | (1 << Partial); // Cleared where a binding lifetime starts.
 
+    private bool[] held = [];
+
     /// <summary>Analyzes a body under the selected view; view 0 of a body no view decides analyzes it for every view.</summary>
     /// <param name="body">The body.</param>
     /// <param name="view">The selected view.</param>
@@ -68,7 +71,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             return false;
         }
 
-        var transfer = new Transfer(body, moves, cases, flow, state, drops) { Report = report, Views = moves.ViewDependent ? 1UL << (int)view : all };
+        MirDataflow.Grow(ref this.held, moves.MaxCarried);
+        var transfer = new Transfer(body, moves, cases, flow, state, drops) { Report = report, Views = moves.ViewDependent ? 1UL << (int)view : all, Held = this.held };
         flow.Forward(ref transfer);
         transfer.Checks = true;
         flow.Replay(ref transfer);
@@ -86,6 +90,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         internal required MirReport Report { get; init; }
 
         internal ulong Views { get; init; }
+
+        internal required bool[] Held { get; init; } // Each carry's source state before an Assign's uses (pooled, MirMoveData.MaxCarried).
 
         internal bool Checks { get; set; }
 
@@ -127,11 +133,26 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 }
                 else if (statement.Kind != MirStatementKind.EndBorrow)
                 {
+                    // SPEC 14.10.3 (R4-M175): a construction places nothing into its Never parts, and a temp taken whole gives its
+                    // component what this path left of it, read before its uses take it.
+                    var carries = statement.Kind == MirStatementKind.Assign ? moves.Carries(data.Start + i) : default;
+                    for (var k = 0; k < carries.Length; k += 2)
+                    {
+                        this.Held[k >> 1] = MirDataflow.Any(state, Lanes, Uninit, carries[k], moves.Paths[carries[k]].End);
+                    }
+
                     MirUses.ForEach(cases, this.at, ref this);
                     foreach (var part in statement.Kind == MirStatementKind.Assign ? moves.NeverParts(data.Start + i) : default)
                     {
-                        // SPEC 14.10.3 (R4-M175): the construction placed nothing into its Never parts.
-                        MirDataflow.Apply(state, Lanes, part, moves.Paths[part].End, set: 1 << Uninit, clear: (1 << Init) | (1 << Partial));
+                        this.Unplaced(part);
+                    }
+
+                    for (var k = 0; k < carries.Length; k += 2)
+                    {
+                        if (this.Held[k >> 1])
+                        {
+                            this.Unplaced(carries[k + 1]);
+                        }
                     }
                 }
             }
@@ -289,6 +310,10 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: (1 << Uninit) | (1 << Moved) | (1 << Partial));
             this.Event(path, set: true);
         }
+
+        // A part its definition left uninitialized (SPEC 14.10.3): a Never part, or a part a carried temp left so on this path.
+        private readonly void Unplaced(int path)
+            => MirDataflow.Apply(state, Lanes, path, moves.Paths[path].End, set: 1 << Uninit, clear: (1 << Init) | (1 << Partial));
 
         // A Move or a Drop takes the subtree out, uninitialized; a part taken out of its parent leaves the parent's own bit, so it is partial.
         private readonly void Take(int path, int set)

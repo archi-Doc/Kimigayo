@@ -5455,7 +5455,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     exclusive Loan on the iterator (route (1)) and stores that Loan into the iterator, a self-row; an (e) row (R4-M150's S2 line).
 - **R4-M175 MIR construction follows SPEC 14.10.3's Never form (PLAN G428)** (2026-11-05; the owner, R4's dialog, verbatim
   「推奨どおり開始して下さい」 and 「SPEC's letter」; after BU-101, the owner's 「BU の G52 の修正を先にする で決定です」; per part, the owner,
-  R4's dialog, verbatim 「A で進める（推奨）」 (14.10.3's letter per part; SPEC 14.9.2's examples `pick` and `pickFill` revised); amends R4-M62
+  R4's dialog, verbatim 「A で進める（推奨）」 (14.10.3's letter per part; SPEC 14.9.2's examples `pick` and `pickFill` revised), and after
+  the third implementation non-ACCEPT, verbatim 「修正して進める」 (the per-path carry below); amends R4-M62
   and R5-M38; class Major) SPEC 14.10.3, 14.9.1-14.9.2, 17.3.
   - Rule (`MirBuilder`): one predicate, `IsNeverForm` (HIR Completion Diverges and Binding Type Never), at the joins and in `Acquire`.
   - Joins: every edge into a construct's join marks it `Joined` (`Joins`): a body's completing or value end, an implicit completion on
@@ -5471,10 +5472,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     observable, because the destination is the construct's own result, which no cleanup of the left scopes can name, and a Loan the
     value holds is held across the exit either way.
   - Per part (SPEC 14.10.3's letter, the owner's 「A で進める（推奨）」): an aggregate places nothing into a component whose operand is the
-    Never value, also through a temp such an aggregate formed (nested, in any position; a Tuple's Field, a fixed array's or a Fill's
-    ConstIndex, an enum Case's payload). `Set` is unchanged: `MirMoveData` publishes each Assign's Never parts as move paths, created
-    below the destination so a whole use sees them, and A1's definition leaves them uninitialized. A temp's parts are those of every
-    definition of it, as A1 joins by union. Measured alternative, rejected: placing the parts as Field writes in `Set` makes A1's
+    Never value (in any position; a Tuple's Field, a fixed array's or a Fill's ConstIndex, an enum Case's payload). `Set` is unchanged:
+    `MirMoveData` publishes each Assign's direct Never parts as move paths, created below the destination so a whole use sees them, and
+    A1's definition leaves them uninitialized. Where an Assign takes a temp's Place, whole or a part (a `Use` or a component), its carries
+    pair the temp's tracked paths with the component's, and A1 copies their state on each path (the owner's 「修正して進める」): a
+    construction's Never part reaches the outer value only on the paths that built it, so a real path's read stays valid. Rejected: a
+    temp's parts as the union over its definitions applied at every use (fix round 2), which put an assumed path's fact onto the real
+    one. Measured alternative, rejected: placing the parts as Field writes in `Set` makes A1's
     ancestor rule (SPEC 15.1.1) report every placement into a `let`, and telling the two apart needs a new statement kind. A dynamic
     `Array`'s element has no Place (its buffer is read through `Index`), so its Never element stays placed: the stated limit (STATUS).
   - A construct that is no Never form and that no edge joins breaks the HIR contract (BU-101 publishes a construct with no source as a
@@ -5488,10 +5492,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
       read of `t`. Dev accepted the loop only because such an exit built no transfer and `&& Completes(loop)` hid the head, while it
       rejected the same shape with a labeled `do`; that inconsistency goes. `exit (a, (return 1)).0` reads the placed part, so it
       stays valid.
-    - Per part, all in unreachable code (a Never part exists only there): a read of a placed part is accepted, also where dev
+    - Per part, decided on each path: a Never part is built only on an assumed path, so only a read that no real path reaches can
+      see it (14.10.3: a read with a real incoming path uses the real paths). There a read of a placed part is accepted, also where dev
       rejected it (a labeled `do` whose exit holds a Never part); a read of a Never part and a whole read of such a value (a Move, a
-      Copy, a `match` Subject, also of a Case built so) are `UninitializedPlace_Kd`, where dev accepted all but the `do`'s. SPEC 14.9.2's
-      `pick` and `pickFill` read a part only one arm places, so their reads are errors now (the owner's revision of the examples).
+      Copy, a `match` Subject, also of a Case built so, and a part of a construct's value, `(if c => (a, (return 1)) else => (a, a)).1`)
+      are `UninitializedPlace_Kd`, where dev accepted all but the `do`'s. A construct nested in an aggregate keeps a real path's read
+      valid. SPEC 14.9.2's `pick` and `pickFill` read a part only one arm places, so their reads are errors now (the owner's revision of
+      the examples). Not caught, as on dev: a temp taken whole by a call argument (`g(if c => (a, (return 1)) else => (a, a))` after
+      `return`), as A1 reports no compiler temporary (STATUS).
   - Why: the builder stood in proxies for the Never form: joins by HIR Completion, `Transfer`'s early return for an operand that
     does not complete, and `Acquire` by the Place's Type.
   - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived
