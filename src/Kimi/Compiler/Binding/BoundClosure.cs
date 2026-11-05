@@ -71,8 +71,13 @@ public sealed class BoundClosure
     internal List<BindingSymbol> SymbolPool { get; } = new();
 
     // The Type route to a closure's definition (ClosureDef, plan 5.3; DECISIONS R5-M63 (1), R4-M152): a Closure Type's literal's
-    // FunctionKoto.ClosureDefinition, whatever its creation's outcome (Binding.BindClosure clears the signature first; its substitution
+    // definition (the literal route), whatever its creation's outcome (Binding.BindClosure clears the signature first; its substitution
     // is TyCtxt.SubstOfClosure of the Type); null for any other Type.
     internal static BoundClosure? Of(BoundType? closure)
-        => closure is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } ? function.ClosureDefinition : null;
+        => closure is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } ? Of(function) : null;
+
+    // The literal route to a closure's definition (DECISIONS R5-M63 (1), R4-M152): the literal's published plan once its latest binding
+    // bound the signature, whatever the creation's outcome; null for a named function, an unbound literal and until the signature is bound.
+    internal static BoundClosure? Of(FunctionKoto literal)
+        => HirTables.PlanOf(literal).Plan is BoundClosure { Signature: not null } plan ? plan : null;
 }

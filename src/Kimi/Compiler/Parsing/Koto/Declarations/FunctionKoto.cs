@@ -248,7 +248,7 @@ public sealed class FunctionKoto : DeclarationKoto
     /// inputs, the result and the environment, whatever the creation's outcome; null for a named function and until the signature is
     /// bound. Every reader that needs the closure's definition (its signature, parts or body) reads it (BoundClosure's contract).</summary>
     [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
-    internal BoundClosure? ClosureDefinition => this.ClosureStorage is { Signature: not null } plan ? plan : null;
+    internal BoundClosure? ClosureDefinition => BoundClosure.Of(this);
 
     /// <summary>Gets the closure as created at this literal (DECISIONS R4-M152): its definition while the creation is Resolved, null
     /// when the creation failed. Only a reader that asks whether the creation at this position succeeded reads it.</summary>

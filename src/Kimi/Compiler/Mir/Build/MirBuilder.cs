@@ -116,7 +116,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
             foreach (var decl in table.Hir.Defaults!)
             {
-                if (decl.Function.ClosureDefinition is null && !this.visited.ContainsKey(decl))
+                if (BoundClosure.Of(decl.Function) is null && !this.visited.ContainsKey(decl))
                 {
                     this.Visit(decl);
                 }
@@ -138,7 +138,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             {
                 case null or BindingSymbolKind.Function: // A module's top-level statements have no symbol (SPEC 22.4.1).
                     var function = (FunctionKoto)node;
-                    var closure = function.ClosureDefinition is not null; // A Closure's definition (DECISIONS R5-M79).
+                    var closure = BoundClosure.Of(function) is not null; // A Closure's definition (DECISIONS R5-M79).
                     MirBodyKind kind;
                     if (closure)
                     {
@@ -234,7 +234,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             var layer = this.body.AddLocal(new(special.Type ?? BoundType.Unit, MirLocalKind.Arg, this.Info(declaration, local: true), Name: special.Name));
             this.Register(Cleanup.Fields, this.locals[special] = layer, null, parameters);
         }
-        else if (key.Kind == MirBodyKind.Closure && ((FunctionKoto)declaration).ClosureDefinition is { EnvironmentType: { } environment } plan)
+        else if (key.Kind == MirBodyKind.Closure && BoundClosure.Of((FunctionKoto)declaration) is { EnvironmentType: { } environment } plan)
         {
             this.receiver = this.Argument(
                 plan.Receiver == SemanticsKind.Owner ? environment : compilation.Types.Reference(plan.Receiver, environment),

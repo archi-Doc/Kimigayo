@@ -454,7 +454,7 @@ public class ClosureReceiverClassificationTest
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         for (var pass = 0; pass < 2; pass++)
         {
-            var closure = function.ClosureDefinition!;
+            var closure = BoundClosure.Of(function)!;
             Assert.Equal((true, SemanticsKind.Uniq, SemanticsKind.Uniq, "n"), (closure.Classified, closure.CaseFreeReceiver, closure.Receiver, closure.ExclusiveUse?.ToString()));
             Assert.Equal(complete, c.Bind().IsComplete);
         }
