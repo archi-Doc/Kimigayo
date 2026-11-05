@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the public entry path for post-Binding phases and their Problem records.
-// Input: a prepared compilation. Output: analysis, the validated and analyzed MIR with its checked set, and diagnostics, the same on every
-// pipeline (Compilation.Switch.cs; DECISIONS R5-M156); generation has its own entry (Compilation.Generation.cs, R5 C0a).
+// Input: a prepared compilation. Output: analysis, the constructed and validated MIR (ConstructMir), that MIR analyzed with its checked set
+// (BuildMir, which composes it), and diagnostics, the same on every pipeline (Compilation.Switch.cs; DECISIONS R5-M156); generation has
+// its own entry (Compilation.Generation.cs, R5 C0a).
 // The MIR decides acceptance (DECISIONS R5-M185): Analysis is verified when the MIR of the version exists and its rows hold no Error, its
 // rows being every merged problem of its report (construction and collection records, the analyses' problems) and its validator findings,
 // which Problems gives and Core's publisher publishes (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184).
@@ -130,15 +131,20 @@ public partial class Compilation
     internal Koto SyntaxOf(SourceRef source)
         => (source.Module < this.SourceModules.Length ? this.SourceModules[source.Module] : this.Library.Kotonoha).Syntax.Nodes[source.Id]!;
 
-    /// <summary>Builds, validates and analyzes the MIR of the latest Binding pass, once per pass, and collects its checked set after the
-    /// analyses, whatever they found (K package 4.3).</summary>
+    /// <summary>Analyzes the MIR of the latest Binding pass that <see cref="ConstructMir"/> builds and validates, once per pass, and
+    /// collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
     internal Mir.MirProgram BuildMir()
     {
-        var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build(), this.SourceModules.Length);
+        var program = (this.mirAnalysis ??= new(this.Types)).Run(this.ConstructMir(), this.SourceModules.Length);
         this.Collect(program);
         return program;
     }
+
+    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: the first step of <see cref="BuildMir"/>, and the
+    /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5).</summary>
+    /// <returns>The program, with its construction records and validator findings.</returns>
+    internal Mir.MirProgram ConstructMir() => (this.mirBuilder ??= new(this)).Build();
 
     /// <summary>Runs the old ownership analysis once per version and returns it: the one entry of its test and benchmark readers (R6-check
     /// H0b §2.1, review B3; H0c D-c1). A second call on one version runs nothing.</summary>
