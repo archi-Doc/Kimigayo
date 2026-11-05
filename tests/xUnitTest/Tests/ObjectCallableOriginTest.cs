@@ -67,7 +67,7 @@ public class ObjectCallableOriginTest
         Assert.Equal((true, true, true), (verified, written, bound));
     }
 
-    // Program is valid on both pipelines (see BorrowSignaturesSharePerCallOriginInstantiation; DECISIONS R4-M154).
+    // Program is valid (see BorrowSignaturesSharePerCallOriginInstantiation; DECISIONS R4-M154).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("objref")]

@@ -10,7 +10,7 @@ namespace XunitTest;
 // 15.3.6, 15.3.7, 23.1.2, the owner's (A) (2026-10-26: a nested signature's well-formedness, its inputs and its result, is its own; each
 // call of it proves it for the instantiated Types), the owner's (a) (2026-10-27: a Function Item converted to a Function Type may assume
 // the target's own well-formedness, as a Function value does), the owner's G56 answer and PLAN G269 (C). Each row names its form and states
-// every Error record of the program on both pipelines, as `Code text` (the first line of the primary span) in ordinal order.
+// every Error record of the program, as `Code text` (the first line of the primary span) in ordinal order.
 // The rows that wait for PLAN G216 (a) U2.2 (contextual parts, joins, nested generic calls, instantiated Types at calls and
 // constructions, D-1) are kept on `claude/a5-g216a-t2-tests` and return with U2.2; the comments below may name them.
 public partial class OriginRelationDiagnosticTest

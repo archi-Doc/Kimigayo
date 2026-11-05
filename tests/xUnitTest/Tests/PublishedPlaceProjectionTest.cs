@@ -142,7 +142,7 @@ public class PublishedPlaceProjectionTest
     }
 
     // DECISIONS BU-10 (the owner's whitelist, until R6-check): an exclusive use of a part below a user index's element storing one
-    // reference layer generates on the default pipeline where the index's receiver path is a local's stored Field, a Field or Tuple
+    // reference layer generates where the index's receiver path is a local's stored Field, a Field or Tuple
     // element reached through a `uniq/` parameter, another user index's element or a capture.
     [Fact]
     public void WhitelistedReceiverPathsReachTheReferent()
@@ -191,7 +191,7 @@ public class PublishedPlaceProjectionTest
     }
 
     // DECISIONS BU-10 (the owner's whitelist, until R6-check): a shared read of a part below a built-in element storing one reference
-    // layer generates on the default pipeline where the sequence is a local or a parameter: a for loop over a part's Array and a
+    // layer generates where the sequence is a local or a parameter: a for loop over a part's Array and a
     // comparison of a nested part through a `ref/Array` parameter.
     [Fact]
     public void SharedReadsBelowANamedSequenceReachTheReferent()
@@ -222,7 +222,7 @@ public class PublishedPlaceProjectionTest
     }
 
     // DECISIONS BU-10: the guard applies to element roots only; a string compared below a Field or a Tuple element that stores
-    // `uniq/Point`, reached through a shared parameter, is read in place and generates on the default pipeline, as before G147 (2b).
+    // `uniq/Point`, reached through a shared parameter, is read in place and generates, as before G147 (2b).
     [Fact]
     public void ComparedPartsBelowAStoredFieldReferenceGenerate()
     {

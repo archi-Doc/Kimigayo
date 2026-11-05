@@ -177,7 +177,7 @@ public class AssociatedOriginBindingTest
 
     // SPEC 15.4.2, 8.5.1, 8.5.2: a projection base is a written Type occurrence, so the projection's position completes the base's
     // omitted slot before the projection is normalized: a local infers it, an input makes it universal, a result takes the defaults and
-    // an anonymous function's input is a body variable. Both spellings are accepted on both pipelines, with no located limit.
+    // an anonymous function's input is a body variable. Both spellings are accepted, with no located limit.
     [Theory]
     [MemberData(nameof(ValidBases))]
     public void AProjectionBaseIsCompletedByTheProjectionsPosition(string source, bool qualified)
