@@ -325,7 +325,7 @@ public class StartupBindingTest
     {
         var c = Parse("return");
         c.Bind();
-        Assert.NotEqual(0, c.Binding.LintErrors);
+        Assert.Equal([nameof(DiagnosticCode.InvalidJumpTarget_Kd)], CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
     }
 
     [Theory]
@@ -340,9 +340,7 @@ public class StartupBindingTest
         // The ordinary Slice iterator library body now retains its own Origin
         // obligation. Console calls must still introduce no source obligations.
         Assert.DoesNotContain(c.Binding.Obligations, x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha));
-        var flow = c.AnalyzeControlFlow();
-        Assert.True(flow.PendingBinding.Count == 0, string.Join("\n", flow.PendingBinding.Select(x => $"{x.Akind}: {x}, {x.StateOf()}, {x.TypeOf()}")));
-        Assert.Empty(flow.Issues);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
     [Theory]
@@ -352,8 +350,9 @@ public class StartupBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Empty(c.AnalyzeControlFlow().PendingBinding);
-        Assert.Equal(error, c.Binding.LintErrors != 0);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        string[] codes = error ? [nameof(DiagnosticCode.UnsafeBlockRequired_Kd)] : [];
+        Assert.Equal(codes, CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
     }
 
     [Theory]
@@ -364,20 +363,18 @@ public class StartupBindingTest
         var c = Parse($"struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc use(x: ref/S) -> i32 => {expression}");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.PendingBinding);
-        Assert.Empty(flow.Issues);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         if (call.CallOf()!.Receiver is { } receiver)
         {
-            Assert.True(flow.Nodes.ContainsKey(receiver));
+            Assert.NotEqual(HirCompletion.Unset, HirTables.CompletionOf(receiver));
         }
 
         foreach (var argument in call.ArgumentNodes)
         {
-            Assert.True(flow.Nodes.ContainsKey(argument));
+            Assert.NotEqual(HirCompletion.Unset, HirTables.CompletionOf(argument));
         }
 
-        Assert.False(flow.Nodes.ContainsKey(call.Method));
+        Assert.Equal(HirCompletion.Unset, HirTables.CompletionOf(call.Method));
     }
 
     [Theory]

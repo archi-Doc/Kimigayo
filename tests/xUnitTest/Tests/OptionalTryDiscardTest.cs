@@ -266,13 +266,13 @@ public partial class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> i32? => .Some(try x)");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
+        var valid = c.Analyze().IsVerified;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Bind();
-            flow.Reanalyze(c.Kotonoha.RootKoto);
+            valid &= c.Analyze().IsVerified;
         }));
-        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+        Assert.True(c.Binding.Result.IsComplete && valid, Describe(c));
     }
 
     [Fact]
@@ -280,8 +280,7 @@ public partial class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> ()?\n    try x\n    return .Some(())");
         var propagation = Assert.Single(Descendants(c.Kotonoha.RootKoto).OfType<TryKoto>());
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
+        Assert.True(c.Analysis.IsVerified, Describe(c));
         Assert.Same(BoundType.I32, propagation.TypeOf());
     }
 

@@ -117,12 +117,15 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         Assert.Null(MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), DiagnosticCode.InternalInvariant_Kd));
     }
 
-    /// <summary>Gets whether a compilation is Binding-complete (R4-M47): Binding accepted its program, a complete result and no lint
-    /// Error, which leaves it complete (R5-M31).</summary>
+    /// <summary>Gets whether a compilation is Binding-complete (R4-M47): Binding accepted its program, a complete result and no published
+    /// Error in Binding's partition (its lints included), which leaves it complete (R5-M31).</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>Whether it is Binding-complete.</returns>
     internal static bool BindingComplete(Compilation compilation)
-        => compilation.Binding.Result.IsComplete && compilation.Binding.LintErrors == 0;
+    {
+        compilation.Binding.ReportDiagnostics();
+        return compilation.Binding.Result.IsComplete && !compilation.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding);
+    }
 
     /// <summary>Gets the analysis that owns a MIR problem: its pair's in <see cref="Pairs"/> (R4-M67), where each pair names one analysis;
     /// null outside it, a recording rule's defect.</summary>
