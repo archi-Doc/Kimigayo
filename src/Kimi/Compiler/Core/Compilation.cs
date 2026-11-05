@@ -304,19 +304,6 @@ public partial class Compilation
         return this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out kotonoha);
     }
 
-    /// <summary>Analyzes control flow from the parsed source and Binding's current facts.</summary>
-    /// <returns>Definite errors, warnings, and obligations pending further Binding.</returns>
-    public ControlFlowAnalysis AnalyzeControlFlow()
-    {
-        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto);
-        for (var i = 1; i < this.SourceModules.Length; i++)
-        {
-            flow.Append(this.SourceModules[i].RootKoto);
-        }
-
-        return flow;
-    }
-
     /// <summary>Runs final Binding and Bound checking for the complete selected source.</summary>
     /// <returns>The final Binding summary; incomplete semantics never certify success.</returns>
     public BindingResult Bind()
