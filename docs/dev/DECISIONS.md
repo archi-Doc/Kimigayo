@@ -5761,6 +5761,8 @@ resumed by R4-M86 (2026-10-20).
     operand without an expected Type (`Binding.Conversions`), so α does not reach the literal (superseded by BU-9: the SPEC verdict); a Callable bound over a Function Item
     whose result is Never stays `NoApplicableOverload_Kd` (E10(3), as on dev); a join whose every source holds Never compares their
     own Types (E10(2)); a Dictionary literal source of a join takes no late Type (U5 decides its MIR side).
+  - Ended by R5-M192 (2026-11-05, R6-check H11a C4): U2's value-fit entry `FitsVerifiedTypeAt` is deleted; its last reader was the
+    old analysis.
 - **BU-5** (2026-10-18; G129 E5, before R4-M59's removal) An anonymous function's result sources (SPEC 14.9.1, 14.9.2) and the survey
   of an operator's result (SPEC 13.3.4). (1) Without a declared or expected result, an anonymous function with a single-item body is a
   result target exactly as one with an indented body: `BeginResult` surveys the body's value and every self-targeted `return` operand,
@@ -6693,6 +6695,8 @@ resumed by R4-M86 (2026-10-20).
   - SPEC reading (R4-M123, F3, owner 2026-10-25): a bare entry's binding has "a captured reference's Origin" when no borrow lies
     between it and the entry's parent (an enclosing local or parameter, or an outer environment binding in a Consuming outer call); SPEC 7.7.2 gives the meet of the Origins that contain the child, so a nested entry through a
     borrowed outer receiver is also within that receiver, which `EnclosingAtom` does not give (n2b accepted on both pipelines; 2c-D).
+  - Ended by R5-M192 (2026-11-05, R6-check H11a C4): the no-body reader `VerifiedRegionOutlives` is deleted with
+    `FitsVerifiedTypeAt`, whose last reader, the old analysis's `RecordCallInput`, went at H10b.
 
 - **BU-29** (superseded in part by BU-59: the staging of `SourceState` and of a source check's `UnderCheck`, and the reason for staging
   `Completion`) (2026-10-23; PLAN G170 unit C2, bu30, under PlanB C and C1's owner-approved contract,
@@ -14350,6 +14354,8 @@ structure is recorded here by the unit that first implements it.
     `ReceiverDependentListed`, seven `("R6-check")` tags); BU-63's `ContainsOrigin(BoundType, …)` copy; BU-90 X2's
     `BindingFailure.VirtualEffectBound` with its arm and row (requirements are catalogued by name); D-c8's `ComparisonPlan(CallPlan)`
     and, with it, the legacy plan's constant `operators` and `BoundComparison.Operators`.
+  - C4 (BU consents, board C-32): `FitsVerifiedTypeAt` (lowering's recheck, last read by the old analysis), the no-body reader
+    `VerifiedRegionOutlives` and `OriginFitMode.Verified` go too.
   - Oracles: R5-M61's forwarding comparison ends with `InstantiateForwardedCall` and `InstantiateDefaultCall`, which no compiler
     reads. TyCtxtTest keeps Compose's two-step instantiation over every nested call and Witness's per-kind counts; Witness's targets
     stay observed by InstanceCollectorTest's K 4.5 rows, TyCtxtTest's direct Witness assertions and the native fixtures;
@@ -14359,7 +14365,7 @@ structure is recorded here by the unit that first implements it.
   - Test-only queries stay as the one observation of a SPEC fact, untagged: `ProvePrimitiveInteger` (WrappingIntegerTest: a wrapping
     integer Type satisfies no PrimitiveInteger, SPEC 3.1.1; no program of that class reaches the Contract with one) and
     `TryGetReceiverOperation` (InheritedReceiverBindingTest: an inherited member's receiver operation; the HIR publishes only its
-    adaptation, and `BaseReferenceKoto.BasePath` is postponed to R7 by R5-M190).
+    adaptation, and for a member access or a call that selects no candidate no other table holds it).
   - BU consents (2026-11-05, board C-25: design approval after one REVISE, every Binding hunk); R4 consents to `MirCases.cs:19`'s
     wording (board C-26).
 

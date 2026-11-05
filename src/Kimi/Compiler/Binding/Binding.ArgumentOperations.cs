@@ -73,8 +73,8 @@ public sealed partial class Binding
 
     /// <summary>Gets a selected receiver/storage operation, including an unresolved projected-use proof obligation. Its reader,
     /// InheritedReceiverBindingTest, observes the operation selected for an inherited member (its base path, object compatibility,
-    /// kind, adaptation, source and Origins), which no published table holds: the HIR has only its adaptation (HirAdjust), and
-    /// BaseReferenceKoto.BasePath is postponed to R7 (DECISIONS R5-M190).</summary>
+    /// kind, adaptation, source and Origins): the HIR has only its adaptation (HirAdjust), and for a member access or a call that
+    /// selects no candidate no other table holds it (a resolved call's is CallPlan.ReceiverOperation).</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
     /// <param name="operation">The selected operation; an Unknown proof is not permission to execute.</param>
     /// <returns>Whether this pass selected an operation for the use.</returns>

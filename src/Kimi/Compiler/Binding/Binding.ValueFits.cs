@@ -6,9 +6,9 @@ namespace Kimi.Compiler;
 
 // Value fits (SPEC 3.8, 10.2, 15.6.1; DECISIONS BU-4): whether a value of Type `actual` fits a position of Type `expected`.
 // - Responsibility: the entries a value position calls: FitsType and FitsTypeAt (a value at an expected Type, at a use whose premises and
-//   Origins the fit reads), FitsStructurally(At) (the structural part of a fit, SPEC 15.6.1), FitsVerifiedTypeAt (lowering's recheck of
-//   a verified contract) and CheckTypeUse, the use-site fit whose differing Origin positions, once the structure holds, become
-//   obligations that ownership judges and reports at the value (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
+//   Origins the fit reads), FitsStructurally(At) (the structural part of a fit, SPEC 15.6.1) and CheckTypeUse, the use-site fit whose
+//   differing Origin positions, once the structure holds, become obligations that ownership judges and reports at the value
+//   (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
 // - Outputs: the verdict and, for FitsType, FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
@@ -47,12 +47,6 @@ public sealed partial class Binding
         failure = walk.Failure;
         return fits;
     }
-
-    // Lowering rechecks the already verified contract without adding constraints or reopening inference.
-    internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
-        => this.FitsTypeAt(actual, expected, use, out _) || ((actual.CarriesAnyOrigin || expected.CarriesAnyOrigin) &&
-            this.FitsStructurallyAt(actual, expected, use) &&
-            new OriginFitSearch(this, use, this.formingBody, OriginFitMode.Verified).FailedOriginRelation(actual, expected, OriginVariance.Covariant) is null);
 
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
