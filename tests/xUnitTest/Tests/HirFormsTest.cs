@@ -16,7 +16,7 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
-    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the MIR
+    // The programs AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed sweeps: every SPEC example variant without an expected record that the MIR
     // accepts too (Binding records none), the library and the milestone programs.
     public static TheoryData<string> AcceptedPrograms
     {
@@ -733,9 +733,10 @@ public sealed partial class HirFormsTest
         Assert.Equal(["u@follow Reborrow", "owned[0] Reborrow", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase"], rows);
     }
 
-    // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan
-    // row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, so the builder's
-    // derived reading of an unset row arises only beside a Binding error (MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError).
+    // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145, BU-103): in a program Binding accepts, every Place the MIR builder takes as its value by its
+    // plan row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, neither unset
+    // nor failed, so the builder's derived reading of a failed row arises only beside a Binding error
+    // (MirBuildTest.AFailedDiscardRowIsDerivedFromABindingError).
     // The forms below each discard a Place; a group's operand is a parenthesized one (a label wraps only a control-flow construct, never
     // a Place: Parser's label rule).
     [Theory]
@@ -750,7 +751,7 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         var built = BuiltByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(built);
-        Assert.All(built, static x => Assert.NotEqual(HirAcquire.Unset, HirTables.PlanOf(x).Adjust.Acquire));
+        Assert.All(built, static x => Assert.True(HirTables.PlanOf(x).Adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Failed), $"{x}"));
         var held = HeldByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(held);
         Assert.All(held, static x => Assert.NotNull(HirTables.PlanOf(x).DiscardedType));
@@ -807,10 +808,10 @@ public sealed partial class HirFormsTest
         Assert.Null(HirTables.PlanOf(statement).DiscardedType);
     }
 
-    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
+    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset or failed.
     [Theory]
     [MemberData(nameof(AcceptedPrograms))]
-    public void AnAcceptedProgramLeavesNoDiscardRowUnset(string name)
+    public void AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed(string name)
     {
         Kotonoha module;
         if (name.StartsWith("spec/", StringComparison.Ordinal))
@@ -827,7 +828,7 @@ public sealed partial class HirFormsTest
         }
 
         HirTables.Publish(module.Compilation);
-        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Unset);
+        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire is HirAcquire.Unset or HirAcquire.Failed);
         Assert.Empty(unset.Select(static x => $"{x.Span.Start} {x}"));
         var untyped = HeldByTheirRow(module).Where(static x => HirTables.PlanOf(x).DiscardedType is null);
         Assert.Empty(untyped.Select(static x => $"{x.Span.Start} {x}"));
