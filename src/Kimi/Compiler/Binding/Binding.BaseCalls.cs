@@ -79,7 +79,8 @@ public sealed partial class Binding
 
     private BindingSymbol? BaseMember(MemberAccessKoto member, BaseReferenceKoto reference, BindingScope scope)
     {
-        if (this.BindNode(reference, scope) is not { } actual || reference.BasePath is not { } path || member.Right is not IdentifierNameKoto name)
+        if (this.BindNode(reference, scope) is not { } actual || !reference.HasCurrentBinding || reference.BasePath is not { } path ||
+            member.Right is not IdentifierNameKoto name)
         {
             return null;
         }

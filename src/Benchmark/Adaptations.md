@@ -12,7 +12,7 @@ The rc call uses bool; the others use i32. Increasing Function count exercises d
 closed factory generation together. `GenericAdaptationTest` uses the identical single-Function input for its
 zero-allocation Binding, ownership and emission regressions.
 
-The shared `CompilerPlanMeasurements` runner measures these three phases separately, after 32 warm-up iterations,
+The shared `CompilerPlanMeasurements` runner measures Binding, the check and emission separately (from R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass), after 32 warm-up iterations,
 with seven samples of 64 iterations. Full collections occur outside each measured interval. Reports retain every
 timing and thread allocation count, source hashes, compiler/benchmark identities and runtime/platform details.
 Each operation must remain valid. Source construction and initial compilation are outside the measurements.

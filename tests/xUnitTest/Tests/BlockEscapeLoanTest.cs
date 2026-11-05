@@ -114,8 +114,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string LoanLabel = "later use of the value retaining the conflicting loan";
 
-    private const string RetainedLabel = "value retaining the conflicting loan";
-
     // A local that keeps n's Loan through an Option payload written in the block, a definition the carrying walk does not decide; both
     // exits destroy n while it keeps the Loan.
     private const string UndecidedHolder = "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n" +
@@ -260,19 +258,20 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     // SPEC 15.6.6: where the carrying walk gives up, the escaping exit is never dropped. Since the MIR decides acceptance (H5, DECISIONS
     // R5-M185) both exits' destructions of n are A5's one record at n's declaration (H3b T44: at each exit before; the second exit's own
-    // record is the old analysis's, 1x by R5's F-c ruling), relating the Borrow and `o`, whose next use lies past the block, at its
-    // declaration (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without the destruction's Note (T49, until
-    // A6). The same body over a plain reference, which the walk decides, has the same record.
+    // record is the old analysis's, 1x by R5's F-c ruling), relating the Borrow and `o`'s next use past the block, which the exits' drop
+    // chain reaches since the block's body end, no completion of a block that is no Never form, has no check edge (DIAGNOSTICS A6's `Use`
+    // witness; DECISIONS R4-M175, a record-selection move from the `Store` witness at o's declaration, Q13), without the destruction's
+    // Note (T49, until A6). The same body over a plain reference, which the walk decides, has the same record.
     [Fact]
     public void AnUndecidedHoldersExitDestructionsAreOneRecord()
     {
         var decided = UndecidedHolder.Replace("var o: Option<ref/i32> = .Some(z@ref)", "var o = z@ref", StringComparison.Ordinal)
             .Replace("o = .Some(n@ref)", "o = n@ref", StringComparison.Ordinal);
-        foreach (var (source, holder) in new[] { (UndecidedHolder, "var o: Option<ref/i32> = .Some(z@ref)"), (decided, "var o = z@ref") })
+        foreach (var source in new[] { UndecidedHolder, decided })
         {
             var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
             Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), Root, (string?)null), (record.Code, Text(source, record.Span), record.Note));
-            Assert.Equal([("borrow", "n@ref", BorrowLabel), ("loan", holder, RetainedLabel)], record.Related!.Select(x => (x.Role, Text(source, x.Span), x.Label)));
+            Assert.Equal([("borrow", "n@ref", BorrowLabel), ("loan", "o@ref", LoanLabel)], record.Related!.Select(x => (x.Role, Text(source, x.Span), x.Label)));
         }
     }
 

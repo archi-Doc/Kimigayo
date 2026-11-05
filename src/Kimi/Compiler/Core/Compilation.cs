@@ -123,8 +123,6 @@ public partial class Compilation
     /// <summary>Gets this compilation's compiler-owned Kimi requirement identities.</summary>
     public KimiLibrary Library => this.Binding.Library;
 
-    private OwnershipAnalysis? ownership; // The old analysis, reached only through AnalyzeLegacyOwnership (R6-check H5 D3).
-
     /// <summary>Gets the process's current directory, captured once before the root module is created: the base of a project
     /// without a directory (<see cref="Kotonoha.Base"/>), so a later change of the process's directory renames nothing.</summary>
     internal string CurrentDirectory { get; } = Directory.GetCurrentDirectory();
@@ -306,19 +304,6 @@ public partial class Compilation
         return this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out kotonoha);
     }
 
-    /// <summary>Analyzes control flow from the parsed source and Binding's current facts.</summary>
-    /// <returns>Definite errors, warnings, and obligations pending further Binding.</returns>
-    public ControlFlowAnalysis AnalyzeControlFlow()
-    {
-        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto);
-        for (var i = 1; i < this.SourceModules.Length; i++)
-        {
-            flow.Append(this.SourceModules[i].RootKoto);
-        }
-
-        return flow;
-    }
-
     /// <summary>Runs final Binding and Bound checking for the complete selected source.</summary>
     /// <returns>The final Binding summary; incomplete semantics never certify success.</returns>
     public BindingResult Bind()
@@ -337,7 +322,7 @@ public partial class Compilation
     {
         this.Diagnostics.InvalidateSemantics();
         this.binding?.Invalidate();
-        this.InvalidateOwnership();
+        this.InvalidateMir();
         this.locations?.Clear();
         this.layout?.Clear();
         foreach (var module in this.SourceModules)

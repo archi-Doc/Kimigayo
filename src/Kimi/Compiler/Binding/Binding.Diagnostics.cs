@@ -135,11 +135,11 @@ public sealed partial class Binding
             : [node.Edit(new(place.Span.End, 0), "@move")];
         var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
         var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
-        return [new(RepairKind.Transfer, [place.ToString(), TransferTarget(place)], edits, verified, required)];
+        return [new(RepairKind.Transfer, [place.ToString(), TransferDestination(place)], edits, verified, required)];
     }
 
     // The destination a Place is acquired for, as the Transfer title names it.
-    internal static string TransferTarget(Koto place)
+    internal static string TransferDestination(Koto place)
         => Destination(place) switch
         {
             InvocationKoto call when ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) => "its call",

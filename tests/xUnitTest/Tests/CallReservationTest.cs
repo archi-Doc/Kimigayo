@@ -253,9 +253,14 @@ public class CallReservationTest(ITestOutputHelper output)
     // Borrow and, since the reserved argument's next use, the call, lies past the label block, that argument's declaration as the value
     // retaining the Loan (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without a `reservation` related or
     // the implicit acquisition's Note (H3b T49, until A6; the Move below, which no block separates from its call, relates the call).
+    // From a defer's write the walk follows the exit's drop chain to the call, since the block's body end, no completion of a block
+    // that is no Never form, has no check edge (DECISIONS R4-M175; a record-selection move, Q13), so that row relates the call.
     [Theory]
     [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:5 c@uniq | loan 7:5 c@uniq" + Retaining)]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:5 c@uniq | loan 7:5 c@uniq" + Retaining)]
+    [InlineData(
+        "var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))",
+        "c.value = 2",
+        "borrow 7:5 c@uniq | loan 7:1 set(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3\n))")]
     [InlineData("func run()\n    var c = Cell.init()\n    set(c@uniq, (label scope: do\n        c.value = 2\n        exit to scope 3\n    ))\nrun()", "c.value = 2", "borrow 8:9 c@uniq | loan 8:9 c@uniq" + Retaining)]
     [InlineData("var c = Cell.init()\nc.set((label scope: do\n    c.value = 2\n    exit to scope 3\n))", "c.value = 2", "borrow 7:1 c | loan 7:1 c" + Retaining)]
     [InlineData("var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.0.value = 2\n    exit to scope 3\n))", "pair.0.value = 2", "borrow 7:5 pair.0@uniq | loan 7:5 pair.0@uniq" + Retaining)]

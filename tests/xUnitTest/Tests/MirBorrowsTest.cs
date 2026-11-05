@@ -2406,18 +2406,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 
-    // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the block or `if` it leaves, is witnessed by its
-    // declaration, the value retaining the Loan: an undecided holder and its decided twin (BlockEscapeLoanTest), a chain between body Origins
-    // (OriginRelationDiagnosticTest) and a fixed input's capture (InputDependentValueCallTest).
+    // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the `if` it leaves, is witnessed by its
+    // declaration, the value retaining the Loan: a chain between body Origins (OriginRelationDiagnosticTest) and a fixed input's capture
+    // (InputDependentValueCallTest).
     [Theory]
-    [InlineData(
-        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n    let k = label block: do\n        let n = 5\n" +
-        "        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
-        "let n = 5: Anchor n@ref, Store var o: Option<ref/i32> = .Some(z@ref)")]
-    [InlineData(
-        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o = z@ref\n    let k = label block: do\n        let n = 5\n        o = n@ref\n" +
-        "        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
-        "let n = 5: Anchor n@ref, Store var o = z@ref")]
     [InlineData(
         "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
         "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",
@@ -2427,14 +2419,22 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         "        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n",
         "let y: i32 = 5: Anchor y@ref, Store var c = func [var start](n: ref/i32 during r) -> ref/i32 during r")]
     public void AHolderUsedPastTheChainIsWitnessedByItsDeclaration(string source, string problem)
-    {
-        var c = MirBuildTest.Compile(source);
-        var program = Analyze(c);
-        Assert.Equal(
-            [problem],
-            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
-                $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
-    }
+        => Assert.Equal([problem], Witnessed(source));
+
+    // DIAGNOSTICS A6 `Use`: an undecided holder and its decided twin (BlockEscapeLoanTest) leave a labeled do by its exits only, whose
+    // drop chain reaches the holder's next use, which witnesses: since R4-M175 the body end of a do that is no Never form has no check
+    // edge, where the walk stopped at the declaration witness before (a record-selection move, DECISIONS Q13: same code, subject, count).
+    [Theory]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n    let k = label block: do\n        let n = 5\n" +
+        "        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Use o@ref")]
+    [InlineData(
+        "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o = z@ref\n    let k = label block: do\n        let n = 5\n        o = n@ref\n" +
+        "        if c\n            exit to block 0\n        exit to block 1\n    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n",
+        "let n = 5: Anchor n@ref, Use o@ref")]
+    public void AHolderLeavingADoByItsExitsIsWitnessedByItsUse(string source, string problem)
+        => Assert.Equal([problem], Witnessed(source));
 
     // V16 (A3 6.3, shapes 1–6): N Copies of one reference, N loops with three live references and N writes through one reference keep the
     // work linear; a straight line of N borrowed locals, N borrow/write pairs of one root and N borrow/write pairs in loops grow it within
@@ -2715,6 +2715,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     private static MirBody Body(MirProgram program, string name) => program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == name);
 
     private static string Line(Compilation c, SourceRef site) => c.SyntaxOf(site).ToString().Split('\n')[0].Trim();
+
+    // A program's Loan problems in its own module, each "subject: fact kind and site, ...", the witnesses A6 selects (A3 6.4).
+    private static string[] Witnessed(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = Analyze(c);
+        return program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
+            $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}").ToArray();
+    }
 
     // A shape's source at N and K: each «N:text» or «K:text» run repeated N or K times, «R:text» K times in reverse order, {0} the index
     // and {1} the index plus one.

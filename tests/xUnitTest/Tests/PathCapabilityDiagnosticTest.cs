@@ -328,7 +328,7 @@ public class PathCapabilityDiagnosticTest
 
     // DECISIONS R5-M82, R5-M156 (OI-1 (a′)): check reports each of the prelude's 26 statics whose storage P42 has not brought (one that can
     // be set or whose Type is not a scalar; `limit` is an immutable scalar) as the collector's StaticStorage record at its declaration,
-    // through its accessors, on every pipeline, also beside a Binding error after the prelude (SPEC 23.1.2), so the rows above assert
+    // through its accessors, also beside a Binding error after the prelude (SPEC 23.1.2), so the rows above assert
     // their own records once: 26 records, no longer 27, since the MIR decides acceptance (H5): the old analysis's own Unsupported_Kd at
     // the custom setter's static write `State.counter` went with it (1x), and the collector's record at `custom` stands for that static.
     // P42 reverts this test.
@@ -498,7 +498,7 @@ public class PathCapabilityDiagnosticTest
     }
 
     // SPEC 3.6, 6.5.2: a Case construction is a Temporary Value, qualified, in parentheses or with a nested payload, lent shared or,
-    // spelled, exclusively; it is analyzed and generated on either pipeline.
+    // spelled, exclusively; it is analyzed and generated.
     [Theory]
     [InlineData(Cases + "let a = lookc((Color.Red)@ref) + lookc(Color.Red@ref) + lookc(Color.Blue) + lookc((Color.Blue))")]
     [InlineData(Cases + "let a = bumpc((Color.Blue)@uniq) + bumpc(Color.Red@uniq)")]

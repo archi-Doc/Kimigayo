@@ -105,24 +105,6 @@ internal sealed class AdtDef
         return fieldType is not null;
     }
 
-    internal static bool HasDestructorOnPath(BoundType type, BindingSymbol? field)
-    {
-        for (var layer = type; layer is not null; layer = Base(layer))
-        {
-            if (Destructor(layer) is not null)
-            {
-                return true;
-            }
-
-            if (ReferenceEquals(field?.Scope.Owner.BoundSymbol, layer.Symbol))
-            {
-                break;
-            }
-        }
-
-        return false;
-    }
-
     internal static PropertyKoto Field(BoundType type, int index) => Struct(type)!.Fields[index];
 
     // SPEC 11.7: whether a constructor may place a stored Field only once: a let Field, or a var with a custom set.

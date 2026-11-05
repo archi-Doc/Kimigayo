@@ -520,6 +520,16 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(slot, Problems(recovered));
     }
 
+    // SPEC 23.1.2 (DECISIONS BU-106): a rejected do's body is built before its derived value, so its moves keep their problems, within
+    // the body and against a use after the do (fail-before: the body was one Opaque and neither problem was found).
+    [Fact]
+    public void ARejectedDoKeepsTheMovesOfItsBody()
+    {
+        const string Head = Take + "func f(s: string) -> i32\n    let y: i32 = do\n        _ = once(s@move)\n";
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Head + "        _ = once(s@move)\n    return 1\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Head + "    _ = once(s@move)\n    return 1\n"));
+    }
+
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
     // an operand it did not resolve (`1 + (missing + once(s@move))`, a selection's index), so the problems of what it evaluates stay; one
     // in a statement or a typed destination, `and`, a parenthesized `if` and a selection whose `if` or labeled do index, also in

@@ -121,10 +121,8 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Equal(0, c.Binding.LintErrors);
-        Assert.Empty(flow.PendingBinding);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c)); // The MIR decides acceptance (H5; the while row: R4-M175).
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
     }
 
     [Theory]

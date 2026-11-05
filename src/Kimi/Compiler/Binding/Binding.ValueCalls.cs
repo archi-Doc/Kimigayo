@@ -7,7 +7,7 @@
 //   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
 //   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
-//   Unsupported_Kd; R1's condition is the old analysis's gate fact.
+//   Unsupported_Kd.
 // - Inputs: the call, the callee's call signature (TryCallable; a Closure Type's definition, BoundClosure.Of) and its receiver mode.
 //   Outputs: the call's plan (CallPlan.SetValue) and its result Type, or a failure at the call.
 // - Invariants: a bound call's result names no input or reserved atom of its callee's binder (otherwise the call is Unsupported_Kd);
@@ -637,8 +637,7 @@ public sealed partial class Binding
     // complete call contracts; a result over the per-call inputs takes the arguments' Origins, as an ordinary call's does; one written
     // over a fixed Origin of the calling body stays as written. A Closure's result naming its call receiver ρ takes the receiver
     // acquisition's Origin and its call result atom the call's Unbound atom, each image built only where the result names its atom;
-    // one naming another Closure's atom is F1's located limit. R1's condition (`dependent`, or a per-call result naming the receiver)
-    // is the old analysis's gate fact (Binding.ValueCallGate), written on the call's plan.
+    // one naming another Closure's atom is F1's located limit.
     private BoundType? ValueCallResult(
         InvocationKoto call,
         BoundType signature,
@@ -649,9 +648,6 @@ public sealed partial class Binding
     {
         var result = signature.Components[1];
         var inputBinder = ownBinder is not null && this.HasUnsubstitutedOrigin(result, ownBinder) ? ownBinder : null;
-        var dependent = inputBinder is null
-            ? !PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(result, call.Method, call)
-            : this.HasEnvironmentOrigin(result, inputBinder);
         var closure = ownBinder is FunctionKoto { IsAnonymous: true, ClosureDefinition: not null } binder ? binder : null;
         var atoms = closure is null ? CallAtoms.None : this.CallAtomsOf(result, closure, call);
         if ((atoms & CallAtoms.Foreign) != 0)
@@ -670,7 +666,6 @@ public sealed partial class Binding
             }
         }
 
-        this.RecordReceiverDependence(call, dependent);
         return result;
     }
 }

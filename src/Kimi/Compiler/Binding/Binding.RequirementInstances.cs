@@ -21,7 +21,7 @@ public sealed partial class Binding
             target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
         {
             var declaring = requirement.Scope.Owner.BoundSymbol!; // The comparison's own Contract, whose mapping the plan follows.
-            return this.ComparisonPlan(target, self, declaring.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
+            return this.ComparisonPlan(target, self, declaring.LibraryDeclaration!.Value) is { } plan && Leaves(plan, into);
         }
 
         switch (witness.Kind)

@@ -82,6 +82,25 @@ public sealed class HirColumnsTest
         Assert.True(cold > 0 && cold == warm, $"{cold} facts cold, {warm} warm");
     }
 
+    // DECISIONS BU-106: a warm publish of a rejected labeled do that no jump goes to, whose parts the walk over its jumps (Keeps) visits
+    // to its end before keeping them, allocates nothing: the walk is one visitor reused across passes.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmPublishOfARejectedDoAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(c: bool) -> i32\n    let y: i32 = label done: do\n        if c => return 1\n" +
+            "        require c else => ()\n    return 1\n");
+        HirTables.Publish(c);
+        var work = c.Binding.KeptTargetWork;
+        Assert.True(work > 0, "the walk did not run");
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            HirTables.Publish(c);
+        }));
+        Assert.True(c.Binding.KeptTargetWork > work, "the warm publish did not walk");
+    }
+
     // The publish found no node without the facts of its Op (HirTables.Broken: a call Op its call, a match, a try and a user loop their
     // Pattern plan, an expansion the calls it names), and every parsed node in the tree has an Op, a selected symbol its Res (the prepared
     // slot exactly where the parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated
@@ -211,7 +230,7 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} views {IntrinsicDisposition.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
 
-            if (op == HirOp.Closure && (((FunctionKoto)node).ClosureDefinition is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
+            if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
             {
                 problems.Add($"{where} without its closure definition");
             }
@@ -300,7 +319,7 @@ public sealed class HirColumnsTest
     {
         if (HirTables.PlanOf(jump).Plan is Koto row)
         {
-            return ReferenceEquals(row, KotoHelper.TransferTarget(jump));
+            return ReferenceEquals(row, Binding.TransferTarget(jump));
         }
 
         return CompilationTestHelper.BindingErrors(jump.CodeContext.Compilation)
@@ -335,7 +354,7 @@ public sealed class HirColumnsTest
         var found = 0;
         foreach (var node in nodes)
         {
-            var type = HirTables.Meaning(node) as BoundType;
+            var type = HirTables.TypeOf(node);
             for (var i = 0; i < HirTables.PlaceOf(node).Layers; i++)
             {
                 found += TyCtxt.Layer(type, out type, out var binder) == HirPlaceKind.PairLayer && binder is not null ? 1 : 0;
@@ -393,7 +412,7 @@ public sealed class HirColumnsTest
         return own.Concat(calls).Concat(payloads);
 
         // A body or operand that supplies its construct's value.
-        static Koto? Result(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
+        static Koto? Result(Koto? source) => source is not null && Binding.IsValueContext(source) ? source : null;
     }
 
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type

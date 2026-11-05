@@ -7,7 +7,8 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --view-plans > artifacts/
 ```
 
 This uses the fixed runner and sampling conditions of [CallablePlans.md](CallablePlans.md):
-32 warm-ups, seven samples of 64 iterations, and separate Binding, ownership and emission measurements.
+32 warm-ups, seven samples of 64 iterations, and separate Binding, check and emission measurements.
+From R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass.
 `VerificationWorkloads.ExclusiveViews` and `SliceCopies` are shared with the strict allocation regressions.
 The report records source hashes, configuration, environment, time and bytes. It establishes no speedup ratio.
 

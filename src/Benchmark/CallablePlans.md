@@ -12,10 +12,11 @@ of the strict allocation regressions in `ContextualFunctionReferenceTest`, `Func
 `ApplicabilityChainRegressionTest`, shared through `VerificationWorkloads`.
 The regressions retain their original eight warm-up and eight measured iterations.
 
-The opt-in runner shares `CompilerPlanMeasurements` with object measurements. Each binding, ownership and emission
+The opt-in runner shares `CompilerPlanMeasurements` with object measurements. Each binding, check and emission
 phase has 32 warm-up iterations and seven samples of 64 iterations. Full collections occur outside each sample;
-startup and ownership are refreshed after the binding phase. Every operation must remain valid. Reports preserve
+each check operation rebinds and checks startup itself. Every operation must remain valid. Reports preserve
 all timings, thread-allocation samples, source hashes, configuration and runtime/platform identity.
+From R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass.
 
 Timing observations are not test thresholds or speedup evidence. Native O0/O2 regressions separately establish
 behavior and cleanup. The object command keeps its existing inputs, phases and repetition counts.
@@ -28,8 +29,9 @@ variables with independent joins and a loop. Inputs are shared with `CallableReg
 The candidate workload checks an uninstantiated generic body; its emission timing does not measure
 native execution of the selected generic call. Concrete candidate execution has separate functional fixtures.
 
-Reports include packed borrow-table payload bytes, region-flow/retention/referent array and list payload
-bytes, region hash-index entry capacities, and peak requested region-flow cells. Payload counts exclude
+Until R6-check H9, reports included packed borrow-table payload bytes, region-flow/retention/referent array and list
+payload bytes, region hash-index entry capacities, and peak requested region-flow cells, the legacy pass's tables;
+H9 removed those columns, which the MIR has no counterpart for. Payload counts exclude
 object headers, hash buckets and shared pre-existing CFG/worklist storage; they are not total heap size.
 Flow storage is reused per borrowed root and bounded by operations times sparse relevant storage paths,
 with the common geometric capacity policy. Referent queries retain their union of targets; this can grow
@@ -43,8 +45,8 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --local-regions > artifac
 
 `--fixed-origin-loans` uses the same phases and fixed measurement conditions for premise-based fixed-Origin fits.
 The unchanged `FixedInputValueCall` is a control. Calls, independent borrowed roots and CFG joins grow separately
-at 4/8/16; the inputs and capacity/allocation checks are shared with `CallableRegionScalingTest`. The region
-index count also includes retained call-input contract entries; byte counts exclude dictionary entry payloads
+at 4/8/16; the inputs and capacity/allocation checks are shared with `CallableRegionScalingTest`. Until H9 the region
+index count also included retained call-input contract entries; byte counts exclude dictionary entry payloads
 and buckets. Origin fitting adds no runtime Loan representation or extra acquisition.
 
 ```powershell

@@ -9,23 +9,6 @@ namespace Kimi.Compiler;
 // element Type `E` and `length N`.
 public sealed partial class Binding
 {
-    /// <summary>Adds the Kimi fixed-array members that the fixed array's entry conformances map requirements to.</summary>
-    /// <param name="destination">The function list to extend without duplicates.</param>
-    internal void CollectFixedArrayWitnesses(List<FunctionKoto> destination)
-    {
-        Add(this.FixedArrayWitness(this.Library.Iterable));
-        Add(this.FixedArrayWitness(this.Library.UniqIterable));
-        Add(this.FixedArrayWitness(this.Library.IntoIterable));
-
-        void Add(BindingSymbol? witness)
-        {
-            if (witness?.Declaration is FunctionKoto function && !destination.Contains(function))
-            {
-                destination.Add(function);
-            }
-        }
-    }
-
     // Rents the member's generic arguments for `array`: `E` and `N` at their slots, null elsewhere (the materializer and TyCtxt.Witness).
     internal bool RentFixedArrayArguments(FunctionKoto witness, BoundType array, out BoundType?[] types, out BoundLength?[] lengths, out int count)
     {

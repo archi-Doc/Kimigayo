@@ -65,7 +65,7 @@ internal static class SyntaxEditMeasurements
         Console.WriteLine(JsonSerializer.Serialize(
             new
             {
-                compiler = Compilation.CompilerIdentity,
+                compiler = Compilation.CompilerVersion,
                 runtime = Environment.Version.ToString(),
                 samples = 7,
                 results,

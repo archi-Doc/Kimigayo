@@ -329,8 +329,8 @@ public class MinimalEmissionTest
     }
 
     // SPEC 8.15.3, 23.1.1: a valid program past a generation resource limit is refused with GenerationResourceLimit_Kd and no output, checked
-    // and then generated as a build runs them: check reports the checked set's limit at its location (K13b), on every pipeline and under
-    // either code generator (DECISIONS R5-M156), and generation adds nothing.
+    // and then generated as a build runs them: check reports the checked set's limit at its location (K13b; DECISIONS R5-M156), and
+    // generation adds nothing.
     internal static void AssertGenerationResourceLimit(string source, string at)
     {
         var c = Analyze(source);
@@ -345,7 +345,7 @@ public class MinimalEmissionTest
     }
 
     // The problems of the latest analysis, each as its code and the first line of its subject, joined by " | ": the MIR's rows in the
-    // publisher's order, which check publishes on every pipeline (DECISIONS R5-M185).
+    // publisher's order, which check publishes (DECISIONS R5-M185).
     internal static string Problems(Compilation c)
         => string.Join(" | ", c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
 

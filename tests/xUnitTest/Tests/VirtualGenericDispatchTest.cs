@@ -56,7 +56,7 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
         => ScalarEmissionTest.EmitFixture("VirtualGenericDispatchCycle", DependencyProgram("i32"), string.Empty);
 
     // A growing descriptor key is a Resource record. Check, then generation, as a build runs them: check reports it at the creation (K13c,
-    // DECISIONS R5-M74), on every pipeline (DECISIONS R5-M156).
+    // DECISIONS R5-M74, R5-M156).
     [Fact]
     public void GrowingDescriptorKeysAreResourceDiagnosed()
     {

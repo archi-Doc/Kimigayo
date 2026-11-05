@@ -62,9 +62,6 @@ internal sealed class OriginProofMetrics
     /// meet incidences (proposal §3.7); always zero.</summary>
     internal long BoundViolations { get; private set; }
 
-    /// <summary>Gets the obligation verdicts computed: one per obligation per analysis of a Binding (PLAN G74 U4).</summary>
-    internal long Verdicts { get; private set; }
-
     /// <summary>Gets the distinct normalized relations proven at a use.</summary>
     internal int DistinctQueries => this.queries.Count;
 
@@ -88,7 +85,6 @@ internal sealed class OriginProofMetrics
         this.Activations = 0;
         this.Decrements = 0;
         this.BoundViolations = 0;
-        this.Verdicts = 0;
         this.ClosureTicks = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
@@ -104,8 +100,6 @@ internal sealed class OriginProofMetrics
 
         this.queries.Add((longer, shorter, use));
     }
-
-    internal void Verdict() => this.Verdicts++;
 
     internal void Closure(OriginPremiseClosure closure, bool nested, long ticks)
     {

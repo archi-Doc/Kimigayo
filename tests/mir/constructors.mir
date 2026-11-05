@@ -354,7 +354,7 @@ fn returnInPayload @222
       drop _5 -> bb11 @233 s2
   bb11:
       StorageDead(_5) @233 s2
-      unreachable check bb1 @232 s1
+      unreachable @232 s1
   bb12:
       StorageDead(_3) @230 s1
       StorageDead(_2) @225 s1
@@ -500,8 +500,7 @@ fn loopAbandon @270
       StorageDead(_6) @281 s2
       StorageDead(_5) @276 s2
       _4 = const () @275 s2
-      StorageDead(_4) @275 s1
-      goto bb1 @275 s1
+      goto bb8 @275 s1
   bb12:
       StorageLive(_9) @288 s1
       _9 = copy _1 @288 s1

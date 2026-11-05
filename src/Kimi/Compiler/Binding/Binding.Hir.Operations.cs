@@ -17,7 +17,7 @@ public sealed partial class Binding
 {
     // Where a node stands: evaluated, inside a Pattern (its match plan describes it), covered by its parent (Covers), or inside an Error,
     // whose value the builder replaces (DECISIONS R5-M63 keeps a closure definition's parts and a failed compound Place's resolved
-    // operands, R4-M88 an unresolved operation's operands).
+    // operands, R4-M88 an unresolved operation's operands, BU-106 a rejected do's resolved parts).
     [Flags]
     [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private enum HirPosition : byte
@@ -229,9 +229,19 @@ public sealed partial class Binding
         // not, an Error), except a construct that has no Type (Construct), also in parentheses or labeled: no destination Type holds a
         // kept operand, so it stays replaced, its parts' problems lost (PLAN G121's kept-construct design). A compound Place Binding
         // rejected or did not resolve, not a broken contract, keeps each operand Binding resolved as a value or a Place, an Op with its facts
-        // (not a Type or group name, Syntax; DECISIONS R5-M63).
+        // (not a Type or group name, Syntax; DECISIONS R5-M63). A rejected expression that runs its one body once (RunsItsBodyOnce: a do)
+        // keeps each part Binding resolved with its Op's facts, unless a jump the builder builds goes to it (DECISIONS BU-106). A kept part
+        // holds no jump published without failure whose target row is the Error: the builder resolves such a row against the targets it
+        // opened, and an Error opens none (its InternalInvariant_Kd).
         private bool Keeps(Koto child)
         {
+            if (Rejected(this.parent!) && RunsItsBodyOnce(binding.KindOp(this.parent!)))
+            {
+                // The label test bounds the walk's cost only: a do is a jump's target row only as a labeled target (SPEC 14.3).
+                return child.BindingState == BindingState.Resolved && binding.OpOf(child) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error) &&
+                    !(this.parent!.Parent is LabeledKoto && (this.targets ??= new(binding)).Targeted(this.parent!));
+            }
+
             if (this.unresolvedOperation)
             {
                 var op = binding.OpOf(child);
@@ -260,5 +270,41 @@ public sealed partial class Binding
         private HirOp OpOf(Koto node, HirPosition position)
             => position == HirPosition.Evaluated || node is FunctionKoto { IsAnonymous: false } or PropertyKoto or PropertyAccessorKoto
                 ? binding.OpOf(node) : HirOp.Syntax;
+
+        // SPEC 14.5.2 (DECISIONS BU-101, BU-106): whether a jump in a construct's subtree, one the builder builds through its target row (its
+        // Op not Error), has the construct as that row (HirTables.PlanOf, written by the jump binding before publication). A failed jump is
+        // built as a derived Opaque and reads no target, so it does not count.
+        private sealed class TargetWalk(Binding binding) : KotoVisitor
+        {
+            private Koto? target;
+            private bool found;
+
+            internal long Visited { get; private set; }
+
+            public override void Visit(Koto node)
+            {
+                if (this.found)
+                {
+                    return;
+                }
+
+                this.Visited++;
+                if (node is JumpKoto jump && binding.OpOf(jump) != HirOp.Error && ReferenceEquals(HirTables.PlanOf(jump).Plan, this.target))
+                {
+                    this.found = true;
+                    return;
+                }
+
+                node.VisitChildren(this);
+            }
+
+            internal bool Targeted(Koto construct)
+            {
+                (this.target, this.found) = (construct, false);
+                construct.VisitChildren(this);
+                this.target = null;
+                return this.found;
+            }
+        }
     }
 }

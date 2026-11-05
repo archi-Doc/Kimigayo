@@ -68,7 +68,7 @@ internal static class CompilerPipelineMeasurements
         {
             schemaVersion = 3,
             measuredAtUtc = DateTimeOffset.UtcNow,
-            compiler = Compilation.CompilerIdentity,
+            compiler = Compilation.CompilerVersion,
             benchmarkModule = typeof(CompilerPipelineMeasurements).Module.ModuleVersionId,
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
@@ -94,7 +94,7 @@ internal static class CompilerPipelineMeasurements
     {
         Span<long> timestamps = stackalloc long[CompilerPipelineBenchmark.Boundaries];
         Span<long> allocations = stackalloc long[CompilerPipelineBenchmark.Boundaries];
-        Console.WriteLine($"Compiler pipeline check: {Compilation.CompilerIdentity}");
+        Console.WriteLine($"Compiler pipeline check: {Compilation.CompilerVersion}");
         foreach (var benchmark in Inputs())
         {
             benchmark.Setup();

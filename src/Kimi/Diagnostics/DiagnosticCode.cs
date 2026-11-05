@@ -161,7 +161,6 @@ public enum DiagnosticCode
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,
 
-    DeferredExpansionLimit_Kd,
     InternalInvariant_Kd,
     ComparisonLoanConflict_Kd,
     CallReservationConflict_Kd,
@@ -236,7 +235,7 @@ public enum DiagnosticCode
     UnprovenOriginRelation_Kd,
     UnprovenOriginContract_Kd,
     InterpolationNestingLimit_Kd,
-    DefaultExpansionLimit_Kd,
+    ExpansionLimit_Kd,
     OwnershipDepthLimit_Kd,
 
     Count, // Last sentinel

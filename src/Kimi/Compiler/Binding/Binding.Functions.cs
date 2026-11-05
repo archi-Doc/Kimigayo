@@ -129,7 +129,7 @@ public sealed partial class Binding
 
         if (function.ExpressionBody is { } expression)
         {
-            var discards = KotoHelper.DiscardsFunctionBody(function);
+            var discards = DiscardsFunctionBody(function);
             var result = discards ? this.BindNode(expression, scope) : this.BindExpected(expression, scope, symbol?.Type, function.ReturnType);
             if (symbol is not null)
             {

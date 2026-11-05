@@ -16,11 +16,11 @@ public sealed class InvocationKoto : ApplicationKoto
     }
 
     /// <summary>Gets the selected call plan of a named callee for the current Binding, or null before selection.</summary>
-    [Transitional("R6", Reason = "Call plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Call plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public CallPlan? BoundCall => this.HasCurrentBinding && this.CallStorage is { Kind: not CalleeKind.Value } plan ? plan : null;
 
     /// <summary>Gets the checked invocation of a callable value for the current Binding.</summary>
-    [Transitional("R6", Reason = "Call plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Call plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public CallPlan? BoundValueCall => this.HasCurrentBinding && this.CallStorage is { Kind: CalleeKind.Value } plan ? plan : null;
 
     /// <inheritdoc/>
@@ -29,14 +29,12 @@ public sealed class InvocationKoto : ApplicationKoto
     /// <summary>Gets the invoked expression.</summary>
     public Koto Method => this.Target;
 
-    [Transitional("R6", Reason = "Call plan forwarding; R6 reads the published HIR contract directly.")]
+    [Transitional("R7", Reason = "Call plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal CallPlan? CallStorage
     {
         get => HirTables.PlanOf(this).Plan as CallPlan;
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
-
-    internal bool RightFirstArguments => this.Method is RequirementCalleeKoto && this.Parent is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
 
     // Allocated only when at least one argument is labeled.
     private string?[]? argumentLabels;

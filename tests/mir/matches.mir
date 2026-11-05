@@ -91,7 +91,7 @@ fn area @52
       _2 = const 0_i32 @89 s6
       goto bb1 @89 s6
   bb11:
-      unreachable check bb1 @88 s1
+      unreachable @88 s1
   bb12:
       unreachable @57 s1
   bb13:
@@ -459,7 +459,7 @@ fn half @175
   bb9:
       StorageDead(_6) @193 s2
       StorageDead(_5) @190 s2
-      unreachable check bb1 @188 s1
+      unreachable @188 s1
   bb10:
       StorageDead(_8) @197 s1
       goto bb5 @175
@@ -1389,7 +1389,7 @@ fn yieldTransfer @522
       drop _5 -> bb15 @534 s1
   bb15:
       StorageDead(_5) @534 s1
-      unreachable check bb1 @537
+      unreachable @537
   bb16:
       StorageDead(_3) @527
       drop _2 -> bb17 [elide] @524
@@ -1514,7 +1514,7 @@ fn deepReturn @552
       drop _11 -> bb23 @575 s4
   bb23:
       StorageDead(_11) @575 s4
-      unreachable check bb5 @574 s3
+      unreachable @574 s3
   bb24:
       _5 = move _14 @560 s1
       goto bb2 @560 s1
@@ -1538,7 +1538,7 @@ fn deepReturn @552
       drop _8 -> bb32 @568 s2
   bb32:
       StorageDead(_8) @568 s2
-      unreachable check bb2 @571 s1
+      unreachable @571 s1
   bb33:
       StorageDead(_6) @561 s1
       _3 = consumeTexts(move _4, move _5) -> bb34 @556 s1
@@ -1742,7 +1742,7 @@ fn loopContinue @614
       drop _9 -> bb16 @634 s3
   bb16:
       StorageDead(_9) @634 s3
-      unreachable check bb5 @636 s2
+      unreachable @636 s2
   bb17:
       unreachable @620 s2
   bb18:
@@ -1758,8 +1758,7 @@ fn loopContinue @614
       StorageDead(_6) @621 s2
       StorageDead(_5) @620 s2
       _4 = const () @619 s2
-      StorageDead(_4) @619 s1
-      goto bb1 @619 s1
+      goto bb8 @619 s1
 fn makeTemporary @643
   _0: string return @644
   bb0:

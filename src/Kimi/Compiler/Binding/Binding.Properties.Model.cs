@@ -31,8 +31,6 @@ public sealed class BoundProperty
 
     public bool IsVerified { get; internal set; }
 
-    internal FunctionKoto? InitializerFunction { get; set; }
-
     // SPEC 11.6, 23.1.2 (DECISIONS BU-73): the Closure literal of its inferred Type whose located Unsupported_Kd refused it, published
     // with the Type by BindPropertyHeader each pass and consulted by every use; null otherwise.
     internal FunctionKoto? Refusal { get; set; }

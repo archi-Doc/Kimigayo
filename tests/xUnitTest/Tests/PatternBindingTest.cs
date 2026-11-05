@@ -330,6 +330,52 @@ public class PatternBindingTest
         Assert.Equal(twin, Records(Head + body.Replace("SUBJECT", subject, StringComparison.Ordinal).Replace("OTHER", other, StringComparison.Ordinal)));
     }
 
+    // SPEC 14.8.1, 15.1.6, 14.10.3 (DECISIONS R4-M175): a Pattern binding of a Never payload is no Never form, so it initializes its
+    // local from the selected Place, and each read of the local is the Never form (fail-before: UninitializedPlace_Kd at each read); the
+    // twin Moves it twice, one MovedPlace_Kd (fail-before: also UninitializedPlace_Kd at the first). A labeled do whose exits both deliver
+    // gets no completion from its body's end arrival, as it is no Never form (fail-before: UninitializedPlace_Kd at `result`); the twin's
+    // exit of a Never value is assumed delivered and places nothing.
+    [Theory]
+    [InlineData("func run() -> Result<(), i32>\n    match source()\n        .Ok(let v) => v@move\n        .Err(let e) => return .Err(e)\n", "")]
+    [InlineData(
+        "func use(x: Never) => ()\nfunc run() -> Result<(), i32>\n    match source()\n        .Ok(let v)\n            use(v)\n            use(v)\n" +
+        "        .Err(let e) => return .Err(e)\n    return .Ok(())\n",
+        "")]
+    [InlineData(
+        "func take(x: Never) => ()\nfunc run() -> Result<(), i32>\n    match source()\n        .Ok(let v)\n            take(v@move)\n            take(v@move)\n" +
+        "        .Err(let e) => return .Err(e)\n    return .Ok(())\n",
+        "MovedPlace_Kd v")]
+    [InlineData(
+        "func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n" +
+        "        exit to work 3\n    return result\n",
+        "")]
+    [InlineData(
+        "func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n" +
+        "        exit to work (return 3)\n    return result\n",
+        "UninitializedPlace_Kd result")]
+    public void ANeverPayloadBindingInitializesItsLocal(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("func source() -> Result<Never, i32> => .Err(1)\n" + source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
+    // SPEC 14.10.3 per part, 15.1.6 (the owner's 「A で進める（推奨）」; DECISIONS R4-M175): a match acquires its whole Subject, so a Case value
+    // constructed with a Never payload part, in unreachable code, is UninitializedPlace_Kd at the match whichever part the arm binds
+    // (fail-before: accepted). The real-path twins of NeverContinuationTest's per-part rows, a loop's and a do's, read only what their
+    // completing exit placed and are accepted.
+    [Theory]
+    [InlineData("enum E\n    Pair(i64, i64)\n    Other\nfunc f(c: bool, a: i64) -> i64\n    return 9\n    let e = E.Pair(a, (return 1))\n    match e\n        .Pair(let x, _) => return x\n        .Other => return 0\n", "UninitializedPlace_Kd e")]
+    [InlineData("enum E\n    Pair(i64, i64)\n    Other\nfunc f(c: bool, a: i64) -> i64\n    return 9\n    let e = E.Pair(a, (return 1))\n    match e\n        .Pair(_, let y) => return y\n        .Other => return 0\n", "UninitializedPlace_Kd e")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = loop\n        if c => exit (a, a)\n        exit (a, (return 1))\n    return t.0\n", "")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = label w: do\n        if c => exit to w (a, a)\n        exit to w (a, (return 1))\n    return t.1\n", "")]
+    public void ASubjectWithANeverPartIsAcquiredWhole(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(records, MinimalEmissionTest.Problems(c));
+    }
+
     [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {
@@ -420,17 +466,19 @@ public class PatternBindingTest
         Assert.Contains(TestDiagnostics.Of(unsafeGuard), x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd) && x.Text == "*p");
     }
 
+    // The HIR publishes the guard's exit to the do and neither the match nor the do completing; the MIR's verdict on the program is
+    // ANeverPayloadBindingInitializesItsLocal's F3 row (DECISIONS R4-M175).
     [Fact]
     public void AbruptSubjectDoesNotPropagateGuardTransfers()
     {
         var c = Parse("func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n        exit to work 3\n    return result");
-        c.Bind();
-        var flow = c.AnalyzeControlFlow();
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        HirTables.Publish(c);
         var match = Matches(c)[0];
         var guardExit = Assert.IsType<ExitKoto>(KotoHelper.UnwrapParentheses(match.Arms[0].Guard!));
-        var target = Assert.IsType<DoKoto>(flow.Targets[guardExit]);
-        Assert.False(flow.Nodes[match].CanCompleteNormally);
-        Assert.False(flow.Nodes[target].CanCompleteNormally);
+        var target = Assert.IsType<DoKoto>(HirTables.PlanOf(guardExit).Plan);
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(match));
+        Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(target));
     }
 
     [Fact]

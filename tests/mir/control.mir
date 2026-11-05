@@ -90,7 +90,7 @@ fn select @4
       goto bb13 @25 s5
   bb15:
       StorageDead(_8) @26 s5
-      unreachable check bb6 @24 s1
+      unreachable @24 s1
   bb16:
       StorageLive(_15) @45 s1
     * _15 = Add(copy _3, copy _10) @45 s1
@@ -103,8 +103,8 @@ fn select @4
       switch copy _13 [0: bb21, otherwise: bb20] @34 s6
   bb18:
       StorageDead(_11) @31 s1
-    * _10 = const 6_i32 @43 s8
-      goto bb16 @42 s1
+    * _14 = const 6_i32 @43 s8
+      goto bb22 @42 s1
   bb19:
       StorageDead(_12) @33 s6
     * goto bb26 check bb27 @40 s6
@@ -125,12 +125,12 @@ fn select @4
       _14 = const 4_i32 @38 s7
       goto bb23 @38 s7
   bb25:
-      unreachable check bb19 @37 s6
+      unreachable @37 s6
   bb26:
       _14 = const 5_i32 @40 s6
       goto bb22 @40 s6
   bb27:
-      unreachable check bb16 @32 s1
+      unreachable @32 s1
   bb28:
       StorageDead(_10) @27 s1
       goto bb11 @4
@@ -225,9 +225,7 @@ fn iterate @48
       StorageDead(_17) @86 s2
       StorageDead(_16) @85 s2
       _4 = const () @58 s2
-      StorageDead(_5) @59 s2
-      StorageDead(_4) @58 s1
-      goto bb1 @58 s1
+      goto bb12 @58 s1
   bb8:
       StorageDead(_11) @73 s3
       StorageLive(_13) @79 s3
@@ -257,7 +255,7 @@ fn iterate @48
       StorageDead(_11) @73 s3
       goto bb14 @48
   bb16:
-      unreachable check bb8 @77 s3
+      unreachable @77 s3
   bb17:
       StorageDead(_13) @79 s3
       _8 = const () @67 s3
@@ -292,7 +290,7 @@ fn iterate @48
       _15 = const () @84 s5
       goto bb25 @84 s5
   bb27:
-      unreachable check bb17 @83 s3
+      unreachable @83 s3
   bb28:
       goto bb29 @92 s1
   bb29:
@@ -396,12 +394,12 @@ fn statements @98
       _6 = const 1_i32 @111 s3
       goto bb6 @111 s3
   bb8:
-      unreachable check bb2 @110 s2
+      unreachable @110 s2
   bb9:
       _6 = const 2_i32 @113 s2
       goto bb5 @113 s2
   bb10:
-      unreachable check bb1 @107 s1
+      unreachable @107 s1
   bb11:
       StorageDead(_7) @116 s1
       StorageLive(_8) @117 s1

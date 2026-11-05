@@ -176,7 +176,7 @@ public sealed partial class OriginRowsTest
             "            let f = func [c] () -> i32 => c@follow\n            return f()\n" + setter + Main);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var borrow = KotoTree.Walk(c.Kotonoha.RootKoto).Single(static x => x is ConversionKoto && First(x) == "storage@ref");
-        var storage = ((BoundType)HirTables.Meaning(borrow)!).Origin!;
+        var storage = HirTables.TypeOf(borrow)!.Origin!;
         var accessor = Bodies(c).Single(static x => x.Key is { Kind: MirBodyKind.Getter, Decl: { } decl } && InProgram(decl.Declaration));
         var getter = Atom(c, accessor.Key.Body, storage, borrow);
         var closure = Atom(c, Bodies(c).Single(IsProgramClosure).Key.Body, storage, borrow);

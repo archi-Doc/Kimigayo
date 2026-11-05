@@ -30,13 +30,6 @@ public enum MatchCoverageReason : byte
 
 public readonly record struct MatchCoverage(MatchCoverageState State, MatchCoverageReason Reason = MatchCoverageReason.None, int CaseIndex = -1)
 {
-    public bool? IsExhaustive => this.State switch
-    {
-        MatchCoverageState.Exhaustive => true,
-        MatchCoverageState.NonExhaustive => false,
-        _ => null,
-    };
-
     /// <summary>Gets what a non-exhaustive match lacks; an unexplained one lacks a catch-all.</summary>
     public MatchCoverageReason Requirement => this.Reason == MatchCoverageReason.None ? MatchCoverageReason.CatchAllRequired : this.Reason;
 }

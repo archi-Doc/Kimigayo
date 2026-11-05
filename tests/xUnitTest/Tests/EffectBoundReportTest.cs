@@ -36,7 +36,7 @@ public class EffectBoundReportTest
         Assert.Null(error.Note);
         Assert.Null(error.Related);
 
-        // A mutable static beside it is also the collector's StaticStorage record at its declaration, at check on every pipeline (DECISIONS
+        // A mutable static beside it is also the collector's StaticStorage record at its declaration, at check (DECISIONS
         // R5-M82, R5-M156); P42 reverts it.
         var others = result.Diagnostics.Where(static x => x.Code != nameof(DiagnosticCode.IncompatibleContractImplementation_Kd));
         Assert.Equal(

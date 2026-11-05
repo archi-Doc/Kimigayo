@@ -21,7 +21,8 @@ internal sealed partial class MirBuilder
     private Roots? collector;
     private KeptOperands? keptOperands;
 
-    // Whether the HIR keeps a child of an Error node in place: an operand Binding resolved of a failed compound Place (DECISIONS R5-M63).
+    // Whether the HIR keeps a child of an Error node in place: a part Binding resolved that the publisher keeps (Binding's Keeps: a failed
+    // compound Place's operands, an unresolved operation's, a rejected do's parts; DECISIONS R5-M63, R4-M88, BU-106).
     private static bool Kept(Koto node) => HirTables.AdjustOf(node) == new HirAdjust(HirAcquire.None, HirAdaptation.None);
 
     // The roots of the Opaque site formed for a node (Opaque). SPEC 23.1.2 (DECISIONS R5-M63): an Error node's kept operands are evaluated
@@ -130,7 +131,7 @@ internal sealed partial class MirBuilder
                     break;
             }
 
-            var captures = node is FunctionKoto function ? function.ClosureDefinition?.Captures : null; // A named function has no definition.
+            var captures = node is FunctionKoto function ? BoundClosure.Of(function)?.Captures : null; // A named function has no definition.
             for (var i = 0; i < captures?.Count; i++)
             {
                 this.Add(captures[i].Source);

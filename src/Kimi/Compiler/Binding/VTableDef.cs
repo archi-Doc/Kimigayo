@@ -40,10 +40,13 @@ internal sealed class VTableDef
     // The table of a struct with a slot.
     internal static VTableDef? Of(BindingSymbol structure) => structure.Adt?.VTable is { Resolved: true, Originals.Length: > 0 } table ? table : null;
 
+    // The struct that declares a function (F 4.2's consumer rule): the owner of the table its slot is in.
+    internal static BindingSymbol? Owner(BindingSymbol function) => function.Scope.Owner.BoundSymbol;
+
     // The slot of an original, or -1 when its owner has no table.
     internal static int Slot(BindingSymbol original)
     {
-        var table = Of(original.Scope.Owner.BoundSymbol!);
+        var table = Of(Owner(original)!);
         for (var i = table?.BaseCount ?? 0; table is not null && i < table.Originals.Length; i++)
         {
             if (ReferenceEquals(table.Originals[i], original))
@@ -57,7 +60,7 @@ internal sealed class VTableDef
 
     // The slot a function runs in its owner's table, an original's own or an override's (one function per slot), or -1 when it runs none.
     internal static int SlotOf(BindingSymbol function)
-        => function.Scope.Owner.BoundSymbol is { } owner && Of(owner) is { } table ? Array.IndexOf(table.Implementations, function) : -1;
+        => Owner(function) is { } owner && Of(owner) is { } table ? Array.IndexOf(table.Implementations, function) : -1;
 
     // Starts a pass's table with the base's slots and room for `own` more, reusing the arrays while the count is unchanged.
     internal void Refill(VTableDef? inherited, int own)

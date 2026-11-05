@@ -113,7 +113,7 @@ public class ConcreteClosureTest
     // SPEC 15.2.3 (DECISIONS BU-73, PLAN G353): a concrete Closure is Owned when its captures are and its fixed signature Origins are
     // proven to outlive `static`. Per-call are only its direct borrowed parameters' omitted Origins, its receiver and its call result;
     // an enclosing function's Origin (written, through a maker's call, a generic pass, an Option or the result), a Type argument's and a
-    // nested or aggregate parameter's Origin are fixed. Each such Closure is UnprovenConstraint_Kd at the use, on every pipeline (e's
+    // nested or aggregate parameter's Origin are fixed. Each such Closure is UnprovenConstraint_Kd at the use (e's
     // only record is Binding's); the twins (per-call, static, `T is Owned`) and the capture controls (g, i) keep dev's verdicts.
     [Theory]
     [InlineData("j", "func f(r: ref/i32) -> i32\n    let inner = func (y: ref/i32 during r) => ()\n    return need(inner)", "UnprovenConstraint_Kd: need(inner)")]

@@ -1291,6 +1291,23 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   formation itself, before and independently of R7-I2 parts d and i; U3 is implemented in two parts, U3a (the retained composition,
   the judgment by rows, value calls) and U3b (composition beneath a slot), one review each (§6's U3 and U6 rows). No other text
   changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 6 (2026-11-05, the planning session): U5 is closed without an implementation: the flip (R6-check H5) made the MIR decide
+  and it gives DIAGNOSTICS' Unsatisfied for G392's forms on both pipelines; the rows hold it (§6's U5 row). No other text changed;
+  the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 7 (2026-11-05, the owner, verbatim 「U4 を落とす」, after U4's two design reviews did not converge under Q11): U4 is dropped;
+  rule 6's argument site for a payload's failed fit (D-1) is deferred to its own item after R5's H11b, since the one record is then
+  A5's row and a cross-phase report Site would be needed; the site stays DIAGNOSTICS' failed node; Decided is not published (§6's
+  U4 row). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 8 (2026-11-05, U6's design review 1 by the middle, B1–B3): the retirements of the Join record, `ClassifiedByCall`,
+  `ConflictWaits` and `PartContribution` are withdrawn (the record is a fact of its own, a waiting join classified position by
+  position, differing from the Waiting outcome; the rows replaced its membership readers only); the survey stays as a classifier
+  that forms no Type; U6 is rule 5's one formation in `SelectCommonType` plus the closing records; SPEC 10.5.1 is no contradiction
+  (its last paragraph states the structure; reading 2 adds explicitness, reported to the owner). No other text changed; the
+  proposal stays 一部取り込み (open), nothing frozen.
+- Revision 9 (2026-11-05, the owner, verbatim 「G216 (a) を締めくくる で決定します」, after U6's two design reviews did not converge under
+  Q11): the lane closes after U3 lands; U6 is not implemented (rule 5's array case is an open PLAN row for the join formation's
+  owner); the proposal moves to `draft/Changes` as 取り込み済み when U3 has landed and the closing records are written. No other text
+  changed; the proposal stays 一部取り込み (open) until then, nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 

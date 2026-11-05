@@ -158,6 +158,17 @@ public sealed partial class Binding
     private static BoundType LiteralInputType(BoundType parameter)
         => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
 
+    private static BoundType? Complete(Koto node, BoundType? type)
+    {
+        node.BoundType = type;
+        if (node.BindingState != BindingState.Invalid)
+        {
+            node.BindingState = type is null ? BindingState.Unresolved : BindingState.Resolved;
+        }
+
+        return type;
+    }
+
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
 
@@ -434,8 +445,8 @@ public sealed partial class Binding
                 BoundType? blockType = BoundType.Unit;
                 for (var i = 0; i < block.Items.Count; i++)
                 {
-                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression && KotoHelper.IsValueContext(block) ? expected : null);
-                    if (block.HasTrailingExpression && KotoHelper.IsValueContext(block))
+                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression && IsValueContext(block) ? expected : null);
+                    if (block.HasTrailingExpression && IsValueContext(block))
                     {
                         blockType = type;
                     }

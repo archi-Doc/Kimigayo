@@ -189,7 +189,7 @@ fn divergentReplacement @52
       StorageLive(_10) @70 s5
     * goto bb11 @70 s5
   bb10:
-      unreachable check bb1 @67 s1
+      unreachable @67 s1
   bb11:
       goto bb12 check bb13 @70 s5
   bb12:
@@ -285,7 +285,7 @@ fn divergentReplacementIndex @75
       StorageLive(_12) @93 s5
     * goto bb11 @93 s5
   bb10:
-      unreachable check bb1 @90 s1
+      unreachable @90 s1
   bb11:
       goto bb12 check bb13 @93 s5
   bb12:

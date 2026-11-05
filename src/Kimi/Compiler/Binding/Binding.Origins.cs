@@ -11,6 +11,9 @@ namespace Kimi.Compiler;
 // Binding.Origins.Annotations.cs's.
 public sealed partial class Binding
 {
+    private readonly Dictionary<(Koto Binder, OriginKind Kind, int Slot), BoundOrigin> originAtoms = new();
+    private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
+
     internal static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
 
     private static bool IsExclusive(SemanticsKind semantics) => semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;

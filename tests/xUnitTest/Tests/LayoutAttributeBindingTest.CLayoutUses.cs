@@ -14,7 +14,7 @@ namespace XunitTest;
 // at the use that needs the layout), 23.1.2 (each independent failure is reported; grouping is implementation-defined), 23.2.2 (check reports
 // every Language error of the checked set, layouts included), 22.6 (a struct by value in an import, and ref/T over a Type that is not
 // C-exchangeable, are Unsupported) and DECISIONS R4-M134 Q8 (Binding's declaration checks are conservative Language errors). Each row names
-// its form and states every Error record of the program at check, the same on every pipeline (DECISIONS R5-M156), as `Code use`: the use is a text occurring once
+// its form and states every Error record of the program at check (DECISIONS R5-M156), as `Code use`: the use is a text occurring once
 // in the source (a local's declaration, the function whose parameter or result passes or returns the value, the call whose argument passes
 // it, a raw read's declaration, an import's declaration, a Constraint-free written Type), and a record is at that use when its primary span
 // starts within the text, so a parameter's record at the parameter (SPEC 8.15.3) or at its function (DECISIONS R5-M44) both pass. Each named
@@ -169,7 +169,7 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
-    // SPEC 8.15.3 (the checked set): an inferred instance storing a zero-sized Field is InvalidCLayout_Kd at each use on every pipeline: a
+    // SPEC 8.15.3 (the checked set): an inferred instance storing a zero-sized Field is InvalidCLayout_Kd at each use: a
     // generic body's local, its constructor call, a top-level constructor call, an Option local with
     // the .None that makes it, a function Item.
     public static TheoryData<string, string, string> InferredRows

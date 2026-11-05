@@ -446,14 +446,14 @@ let b = loop
 ```kimi
 func pick(ready: bool, large: i64) -> i64
     let both = if ready => (large, (return 1)) else => ((return 2), large)   // (i64, i64): formed part by part.
-    return both.0
+    return both.0   // Error: unreachable, and only the first arm places both.0 (14.10.3).
 ```
 
 ```kimi
 func pickFill(ready: bool, large: i64) -> i64
     let fills = if ready => [2 of (large, (return 1))] else => [2 of ((return 2), large)]  // [2 of (i64, i64)].
     // let mixed = if ready => [2 of (large, (return 3))] else => [3 of ((return 4), large)]   // Error: two lengths.
-    return fills[0].0
+    return fills[0].0   // Error: unreachable, and only the first arm places fills[0].0 (14.10.3).
 ```
 
 ### 14.9.3. Reachability

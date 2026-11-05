@@ -20,7 +20,7 @@ internal enum DictionaryCallee : byte
     ClearEntries,
 
     // Not generic: the placement helper's callee (append), a Dictionary's construction (initialize, LegacyRuntimeHelpers.Construction)
-    // and requireAbsent, whose body the old analysis collects.
+    // and requireAbsent.
     RequireAbsent,
     Append,
     Initialize,

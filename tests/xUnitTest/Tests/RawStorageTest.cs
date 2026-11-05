@@ -354,7 +354,7 @@ public class RawStorageTest
         Assert.Equal(OriginKind.Intersection, read.Kind);
     }
 
-    // SPEC 5.6, 5.7 (DECISIONS BU-24, the owner's Q-O3 D5 exception): the default pipeline generates and runs the programs Q-O3's
+    // SPEC 5.6, 5.7 (DECISIONS BU-24, the owner's Q-O3 D5 exception): MIR code generation generates and runs the programs Q-O3's
     // measurement found failing (q-o3-measure: `during self` holders, Case payloads built with null and matched, SPEC 5.6's Buffer and
     // BufferView, Lenses, typed paths and pointers stating different Origins), the forms B1 made valid and G212's Moves of a layer's
     // Place restored by null (DECISIONS R4-M110); each runs natively. A generic instance's raw Place borrows of a remainder's
@@ -383,13 +383,13 @@ public class RawStorageTest
     [InlineData("RawOriginLegacyLocal", "struct Buffer\n    internal let data: raw/i32 during self\n    public init() => unsafe => self.data = Raw.allocate<i32>(1)@(raw/i32 during self)\nfunc shared(b: ref/Buffer) -> raw/i32 => b.data\nfunc pass(r: ref/i32, p: raw/i32 during r) -> raw/i32 => p\nfunc local(n: i32)\n    let r = n@ref\n    let p: raw/i32 during r = null\n    let q: raw/i32 = p\npublic func main()\n    local(1)\n    let b = Buffer.init()\n    require shared(b@ref) != null else => $abort(\"local\")\n    Console.writeLine(\"Local\")", "Local\n")]
     [InlineData("RawOriginLegacyNullPayloads", "struct Block\n    internal var data: raw/u8 during self\n    internal var pair: (raw/u8 during self, isize)\n    public init()\n        self.data = null\n        self.pair = (null, 1)\n    drop => ()\nenum Cell\n    Some(raw/u8 during self)\n    Two((raw/u8 during self, i32))\n    None\nfunc a1()\n    var b = Block.init()\n    b.pair = (null, 2)\nfunc a10()\n    let c = Cell.Two((null, 1))\nfunc a11()\n    let c = Cell.Some(null)\npublic func main()\n    a1()\n    a10()\n    a11()\n    Console.writeLine(\"NullPayloads\")", "NullPayloads\n")]
     [InlineData("RawOriginLegacyHolderMove", "struct Block\n    internal var data: raw/u8 during self\n    internal var pair: (raw/u8 during self, isize)\n    internal var arr: [2 of raw/u8 during self]\n    public init()\n        self.data = null\n        self.pair = (null, 1)\n        self.arr = [null, null]\n    drop => ()\nfunc f() -> bool\n    var b = Block.init()\n    let w = b.data@move\n    b.data = null\n    let t = b.pair.0@move\n    b.pair.0 = null\n    let u = b.arr[1]@move\n    b.arr[1] = null\n    return w == null and t == null and u == null and b.pair.1 == 1\npublic func main()\n    require f() else => $abort(\"move\")\n    Console.writeLine(\"HolderMove\")", "HolderMove\n")]
-    public void RawOriginsGenerateOnTheDefaultPipeline(string name, string source, string stdout)
+    public void RawOriginsGenerate(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", "()", StringComparison.Ordinal), stdout);
 
     // H3b T31a, PQ-10 (fixtures F11, F12): these valid programs (SPEC 5.6, 5.7, 15.6.2) are refused by A5's located Unsupported_Kd at
     // a non-raw borrow of a `during self` layer's Place (DECISIONS R4-M120, PQ-10's interim), so generation refuses them; the old
     // analysis accepted them and they ran. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G212's unit (U-B3)
-    // restores the acceptance and moves the rows back to RawOriginsGenerateOnTheDefaultPipeline with their runs.
+    // restores the acceptance and moves the rows back to RawOriginsGenerate with their runs.
     [Theory]
     [InlineData("struct Block\n    internal var data: raw/u8 during self\n    public init() => self.data = null\nfunc w1(fresh: raw/u8)\n    var b = Block.init()\n    let p = b.data@raw\n    unsafe => *p = fresh\nfunc w2(fresh: raw/u8)\n    var b = Block.init()\n    let r = b.data@ref\n    let s: ref/(raw/u8) = r\npublic func main()\n    w1(null)\n    w2(null)\n    Console.writeLine(\"PointerWrite\")", "b.data@ref", "let r = b.data@ref")]
     [InlineData(Block + "func use(fresh: raw/u8)\n    var b = Block.init()\n    let w = b.data@ref\npublic func main()\n    use(null)\n    Console.writeLine(\"BlockShared\")", "b.data@ref", "let w = b.data@ref")]

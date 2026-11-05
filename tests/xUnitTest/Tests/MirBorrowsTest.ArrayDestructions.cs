@@ -320,7 +320,7 @@ public sealed partial class MirBorrowsTest
     // Every Ok twin's `y = 5` (removeAllDrop2Ok, truncateDrop3Ok, truncateFullOk, clearDrop2Ok, removeAllItemOk, removeAllCapOk), once
     // R4-M143's known false errors, is a correct error under SPEC 15.6's whole-holder text (DECISIONS BU-67, R4-M143's note; the Array
     // holding x is consumed, as consumeDrop2Ok's x). removeAllElemBad's second record, its MIR-only `y = 5` beside the activation
-    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); the default pipeline reports it since H5.
+    // conflict, is a correct error (SPEC 15.6, 4.9.6, 15.6.4); check reports it since H5.
     [Fact]
     public void ATruncateOrRemoveAllComposesItsElementsDestruction()
     {
@@ -337,8 +337,8 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // SPEC 15.6, 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′ and S1, G160; DECISIONS BU-67): the records each form publishes, the MIR's rows on
-    // every pipeline. Since the MIR decides acceptance (R6-check H5, DECISIONS R5-M185), each Writer, Item and Cap form publishes A5's
+    // SPEC 15.6, 15.6.4, 15.6.7, 4.9.6 (PLAN G264 U0′ and S1, G160; DECISIONS BU-67): the records each form publishes, the MIR's rows.
+    // Since the MIR decides acceptance (R6-check H5, DECISIONS R5-M185), each Writer, Item and Cap form publishes A5's
     // record at `y = 5`, as ATruncateOrRemoveAllWhoseReferentMayObserveKeepsW
     // lists: the old analysis accepted these programs, and the MIR closes that unsound acceptance (H3b's 1r). Over an abstract `T` (Gen),
     // the element's erased destruction may store y's Loan past it, so Bad and Ok err at `y = 5` since G264 (S) S2, as the MIR's list above

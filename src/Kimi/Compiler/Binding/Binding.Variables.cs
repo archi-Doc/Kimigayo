@@ -26,7 +26,8 @@ public sealed partial class Binding
             return this.CompleteDependent(variable, directive);
         }
 
-        if (symbol.Resolving)
+        // Interim until R7-D2 d4 (Binding.DeclQuery): the variable binding and the header read each other's Running state.
+        if (symbol.Resolving || this.QueryState(symbol, DeclQueryKind.Signature) == DeclState.Running)
         {
             return this.Fail(variable, BindingFailure.Cycle, true);
         }
