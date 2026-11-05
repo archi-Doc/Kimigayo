@@ -3,10 +3,10 @@
 // Origin failure explanations (SPEC 5.7, 10.6, 15.2.3, 15.3.2, 15.4.3, 23.1): the parts of an Origin failure's record beyond the
 // typed facts its check records.
 // - Responsibility: the records of a per-call slot (ReportPerCallSlot), an undeclared storage Origin name
-//   (ReportUndeclaredStorageOrigin, StorageOriginType, TypeNameSpan), an absent slot (RecordAbsentSlot, ReportAbsentSlot) and an
-//   invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); an Origin relation record's end displays
-//   (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end (BorrowSource, LocalBorrow), which the
-//   records of Binding.Diagnostics.cs show and relate.
+//   (ReportUndeclaredStorageOrigin over Binding.Storage's StorageType, TypeNameSpan), an absent slot (RecordAbsentSlot,
+//   ReportAbsentSlot) and an invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); an Origin relation
+//   record's end displays (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end (BorrowSource,
+//   LocalBorrow), which the records of Binding.Diagnostics.cs show and relate.
 // - Inputs: the failing node and the facts its check recorded (absentSlotProjections, invalidStaticOriginSlots, phantomRawOrigins,
 //   PerCallSlotFact), the result contexts, the bound syntax.
 // - Outputs: the records with their Notes, evidence and related locations; the Borrow node.
@@ -25,54 +25,6 @@ public sealed partial class Binding
     // SPEC 15.3.2: the projections of a slot their Type does not declare, with that Type.
     // Recorded only on failure and reused across passes; dependent checks use the failed Origin contract's cause.
     private Dictionary<Koto, BoundType>? absentSlotProjections;
-
-    // SPEC 15.3.2: the struct or enum whose storage (an instance Field Type, an enum payload or a base) writes this Origin name;
-    // null for any other position, such as an accessor signature or an attached relation.
-    private static DeclarationContainerKoto? StorageOriginType(Koto use)
-    {
-        var owner = OriginOwner(use);
-        if (owner is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var, Parent: StructKoto structure } property)
-        {
-            return IsWithin(use, property.TypeKoto) ? structure : null;
-        }
-
-        // A Case's payload list is an inner form of the same kind as the Case.
-        while (owner is { Akind: KotoKind.EnumCase, Parent: { Akind: KotoKind.EnumCase } outer })
-        {
-            owner = outer;
-        }
-
-        if (owner is { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration })
-        {
-            return enumeration;
-        }
-
-        if (owner is StructKoto { Bases: { } bases } declared)
-        {
-            foreach (var parent in bases)
-            {
-                if (IsWithin(use, parent))
-                {
-                    return declared;
-                }
-            }
-        }
-
-        return null;
-
-        static bool IsWithin(Koto node, Koto? root)
-        {
-            for (var current = node; current is not null; current = current.Parent)
-            {
-                if (ReferenceEquals(current, root))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
 
     // The Name of a struct or enum in its first declaration line, the related location of a Type without a header.
     private static SourceSpan TypeNameSpan(DeclarationContainerKoto type)
@@ -430,7 +382,7 @@ public sealed partial class Binding
     // or the Type name without one, is the related location. `during self` is explained by the storage rule of SPEC 11.6 instead.
     private bool ReportUndeclaredStorageOrigin(Koto use, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        if (use is not IdentifierNameKoto { IdentifierName: var name } || StorageOriginType(use) is not { } type)
+        if (use is not IdentifierNameKoto { IdentifierName: var name } || StorageType(use) is not { } type)
         {
             return false;
         }

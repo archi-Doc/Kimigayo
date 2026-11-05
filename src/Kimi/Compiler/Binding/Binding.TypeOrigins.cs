@@ -215,7 +215,7 @@ public sealed partial class Binding
             // SPEC 5.7: a raw layer states the Origin its `during` writes (WrittenRawOrigin) or none, and forms no borrow Origin.
             if (written)
             {
-                if (this.WrittenRawOrigin(annotation!, use, scope, context.Position) is not { } raw)
+                if (this.WrittenRawOrigin(annotation!, use, scope) is not { } raw)
                 {
                     return null;
                 }

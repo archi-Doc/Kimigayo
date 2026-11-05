@@ -249,4 +249,21 @@ public class OriginRedesignTest
         Assert.Contains(header, lines);
         Assert.Contains(constraint, lines);
     }
+
+    // SPEC 5.7, 15.3.2: a raw layer's `self` names the holding value on an inline layer of storage (a Field's or payload's Type, or a
+    // Tuple or fixed-array element of one), read from the one storage predicate (StorageType), and nothing elsewhere in storage: a
+    // Field's Type argument or Function Type, a payload's Function Type and a base clause all get InvalidOriginBinding_Kd.
+    [Theory]
+    [InlineData("struct S\n    public let p: raw/i32 during self", "")]
+    [InlineData("struct S\n    public let p: (raw/i32 during self, i32)", "")]
+    [InlineData("enum E\n    One(raw/i32 during self)\n    Two", "")]
+    [InlineData("open struct Box<T>\n    public let v: i32\nstruct S\n    public let p: Box<raw/i32 during self>", "InvalidOriginBinding_Kd")]
+    [InlineData("enum E\n    One((raw/i32 during self) -> ())\n    Two", "InvalidOriginBinding_Kd")]
+    [InlineData("struct S\n    public let f: (raw/i32 during self) -> ()", "InvalidOriginBinding_Kd")]
+    [InlineData("open struct Box<T>\n    public let v: i32\nstruct D : Box<raw/i32 during self>\n    public let w: i32", "InvalidOriginBinding_Kd")]
+    public void RawSelfNamesOnlyInlineStorage(string declaration, string codes)
+    {
+        var records = ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code).ToArray();
+        Assert.Equal(codes, string.Join(' ', records.Where(static x => x is nameof(DiagnosticCode.InvalidOriginBinding_Kd) or nameof(DiagnosticCode.MissingOriginBinding_Kd))));
+    }
 }
