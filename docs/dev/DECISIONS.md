@@ -5465,8 +5465,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     placement around a Never part.
   - A construct that is no Never form and that no edge joins breaks the HIR contract (BU-101 publishes a construct with no source as a
     Never form): `InternalInvariant_Kd` at the construct, its ends joined so the body stays valid.
-  - Effect: an assumed completion initializes nothing. `while fail()`, `try` on a `Result<Never, E>`, a Never payload binding and a
-    labeled `do` over an abrupt match are accepted; `let r: () = while fail() => ()` then a read of `r` is `UninitializedPlace_Kd`.
+  - Effect: an assumed completion initializes nothing.
+    - Accepted now: `while fail()`, `try` on a `Result<Never, E>`, a Never payload binding (no false record at its reads), and in
+      unreachable code (after `return`) a construct that is no Never form whose exits or yields deliver (a labeled `do` over an
+      abrupt match, a labeled `if` or `match` with `yield`, a `do` with exits): its body end no longer reaches the join.
+    - Newly rejected, `UninitializedPlace_Kd` at the read: `let r: () = while fail() => ()` then a read of `r`; and after `return`,
+      `let t = loop` with `if c => exit a` and an exit whose operand does not complete (`exit fail()`, `(return 1)`,
+      `(a, (return 1)).0`; either order) then a read of `t`. Dev accepted the loop only because such an exit built no transfer and
+      `&& Completes(loop)` hid the head, while it rejected the same shape with a labeled `do`; that inconsistency goes. With a
+      Tuple exit holding a Never part (`exit (a, (return 1))`) the loop now also rejects a read of the other part, valid by the
+      letter, as the labeled `do` and `if` already do: the per-part limit (STATUS, PLAN G428).
   - Why: the builder stood in proxies for the Never form: joins by HIR Completion, `Transfer`'s early return for an operand that
     does not complete, and `Acquire` by the Place's Type.
   - Rejected: "no source delivered" as a second predicate (valid indented exits became `InternalInvariant_Kd`); a derived

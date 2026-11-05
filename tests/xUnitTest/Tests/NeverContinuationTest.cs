@@ -518,6 +518,8 @@ public class NeverContinuationTest
     // after a transfer or a Never call initialize their local through their exits (fail-before: UninitializedPlace_Kd at `r`). An
     // assumed completion initializes nothing: a value end or a delivery of a Never value places nothing, and a Never form (a `loop` or an
     // `if` whose condition diverges) nothing it is placed into, so each read below is UninitializedPlace_Kd; an exit's drop tree runs.
+    // After `return`, a loop whose other exit's operand does not complete initializes its local only on the completing exit's path, as
+    // a labeled do does (fail-before: accepted, the Never exit built no transfer); its reachable twin is accepted.
     [Theory]
     [InlineData("func f() -> i32\n    let r = label w: do\n        return 1\n        exit to w 3\n    return r\n", "")]
     [InlineData("func f() -> i32\n    let r = loop\n        return 1\n        exit 3\n    return r\n", "")]
@@ -526,6 +528,8 @@ public class NeverContinuationTest
     [InlineData("func f() -> i32\n    let r: i32 = label w: do\n        return 1\n    return r\n", "UninitializedPlace_Kd r")]
     [InlineData("func f(c: bool) -> i32\n    let r: i32 = label w: do\n        exit to w fail()\n    return r\n", "UninitializedPlace_Kd r")]
     [InlineData("func g()\n    let r = loop => fail()\n    let s = r\n", "UninitializedPlace_Kd r")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    return 9\n    let t = loop\n        if c => exit a\n        exit fail()\n    let u = t\n    return u\n", "UninitializedPlace_Kd t")]
+    [InlineData("func f(c: bool, a: i64) -> i64\n    let t = loop\n        if c => exit a\n        exit fail()\n    let u = t\n    return u\n", "")]
     [InlineData("func f() -> i32\n    let r = if (return 1) => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
     [InlineData("func f() -> i32\n    let r = if fail() => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
     [InlineData("func f(c: bool) -> i32\n    return 0\n    let r = if c => fail() else => 2\n    return r\n", "UninitializedPlace_Kd r")]
