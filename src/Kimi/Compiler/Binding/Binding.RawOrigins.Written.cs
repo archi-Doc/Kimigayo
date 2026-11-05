@@ -17,10 +17,10 @@ public sealed partial class Binding
     // in inline storage (a Field's or Case payload's Type or a Tuple or fixed-array element of one) and nothing elsewhere in storage; a
     // borrow's name its outer Origin (BindOriginName accepts no other carrier), a slot projection `x.s` the slot's binding, a declared
     // slot, a universal name or `static` itself. JudgeRawOrigin judges it after the last fixed point. Null when the annotation failed.
-    private BoundOrigin? WrittenRawOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope, TypePosition position)
+    private BoundOrigin? WrittenRawOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope)
     {
         var name = annotation.OriginExpression is null ? annotation.OriginName : (annotation.OriginExpression as IdentifierNameKoto)?.IdentifierName;
-        if (name == "self" && (position == TypePosition.InstanceStorage || OriginOwner(annotation) is { Akind: KotoKind.EnumCase }))
+        if (name == "self" && StorageType(annotation) is not null)
         {
             if (!InlineStorage(annotation))
             {
