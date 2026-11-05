@@ -129,9 +129,8 @@ internal sealed partial class MirBuilder
     private bool CodeBlock(MirPlace destination, CodeBlockKoto block)
         => this.EndingTarget(block) >= 0 ? this.TargetBlock(destination, block) : this.Block(destination, block);
 
-    // SPEC 14.2.1, 16.2: a Body no target ends (an unsafe body, SPEC 14.3; a require failure body, SPEC 14.11; until PLAN G427 U1b, a
-    // function's), its items cleaned up where it completes. A target body reaching it breaks the builder's contract (TargetBlock builds
-    // those).
+    // SPEC 14.2.1, 16.2: a Body no target ends (an unsafe body, SPEC 14.3; a require failure body, SPEC 14.11), its items cleaned up
+    // where it completes. A target body reaching it breaks the builder's contract (TargetBlock builds those).
     private bool Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
         if (this.EndingTarget(block) >= 0)

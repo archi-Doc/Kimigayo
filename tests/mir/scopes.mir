@@ -103,8 +103,8 @@ fn drop @49
       _5 = const () @60 s1
       StorageDead(_6) @61 s1
       StorageDead(_5) @60 s1
-      _0 = const () @51 s1
-      drop _1.2 -> bb13 [keep] @49
+      _4 = const () @51 s1
+      goto bb6 @51
   bb2:
       StorageDead(_3) @53 s1
     * goto bb11 check bb12 @59 s2
@@ -133,12 +133,6 @@ fn drop @49
       goto bb10 @59 s2
   bb12:
       unreachable @58 s1
-  bb13:
-      drop _1.0 -> bb14 [keep] @49
-  bb14:
-      drop _1.base1 -> bb15 [keep] @49
-  bb15:
-      return @51
 fn top-level#0 @65
   _0: () return @65
   s1: lexical in s0 @66

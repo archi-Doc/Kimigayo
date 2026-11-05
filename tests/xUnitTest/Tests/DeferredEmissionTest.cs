@@ -152,18 +152,21 @@ public class DeferredEmissionTest
         }
     }
 
-    // SPEC 16.2 (PLAN G427 F4): a labeled do's exit and its completion share its drop tree, so its defer body is built once (dev before
-    // G427: twice, in the exit's tree and inline at the end). An indented body's last item is a statement (SPEC 14.2.2), so the do is Unit.
-    [Fact]
-    public void AnExitAndTheEndOfItsTargetBuildTheDeferOnce()
+    // SPEC 16.2 (PLAN G427 F4, F3): a labeled do's exit, or a function's return, and the body's completion share the target's drop
+    // tree, so the defer body is built once (dev before G427: twice, in the transfer's tree and inline at the end); an indented body's last
+    // item is a statement (SPEC 14.2.2), so the bodies are Unit. Calls: the defer's and the end's.
+    [Theory]
+    [InlineData("func f(c: bool)\n    label work: do\n        defer => Console.writeLine(\"d\")\n        if c => exit to work\n        Console.writeLine(\"e\")\nf(true)")]
+    [InlineData("func f(c: bool)\n    defer => Console.writeLine(\"d\")\n    if c => return\n    Console.writeLine(\"e\")\nf(true)")]
+    public void AnExitAndTheEndOfItsTargetBuildTheDeferOnce(string source)
     {
-        var c = MinimalEmissionTest.Analyze("func f(c: bool)\n    label work: do\n        defer => Console.writeLine(\"d\")\n        if c => exit to work\n        Console.writeLine(\"e\")\nf(true)");
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
         var f = c.BuildMir().Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
         Assert.Equal(2, f.Blocks.ToArray().Count(static x => x.Terminator.Kind == MirTerminatorKind.Call));
     }
 
-    // SPEC 16.2, 15.1.1, 14.10.3 (PLAN G427 F1, F2, F4, F4', F5): a body that completes and is left by a transfer to its target leaves its
+    // SPEC 16.2, 15.1.1, 14.10.3 (PLAN G427 F1-F5, F4'): a body that completes and is left by a transfer to its target leaves its
     // scopes through one drop tree; the checks join the paths there, so the valid program stays accepted, and its twin, whose failure
     // lies on one path only (in the shared cleanup, or a Never part), keeps its one record (code) inside the marked text (at). An
     // indented body ends in a statement (SPEC 14.2.2), so a valued end is a single-item body's (F4': after a departing yield, a Never
@@ -182,6 +185,8 @@ public class DeferredEmissionTest
     [InlineData("func f(c: bool)\n    return\n    let r = label s: if c\n        defer => Console.writeLine(\"d\")\n        yield to s (3, 4)\n    else => (1, (return))\n    let u = r.1", "UninitializedPlace_Kd", "r.1")]
     [InlineData("func f(c: bool, d: bool)\n    label pick: if c\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if d => yield to pick\n        Console.writeLine(\"end\")\n    else => ()", null, null)]
     [InlineData("func f(c: bool, d: bool)\n    label pick: if c\n        let t = \"text\"\n        defer => Console.writeLine(t)\n        if d\n            let moved = t@move\n            yield to pick\n        Console.writeLine(\"end\")\n    else => ()", "MovedPlace_Kd", "writeLine(t)")]
+    [InlineData("func f(c: bool)\n    let t = \"text\"\n    defer => Console.writeLine(t)\n    if c => return\n    Console.writeLine(\"end\")", null, null)]
+    [InlineData("func f(c: bool)\n    let t = \"text\"\n    defer => Console.writeLine(t)\n    if c => return\n    let moved = t@move", "MovedPlace_Kd", "writeLine(t)")]
     public void AnExitAndAnEndShareTheirCleanupAndKeepEachPathsRecords(string source, string? code, string? at)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");

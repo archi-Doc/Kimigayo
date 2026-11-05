@@ -146,10 +146,11 @@ internal sealed partial class MirBuilder
         this.Pop(scope);
     }
 
-    // SPEC 14.2.1, 16.2: a body its innermost target ends and takes the value of (an if clause's or else body, a do's or a match arm's; an
-    // iteration's is a statement, Iterate), set as that target's Body while it is built: its value placed as Result places it, at the
-    // delivery its Completion takes (Target.Ending), and a block of it, on any route Result takes (its own, a call input's temp, or the
-    // temp its Adjust is acquired from, SPEC 16.2.2), built as the target's (TargetBlock, EndingTarget). Whether it ends in its value.
+    // SPEC 14.2.1, 16.2: a body its innermost target ends and takes the value of (an if clause's or else body, a do's, a match arm's or a
+    // function's; an iteration's is a statement, Iterate), set as that target's Body while it is built: its value placed as Result
+    // places it, at the delivery its Completion takes (Target.Ending), and a block of it, on any route Result takes (its own, a call
+    // input's temp, or the temp its Adjust is acquired from, SPEC 16.2.2), built as the target's (TargetBlock, EndingTarget). Whether it
+    // ends in its value.
     private bool TargetBody(Koto body, bool input)
     {
         ref var target = ref CollectionsMarshal.AsSpan(this.targets)[^1];
@@ -165,27 +166,31 @@ internal sealed partial class MirBuilder
     // SPEC 16.2, 14.9.1, 14.10.3 (DECISIONS R4-M176): a target body's end, after its value (a value end) or its end arrival, leaves the
     // scopes the target opened around it through the drop tree of where it goes on, as a transfer of the same kind does (Inline): an
     // iteration's to its next iteration (Continue); one that completes, or a value end, to its delivery (Target.Ending; the edge Joins),
-    // a Never value for the checks only (R4-M62); an end arrival that does not complete to the target's Check for the checks only, else
-    // cleaned up for them as a non-value end that Close ends. The scopes stay open for the body's owner to remove (Pop).
+    // a Never value for the checks only (R4-M62); an end arrival that does not complete to the target's Check for the checks only. Where
+    // it goes on to no block, it is cleaned up inline: a function's end that completes before a return built its return block (Reach)
+    // returns there, and any other is a non-value end its owner ends (Close; a function's, Body). The scopes stay open for the body's
+    // owner to remove (Pop).
     private void End(Koto body, bool value)
     {
         var target = this.targets[^1];
-        if (target.Continue >= 0)
+        var joins = target.Continue < 0 && (Completes(body) || value);
+        var next = target.Continue >= 0 ? target.Continue : joins ? target.Ending.Continuation : target.Check;
+        var entry = this.Inline(target.At.Depth, next);
+        if (next < 0 && Completes(body))
         {
-            this.Join(this.Inline(target.At.Depth, target.Continue), body);
+            this.body.Terminate(this.current, MirTerminator.Return(this.Info(body)));
         }
-        else if (Completes(body) || value)
+        else if (next < 0)
         {
-            this.Joins(this.Edge(this.Inline(target.At.Depth, target.Ending.Continuation), body));
+            this.ends.Add((this.current, this.Info(body)));
         }
-        else if (target.Check >= 0)
+        else if (joins)
         {
-            this.Join(this.Inline(target.At.Depth, target.Check), body);
+            this.Joins(this.Edge(entry, body));
         }
         else
         {
-            this.Inline(target.At.Depth, -1);
-            this.ends.Add((this.current, this.Info(body)));
+            this.Join(entry, body);
         }
     }
 

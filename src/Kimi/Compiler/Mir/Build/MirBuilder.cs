@@ -253,7 +253,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         this.current = body.AddBlock();
-        var temporaries = this.OpenScope(block: false);
+        this.OpenScope(block: false); // The body value's temporaries, which its end leaves (End).
         var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
         this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.
@@ -262,23 +262,27 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.Construct(self, (FunctionKoto)declaration);
         }
 
-        this.Result(done, value, value, input: false); // PLAN G427 U1b ends it as a target body (TargetBody, End).
+        var valued = this.TargetBody(value, input: false);
         if (self is not null)
         {
             this.Made(done); // A constructor's body value, set aside.
         }
 
-        this.CloseScope(temporaries);
-        this.CloseScope(parameters);
-        // A default's value that does not complete goes on to its return, the call that takes it, for the checks only (SPEC 14.10.3).
-        var end = this.Info(value);
-        var check = template && !Completes(value) ? body.AddBlock() : -1;
-        body.Terminate(this.current, Completes(value) ? MirTerminator.Return(end) : MirTerminator.Unreachable(end, check));
-        if (check >= 0)
+        this.End(value, valued);
+        this.Pop(parameters);
+        // SPEC 14.10.3: a non-value end of the body, which no construct closes, goes on nowhere; a default's, built after its cleanup,
+        // to its return, the call that takes its value, for the checks only.
+        foreach (var (block, info) in this.ends)
         {
-            body.Terminate(check, MirTerminator.Return(end));
+            var check = template ? body.AddBlock() : -1;
+            body.Terminate(block, MirTerminator.Unreachable(info, check));
+            if (check >= 0)
+            {
+                body.Terminate(check, MirTerminator.Return(info));
+            }
         }
 
+        this.ends.Clear();
         this.validator.Validate(body, this.program.Findings);
     }
 

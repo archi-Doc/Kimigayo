@@ -5514,13 +5514,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Destination and Break, or Into and Join), taken before that item is built (`Target.Ending`); an end arrival that does not complete
     to `Target.Check`, else inline for `Close`. Each (scope, registrations, continuation) cleanup is built once: `Exit` and the end's
     builder (`Inline`) share one lookup (`Found`); the end builds what no node covers inline, innermost first.
-  - Facts the builder publishes: `Target.Body`, set by `TargetBody` (if clauses, else, `do`, match arms) and `Iterate` (iterations),
+  - Facts the builder publishes: `Target.Body`, set by `TargetBody` (if clauses, else, `do`, match arms, function bodies) and `Iterate` (iterations),
     read by `EndingTarget` on every route to a block, where the target's body is built by `TargetBlock` and any other by `Block`, which
     records `InternalInvariant_Kd` for a target body; `Deferred` builds its body, always a block, by `TargetBlock` and sets none.
     `Target.Check`, decided where the target opens: a construct's join where it is a Never form, a defer body's `next`.
   - Bodies no target ends keep their inline close and continuation: `unsafe` and a `require` failure body (SPEC 14.3, 14.11).
   - A body whose route holds its value in a temp (a reserving call input, an adapted block) keeps the delivery `TargetBody` took, as
-    the route places from that temp; the function body joins in U1b, the body budget in U2.
+    the route places from that temp: `TargetBlock` takes the delivery again only where its route gave it the target's own place
+    (`Target.Ending.Place`); `CallReservationTest`'s reserving inputs, `MirCensusTest` and the goldens fail where it takes it always. The body budget lands in U2.
+  - The function body (U1b) is a target body too: with a return, its end shares the return's tree (`Reach`), and records anchored at
+    that Return move to the declaration's source; before any return it cleans up inline and returns there, as before. A non-value
+    end goes on nowhere, a default template's to its check block, built after the cleanup.
   - Residual family (the owner, verbatim 「上限付きで受入（推奨）」): a nested Body with a defer and a self exit inside a defer body still
     has two continuations; it is pinned by scaling rows and bounded by U2's limit.
   - Rejected: one chain followed by a selector (it would join different continuations); `TargetBody` holding a block body's temp
