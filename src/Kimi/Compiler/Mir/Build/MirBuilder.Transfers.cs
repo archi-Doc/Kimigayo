@@ -209,6 +209,10 @@ internal sealed partial class MirBuilder
         return check;
     }
 
+    // The innermost target's index where a node is the body its owner is building (Target.Body), else -1: while a body is built, its
+    // target is the innermost, as every owner opens its target before its bodies and a nested construct closes its own before they end.
+    private int EndingTarget(Koto node) => this.targets.Count > 0 && ReferenceEquals(this.targets[^1].Body, node) ? this.targets.Count - 1 : -1;
+
     // Whether leaving the scopes from a depth cleans anything up: a departing scope registered a cleanup.
     private bool Departs(int depth)
     {
@@ -240,6 +244,11 @@ internal sealed partial class MirBuilder
 
         // Its own Destination, which an assumed delivery places into: Destination before a delivery made it a result temp (Delivers).
         internal MirPlace Into { get; } = Destination;
+
+        // The body of it its owner is building now, which TargetBody and Iterate publish (Publish) and the routes to a block read
+        // (EndingTarget); none between its bodies, and none for a defer body, always a block, which Deferred builds as its target's
+        // directly (TargetBlock).
+        internal Koto? Body { get; set; }
     }
 
     // The builder's position where a construct opened: the pending operands below its transfers (Mark), the open scopes around it (Depth),

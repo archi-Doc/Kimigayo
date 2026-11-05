@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -141,10 +142,25 @@ internal sealed partial class MirBuilder
     private void Arm(MirPlace destination, Koto body, int after, bool input)
     {
         var scope = this.temporaries = this.OpenScope(block: true);
-        var value = this.Result(destination, body, body, input);
+        var value = this.TargetBody(destination, body, input);
         this.CloseScope(scope);
         this.End(after, body, value);
     }
+
+    // SPEC 14.2.1, 16.2: a body its innermost target ends and takes the value of (an if clause's or else body, a do's, a match arm's or a
+    // function's; an iteration's is a statement, Iterate), its value as Result places it, published as that target's Body while it is
+    // built: a block of it, on any route Result takes (its own, a call input's temp, or the temp its Adjust is acquired from, SPEC
+    // 16.2.2), is built as the target's (TargetBlock, EndingTarget). Whether it ends in its value.
+    private bool TargetBody(MirPlace destination, Koto body, bool input)
+    {
+        this.Publish(body);
+        var valued = this.Result(destination, body, body, input);
+        this.Publish(null);
+        return valued;
+    }
+
+    // The body the innermost target's owner is building, or none after it (Target.Body).
+    private void Publish(Koto? body) => CollectionsMarshal.AsSpan(this.targets)[^1].Body = body;
 
     // SPEC 14.9.1, 14.10.3: a construct's body's end, after its value (a value end) or its end arrival: one that completes, or a value
     // end, joins (Join), a Never value for the checks only, placing nothing (DECISIONS R4-M62); an end arrival that does not complete
@@ -175,10 +191,20 @@ internal sealed partial class MirBuilder
         this.Joins(MirTerminator.Goto(after, this.Info(construct)));
     }
 
-    // An iteration: the body for its effect, then back to the head, through the cleanup of the iteration's scopes as a continue goes.
+    // An iteration: the body for its effect, a statement's value, built as Statement builds one (Into, into a temp of its own with the
+    // statement's temporaries, SPEC 3.6) and published as its target's Body (TargetBody), then back to the head, through the cleanup of
+    // the iteration's scopes as a continue goes.
     private void Iterate(Koto body, int head)
     {
-        this.Statement(body);
+        this.statementStart = true;
+        var temporaries = this.OpenScope(block: false);
+        var value = this.Hold(Held(body), body);
+        this.Publish(body);
+        this.Into(value, body);
+        this.Publish(null);
+        this.Made(value);
+        this.CloseScope(temporaries);
+        this.statementStart = false;
         this.Join(this.Exit(this.targets[^1].At.Depth, head), body);
     }
 

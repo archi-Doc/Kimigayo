@@ -262,7 +262,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.Construct(self, (FunctionKoto)declaration);
         }
 
-        this.Result(done, value, value, input: false);
+        this.TargetBody(done, value, input: false);
         if (self is not null)
         {
             this.Made(done); // A constructor's body value, set aside.

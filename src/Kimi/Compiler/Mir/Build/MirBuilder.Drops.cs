@@ -210,7 +210,7 @@ internal sealed partial class MirBuilder
         var temporaries = this.OpenScope(block: false);
         var result = this.Hold(BoundType.Unit, defer);
         this.targets.Add(new(defer, result, next, -1, next, new(this.arguments.Count, depth, this.scope, this.ends.Count)));
-        this.Block(result, defer.Body, MirScopeKind.Deferred);
+        this.TargetBlock(result, defer.Body, MirScopeKind.Deferred);
         this.Made(result);
         this.targets.RemoveAt(this.targets.Count - 1);
         this.CloseScope(temporaries);

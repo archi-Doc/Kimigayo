@@ -156,6 +156,33 @@ public class DeferredEmissionTest
         }
     }
 
+    // SPEC 14.11, 14.3 (PLAN G427 F6, F7): a require's failure body and an unsafe block, each indented or a single item, are Bodies no
+    // target ends: the defers they register run where they are left, and a failure body has no successor (its fallthrough rows are
+    // MirAnalysisTest's RequireEnds). The valid forms are accepted; a defer reading a local moved later in its body is one MovedPlace_Kd
+    // at that read.
+    [Theory]
+    [InlineData("func f(flag: bool) -> i32\n    require flag else\n        defer => Console.writeLine(\"failed\")\n        return 0\n    return 1", true)]
+    [InlineData("func f(flag: bool) -> i32\n    require flag else => return 0\n    return 1", true)]
+    [InlineData("func f(flag: bool) -> i32\n    require flag else\n        let s = \"text\"\n        defer => Console.writeLine(s)\n        let moved = s@move\n        return 0\n    return 1", false)]
+    [InlineData("func f() -> i32\n    var x = 1\n    unsafe\n        defer => x += 1\n        x += 1\n    return x", true)]
+    [InlineData("func f() -> i32\n    var x = 1\n    unsafe => defer => x += 1\n    return x", true)]
+    [InlineData("func f(c: bool) -> i32\n    var x = 1\n    match c\n        true => unsafe => defer => x += 1\n        false => ()\n    return x", true)]
+    [InlineData("func f()\n    unsafe\n        let s = \"text\"\n        defer => Console.writeLine(s)\n        let moved = s@move\n    Console.writeLine(\"after\")", false)]
+    public void BodiesNoTargetEndsCleanUpWhereTheyAreLeft(string source, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");
+        if (valid)
+        {
+            Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+            Assert.Empty(c.Problems);
+            return;
+        }
+
+        var issue = Assert.Single(c.Problems);
+        var at = source.IndexOf("writeLine(s)", StringComparison.Ordinal) + "writeLine(".Length;
+        Assert.Equal((DiagnosticCode.MovedPlace_Kd, at, 1), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
+    }
+
     [Fact]
     public void DeferredDiagnosticsAreDeduplicatedBeforePublication()
     {
