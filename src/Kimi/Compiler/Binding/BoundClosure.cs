@@ -8,8 +8,8 @@
 //   (Classified).
 // - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, EvaluatingBody and the resets), Binding.Captures
 //   (Storage), Binding.ClosureReceivers (the receiver facts).
-// - Outputs: Receiver for acquisition and every receiver reader (value calls, candidate selection and Callable proofs, effects, the
-//   MIR builder and the old analysis); the cause for the write record; for a view of one admitted case, that case's
+// - Outputs: Receiver for acquisition and every receiver reader (value calls, candidate selection and Callable proofs, effects and
+//   the MIR builder); the cause for the write record; for a view of one admitted case, that case's
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
 //   case Type, else Shared.
 // - Access (DECISIONS R5-M63 (1), R4-M152, R5-M193; agreed with BU, the Binding owner): two accessors with two meanings, so each
@@ -19,7 +19,7 @@
 //   publisher and MIR builder, and Binding's judgments of a literal's parts, which read it as FunctionKoto.ClosureDefinition until R7).
 //   FunctionKoto.ClosureAsCreated is the closure as created,
 //   that definition while the literal's creation is Resolved and null when the creation failed: only a reader that asks whether the
-//   creation at its position succeeded reads it (the old Analysis per creation, control flow's created closure).
+//   creation at its position succeeded reads it (control flow's created closure).
 // - Invariants: Receiver is CaseFreeReceiver raised to Exclusive when a capture has BareReborrows, so Consuming never depends on a
 //   case; the receiver facts are the current binding's exactly when Classified; a failed creation keeps its definition.
 // - Prohibitions: only ClosureEffects classifies the receiver facts, which the binding resets; no reader re-derives a receiver from the body.

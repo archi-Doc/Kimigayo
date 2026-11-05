@@ -39,7 +39,7 @@
 // capacity and an Array's glue level (.Arrays.cs; DECISIONS R5-M121); the Dictionary rows written in place: a Dictionary from none and a
 // Dictionary's glue level (.Dictionaries.cs; DECISIONS R5-M124); a test build's phases, the cleanup window and a terminator's completion
 // (.Phases.cs; DECISIONS R5-M137).
-// Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
+// Must not read syntax, HIR, plans or Binding internals, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls, or lay out a Type outside the item's by-value set (its locals, constants and aggregates), its
 // type-driven Type and its operator rows' Types (a scalar or string read through reference layers, Compute) but through Needed, the Type a

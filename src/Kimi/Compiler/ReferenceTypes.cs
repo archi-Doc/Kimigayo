@@ -58,10 +58,6 @@ internal static class ReferenceTypes
     // SPEC 4.6.2: the library ResolvedRange struct, which the compiler produces for indices and iterates directly.
     internal static bool IsResolvedRange(BoundType? type) => type is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
 
-    // SPEC 13.4: safe borrows of one scalar Type compare their referent values.
-    internal static bool IsScalarBorrow(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && ScalarTypes.Supports(type.Components[0]);
-
     // SPEC 3.4: a safe ref/T or uniq/T, whatever its referent and representation as an argument.
     internal static bool IsReference(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
 

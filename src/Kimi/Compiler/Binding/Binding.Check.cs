@@ -199,7 +199,6 @@ public sealed partial class Binding
                     BindingFailure.OverrideContractMismatch => DiagnosticCode.OverrideContractMismatch_Kd,
                     BindingFailure.DuplicateOverride => DiagnosticCode.DuplicateOverride_Kd,
                     BindingFailure.UnprovenOverrideCondition => DiagnosticCode.UnprovenOverrideCondition_Kd,
-                    BindingFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
                     BindingFailure.BaseCall => DiagnosticCode.InvalidBaseCall_Kd,
                     BindingFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
                     _ => DiagnosticCode.Unsupported_Kd,

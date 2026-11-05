@@ -6,10 +6,10 @@
 //   `Found under the Semantics case ... (SPEC 8.15)`, the related declarations of the named bindings, the explicit-entry Note
 //   tail (FailingCaseNote), and the case set of a bare acquisition that moves a pair-layer Place (AcquisitionCases, R6-check H1).
 // - Inputs: a definition's pair binders (PairBinders) and a set of case bits in their enumeration order (the innermost resolved
-//   binder advancing fastest, each in SemanticsMask order: the numbering of BuildCases and of MirCases' views); a failing mask.
+//   binder advancing fastest, each in SemanticsMask order: the numbering of MirCases' views); a failing mask.
 // - Outputs: text, evidence and related declarations; CaseFact leaves the binders it names in the caller's list.
 // - Invariants: the text is a function of its inputs; it is built only for a published record, so a warm Bind renders nothing.
-// - Must not: decide which cases a problem is found under, or read an analysis. The old Analysis calls it until H10b deletes it.
+// - Must not: decide which cases a problem is found under, or read an analysis.
 
 using System.Numerics;
 using System.Text;
