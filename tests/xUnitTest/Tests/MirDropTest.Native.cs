@@ -39,10 +39,11 @@ public sealed partial class MirDropTest
             "moved\nend\nrow1\nrow0\nsome\npair1\npair0\none\n", 7
         },
 
-        // R4-M6b, PD18: a destructor's body destroys its own Fields, last to first, then its base, on each of its two returns; nothing else
-        // does. Leaf precedes Base, so its destructor is the first body named drop.
+        // R4-M6b, PD18: a destructor's body destroys its own Fields, last to first, then its base, on each of its two returns, through one
+        // chain both share since G427 (DECISIONS R4-M176: the completion leaves through the return's drop tree); nothing else does. Leaf
+        // precedes Base, so its destructor is the first body named drop.
         {
-            "KeepLayers", "drop", @"^drop _1\.base1 -> bb\d+ \[keep\]$", 2,
+            "KeepLayers", "drop", @"^drop _1\.base1 -> bb\d+ \[keep\]$", 1,
             "struct Leaf : Base\n    let early: bool\n    let x: Counted\n    let y: Counted\n" +
             "    public init(early: bool, x: Counted, y: Counted, b: Counted) : base(b@move)\n        self.early = early\n" +
             "        self.x = x@move\n        self.y = y@move\n    drop\n        Console.writeLine(\"leaf\")\n        if self.early => return\n" +
