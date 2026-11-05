@@ -1294,6 +1294,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 6 (2026-11-05, the planning session): U5 is closed without an implementation: the flip (R6-check H5) made the MIR decide
   and it gives DIAGNOSTICS' Unsatisfied for G392's forms on both pipelines; the rows hold it (§6's U5 row). No other text changed;
   the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 7 (2026-11-05, the owner, verbatim 「U4 を落とす」, after U4's two design reviews did not converge under Q11): U4 is dropped;
+  rule 6's argument site for a payload's failed fit (D-1) is deferred to its own item after R5's H11b, since the one record is then
+  A5's row and a cross-phase report Site would be needed; the site stays DIAGNOSTICS' failed node; Decided is not published (§6's
+  U4 row). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
