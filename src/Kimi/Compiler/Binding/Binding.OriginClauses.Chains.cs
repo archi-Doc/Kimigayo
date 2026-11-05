@@ -48,7 +48,7 @@ public sealed partial class Binding
     // A node of a declaration row's graph is Dependent when an Unbound atom is in it.
     private static bool Dependent(BoundOrigin origin) => UnboundAtom(origin) is not null;
 
-    [Transitional("R7", Reason = "PLAN G318's R4-M118 component (A5's chain core below both phases) replaces this copy (DECISIONS BU-62).")]
+    [Transitional("R7", Reason = "PLAN's R4-M118 component (A5's chain core below both phases) replaces this copy (DECISIONS BU-62).")]
     private void JudgeChains()
     {
         for (var r = 0; r < this.unboundRows.Count; r++)

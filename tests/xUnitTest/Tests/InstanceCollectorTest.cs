@@ -1840,7 +1840,7 @@ public sealed partial class InstanceCollectorTest
     // K 4.5 row 7: a static's access is its initializer's StaticInit body (MirProgram.StaticInit), a root in the root module, also from an
     // instance; a static of a generic container's group has no instance key (X33 (a): generic storage keys are P42's), so its accesses admit
     // nothing and its declaration is the static-storage gap once (DECISIONS R5-M82, superseding R5-M60's record at each access), which the
-    // old path accepts for this immutable scalar (an R5-M18 (e) row).
+    // old path accepted for this immutable scalar until H10b deleted it (an R5-M18 (e) row).
     [Fact]
     public void AStaticAccessIsItsInitializer()
     {

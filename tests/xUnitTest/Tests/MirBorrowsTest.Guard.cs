@@ -878,7 +878,7 @@ public sealed partial class MirBorrowsTest
     // `HK<Range<T, T>>` (range) and `HK<[2 of T]>` (fixedArray), each with its closed use. Before (ca97a317e's final none), the generic
     // declaration's storage was Rejected and A4's retention over it gave its limit verdict, Unsupported_Kd at the generic function's
     // signature, its local, the init and the return: a problem of the whole MIR analysis, which Binding's issues, the program's findings,
-    // the collector's records and the Loan stratum alone never observe. The old path accepts each too.
+    // the collector's records and the Loan stratum alone never observe. The old path accepted each too (deleted at H10b).
     [Fact]
     public void APendingProjectionIsCompletedByTheInstanceAUseForms()
     {

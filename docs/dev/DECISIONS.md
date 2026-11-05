@@ -523,7 +523,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R2b-D3** The declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`,
   `AvailableBounds`) are built by their first reader (R4, R5).
 - **R2b-D5** `BoundMatch` and `BoundClosure` keep their names (the plan's PatternPlan and ClosureDef) until R6.
-  - Amended: until R7 (the owner, 2026-11-06, verbatim 「R7 に送る」; H15).
+  - Amended: until R7 (the owner, 2026-11-06, verbatim 「R7 に送る」; H15, R5-M194).
 - **R2b-D7** `HirAdjust` = `HirAcquire` + `HirAdaptation`: `@move` and `@copy` are operand Adjusts, `@ref`, `@uniq` and
   `@raw` are `Op = Borrow`, `@follow` is `Deref`, and numeric conversions are `Op = Convert`.
 - **R2b-D9** The HIR snapshot is a separate `.hir.txt` per case (`KIMI_SEMANTIC_HIR=1`).
@@ -14780,8 +14780,8 @@ structure is recorded here by the unit that first implements it.
   postponements and retags; gate H0c §8, `draft/Sketches/R6-check/H0c-deletions.md`; record
   `artifacts/benchmarks/2026-11-06-r6-check-exit/`) SPEC 23.1.2.
   - Gate, on `claude/r5-h15` over dev `2e56a695c`:
-    1. MIR decides acceptance (H5, R5-M185); the latest Session, W-28's on dev `421dde4f0`, passes (27,761 tests, 0 failed; natives
-       6,090/6,090; snapshot 0; 40 milestones); `VerifiedSpecExampleTest` is MIR-only; OldRule, spec-case and pair-case `Old` are 0.
+    1. MIR decides acceptance (H5, R5-M185); W-29's Session on the merged result passes (the landing merge's verify-commit
+       evidence); `VerifiedSpecExampleTest` is MIR-only; OldRule, spec-case and pair-case `Old` are 0.
     2. The zero-reference rows (R6-gen's, the old ownership and control-flow analyses') and the Ownership ratchets are at 0
        (`ArchitectureRulesTest`); `C/Analysis/` is gone (H10b, H10b-2).
     3. No `[Transitional("R6")]`, `("R6-check")` or `("R4")` remains: `IsTwinRecord`, `JudgeChains` and BU-72's three are R7
@@ -14793,10 +14793,12 @@ structure is recorded here by the unit that first implements it.
        `13366c3e6`).
     7. PLAN10-P3 (T-18): stages 3+4 (BuildMir + collection) are 0.32-0.70 of the R6-gen exit's (median 0.48), their allocation
        0.51-0.79, the whole pipeline 0.81-0.91; cold collection is unchanged (0.92-1.04), 30-37% of 3+4 on Generic 32-128; the
-       warm `Purpose=Allocation` tests pass in W-28's Session.
+       warm `Purpose=Allocation` tests pass in W-29's Session on the merged result (the landing merge's verify-commit evidence).
     8. Records: H15's commits (STATUS, DIAGNOSTICS, ARCH, PLAN, DECISIONS, the R7 plan, comments and retags); SETTLED's R5-M11
        rewrite; the area record: `src/Kimi/Compiler` 148,737 lines (-5.5% since the R6-gen exit; Analysis 16,093 to 0), its
-       hotspots and duplication candidates.
+       hotspots and duplication candidates; the owner's review of H0c §5.1-§5.2 (the Transitional census and the D5 exceptions;
+       `artifacts/benchmarks/2026-11-06-r6-check-exit/exceptions-and-transitional.md`, 12 rows): the owner, 2026-11-06, verbatim 「推奨どおり承認」; H15's
+       independent final review.
   - Moved to R7, each by the owner: H7 and `BaseReferenceKoto.BasePath` (2026-11-05, verbatim 「推奨どおり」; R5-M190); R2b-D5's
     rename (2026-11-06, verbatim 「R7 に送る」); H11b-0 and H11b with their named exceptions (2026-11-06, verbatim 「Cで決定します」;
     R5-M192's amendment); G318, G258's W with G263 item 4, G289 (5), G220 and G157 (39) to the R7 plan's middle list, and

@@ -1270,7 +1270,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   and H11b into the Problem records (2026-11-06, verbatim 「Cで決定します」) with their named exceptions (R4-M108's twins with
   `IsTwinRecord` and MirSide's filter, OriginRecoveryTest's two pins, D-1, D-2); the plan stays 一部取り込み (open), nothing frozen.
 - Revision 4 (2026-11-06, plan §14, R6-check's exit H15; the owner, verbatim 「一括承認します。」): §5.4's middle list takes G318,
-  G258's W with G263 item 4, G289 (5), G220 and G157 (39); `JudgeChains` and BU-72's three R4 tags are retagged R7; row 3 names
+  G258's W with G263 item 4, G289 (5), G220 (M's C-47 and F's C-48 consented) and G157 (39) (R5's own row, no consent needed);
+  `JudgeChains` and BU-72's three R4 tags are retagged R7; row 3 names
   H11b's two `UntilH11` test methods. With Revision 3 this fixes R6-check's exit list to R7 (DECISIONS R5-M194); the plan stays
   一部取り込み (open), nothing frozen.
 

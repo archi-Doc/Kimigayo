@@ -40,7 +40,7 @@ public sealed partial class Binding
     /// test MIR side (<c>MirTargetSide.MirSide</c>) leaves out for A5's row (DECISIONS R4-M108, R4-M111).</summary>
     /// <param name="node">The records' node.</param>
     /// <returns>Whether its records are twins.</returns>
-    [Transitional("R7", Reason = "The test MIR side's twin filter; R7's Problem records unit deletes it with the twins (the owner, 2026-11-06, 「Cで決定します」; DECISIONS R4-M111).")]
+    [Transitional("R7", Reason = "The test MIR side's twin filter; R7's Problem records delete it with the twins (the owner's 「Cで決定します」; DECISIONS R4-M111).")]
     internal bool IsTwinRecord(Koto node) => this.originTwins?.Contains(node) == true;
 
     // DIAGNOSTICS (Origin relations): an obligation's record is at its use, a local annotation's fit at the local's initializer, the
