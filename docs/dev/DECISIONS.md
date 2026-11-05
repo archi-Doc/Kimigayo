@@ -9075,11 +9075,12 @@ resumed by R4-M86 (2026-10-20).
       relayed by R4, verbatim 「(a)：F 案の U15e をこの回に取り込み、すべての位置で同じ規則にする。」): `PositionKind` decides typed
       first. A position with a typed part is typed at its common Type, and only a position with no typed part waits. This supersedes
       BU-43's "one with a waiting part waits".
-    - U1.6g (a) (the owner's answer of 2026-10-31, (i); `Binding.ArgumentKinds.ConflictWaits`): a join under the argument probe whose
-      typed parts have no common Type fixes no complete Type without its call's expectation, so it waits as a Join, which its call
-      completes at the selected candidate's Type. Once the call has selected and taken the argument (`TakenByCall`, BU-74), the
-      conflict is the join's own record, as outside a call argument. This supersedes BU-43's "its typed parts conflict, which fails it
-      at once" and "fails at once also when nested" for call arguments.
+    - U1.6g (a) (BU's decision, with R4: BU-43's clause narrowed SPEC 10.5.1 for a call argument; `Binding.ArgumentKinds.ConflictWaits`):
+      a join under the argument probe whose typed parts have no common Type fixes no complete Type without its call's expectation, so
+      it waits as a Join, which its call completes at the selected candidate's Type. Once the call has selected and taken the argument
+      (`TakenByCall`, BU-74), the conflict is the join's own record, as outside a call argument; that clause is the owner's (i), errors
+      by the letter (2026-10-31, verbatim 「U1.6e (i) エラーにする でお願いします」). This supersedes BU-43's "its typed parts conflict,
+      which fails it at once" and "fails at once also when nested" for call arguments.
   - BU-93's lost records: "until H11 and H3" was met at H5 (dev 70fd9deb9) through H3-2 (R5-M184) and H5, without H11. The
     annotation's `UnprovenOriginRelation_Kd` (pl_n 8:19, p3_n 8:20, pl_n_written 8:19 and 8:66, pmv_let 11:19) and pmv_let's
     `MovedPlace_Kd` (10:13) are published again (T-34's rows). BU-93's list missed one loss of the same G56 family: pk_noclause_int's
