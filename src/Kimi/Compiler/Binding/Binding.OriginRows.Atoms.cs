@@ -7,9 +7,9 @@
 // its part (OriginRowSet.InLayer).
 // Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives, and a Dependent atom (an end a
 // Binding failure left Unbound, DECISIONS R4-M118, or an unclassified Closure's pending atom, R4-M126 §2.5 (c)), is a broken contract in
-// a complete compilation (OriginFinding); roots by the forming body for non-declaration binders and by slot role for declaration binders;
-// an atom's part is its rows' part, or for an atom MIR reads its forming body's (DECISIONS R4-M114), and only a Fixed atom is in both
-// parts (else a finding).
+// a complete compilation (BrokenContract, DECISIONS BU-102); roots by the forming body for non-declaration binders and by slot role for
+// declaration binders; an atom's part is its rows' part, or for an atom MIR reads its forming body's (DECISIONS R4-M114), and only a Fixed
+// atom is in both parts (else a broken contract). An atom and its part are stored only after their checks pass.
 // Must not: let a slot or binder leave the view (only ProjectionRole does, D7).
 
 using Kimi.Compiler.Parsing;
@@ -94,32 +94,32 @@ public sealed partial class Binding
     }
 
     // An atom's index in the slice's table, classed on its first appearance; a class no precedence row gives, or a Dependent one, is a
-    // broken contract (OriginFinding records it in a complete compilation only).
+    // broken contract (BrokenContract), checked before the atom is stored.
     private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte part)
     {
         IOriginRowSetBuilder builder = slice;
         if (!builder.Index.TryGetValue(atom, out var index))
         {
-            index = builder.Atoms.Count;
-            builder.Index.Add(atom, index);
             var entry = this.ClassifyAtom(atom, slice);
             if (entry is null or { Kind: OriginAtomKind.Dependent })
             {
-                this.OriginFinding(SourceRef.Of(site));
+                this.BrokenContract(site);
             }
 
+            index = builder.Atoms.Count;
+            builder.Index.Add(atom, index);
             builder.Atoms.Add(entry ?? new(atom, OriginAtomKind.Unclassed, RoleOf(atom)));
             builder.Parts.Add(0);
         }
 
         // E4: the parts share Fixed atoms only, so a chain never crosses from one oracle's part to the other's.
-        var before = builder.Parts[index];
-        builder.Parts[index] |= part;
-        if (before != 3 && builder.Parts[index] == 3 && builder.Atoms[index].Kind != OriginAtomKind.Fixed)
+        var parts = (byte)(builder.Parts[index] | part);
+        if (builder.Parts[index] != 3 && parts == 3 && builder.Atoms[index].Kind != OriginAtomKind.Fixed)
         {
-            this.OriginFinding(SourceRef.Of(site));
+            this.BrokenContract(site);
         }
 
+        builder.Parts[index] = parts;
         return index;
     }
 

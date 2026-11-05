@@ -154,7 +154,7 @@ public sealed partial class OriginRowsTest
         var getter = Bodies(c).Select(x => c.Types.OriginRows(x.Key.Body)).Single(x => x.Rows.Any(y => Site(c, y) == "storage@ref"));
         var storage = getter.Atoms[getter.Rows.First(x => Site(c, x) == "storage@ref").Longer];
         Assert.Equal((kind, ProjectionRole.Storage), (storage.Kind.ToString(), storage.Role));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
     }
 
     // Row 6's Closure case through an accessor's storage (DECISIONS BU-25's exception): the getter's Borrow of its Property's storage is
@@ -178,7 +178,7 @@ public sealed partial class OriginRowsTest
         var closure = Atom(c, Bodies(c).Single(IsProgramClosure).Key.Body, storage, borrow);
         Assert.Equal((kind, ProjectionRole.Storage), (getter.Kind.ToString(), getter.Role));
         Assert.Equal((OriginAtomKind.Fixed, ProjectionRole.Storage), (closure.Kind, closure.Role));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
     }
 
     // Row 3's referent clause for a Place: the atom PlaceOrigin names for a Borrow of an expression read as its referent is Inferred.
@@ -216,7 +216,7 @@ public sealed partial class OriginRowsTest
         Assert.DoesNotContain(Rows(c, false), static x => x.Use is TypeKoto);
         var slice = c.Types.OriginRows(Bodies(c).Single(x => x.Key.Decl?.Name == body).Key.Body);
         Assert.DoesNotContain(slice.Atoms, static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Input });
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
         if (omitted)
         {
             var header = KotoTree.Walk(c.Kotonoha.RootKoto).First(static x => x is TypeSemanticsKoto && InProgram(x) && First(x) == "ref/(ref/i32)");
@@ -251,8 +251,8 @@ public sealed partial class OriginRowsTest
     }
 
     // DECISIONS R4-M126 §2.5 (c), D-3: a Closure that is not classified (its capture failed, so no body was bound) has pending receiver and
-    // environment atoms, Dependent (R4-M118): never a source or a judged target. The view records a Dependent atom as a broken contract in
-    // a complete compilation only, which classifies every Closure: the valid twin's ρ is Fixed (row 5) and its env_0 resolves to ρ.
+    // environment atoms, Dependent (R4-M118): never a source or a judged target. A Dependent atom is a broken contract, which throws, in
+    // a complete compilation only (BU-102), which classifies every Closure: the valid twin's ρ is Fixed (row 5) and its env_0 resolves to ρ.
     [Theory]
     [InlineData("text", false, "Dependent")]
     [InlineData("text@move", true, "Fixed")]
@@ -264,7 +264,35 @@ public sealed partial class OriginRowsTest
         Assert.Equal(complete, c.Binding.Result.IsComplete);
         Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot), literal).Kind.ToString());
         Assert.Equal(kind, Atom(c, body, new BoundOrigin(OriginKind.Projection, literal, Binding.EnvironmentSlot(0)), literal).Kind.ToString());
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
+    }
+
+    // DECISIONS BU-102: the view is its own validator. No source program reaches a broken contract, so MIR's input is built directly: an
+    // atom MIR reads that no precedence row classes (E5: a Place atom formed outside every body) or a Dependent one (an Unbound end,
+    // R4-M118) throws in a complete compilation, and again on a later read, as nothing is stored; in an incomplete one it rests on a
+    // Binding failure, and the view keeps it, Unclassed or Dependent.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ABrokenContractThrowsInACompleteCompilationOnly(bool complete)
+    {
+        var c = MirBuildTest.Compile("func f(x: ref/i32) -> i32 => x@follow\n" + (complete ? string.Empty : "func g() -> i32 => missing\n") + Main);
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        var f = Bodies(c).Single(static x => x.Key.Decl?.Name == "f").Key.Body;
+        var site = ((FunctionKoto)f.Definition!.Declaration!).ExpressionBody!;
+        var atoms = new[] { (new BoundOrigin(OriginKind.Unbound, site), OriginAtomKind.Dependent), (new BoundOrigin(OriginKind.Projection, site), OriginAtomKind.Unclassed) };
+        foreach (var (atom, kind) in atoms)
+        {
+            if (complete)
+            {
+                Assert.Throws<InvalidOperationException>(() => c.Types.OriginAtom(f, atom, SourceRef.Of(site)));
+                Assert.Throws<InvalidOperationException>(() => c.Types.OriginAtom(f, atom, SourceRef.Of(site)));
+            }
+            else
+            {
+                Assert.Equal(kind, Atom(c, f, atom, site).Kind);
+            }
+        }
     }
 
     // The row of a body (by its definition's name; "" for the Closure) at a site.

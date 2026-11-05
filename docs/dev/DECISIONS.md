@@ -9108,6 +9108,21 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a HirTables column or a generalized `ErasedTypes`; the builder meeting the layers (a second PlaceOrigins); the Place's
     Meaning set to the adapted Type (SPEC gives the Place its stored Type); the DiscardKoto's own slot (no node for a bare statement:
     two paths); a TyCtxt query over Binding's pass-local adaptations.
+- **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
+  item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines) SPEC 23.1.2, 15.6.1, 15.6.5.
+  - Rule: the view's producer (`Binding.OriginRows.cs`, `.Atoms.cs`) checks its contract where it forms a row or an atom: a row with no
+    body left after the declaration judge (BU-26, BU-89), a case binder outside its body, an atom no precedence row classes or a
+    Dependent one (R4-M101 E5, R4-M118), a non-Fixed atom in both parts of a constructor's slice (E4). In a complete compilation a break
+    throws at its site (`BrokenContract`) and ends the check as `CheckFaulted_Kd`, as `Binding.Readable` does (BU-36). The walk's
+    version, a slice's index and an atom with its part are stored only after their checks pass, so every later read throws again. In an
+    incomplete compilation the state rests on a Binding failure, and the view keeps it as before.
+  - Reason: no program that the tests, the ledger, the census or the milestones reach writes a finding (dev's ledger has no
+    InternalInvariant row; BU-89 removed the 19 known ones). The view is built after Bind, on MIR's first read, when Binding's records
+    are final, and atoms are also read at MIR sites.
+  - Removes: `TyCtxt.OriginFindings`, Binding's list and `OriginFinding`, and the `InternalInvariant_Kd` loop of `MirOrigins.Findings`.
+    `Findings` keeps G215's layer limit (R4-M168). R4-M101 E2/E4's and R4-M118 (F)'s guard is this throw.
+  - Rejected: `InternalInvariant_Kd` at the site. A record after Bind needs the removed channel, or an eager build at Bind's end that
+    cannot cover `OriginAtomIn`'s MIR-site atoms, which makes two mechanisms. Also rejected: keeping the list for a later reader.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

@@ -463,7 +463,7 @@ public sealed partial class MirOriginsTest
 
     // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components, bitsets and the arena; the oracles
     // the view pools; the cleared report it adds to): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes, a Field
-    // initializer's layer oracle and Dependent ends (FailedClause); and the program's findings, a constructorless layer's limit included.
+    // initializer's layer oracle and Dependent ends (FailedClause); and Findings, a constructorless layer's limit.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmJudgmentAllocatesNothing()

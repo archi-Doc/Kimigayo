@@ -4,11 +4,15 @@
 // obligations on a pass's first read, each Origin row in the unit of the body Binding formed it in (BindingObligation.Body); a body's slice
 // on its first read, a constructor's own rows then its layer's (E4), each row's Site converted once to the SourceRef MIR names syntax by
 // (DECISIONS R4-M113). The slice's atom table is Binding.OriginRows.Atoms.cs's, the body's fixed-fixed oracle Binding.OriginRows.Oracle.cs's.
-// Input: the pass's obligations of the body-origin deadline. Output: OriginRows (a body's OriginRowSet), OriginLayers (the layer units
-// with rows, in formation order) and OriginFindings.
+// Input: the pass's obligations of the body-origin deadline. Output: OriginRows (a body's OriginRowSet) and OriginLayers (the layer units
+// with rows, in formation order).
 // Invariants: a slice is read-only for consumers and filled only through IOriginRowSetBuilder; a row formed with no body is in no slice
-// (DECISIONS BU-26); storage is kept across passes.
-// Must not: judge a relation, or decode a slot for MIR.
+// (DECISIONS BU-26); storage is kept across passes. The view is its own validator (DECISIONS BU-102): a broken contract, which no source
+// program reaches (a row with no body left after the declaration judge, a case binder outside its body, an atom no precedence row classes
+// or a Dependent one, a non-Fixed atom in both parts of a constructor's slice), throws at its site in a complete compilation, ending the
+// check as CheckFaulted_Kd (BrokenContract); the pass's state is stored only after its check passes, so every later read throws again.
+// In an incomplete compilation such a state rests on a Binding failure (SPEC 23.1.2, R4-M118) and the view keeps it.
+// Must not: judge a relation, decode a slot for MIR, or keep a broken contract for a later reader.
 
 using Kimi.Compiler.Parsing;
 
@@ -17,13 +21,12 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The pass's rows by body, each unit's in obligation order (ends resolved and canonical, CaseMask in the body's binder order), the
-    // slices read so far this pass, the findings, and reused scratch; their storage is kept across passes.
+    // slices read so far this pass, and reused scratch; their storage is kept across passes.
     private readonly Dictionary<ExecutableBody, int> originUnitIndex = [];
     private readonly List<List<OriginRowDraft>> originUnits = [];
     private readonly Dictionary<ExecutableBody, int> originSliceIndex = [];
     private readonly List<OriginRowSet> originSlices = [];
     private readonly List<ExecutableBody> originLayers = [];
-    private readonly List<SourceRef> originFindings = [];
     private readonly List<PairBinder> originUseBinders = [];
     private readonly List<PairBinder> originBodyBinders = [];
     private int originUnitCount;
@@ -46,15 +49,6 @@ public sealed partial class Binding
 
         // Ends the body's own rows: the layer's rows, if any, follow.
         void EndOwnRows();
-    }
-
-    internal IReadOnlyList<SourceRef> OriginFindings
-    {
-        get
-        {
-            this.PrepareOriginRows();
-            return this.originFindings;
-        }
     }
 
     internal IReadOnlyList<ExecutableBody> OriginLayers
@@ -83,7 +77,6 @@ public sealed partial class Binding
 
         var slice = this.originSlices[this.originSliceCount];
         IOriginRowSetBuilder builder = slice;
-        this.originSliceIndex.Add(body, this.originSliceCount++);
 
         // E4: the layer's initializers run in the constructor's own body, never in the template of one of its defaults (the body key decides).
         var layer = AdtDef.IsConstructor(body.Definition) && body.Index < 0 ? LayerOf(body.Definition!) : default;
@@ -95,6 +88,7 @@ public sealed partial class Binding
             this.AddOriginRows(slice, layer, 2);
         }
 
+        this.originSliceIndex.Add(body, this.originSliceCount++); // Once its atoms passed their checks (BU-102).
         return slice;
     }
 
@@ -109,15 +103,17 @@ public sealed partial class Binding
         return body.Definition?.Declaration ?? ((uint)body.Index < (uint)modules.Length ? modules[body.Index].GeneratedFunction : null);
     }
 
-    private void OriginFinding(SourceRef site)
+    // DECISIONS BU-102: a broken view contract throws in a complete compilation, without recovery (CheckFaulted_Kd, as Readable's); in
+    // an incomplete one the state rests on a Binding failure (SPEC 23.1.2, R4-M118) and the view keeps it.
+    private void BrokenContract(Koto site)
     {
         if (this.Result.IsComplete)
         {
-            this.originFindings.Add(site); // InternalInvariant_Kd in a complete compilation only (R4-M10), from MirOrigins.Findings.
+            throw new InvalidOperationException($"The C1-F4 view's contract is broken at `{site}` in a complete compilation (InternalInvariant; BU-102).");
         }
     }
 
-    // The walk: every Origin obligation of the body-origin deadline, each in its body's unit; a declaration's is a finding.
+    // The walk: every Origin obligation of the body-origin deadline, each in its body's unit; a declaration's row is a broken contract.
     private void PrepareOriginRows()
     {
         if (this.originRowsVersion == this.storageVersion)
@@ -125,12 +121,10 @@ public sealed partial class Binding
             return;
         }
 
-        this.originRowsVersion = this.storageVersion;
         (this.originUnitCount, this.originSliceCount) = (0, 0);
         this.originUnitIndex.Clear();
         this.originSliceIndex.Clear();
         this.originLayers.Clear();
-        this.originFindings.Clear();
         foreach (var obligation in this.obligations)
         {
             if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Deadline: BindingDeadline.BodyOrigins } ||
@@ -143,7 +137,7 @@ public sealed partial class Binding
             {
                 // DECISIONS BU-26, BU-89: Binding's declaration judge consumes every row formed with no body whose ends are Unbound or
                 // fixed in its frame (JudgeDeclarationRows), so a remaining one is a broken contract.
-                this.OriginFinding(SourceRef.Of(obligation.Use));
+                this.BrokenContract(obligation.Use);
                 continue;
             }
 
@@ -157,6 +151,8 @@ public sealed partial class Binding
                 unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask));
             }
         }
+
+        this.originRowsVersion = this.storageVersion; // Once the walk passed its checks (BU-102).
     }
 
     private List<OriginRowDraft> OriginUnit(ExecutableBody body)
@@ -200,7 +196,7 @@ public sealed partial class Binding
             var at = bit < this.originUseBinders.Count ? this.BodyBinder(this.originUseBinders[bit].Target) : -1;
             if (at < 0)
             {
-                this.OriginFinding(SourceRef.Of(obligation.Use));
+                this.BrokenContract(obligation.Use);
                 continue;
             }
 

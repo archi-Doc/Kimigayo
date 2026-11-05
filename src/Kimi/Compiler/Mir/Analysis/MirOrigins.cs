@@ -6,8 +6,8 @@
 // unclassed; and, for the Loan stratum's rule W, each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs, R4-M132).
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, its
-//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part), its findings
-//   (TyCtxt.OriginFindings) and its layer units with rows (TyCtxt.OriginLayers), beside the program's constructor bodies.
+//   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its layer units with rows
+//   (TyCtxt.OriginLayers), beside the program's constructor bodies; the view throws at a broken contract (DECISIONS BU-102).
 // - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd
 //   (Ownership.UnprovenOrigin) at a chain's last edge's site (a row's Site, or the Ref's statement for a containment edge), with Reason
 //   (finite source, fixed end, false) of the view's
@@ -19,9 +19,8 @@
 //   Closure's pending atom (R4-M126 §2.5 (c)), is never a source or a judged target, so only a chain through it is judged, between its
 //   ends (SPEC 23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a body whose arena MirDataflow.Within refuses, through
 //   MirDataflow.StorageLimit with its arguments (G213), which the stratum then skips (D20); and, which Findings adds once per program
-//   after step 4, InternalInvariant_Kd (Ownership.Internal, NoBody, every view) at each of the view's findings, a broken view contract
-//   in a complete compilation (R4-M101 E2, E4), and Unsupported_Kd (Ownership.Unsupported, NoBody, every view) at each row of a layer
-//   whose rows no constructor body's slice includes, G215's located limit (R4-M168; removal condition: a body of the layer's own).
+//   after step 4, Unsupported_Kd (Ownership.Unsupported, NoBody, every view) at each row of a layer whose rows no constructor body's
+//   slice includes, G215's located limit (R4-M168; removal condition: a body of the layer's own).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
 //   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
 //   rows and containment edges are equal form one class, judged once, under the borrow binders all its views share (SPEC 15.6.5); an edge
@@ -36,7 +35,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A5's Origin stratum (2a0-D §6): <see cref="Judge"/> judges a body's classes of views and adds their problems;
-/// <see cref="Findings"/> adds the view's broken contracts once per program.</summary>
+/// <see cref="Findings"/> adds G215's layer limit once per program.</summary>
 /// <param name="types">The Type context, whose C1-F4 view gives the rows and the atoms.</param>
 /// <param name="cases">The Semantics case views.</param>
 internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
@@ -131,21 +130,13 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         this.IndexCauses();
     }
 
-    /// <summary>Adds, once per program after step 4's reads of the view, the C1-F4 view's findings, each a broken view contract in a
-    /// complete compilation, as one InternalInvariant_Kd at its site in every view (R4-M101 E2, E4); and G215's located limit, one
-    /// Unsupported_Kd in every view at each row of a layer whose rows no constructor body's slice includes (R4-M168): no MIR body judges
-    /// them until the layer has a body of its own.</summary>
+    /// <summary>Adds, once per program after step 4's reads of the view, G215's located limit, one Unsupported_Kd in every view at each
+    /// row of a layer whose rows no constructor body's slice includes (R4-M168): no MIR body judges them until the layer has a body of its
+    /// own.</summary>
     /// <param name="program">The program, whose constructor bodies' slices name the layers they include.</param>
     /// <param name="report">The program's problems.</param>
     internal void Findings(MirProgram program, MirReport report)
     {
-        var findings = types.OriginFindings;
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-        for (var i = 0; i < findings.Count; i++)
-        {
-            report.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, findings[i], MirProblem.NoBody, ulong.MaxValue));
-        }
-
         var layers = types.OriginLayers;
         if (layers.Count == 0)
         {
@@ -161,7 +152,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
             }
         }
 
-        requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
         for (var l = 0; l < layers.Count; l++)
         {
             if (this.included.Contains(layers[l]))
