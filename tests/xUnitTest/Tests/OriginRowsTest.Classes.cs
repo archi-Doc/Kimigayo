@@ -267,8 +267,8 @@ public sealed partial class OriginRowsTest
         TheViewBuilds(c);
     }
 
-    // DECISIONS BU-102: the view is its own validator. No source program reaches a broken contract, so MIR's input is built directly: an
-    // atom MIR reads that no precedence row classes (E5: a Place atom formed outside every body) or a Dependent one (an Unbound end,
+    // DECISIONS BU-102: the view is its own validator. Its contract holds by construction (a body stamps every non-declaration atom it
+    // forms; only a Binding failure leaves an Unbound one), so MIR's input is built directly: an atom MIR reads that no precedence row classes (E5: a Place atom formed outside every body) or a Dependent one (an Unbound end,
     // R4-M118) throws in a complete compilation, and again on a later read, as nothing is stored; in an incomplete one it rests on a
     // Binding failure, and the view keeps it, Unclassed or Dependent.
     [Theory]

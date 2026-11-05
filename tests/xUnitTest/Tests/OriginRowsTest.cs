@@ -60,8 +60,8 @@ public sealed partial class OriginRowsTest
 
     // SPEC 15.6.1: in the library, the milestones, the goldens and the accepting SPEC variants, each Origin row lies once in the slice of the
     // body Binding formed it in; Binding's declaration judge consumes a declaration's rows (DECISIONS BU-26), so none remains; every
-    // body's slice builds, so no contract breaks (the view throws, BU-102); no row names another declaration's universal atom (+cen: I-1's shape, PLAN G195, is the only one, and it occurs in
-    // none of them).
+    // body's slice builds, so no contract breaks (the view throws, BU-102); no row names another declaration's universal atom (+cen: I-1's
+    // shape, PLAN G195, is the only one, and it occurs in none of them).
     [Fact]
     public void EachCensusRowLiesOnceInTheSliceOfItsBody()
     {

@@ -8,8 +8,9 @@
 // Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives, and a Dependent atom (an end a
 // Binding failure left Unbound, DECISIONS R4-M118, or an unclassified Closure's pending atom, R4-M126 §2.5 (c)), is a broken contract in
 // a complete compilation (BrokenContract, DECISIONS BU-102); roots by the forming body for non-declaration binders and by slot role for
-// declaration binders; an atom's part is its rows' part, or for an atom MIR reads its forming body's (DECISIONS R4-M114), and only a Fixed
-// atom is in both parts (else a broken contract). An atom and its part are stored only after their checks pass.
+// declaration binders; an atom's part is its forming unit's on every path (PartOf; DECISIONS R4-M114, BU-102): a declaration atom or
+// another body's names none, and a unit names a non-Fixed atom of its own part or none (else a broken contract). An atom is stored only
+// after its class's check passes, and the part check runs at every read.
 // Must not: let a slot or binder leave the view (only ProjectionRole does, D7).
 
 using Kimi.Compiler.Parsing;
@@ -18,8 +19,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // An atom MIR reads (a Ref's or a dereferenced layer's Origin) at a MIR site: resolved at the site's syntax, classed in the body's table
-    // with the part its forming body gives, and returned as its index there.
+    // An atom MIR reads (a Ref's or a dereferenced layer's Origin) at a MIR site: resolved at the site's syntax, classed in the body's table,
+    // named by its own part's unit, and returned as its index there.
     internal int OriginAtomIn(ExecutableBody body, BoundOrigin origin, SourceRef site)
     {
         var slice = this.OriginRows(body);
@@ -28,8 +29,8 @@ public sealed partial class Binding
         return this.InternAtom(slice, atom, use, PartOf(atom, slice));
     }
 
-    // E4 for an atom MIR reads (DECISIONS R4-M114): in a constructor's slice, the part whose unit formed it (1 the body's own, 2 its
-    // layer's, the Field initializers'), a meet its operands' parts; a declaration atom names no part, as Fixed atoms are shared.
+    // E4 (DECISIONS R4-M114, BU-102): an atom's part in a constructor's slice, the part whose unit formed it (1 the body's own, 2 its
+    // layer's, the Field initializers'), a meet its operands' parts; a declaration atom or another body's names none, as no unit forms it.
     private static byte PartOf(BoundOrigin atom, OriginRowSet slice)
     {
         if (atom.Kind == OriginKind.Intersection)
@@ -93,9 +94,10 @@ public sealed partial class Binding
         return result;
     }
 
-    // An atom's index in the slice's table, classed on its first appearance; a class no precedence row gives, or a Dependent one, is a
-    // broken contract (BrokenContract), checked before the atom is stored.
-    private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte part)
+    // An atom's index in the slice's table, classed and given its part on its first appearance, as the unit of part `unit` names it (a
+    // row's, or for an atom MIR reads its own); a class no precedence row gives, or a Dependent one, is a broken contract (BrokenContract),
+    // checked before the atom is stored.
+    private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte unit)
     {
         IOriginRowSetBuilder builder = slice;
         if (!builder.Index.TryGetValue(atom, out var index))
@@ -109,17 +111,15 @@ public sealed partial class Binding
             index = builder.Atoms.Count;
             builder.Index.Add(atom, index);
             builder.Atoms.Add(entry ?? new(atom, OriginAtomKind.Unclassed, RoleOf(atom)));
-            builder.Parts.Add(0);
+            builder.Parts.Add(PartOf(atom, slice));
         }
 
-        // E4: the parts share Fixed atoms only, so a chain never crosses from one oracle's part to the other's.
-        var parts = (byte)(builder.Parts[index] | part);
-        if (builder.Parts[index] != 3 && parts == 3 && builder.Atoms[index].Kind != OriginAtomKind.Fixed)
+        // E4: a unit names a non-Fixed atom of its own part or of none, so a chain never crosses from one oracle's part to the other's.
+        if ((builder.Parts[index] | unit) == 3 && builder.Atoms[index].Kind != OriginAtomKind.Fixed)
         {
             this.BrokenContract(site);
         }
 
-        builder.Parts[index] = parts;
         return index;
     }
 

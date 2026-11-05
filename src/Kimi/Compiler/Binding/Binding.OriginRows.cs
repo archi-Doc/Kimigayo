@@ -7,11 +7,14 @@
 // Input: the pass's obligations of the body-origin deadline. Output: OriginRows (a body's OriginRowSet) and OriginLayers (the layer units
 // with rows, in formation order).
 // Invariants: a slice is read-only for consumers and filled only through IOriginRowSetBuilder; a row formed with no body is in no slice
-// (DECISIONS BU-26); storage is kept across passes. The view is its own validator (DECISIONS BU-102): a broken contract, which no source
-// program reaches (a row with no body left after the declaration judge, a case binder outside its body, an atom no precedence row classes
-// or a Dependent one, a non-Fixed atom in both parts of a constructor's slice), throws at its site in a complete compilation, ending the
-// check as CheckFaulted_Kd (BrokenContract); the pass's state is stored only after its check passes, so every later read throws again.
-// In an incomplete compilation such a state rests on a Binding failure (SPEC 23.1.2, R4-M118) and the view keeps it.
+// (DECISIONS BU-26); storage is kept across passes. The view is its own validator (DECISIONS BU-102). Its contract: no row with no body
+// is left (the declaration judge consumes every one whose ends are declaration atoms, and a header names no other, R4-M101 E1, BU-89);
+// a case binder is its body's (only a declaration declares a pair binder, so the binders at a use are its body root's); every atom has a
+// class and none is Dependent (a body stamps each non-declaration atom it forms, E1; only a Binding failure leaves an Unbound or pending
+// atom, R4-M118); a unit names a non-Fixed atom of its own part or of none (an atom's part is its forming unit's, E4, and one body forms
+// a meet's operands). A break throws at its site in a complete compilation, ending the check as CheckFaulted_Kd (BrokenContract); the
+// pass's state is stored only after its check passes, so every later read throws again. In an incomplete compilation such a state rests
+// on a Binding failure (SPEC 23.1.2, R4-M118) and the view keeps it.
 // Must not: judge a relation, decode a slot for MIR, or keep a broken contract for a later reader.
 
 using Kimi.Compiler.Parsing;
@@ -40,7 +43,7 @@ public sealed partial class Binding
 
         List<OriginAtomEntry> Atoms { get; }
 
-        // Each atom's table index, and its parts (1 own, 2 layer): those whose rows name it, or for an atom MIR reads its forming body's.
+        // Each atom's table index, and its part (1 own, 2 layer, 0 none): its forming unit's (PartOf).
         Dictionary<BoundOrigin, int> Index { get; }
 
         List<byte> Parts { get; }
@@ -273,8 +276,8 @@ public sealed partial class Binding
 
         void IOriginRowSetBuilder.EndOwnRows() => this.LayerStart = this.rows.Count;
 
-        /// <summary>Gets whether an atom belongs to the layer's part only (DECISIONS R4-M101 E4, R4-M114): a non-Fixed atom the layer's rows
-        /// name or a Field initializer formed; a Fixed atom is shared by both parts.</summary>
+        /// <summary>Gets whether an atom belongs to the layer's part (DECISIONS R4-M101 E4, R4-M114, BU-102): a non-Fixed atom a Field
+        /// initializer formed; a Fixed atom is shared by both parts.</summary>
         /// <param name="atom">The atom's index.</param>
         /// <returns>Whether it is the layer's.</returns>
         internal bool InLayer(int atom) => this.parts[atom] == 2 && this.atoms[atom].Kind != OriginAtomKind.Fixed;

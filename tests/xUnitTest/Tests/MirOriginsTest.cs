@@ -107,6 +107,13 @@ public sealed partial class MirOriginsTest
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
 
+    // MeetTrans' call in a constructor and in its struct's Field initializer: the callee's Parameter atoms are in rows of both parts of the
+    // constructor's slice, and belong to neither part (DECISIONS BU-102; be85b19e2 threw at `t@uniq`, dev added an InternalInvariant_Kd).
+    private const string MeetTransBothParts = "group Util\n    public func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n" +
+        "        slot@follow = v\nstruct S\n    public var n: i32 = if true\n        let x = 1\n        let y = 5\n        var t = x@ref\n" +
+        "        Util.put(t@uniq, v: y@ref)\n        yield 0\n    else => 0\n    public init()\n        let x = 1\n        let y = 5\n" +
+        "        var t = x@ref\n        Util.put(t@uniq, v: y@ref)\n";
+
     // Field initializers forming layer rows (PLAN G215's probes): a local's Borrow annotated into the layer's Origin `a` (Refuted), the
     // same through an exclusive layer (a Reborrow), and a written Type well formed only when `b outlives a` (Unknown without the clause).
     private const string LocalInit = "    public var n: i32 = if true\n        let x = 1\n        let t: ref/i32 during a = x@ref\n" +
@@ -319,6 +326,7 @@ public sealed partial class MirOriginsTest
     // 15.3.4, R4-M162: the invalid ones are Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front, R7-O3).
     [Theory]
     [InlineData(MeetTrans, "t@uniq")]
+    [InlineData(MeetTransBothParts, "t@uniq", "y@ref", "t@uniq", "y@ref")]
     [InlineData(NestedResult + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     [InlineData(NestedResult + "ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     [InlineData(
