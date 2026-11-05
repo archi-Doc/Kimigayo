@@ -5,7 +5,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Owns consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
+// Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
 // Checks record the parts they read; publication follows those records without binding or proving them again.
 // Storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
 // This concern preserves the existing cause order and performs no diagnostic rendering.
@@ -81,6 +81,39 @@ public sealed partial class Binding
         }
 
         return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
+    }
+
+    private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
+    {
+        if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
+        {
+            failure = BindingFailure.QualificationRequired;
+            (this.qualificationFailures ??= new(ReferenceEqualityComparer.Instance))[node] = qualification;
+            unresolved = false;
+        }
+
+        // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
+        if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
+        {
+            this.consulted.Add(node);
+        }
+
+        if (node.BindingFailure != BindingFailure.None)
+        {
+            return null;
+        }
+
+        if (unresolved)
+        {
+            this.MarkUnresolved(node);
+        }
+        else
+        {
+            node.BindingState = BindingState.Invalid;
+        }
+
+        node.BindingFailure = failure;
+        return null;
     }
 
     // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.

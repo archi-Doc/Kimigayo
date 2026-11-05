@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly HashSet<Koto> resolvingTypes = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
     private static bool IsDirectObjectTarget(Koto syntax)
         => syntax.Parent is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } application &&

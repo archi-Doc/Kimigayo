@@ -7,6 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<BindingSymbol> importDeclarations = new();
+    private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
+    private readonly List<string?> importSignatures = new();
 
     /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
     /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
