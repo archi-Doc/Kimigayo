@@ -7316,6 +7316,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: BU-13's `ExclusivelyAcquirable`, which continues through the Place's own layers, so a pair admitting `ref` is always
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
+  - Superseded in part by BU-96 (2026-11-05, G421): a value call's failed acquisition stops none of its other judgments, so that
+    UnprovenOriginRelation_Kd is published beside Binding's TransferRequired_Kd.
 - **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
   `TyCtxt.RawStated`** (amended by BU-58: the Local row's walk enters each part once) (2026-10-27; design 1 revision 1 with design 2's
   findings; PLAN G148 (1), U0's revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls
@@ -9068,6 +9070,21 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
     holds references; rented ones keep warm allocation at 0 B).
 
+- **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; PLAN G421; BU's design, accepted by the
+  planning session without a separate design review; Major) SPEC 3.8, 10 and 10.1 step 5, 23.1.2.
+  - Rule: a value call selects no callee, so an argument's failed acquisition (TransferRequired, ExclusiveBorrowRequired) leaves its
+    Type known. `AcquireValueCallArguments` adapts with `deferAcquisition`, as `FitTyped` and `CompletePayloads` do, and records the
+    first failure at the call as before, where the argument fits structurally. The call then judges the other arguments, the solve,
+    each fit's Origin rows (A5's), the input premises and the clauses, and forms no result. A failed callee, whatever its failure,
+    still stops the call: its record reads no argument, and an argument judged inside the call would become its prerequisite
+    (`IsDerived`; implementation review 1, B-1). Removed: the acquisition fork in `AcquireValueCallArguments`.
+  - Boundary: a named function, method or constructor call keeps its one record. There the Copy proof is the candidate's
+    applicability (SPEC 10.1 step 5), so the relations judged after selection rest on the failed selection.
+  - Records (Q13): A5's Origin relations at value calls return beside the acquisition record, and a later argument's own located
+    limit (a static root's Borrow, `Unsupported_Kd`) beside it; no verdict moves
+    (`BorrowAcquisitionTest.AValueCallsAcquisitionAndRelationsAreEachRecorded`). Open in PLAN: a call keeps one acquisition record (a
+    second failing argument), a failed callee stops its arguments' judgments, and a failed part binding stops the other arguments' fits.
+  - Supersedes BU-45's G421 line.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
