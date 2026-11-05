@@ -6,12 +6,11 @@ using Kimi.Compiler;
 
 namespace Benchmark;
 
-/// <summary>Measures positional Pattern Binding, coverage and control flow without parsing.</summary>
+/// <summary>Measures positional Pattern Binding, coverage and the check without parsing.</summary>
 [Config(typeof(BenchmarkConfig))]
 public class PatternBindingBenchmark
 {
     private Compilation compilation = null!;
-    private ControlFlowAnalysis flow = null!;
 
     /// <summary>Gets or sets the number of independently bound matches.</summary>
     [Params(1, 32, 128)]
@@ -34,15 +33,9 @@ public class PatternBindingBenchmark
         }
 
         this.compilation.Kotonoha.CreateCodeContext().Parse(this.compilation.Kotonoha.RootKoto, source.ToString());
-        if (this.compilation.Diagnostics.HasErrors || !this.compilation.Bind().IsComplete)
+        if (this.compilation.Diagnostics.HasErrors || !this.compilation.Bind().IsComplete || !this.compilation.Analyze().IsVerified)
         {
-            throw new InvalidOperationException("Benchmark source must bind successfully.");
-        }
-
-        this.flow = this.compilation.AnalyzeControlFlow();
-        if (this.flow.PendingBinding.Count != 0 || this.flow.Issues.Count != 0)
-        {
-            throw new InvalidOperationException("Benchmark source must pass control-flow checking.");
+            throw new InvalidOperationException("Benchmark source must bind and pass the check.");
         }
     }
 
@@ -51,13 +44,12 @@ public class PatternBindingBenchmark
     [Benchmark]
     public BindingResult Bind() => this.compilation.Bind();
 
-    /// <summary>Rebinds and checks control flow using the committed Pattern coverage.</summary>
-    /// <returns>The Binding summary.</returns>
+    /// <summary>Rebinds and checks the bodies (<see cref="Compilation.Analyze"/>) using the committed Pattern coverage.</summary>
+    /// <returns>The analysis summary.</returns>
     [Benchmark]
-    public BindingResult BindAndAnalyze()
+    public AnalysisResult BindAndAnalyze()
     {
-        var result = this.compilation.Bind();
-        this.flow.Reanalyze(this.compilation.Kotonoha.RootKoto);
-        return result;
+        this.compilation.Bind();
+        return this.compilation.Analyze();
     }
 }

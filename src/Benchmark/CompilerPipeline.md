@@ -25,8 +25,8 @@ for generation; the MIR decides (DECISIONS R5-M185). Since DECISIONS R5-M156 eve
 pipeline's `Analyze` builds, analyzes and collects the MIR and publishes its records, so
 `KIMI_PIPELINE` changes no stage: stages 3 and 4 are work every check runs. From R6-check
 H9 stage 3 is construction and validation alone and stage 4 the analyses and collection;
-earlier reports timed both in stage 3 and memo checks in stage 4 (the old analysis until
-H5), so only their sum of stages 3 and 4 compares across the break.
+earlier reports timed both in stage 3 and memo checks in stage 4 (until H5 the legacy
+ownership pass), so only the sum of stages 3 and 4 compares across the break.
 Each result reports `mirBodies`, the bodies stage 3
 builds, and the stage's mean time and allocation per body (`mirMeanMicrosecondsPerBody`,
 `mirMeanAllocatedBytesPerBody`): a fresh compilation's builder starts empty, so these are

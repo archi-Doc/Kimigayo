@@ -117,12 +117,6 @@ public class Program
             return;
         }
 
-        if (args.Length > 0 && args[0] == "--borrow-storage")
-        {
-            BorrowStorageMeasurements.Run();
-            return;
-        }
-
         if (args.Length > 0 && args[0] == "--static-keys")
         {
             StaticKeyMeasurements.Run(timing: args.Length > 1 && args[1] == "timing");
@@ -204,8 +198,6 @@ public class Program
             typeof(KimiLibraryBenchmark),
             typeof(PatternBindingBenchmark),
             typeof(StartupBindingBenchmark),
-            typeof(OwnershipAnalysisBenchmark),
-            typeof(MatchOwnershipBenchmark),
             typeof(FrontEndBenchmark),
             typeof(DirectiveBenchmark),
             typeof(TokenReaderBenchmark),

@@ -37,22 +37,23 @@ internal static class VerificationMeasurements
 
         for (var i = 0; i < 8; i++)
         {
-            Analyze();
+            Check();
         }
 
         var start = Stopwatch.GetTimestamp();
         for (var i = 0; i < iterations; i++)
         {
-            Analyze();
+            Check();
         }
 
         return new { workload, count, iterations, elapsedSeconds = Stopwatch.GetElapsedTime(start).TotalSeconds };
 
-        void Analyze()
+        // Check's warm operation: Bind, CheckStartup and Analyze (R6-check H9 D3).
+        void Check()
         {
-            if (!c.AnalyzeLegacyOwnership().Analyze().IsVerified)
+            if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified)
             {
-                throw new InvalidOperationException("Measurement input must pass ownership verification.");
+                throw new InvalidOperationException("Measurement input must pass the check.");
             }
         }
     }

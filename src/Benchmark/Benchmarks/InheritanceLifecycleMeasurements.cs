@@ -52,7 +52,6 @@ internal static class InheritanceLifecycleMeasurements
                 Pipeline(current);
             }
 
-            var storageBefore = Storage(current);
             var warmTimes = new double[Samples];
             var warmBytes = new long[Samples];
             for (var sample = 0; sample < Samples; sample++)
@@ -69,12 +68,6 @@ internal static class InheritanceLifecycleMeasurements
                 warmBytes[sample] = GC.GetAllocatedBytesForCurrentThread() - before;
             }
 
-            var storageAfter = Storage(current);
-            if (!storageBefore.Equals(storageAfter))
-            {
-                throw new InvalidOperationException("Unchanged inheritance checks grew retained ownership storage after the fixed warm-up.");
-            }
-
             results.Add(new
             {
                 depth,
@@ -88,8 +81,6 @@ internal static class InheritanceLifecycleMeasurements
                 editedAllocatedBytes = editBytes,
                 warmMillisecondsPerIteration = warmTimes,
                 warmBytesPerSample = warmBytes,
-                storageBefore,
-                storageAfter,
             });
         }
 
@@ -135,15 +126,6 @@ internal static class InheritanceLifecycleMeasurements
             throw new InvalidOperationException("Every inheritance snapshot must bind, verify and emit.");
         }
     }
-
-    private static object Storage(Compilation c) => new
-    {
-        places = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.Places.Count),
-        operations = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.Operations.Count),
-        borrowTableBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.BorrowStorageBytes),
-        regionPayloadBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionStorageBytes),
-        regionIndexCapacity = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionIndexCapacity),
-    };
 
     private static string Hash(string source) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source)));
 

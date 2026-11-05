@@ -6,7 +6,7 @@ After a whole-solution Release build, run from the repository root:
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --inheritance-plans > artifacts/benchmarks/inheritance-plans.json
 ```
 
-The shared runner measures Binding, ownership and IR emission for the unchanged
+The shared runner measures Binding, the check and IR emission for the unchanged
 Milestone 38 (former 25) and `VerificationWorkloads.InheritedPlans`: depths 1, 8 and 32 with one
 Field per layer, and four layers with 8 or 32 Fields each. Each generated input
 updates and checks the last Field of every layer and calls an inherited method
@@ -15,7 +15,8 @@ and asserts zero warm allocation for deep and wide storage.
 
 Conditions are fixed: 32 warm-ups, seven samples of 64 successful operations per
 phase, with collection outside each sample. Reports retain every sample, source
-SHA-256, assembly identities and Loan-storage sizes. Run without concurrent builds
+SHA-256 and assembly identities (until R6-check H9 also Loan-storage sizes). From R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass.
+Run without concurrent builds
 or measurements. These are warm whole-phase observations, including library work;
 they are not cold-start or native timings and do not isolate field selection.
 
@@ -47,13 +48,14 @@ This complementary protocol uses the same depth 1/8/32 and width 32 workloads. E
 of seven samples builds a fresh Compilation, then another for an edited immutable
 snapshot while retaining the previous one. The edit adds one named group/function;
 both source hashes are recorded. Measurements include preparation, parsing,
-Binding, startup checks, ownership and IR emission. Processes and library caches
+Binding, startup checks, Analyze and IR emission. Processes and library caches
 are shared: these are fresh Compilation costs, not cold-process or editor latency.
 
 The final edited Compilation receives 32 fixed warm-ups, then seven samples of 64
 complete pipeline repetitions. Collection stays outside every interval. Reports
-include allocation bytes and retained ownership storage before/after the warm run;
-unchanged checks must not grow those tables. This does not measure total retained
+include allocation bytes; until R6-check H9 they also included the legacy pass's
+retained storage before/after the warm run, which unchanged checks had to leave
+unchanged (the MIR has no such tables). This does not measure total retained
 heap size. Keep fresh/edit costs separate from the original warm-phase protocol;
 normal allocation assertions remain in `InheritedPlanReuseTest`.
 

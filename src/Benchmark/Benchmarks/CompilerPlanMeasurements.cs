@@ -69,15 +69,11 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
             }
 
-            // The emission phase times the generation entry, MIR code generation, which needs the program Analyze keeps (DECISIONS
-            // R5-M94, R5-M162); the ownership phase times the old analysis alone.
-            foreach (var phase in allPhases ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
+            // The check phase times check's warm operation, Bind, CheckStartup and Analyze (R6-check H9 D3); the emission phase times
+            // the generation entry, MIR code generation, which needs the program the check's last Analyze keeps (DECISIONS R5-M94,
+            // R5-M162).
+            foreach (var phase in allPhases ? new[] { "binding", "check", "emission" } : new[] { "check", "emission" })
             {
-                if (allPhases && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified))
-                {
-                    throw new InvalidOperationException("Rebound workload must pass startup and ownership before measurement.");
-                }
-
                 for (var warm = 0; warm < Warmup; warm++)
                 {
                     RunOnce();
@@ -103,12 +99,7 @@ internal static class CompilerPlanMeasurements
                     milliseconds[sample] = elapsed.TotalMilliseconds / Iterations;
                 }
 
-                var packedTableBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.BorrowStorageBytes);
-                var regionPayloadBytes = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionStorageBytes);
-                var regionIndexCapacity = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.LocalRegionIndexCapacity);
-                var peakRegionCells = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.PeakLocalLoanCells);
-                var defaultContexts = c.AnalyzeLegacyOwnership().Bodies.Sum(static body => body.DefaultContexts?.Count ?? 0);
-                results.Add(new { name, size, stored, phase, packedTableBytes, regionPayloadBytes, regionIndexCapacity, peakRegionCells, defaultContexts, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
+                results.Add(new { name, size, stored, phase, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
 
                 void RunOnce()
                 {
@@ -116,7 +107,7 @@ internal static class CompilerPlanMeasurements
                     {
                         "binding" => c.Bind().IsComplete,
                         "emission" => c.Generate(TextWriter.Null),
-                        _ => c.AnalyzeLegacyOwnership().Analyze().IsVerified,
+                        _ => c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze().IsVerified,
                     };
                     if (!valid)
                     {
