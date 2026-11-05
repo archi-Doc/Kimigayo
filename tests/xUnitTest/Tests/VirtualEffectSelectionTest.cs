@@ -14,7 +14,7 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
     private const string Reader = "contract Reader\n    func read(self: ref/Self, value: objref/Base) -> i32\n        effect confined\nstruct Probe\n    Self is Reader\n    public func read(self: ref/Self, value: objref/Base) -> i32 => value.get()\n";
 
     // SPEC 8.11.3 on MIR (H0b §5.4): A4 judges a Contract's bound at the conformance's `Self is C` clause, and Binding reports no effect
-    // issue. Getter's requirement forms `objref/Self` without `Self is ObjectPayload`, which Binding rejects independently (SPEC 8.7.3).
+    // issue.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -28,13 +28,16 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
         Assert.Equal(bounded, c.Generate(TextWriter.Null));
     }
 
+    // Getter's requirement forms `objref/Self`, so Getter states `Self is ObjectPayload` (SPEC 8.7.3): Binding completes, and Getter's
+    // rows test the effect alone.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void VirtualContractWitnessesNeedThePublicBound(bool bounded)
     {
-        var source = "contract Getter\n    func get(self: objref/Self) -> i32\n        effect confined\nopen struct Base\n    Self is Getter\n    public virtual func get(self: objref/Self) -> i32\n" + (bounded ? "        effect confined\n" : string.Empty) + "        return 1\n()";
+        var source = "contract Getter\n    Self is ObjectPayload\n    func get(self: objref/Self) -> i32\n        effect confined\nopen struct Base\n    Self is Getter\n    public virtual func get(self: objref/Self) -> i32\n" + (bounded ? "        effect confined\n" : string.Empty) + "        return 1\n()";
         var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
         Assert.Equal(bounded ? string.Empty : "IncompatibleContractImplementation_Kd Self is Getter", MinimalEmissionTest.Problems(c));
     }
@@ -57,8 +60,9 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
     [InlineData("State.count", "2", false)]
     public void DirectBaseEffectsUseTheNearestImplementation(string original, string implementation, bool fails)
     {
-        var source = "group State\n    public var count: i32 = 0\ncontract Getter\n    func get(self: objref/Self) -> i32\n        effect confined\nopen struct A\n    public virtual func read(self: objref/Self) -> i32 => " + original + "\nopen struct B : A\n    override func read(self: objref/Self) -> i32 => " + implementation + "\nstruct C : B\n    Self is Getter\n    public func get(self: objref/Self) -> i32 => base.read()\n()";
+        var source = "group State\n    public var count: i32 = 0\ncontract Getter\n    Self is ObjectPayload\n    func get(self: objref/Self) -> i32\n        effect confined\nopen struct A\n    public virtual func read(self: objref/Self) -> i32 => " + original + "\nopen struct B : A\n    override func read(self: objref/Self) -> i32 => " + implementation + "\nstruct C : B\n    Self is Getter\n    public func get(self: objref/Self) -> i32 => base.read()\n()";
         var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
 
         // The mutable group storage is outside generation (P42): the collector's StaticStorage record (DECISIONS R5-M82, R5-M156).
@@ -68,8 +72,9 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
     [Fact]
     public void ABaseBodyStillUsesDynamicContractsForNestedCalls()
     {
-        const string Source = "contract Getter\n    func get(self: objref/Self) -> i32\n        effect confined\nopen struct A\n    public virtual func read(self: objref/Self) -> i32 => self.other()\n    public virtual func other(self: objref/Self) -> i32 => 1\nstruct C : A\n    Self is Getter\n    public func get(self: objref/Self) -> i32 => base.read()\n()";
+        const string Source = "contract Getter\n    Self is ObjectPayload\n    func get(self: objref/Self) -> i32\n        effect confined\nopen struct A\n    public virtual func read(self: objref/Self) -> i32 => self.other()\n    public virtual func other(self: objref/Self) -> i32 => 1\nstruct C : A\n    Self is Getter\n    public func get(self: objref/Self) -> i32 => base.read()\n()";
         var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
         Assert.Equal("IncompatibleContractImplementation_Kd Self is Getter", MinimalEmissionTest.Problems(c));
     }
@@ -77,7 +82,7 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
     // A4's record publishes no label, Note or related location yet (H0a §4.1): Binding's call location `value.get()`, its label and its
     // bound and conformance roles are lost until A4 publishes them.
     [Fact]
-    public void MissingPublicBoundsAreExplainedAtTheCallInCliAndLsp()
+    public void MissingPublicBoundsReachCliAndLspWithoutEvidence()
     {
         const string Source = "open struct Base\n    public virtual func get(self: objref/Self) -> i32 => 1\n" + Reader + "let independent = missing";
         var path = Path.GetFullPath("virtual-effect-selection.kimi");
