@@ -523,6 +523,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R2b-D3** The declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`,
   `AvailableBounds`) are built by their first reader (R4, R5).
 - **R2b-D5** `BoundMatch` and `BoundClosure` keep their names (the plan's PatternPlan and ClosureDef) until R6.
+  - Amended: until R7 (the owner, 2026-11-06, verbatim 「R7 に送る」; H15).
 - **R2b-D7** `HirAdjust` = `HirAcquire` + `HirAdaptation`: `@move` and `@copy` are operand Adjusts, `@ref`, `@uniq` and
   `@raw` are `Op = Borrow`, `@follow` is `Deref`, and numeric conversions are `Op = Convert`.
 - **R2b-D9** The HIR snapshot is a separate `.hir.txt` per case (`KIMI_SEMANTIC_HIR=1`).
@@ -2704,6 +2705,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: the label under an Ownership key in the Binding partition (a partition other than its requirement's, against rule 1); the
     twins published by the old ownership analysis (a responsibility moved across phases); a row for the Closure result now (2c-6's
     result relation).
+  - Superseded in part by R5-M192's amendment (H15, 2026-11-06; the owner, verbatim 「Cで決定します」): H11's list moves with H11b
+    to R7's Problem records unit, so its removal stage ("Until H11" above) is R7; the Closure result's `CallLocalOrigin` item
+    ("at H11") was done at 2c-5 (R4-M152).
 - **R4-M109 An Error node is each consumer's derived value** (2026-10-22; amends R4-M88's Rule 2 and Part 3, consistent with R5-M63;
   amended by R4-M149 and BU-103) SPEC 23.1.2, 13.7.2, 11.3.
   - Cause: the publisher kept a consumer's Adjust on an input it published Error (an Error has no Place, PlaceShape Value, and no value
@@ -2794,6 +2798,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and a mixed twin is Unproven); one more `twinOnly` branch (a second special case where the canonical table takes a column).
   - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): with the ledger gone, the twin subset is the test MIR side's
     filter (`Binding.IsTwinRecord`), until H11.
+  - Superseded in part by R5-M192's amendment (H15, 2026-11-06; the owner, verbatim 「Cで決定します」): `Binding.IsTwinRecord`
+    (`[Transitional("R7")]`) and MirSide's filter stay until R7's Problem records unit deletes them with the twins.
 - **R4-M112 Every no-candidate body variable of a local is its local's region** (2026-10-22; under R4-M94's package, 2a0-D §5.2 and
   D10, OQ12 (a), OQ7 (a); redone after BU's review blocked round 1 (B1, B2), under redo rulings R1–R3; round 1 never landed, so this
   entry supersedes nothing on dev)
@@ -4560,6 +4566,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the old reporter, reports Ownership.Unsupported at each listed call whose current plan holds it (F4) and analyzes nothing else.
     R1's code and span stay in a program Binding accepts; in one Binding rejects elsewhere no gate runs, so R1's records go (r1a-r1c,
     15.8.2's closure-dependencies).
+  - Ended by R5-M192 (2026-11-05, R6-check H11a): the gate (`Binding.ValueCallGate`, `CallPlan.ReceiverDependentResult`,
+    `ReceiverDependentListed`) is deleted; the old analysis that read it ended at H10b (R5-M189).
   - Also: R5-M63's failed-Closure position (a Closure failed after its definition completes) stays reachable, an expression-body
     literal P8 fails (v2), which the HIR and MIR keep as a Closure and whose definition later readers read. R5 owns R5-M63's reading.
   - Rejected: (a) for F1 (a Subst field with composition, erasure and identity-relation changes, R5-visible), (b) inside 2c-5 (a second
@@ -9718,6 +9726,8 @@ structure is recorded here by the unit that first implements it.
   mechanism H15 has (the inline fold, `MirBuilder.Defaults`), not PLAN10 §11's 2026-10-10 wording; it gets its own independent
   review (AGENTS requires one for SETTLED). This resolves PLAN10 §11 (a rewrite at R6) against R4-M35's non-adoption of OD9: the
   fold and the entry stay, and the entry's mechanism text is rewritten at H15.
+  - Landed (H15, 2026-11-06): SETTLED `c484c081b` rewrites the entry's mechanism text against the inline fold and
+    `MirBuilder.Defaults`; `003d6a17b` fixes its independent review's round 1 (reopening condition 2, the INTEGRATED record).
 - **R5-M12 IR-assertion classes** (owner, 2026-10-18; OQ16; PD25) An IR-text assertion in a test is R (required by SPEC or
   IMPL), P (a behavior proxy), I (incidental) or S (old-Emission structure). The rules are approved once: each codegen family
   unit deletes the I assertions and the P assertions its native checks cover in the tests it makes pass, and lists them in
@@ -14475,6 +14485,10 @@ structure is recorded here by the unit that first implements it.
   - Amended by R5-M193 (2026-11-05, R6-check H14): H14 starts after H10b's C2, not after H11, independent of H11 and H10b-2; its size
     is +42 source lines (+31 test lines), not about −150, since H10b deleted `StaticScalar.cs`, `IsIndexerCall` and
     `DesignatedType`, which H0 counted.
+  - Amended (H15, 2026-11-06; the owner, verbatim 「Cで決定します」): H11b-0 and H11b leave R6-check for R7's Problem records unit,
+    with the named exceptions R4-M108's twins (`IsTwinRecord`, `MirTargetSide.MirSide`'s filter), OriginRecoveryTest's two pins and
+    the dev defects D-1 (binder widening) and D-2 (a resting InvalidOrigin masks a later failure); the owner's G1 approval travels
+    with H11b (R5-M192's amendment).
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
   - Rule: SPEC 23.1.2 and the owner's (a): only a MIR body that fails validation is excluded; every other body is judged and
@@ -14718,6 +14732,14 @@ structure is recorded here by the unit that first implements it.
     adaptation, and for a member access or a call that selects no candidate no other table holds it).
   - BU consents (2026-11-05, board C-25: design approval after one REVISE, every Binding hunk); R4 consents to `MirCases.cs:19`'s
     wording (board C-26).
+  - Amended (H15, 2026-11-06; the owner, verbatim 「Cで決定します」): H11b, with H11b-0 before it, moves to R7's Problem records unit
+    (RQ9), which removes the one cause its gate found (an Origin clause's failure written into its owner's failure slot,
+    `BindingFailure.InvalidOrigin`). H11b-0's design revision 2 was accepted with BU's B-4 (the owner, verbatim "Accept with B-4
+    fixed" and 「Aでお願いします」); its twin-pair gate stopped commit (0) on pr1 and en1. Named exceptions to R7: R4-M108's twins
+    (`IsTwinRecord`, retagged `[Transitional("R7")]`, and `MirTargetSide.MirSide`'s filter), OriginRecoveryTest's two pins, D-1
+    (binder widening) and D-2 (a resting InvalidOrigin masks a later failure); the owner's G1 approval travels with H11b. The
+    "Superseded in part" lines on R4-M108 and R4-M111 are this amendment's. Evidence: `draft/Sketches/R6-check/H11b0-design.md`,
+    `H11b-design.md`.
 - **R5-M193 The Koto semantic-slot reads outside Binding end (R6-check H14)** (2026-11-05, R5; design
   `draft/Sketches/R6-check/H14-design.md` revision 1, an independent design review ACCEPT on re-check and the implementation review
   ACCEPT; under R5-M9, R5-M182 and R5-M190; BU and R4 consenting) Major: three Binding-only rules' code moves with every reader and

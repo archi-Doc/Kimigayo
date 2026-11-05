@@ -1265,6 +1265,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   manifest); SPEC §8.4.4's OCC revision is proposed at R9's exit (RQ14). Adoption implies no implementation support.
 - Revision 1 (2026-11-03, plan §14): R8-L0a's census corrected §5.2's unit parts and `.ll.in` dispositions, the allocation inventory and
   SP1–SP4's citations; the plan stays 一部取り込み (open), nothing frozen.
+- Revision 3 (2026-11-06, plan §14, R6-check's exit H15): the R6-check items the owner moved to R7 are recorded with each decision:
+  H7 and `BaseReferenceKoto.BasePath` (2026-11-05, verbatim 「推奨どおり」), R2b-D5's rename (2026-11-06, verbatim 「R7 に送る」), H11b-0
+  and H11b into the Problem records (2026-11-06, verbatim 「Cで決定します」) with their named exceptions (R4-M108's twins with
+  `IsTwinRecord` and MirSide's filter, OriginRecoveryTest's two pins, D-1, D-2); the plan stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
