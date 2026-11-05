@@ -10764,9 +10764,11 @@ resumed by R4-M86 (2026-10-20).
     `UnprovenOriginRelation_Kd` (`s outlives a`) on valid programs, in every form a container or an explicit discard takes a Place.
   - Representation: `PlanRow.DiscardedType`, at the Place a container or an explicit discard takes (`Binding.Discards`, outside any
     group), written by the publisher's discard row (`DiscardRow`, beside R4-M145's Adjust, its gate wider by the explicit discard's
-    operand, whose Adjust is the column's) from the existing gated `SuppliedType`; null for a value item and a Place Binding did not
-    resolve. `MirBuilder.Held` = `DiscardedType ?? TypeOf(node)` is the only fallback (C-16); `Reborrowed` does not guard a missed
-    write, so `HirFormsTest`'s row tests do. `Discards` is the one discard predicate (IsBareAcquisitionPosition reads it).
+    operand, whose Adjust is the column's) from the existing gated `SuppliedType`. Every publish writes it for every node it reaches,
+    null for a value item and a Place Binding did not resolve, so no row keeps an earlier pass's Type after an in-place edit and re-bind
+    (implementation review 1's B-1: a discarded local that became a function's name kept `i32`). `MirBuilder.Held` =
+    `DiscardedType ?? TypeOf(node)` is the only fallback (C-16); `Reborrowed` does not guard a missed write, so `HirFormsTest`'s row
+    tests do. `Discards` is the one discard predicate (IsBareAcquisitionPosition reads it).
   - Class: Major by the adopted R7 plan's R7-Y3 row (this publication; ARCH's vocabulary unchanged); by WORKFLOW's table a shared
     representation across phases, so the class relies on R7-Y3. G233 lands before R7-Y1 (C-16); Y3 keeps its adaptation-mode half.
   - Cost: +8 B per plan row (48 to 56; about 1,182 rows for Milestone34 with the library); a dense column would be about 81 KB.

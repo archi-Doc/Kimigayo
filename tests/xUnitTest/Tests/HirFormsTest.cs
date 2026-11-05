@@ -710,6 +710,31 @@ public sealed partial class HirFormsTest
         Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
     }
 
+    // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that
+    // turns a discarded Place into a value (`let x = 2` replaced, so the statement `x` names the function `x`) leaves no earlier pass's
+    // Type in its row, which MirBuilder.Held would hold the value at.
+    [Fact]
+    public void AnEditedDiscardKeepsNoEarlierType()
+    {
+        const string Source = "func x() -> i32 => 1\nfunc g() -> ()\n    let x = 2\n    x\nfunc donor() -> ()\n    let z = 3\npublic func main() => ()\n";
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source));
+        c.Bind();
+        HirTables.Publish(c);
+        var functions = Reachable(c.Kotonoha).OfType<FunctionKoto>().ToArray();
+        var g = functions.Single(static x => x.Name == "g");
+        var donor = functions.Single(static x => x.Name == "donor");
+        var statement = g.Body!.Items[1];
+        Assert.Equal("i32", Binding.HoverTypeName(HirTables.PlanOf(statement).DiscardedType!));
+        var replaced = g.Body.Items[0];
+        Assert.True(KotoHelper.Replace(replaced.Parent!, replaced, ParseTestHelper.Detach(donor.Body!.Items[0], new CodeBlockKoto(donor.CodeContext))));
+        c.Bind();
+        HirTables.Publish(c);
+        Assert.Equal((HirOp.Name, HirPlaceKind.Value), (HirTables.Op(statement), HirTables.PlaceOf(statement).Kind));
+        Assert.Null(HirTables.PlanOf(statement).DiscardedType);
+    }
+
     // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
     [Theory]
     [MemberData(nameof(AcceptedPrograms))]
