@@ -4,14 +4,14 @@
 // the body's fixed-fixed oracle, which A5 judges with (MirOrigins); Binding.OriginRows.cs computes them.
 // Input: a body as an ExecutableBody (MIR's key form, MirDefKey.Body; a Getter's or Setter's execution function names its accessor), after
 // Bind, and for an atom MIR reads the MIR site it is read at.
-// Output: OriginRows, OriginAtom (an atom's index in the body's table), UniversalRelations, OriginLayers (the layer units with rows) and
-// OriginFindings, the sites of the broken contracts the view's validation found, which MirOrigins.Findings publishes. Every site the view
-// publishes or takes is a SourceRef, the one way MIR names syntax (ARCH rows 29 and 90; DECISIONS R4-M113): the view converts its rows'
-// and findings' sites once and reads a MIR site's syntax itself.
+// Output: OriginRows, OriginAtom (an atom's index in the body's table), UniversalRelations and OriginLayers (the layer units with rows).
+// Every site the view publishes or takes is a SourceRef, the one way MIR names syntax (ARCH rows 29 and 90; DECISIONS R4-M113): the view
+// converts its rows' sites once and reads a MIR site's syntax itself.
 // Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved at its use
 // (OriginAtUse) and meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is Binding's
 // to judge (DECISIONS BU-26) and in no slice; a constructor's own body's slice is its rows, then its layer's (the struct's Field
-// initializers), which share only Fixed atoms with them.
+// initializers), each atom in its forming unit's part, Fixed atoms shared; a broken contract throws in a complete compilation (CheckFaulted_Kd, DECISIONS
+// BU-102), so MIR trusts every row and atom it reads.
 // Must not: decode a Projection slot for MIR (only ProjectionRole leaves the view, D7), read MirBodyKind, or judge a relation.
 
 using Kimi.Compiler.Parsing;
@@ -84,9 +84,6 @@ internal sealed partial class TyCtxt
 
     // SPEC 15.3.6, 15.6.5: the body's fixed-fixed oracle, extracted at its root (a layer's at its struct); disposed after use.
     internal Binding.UniversalRelations UniversalRelations(ExecutableBody body) => binding.UniversalRelationsOf(body);
-
-    // The sites whose rows or atoms broke the view's contract in a complete compilation, each an InternalInvariant_Kd (MirOrigins.Findings).
-    internal IReadOnlyList<SourceRef> OriginFindings => binding.OriginFindings;
 
     // The layer units (a struct's Field initializers) that have rows, in formation order; MirOrigins.Findings locates G215's limit at
     // those no constructor's slice includes (DECISIONS R4-M168).

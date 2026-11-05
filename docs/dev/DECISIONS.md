@@ -2431,7 +2431,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and A4 too); `MirBorrows` members made
     internal for `MirOrigins` (couples Origin judgment to Loan state).
 - **R4-M101 The C1-F4 view and Binding's formation context** (2026-10-22; under R4-M94's package; E4's "Recorded limit" superseded in
-  part by R4-M168; E2's end list superseded in part by BU-89)
+  part by R4-M168; E2's end list superseded in part by BU-89; E2's and E4's InternalInvariant_Kd, and E4's sharing rule, superseded in
+  part by BU-102: the view's throw, an atom's part its forming unit's)
   - E1 formation context: Binding records the executable body it is binding, an `ExecutableBody`, a body in MIR's key form
     `(BindingSymbol? Definition, int Index)` (Index: a default template's parameter index, a module's ordinal for top-level statements,
     whose function has no symbol; the default value is no body, a declaration). Entries set and restore it (`BindHeader` none,
@@ -3062,7 +3063,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Later: the owner, 2026-10-23, verbatim 「RZ、G86、G159(2)、G158(3)、B 3.4 の §15.4.2 の穴は、分析してから別の SPEC セッションで
     決めます。今回は 11 項目だけ進めてください。」: these five points go to a later SPEC session after their analysis.
 - **R4-M118 Dependent ends: an Origin end a Binding failure left Unbound is a pass-through node, never a source or a judged target;
-  the view's findings are published** (superseded in part by BU-62: site (1))
+  the view's findings are published** (superseded in part by BU-62: site (1); superseded in part by BU-102: a Dependent atom and guard
+  (F) are the view's throw, not a published finding)
   (2026-10-24; unit 2a-1c; the vocabulary entry is the planning session's under the owner's decision of 2026-10-24, verbatim
   「(a) 計画セッションが決める (推奨)」; the owner's choice of 2026-10-24, verbatim 「(a) 通過点として扱う (推奨)」)
   - Rule (SPEC 23.1.2; DIAGNOSTICS "Later phases"; R4-M10; A4's `Derived` for `CompilerFunctionEffect.Dependent`, R4-M22, the
@@ -6311,7 +6313,8 @@ resumed by R4-M86 (2026-10-20).
   Temporary: P42's static-Borrow unit replaces the denial and the U with SPEC 11.8's Origins.
 - **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed"; superseded in
   part by R4-M155: a nested Function Type part's result well-formedness for an owner without a named declaration (the owner's (A));
-  superseded in part by BU-89: its E2 test "whose resolved ends are declaration atoms") (2026-10-22; the owner's answers Q1 and Q2;
+  superseded in part by BU-89: its E2 test "whose resolved ends are declaration atoms"; superseded in part by BU-102: a remaining row
+  with no body is the view's throw, not `OriginFinding`) (2026-10-22; the owner's answers Q1 and Q2;
   PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable body, a declaration's row (R4-M101 E1, E2): a
   Field's, payload's or base's declared Type, a computed Property's header, a signature's well-formedness (a requirement's, an
   override's, a specialization's, a nested Function Type part) and a clause's unrepresentable end. `Binding.JudgeDeclarationRows`, at
@@ -6344,7 +6347,6 @@ resumed by R4-M86 (2026-10-20).
     table (a side table and a branch in `AddObligation`); judging class 1 only (leaves nested Function Type obligations unjudged);
     judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge (`IsDerived` owns
     derivation). Open: A's `IsDerived` widening for an associated specification's record.
-
 - **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46; amended by R5-M164) (2026-10-22; designs A′ and B′, design-final
   §14 "B′+"; unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one
   slot whose role the Semantics decides (0 B; B′'s +8 B field is not taken). `Origin` never reads a raw layer's; `RawOrigin` only a raw
@@ -9247,6 +9249,28 @@ resumed by R4-M86 (2026-10-20).
   - Removal conditions that remain: join arguments (U3); `PartContribution` (U6). A non-Result root row is the part's contribution at
     the last `Contribute`; property rows are Evidence where `PartContribution` may say Signature, inert because the input carries no
     Origin. Open: `CompleteWaiting` completes a waiting part at a ParameterType that still holds the callee's unsolved Origins (PLAN).
+
+- **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
+  item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and
+  E4, R4-M118 and BU-26, as their headers name) SPEC 23.1.2, 15.6.1, 15.6.5.
+  - Rule: the view's producer (`Binding.OriginRows.cs`, `.Atoms.cs`) checks its contract where it forms a row or an atom. In a complete
+    compilation a break throws at its site (`BrokenContract`) and ends the check as `CheckFaulted_Kd`, as `Binding.Readable` does
+    (BU-36). The walk's version, a slice's index and an atom are stored only after their checks pass, and the part check runs at every
+    read, so every later read throws again. In an incomplete compilation the state rests on a Binding failure, and the view keeps it.
+  - The contract, each condition by construction: no row with no body is left (the declaration judge consumes every one whose ends are
+    declaration atoms, BU-26, BU-89, and a header names no other: a body stamps each non-declaration atom, R4-M101 E1); a case binder
+    is its body's (only a declaration's scope declares a pair binder); every atom has a class and none is Dependent (E1; only a Binding
+    failure leaves an Unbound or pending atom, R4-M118); a unit names a non-Fixed atom of its own part or of none.
+  - Part rule (E4, one form on both paths): an atom's part is its forming unit's (`PartOf`: 1 the constructor's body, 2 its layer, a
+    meet its operands'), as R4-M114 gave an atom MIR reads; a declaration atom or another body's belongs to no part. Rows gave every end
+    their row's part, so a callee's Unclassed Parameter atoms (PLAN G195) named by both parts reached both: dev's finding, the first
+    commit's throw (review 1's B-1). Unclassed atoms form no edge, so no oracle choice reads their part.
+  - Reason: the view is built after Bind, on MIR's first read, when Binding's records are final, and atoms are also read at MIR sites.
+  - Removes: `TyCtxt.OriginFindings`, Binding's list and `OriginFinding`, and the `InternalInvariant_Kd` loop of `MirOrigins.Findings`.
+    `Findings` keeps G215's layer limit (R4-M168).
+  - Rejected: `InternalInvariant_Kd` at the site. A record after Bind needs the removed channel, or an eager build at Bind's end that
+    cannot cover `OriginAtomIn`'s MIR-site atoms, which makes two mechanisms. Also rejected: keeping the list for a later reader, and
+    exempting Unclassed atoms from E4's check (a second form of the part rule).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

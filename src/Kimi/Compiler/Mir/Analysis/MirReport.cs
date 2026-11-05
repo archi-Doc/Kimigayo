@@ -9,9 +9,9 @@
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and
 // facts included, and ORs the views; merged problems name one requirement, and a disagreement is a recording rule's defect, reported as
 // one InternalInvariant_Kd problem at the subject, as is a Cause fact whose Value is neither -1 nor an index in All (H3-2 N2), which no
-// producer writes (rule W's causes are indices Add returned). Every analysis InternalInvariant_Kd names Ownership.Internal (these defects,
-// A5's broken contracts, the C1-F4 view's findings). Add is the one home of the derived-problem rules: a problem with an Inlined fact, a
-// Language problem found inside an inline default copy, is its template's check and dropped (R4-M10, SPEC 7.2.3, R4-M69); a problem with
+// producer writes (rule W's causes are indices Add returned). Every analysis InternalInvariant_Kd names Ownership.Internal (these defects
+// and A5's broken contracts). Add is the one home of the derived-problem rules: a problem with an Inlined fact, a Language problem found
+// inside an inline default copy, is its template's check and dropped (R4-M10, SPEC 7.2.3, R4-M69); a problem with
 // Cause facts (its tail) is derived (rule W, SPEC 15.6.5, R4-M132), and a merged problem is derived exactly when every report it groups
 // is, its causes their union (a direct report drops the first's Cause tail; a derived one adds its new causes). Merged, the view
 // publication reads (MirReport.Merged.cs; R4-M11, R6-check H3-2), has one merged problem per code, subject, Reason and class, in the order
