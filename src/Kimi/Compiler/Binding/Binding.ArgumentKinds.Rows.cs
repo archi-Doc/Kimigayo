@@ -16,8 +16,9 @@ namespace Kimi.Compiler;
 //   child rows of the argument being read.
 // - Invariants: a row's Pattern is the parameter pattern at its position as the candidate reads it, and its Type the Type that
 //   instantiates it; a position whose pattern is not shaped like its Type, a slot's (R1), has no child rows, since its solution's parts
-//   are its contributor's (the premise visits stop there likewise). A candidate's composition (CollectPositionPremises) may stop early
-//   on a trial whose literal shape does not fit, which the fit rejects; the selected call's (JudgePositionRows) fails Internal there.
+//   are its contributor's (the premise visits stop there likewise where no evidence is supplied). A candidate's composition
+//   (CollectPositionPremises) may stop early on a trial whose literal shape does not fit, which the fit rejects; the selected call's
+//   (JudgePositionRows) fails Internal there.
 //   Root rows have the stride and lifetime of the call's candidate evaluation (a construction's, a fixed construction's re-check's and
 //   a property update's rows their own), and rowScratch buffers are returned cleared, so a rented one holds Evidence rows; child rows
 //   are appended in the order their readers read them (a row before its children's, positions by index) and removed when the

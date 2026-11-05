@@ -11,8 +11,8 @@ namespace Kimi.Compiler;
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
 // is carried: each call shortens its solution with them and judges them at each filled slot by what its position contributes
 // (Contribution, the evidence walk's fact: Evidence where its instantiation replaced an Origin, a Signature position at every
-// position, a Result position at its contributor), and a whole-contract comparison proves them where its solve replaced a required
-// Origin. One visitor serves both.
+// position but inside a slot's solution, which its contributor proves), and a whole-contract comparison proves them where its solve
+// replaced a required Origin. One visitor serves both.
 public sealed partial class Binding
 {
     // The parts one well-formedness visit met, and those one borrow layer's stored visit met, each with the substituted and argument
@@ -330,8 +330,9 @@ public sealed partial class Binding
     // judged at `at` by what the slot's position contributes (Contribution). Evidence, a written argument's or the receiver's own Type
     // `supplied`, is well formed, so only a position that the fit replaced, such as an Origin shared with another input, can fail. A
     // Signature position has every position of its Type judged: a default supplies no Type (SPEC 10.1.1) and is judged at the call (SPEC
-    // 7.2.3). The visit walks the parameter's pattern `pattern` beside `parameter`, so it stops at a slot of the pattern, whose solution
-    // its contributor proves (SPEC 10.3, 15.6.1; DECISIONS BU-99), while a layer around the slot is this call's. As for the fit, an
+    // 7.2.3). The visit walks the parameter's pattern `pattern` beside `parameter`: at a position that supplies no evidence it stops at a
+    // slot of the pattern, whose solution its contributor proves, and at an Evidence position it goes on over the solution, judged where
+    // the fit replaced an Origin (SPEC 10.3, 15.6.1; DECISIONS BU-99); a layer around the slot is this call's. As for the fit, an
     // argument that carries no Origin, such as one that transfers control, supplies none; and an input whose fit already failed is no
     // instance of its parameter, so its well-formedness would only restate that failure.
     private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution)

@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
-    // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises). A position whose
-    // pattern is a slot is its solution's contributor's under either (the premise visits stop there; DECISIONS BU-99).
+    // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises). At a Signature
+    // position whose pattern is a slot, the slot's solution is its contributor's (the premise visits stop there; DECISIONS BU-99); at an
+    // Evidence position the visits go on over the solution, judged where the fit replaced an Origin.
     private enum Contribution : byte
     {
         // An independently typable part, well formed where it was formed (SPEC 15.6.1): judged only where the fit replaced an Origin.

@@ -9075,9 +9075,12 @@ resumed by R4-M86 (2026-10-20).
   session's design `artifacts\verify\g216a-oracle\U2-design.md`, fifth amendment, M's design review 2 ACCEPT) SPEC 10.3, 10.5.1,
   15.3.6, 15.6.1, 15.6.4 step 3, 8.1.1, 15.3.7. Amends BU-94; supersedes BU-51's region clause in part.
   - R1: the premise visits walk a position's pattern beside its instantiated Type (`RequireInputPremises`,
-    `CollectInputPremises(pattern, instantiated, ...)`), so `WellFormedPart` stops at a slot of the pattern: the slot's solution is its
-    contributor's (the expected result, another input's evidence, a Type argument (G412), a default, the receiver's Type), while a
-    layer around the slot is the call's; `VisitStoredPremises` continues on the result at a slot and descends by the result's
+    `CollectInputPremises(pattern, instantiated, ...)`). At a position that supplies no evidence (no actual Type: a Signature row, a
+    default) `WellFormedPart` stops at a slot of the pattern: the slot's solution is its contributor's (the expected result, a Type
+    argument (G412), the receiver's Type). At an Evidence position it goes on over the solution beside the position's own Type, judged
+    where the fit replaced an Origin (15.6.1, rule 6): a solution the solve formed from several inputs' evidence is no one input's
+    Type (arg2_n), the twin of the stored visit's slot line. A layer around the slot is the call's; `VisitStoredPremises` continues on
+    the result at a slot and descends by the result's
     `StoresOrigin`, so a layer's stored premise ranges over every Origin its stored Type holds, the solution's included (mk2:
     `q outlives static`). `ComposePositionRows` adds no child rows where the pattern's kind differs from the Type's. Replaces
     `Contribution.Result`, `ContributionAt`, `Contribute`'s `unbound`/`kept` rule, `ContributePayloads`' `solved` derivation (PLAN
