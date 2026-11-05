@@ -14143,7 +14143,7 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R5-M189 (2026-11-05, R6-check H10b): H10b splits at the control-flow analysis, which H10b-2 deletes
     after PLAN G428.
   - Amended (R6-check H14, R5-M193, 2026-11-05): H14 starts after H10b's C2, not after H11, independent of H11 and H10b-2; its size
-    is +47 source lines (+31 test lines), not about −150, since H10b deleted `StaticScalar.cs`, `IsIndexerCall` and
+    is +42 source lines (+31 test lines), not about −150, since H10b deleted `StaticScalar.cs`, `IsIndexerCall` and
     `DesignatedType`, which H0 counted.
 - **R5-M183 A body with a validator finding is no consumer's (PLAN G157 (1), option (a))** (2026-11-03, the owner, verbatim 「(a) で設計を始めて」;
   under SPEC 23.1.2, Q13 and R5-M151) Major.
@@ -14318,9 +14318,10 @@ structure is recorded here by the unit that first implements it.
   `draft/Sketches/R6-check/H14-design.md` revision 1, an independent design review ACCEPT on re-check and the implementation review
   ACCEPT; under R5-M9, R5-M182 and R5-M190; BU and R4 consenting) Major: two Binding-only rules' code moves with every reader and
   only read views are added; no representation, published fact or record changes.
-  - Scope: every read of the Koto semantic slots outside Binding ends (Mir 8, the Backend 2, the root helpers 23, Parsing 4,
-    Documentation 3, Testing 1, the Benchmark 1). Their write paths (setters, a replaced child's reset, the views and synthetic
-    Kotos Binding builds) and Binding's reads stay with the slots until R7 (R5-M9).
+  - Scope: the reads of the Koto semantic slots outside Binding end (Mir 8, the Backend 2, the root helpers 23, Parsing 4,
+    Documentation 3, Testing 1, the Benchmark 1), except the old control-flow analysis' 25 (`ControlFlowAnalysis.cs`, until
+    H10b-2 deletes it) and the tests' 13 (the test row's limit, until R7). Their write paths (setters, a replaced child's reset,
+    the views and synthetic Kotos Binding builds) and Binding's reads stay with the slots until R7 (R5-M9).
   - Published views. `BoundClosure.Of(FunctionKoto)`, the literal route beside the Type route, is the closure's definition;
     `ClosureDefinition` forwards to it, so the `Signature` rule has one copy. `MirBuilder.Formatting` reads the writer acquisition's
     call as `CallPlan.Of(acquisition)`, equal to `BoundCall`: after a finished pass `HasCurrentBinding` is `Resolved`; the
