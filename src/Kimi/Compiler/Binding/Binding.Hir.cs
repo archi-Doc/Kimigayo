@@ -18,6 +18,9 @@ public sealed partial class Binding
     private HirPublisher? hirPublisher;
     private ulong hirVersion;
 
+    // The nodes the publisher's jump walk visited (Keeps, DECISIONS BU-106): a scaling check's work measure.
+    internal long KeptTargetWork => this.hirPublisher?.TargetWork ?? 0;
+
     // SPEC 22.10.5: whether a formatting write writes a literal text (a text segment, or a string literal written as a value), whose bytes
     // are known and which needs no Type argument; the one classification the published formatting facts (HasFacts) and the MIR builder's
     // capacity estimate read (DECISIONS R5-M79).

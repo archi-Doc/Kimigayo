@@ -31,6 +31,14 @@ public sealed partial class Binding
     internal static bool Construct(HirOp op) => op is HirOp.Block or HirOp.Unsafe or HirOp.Do or HirOp.If or HirOp.Match or HirOp.Try or
         HirOp.Loop;
 
+    /// <summary>Gets whether an Op is an expression that runs its one body once (SPEC 14.3: "<c>do Body</c> is an expression that runs
+    /// once"), so a rejected one keeps the parts Binding resolved, evaluated in syntax order on its one path before its derived value
+    /// (DECISIONS BU-106): a do. An unsafe block and a defer are statements and a block is a body, not expressions with one body; a
+    /// selection or a loop runs a body conditionally or repeatedly (PLAN G414 (2)). A new HirOp member decides here whether it is one.</summary>
+    /// <param name="op">The Op a node's form calls for.</param>
+    /// <returns>Whether it is such an expression.</returns>
+    internal static bool RunsItsBodyOnce(HirOp op) => op is HirOp.Do;
+
     /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: an operation its Type (<see cref="Operation"/>),
     /// every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
     /// symbol), and per Op: a call its plan (an index's selected call; a
