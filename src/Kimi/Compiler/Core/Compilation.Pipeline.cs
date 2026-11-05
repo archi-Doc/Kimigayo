@@ -14,7 +14,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // The analysis entry points (plan 12.1, 13.2), the one way to run and read the analyses after Binding and startup (generation has its own
-// entry, Compilation.Generation.cs): on every pipeline the MIR is built, validated, analyzed and collected, and it decides (DECISIONS
+// entry, Compilation.Generation.cs): the MIR is built, validated, analyzed and collected, and it decides (DECISIONS
 // R5-M156, R5-M185).
 public partial class Compilation
 {
@@ -41,7 +41,7 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Gets the checked set of the latest <see cref="Analyze"/> or <see cref="BuildMir"/>, on every pipeline (SPEC 8.15.3), else
+    /// <summary>Gets the checked set of the latest <see cref="Analyze"/> or <see cref="BuildMir"/> (SPEC 8.15.3), else
     /// null.</summary>
     internal Backend.CheckedSet? Instances => this.instances?.Set;
 
@@ -72,7 +72,7 @@ public partial class Compilation
     }
 
     /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9): the MIR is built, validated, analyzed and its checked
-    /// set collected, on every pipeline (SPEC 8.15.3; DECISIONS R5-M156, R5-M185).</summary>
+    /// set collected (SPEC 8.15.3; DECISIONS R5-M156, R5-M185).</summary>
     /// <returns>The analysis result.</returns>
     /// <exception cref="InvalidOperationException">The latest Binding pass is not final.</exception>
     public AnalysisResult Analyze()
@@ -144,7 +144,7 @@ public partial class Compilation
 
     internal void InvalidateMir() => this.mir = null;
 
-    // The checked set of a built and validated program, on every pipeline (SPEC 8.15.3: its layout obligations are judged at check), whose
+    // The checked set of a built and validated program (SPEC 8.15.3: its layout obligations are judged at check), whose
     // records join the program's report.
     private void Collect(Mir.MirProgram program) => (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
 }
