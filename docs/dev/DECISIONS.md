@@ -8798,6 +8798,9 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: (a) skipping `AdaptInput` for an erased value-call part, a clause for one form that leaves payloads broken; (b) fitting
     the source's own Type structurally, which the check refuses (Closure against Function: `NoApplicableOverload_Kd`); (c) waiting for
     H1, which never sees a call Binding failed; (d) leaving the value call's Non-Copy record to the old Analysis.
+  - Applied to the Adjust column by G386 (2026-11-05): the ErasedType column alone says where an erasure is applied, at the node Binding
+    erased (`ChildAdjust`, a group's operand); a value operation's Erasure is only the selection's quality, so `HirAdjust.Of` gives it
+    no adaptation, and a parenthesized callable argument is erased once.
 
 - **BU-82 The Semantics-case renderer is one Binding component** (2026-11-03; R6-check Q8-6, behavior-preserving; the owner's Q8
   approval 「Q8を承認」 with proposal Q8-6, R5-M23; H0's division, R5-M182)
