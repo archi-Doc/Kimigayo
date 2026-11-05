@@ -43,6 +43,23 @@ public class InferenceSlotScalingTest
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnboundTypeArgument);
     }
 
+    // G216 (a) U3a (C-38 B3; DECISIONS BU-104): premise discovery reads the evidence names once per solve, so its reads grow linearly
+    // in a literal's elements beside the evidence that names the callee's Origins (`mk([.None x N], q, r)`), not with every leaf.
+    [Fact]
+    public void PremiseDiscoveryReadsGrowLinearlyInALiteralsElements()
+    {
+        var work = new[] { 200, 400, 800 }.Select(Work).ToArray();
+        Assert.True(MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+
+        static long Work(int count)
+        {
+            var c = MinimalEmissionTest.Analyze(
+                "func mk(p: Array<Option<ref/(ref/i32 during a) during b>>, x: ref/i32 during a, y: ref/i32 during b) -> i32 => 0\n" +
+                "func k(q: ref/i32, r: ref/i32) -> i32\n    return mk([" + string.Join(", ", Enumerable.Repeat(".None", count)) + "], q, r)\n");
+            return c.Binding.EvidenceNameWork;
+        }
+    }
+
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void WarmLargeSlotSetsReuseTheirTailStorage()

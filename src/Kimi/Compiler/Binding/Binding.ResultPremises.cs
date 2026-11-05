@@ -263,6 +263,7 @@ public sealed partial class Binding
         for (var i = 0; i < solution.Rows.Length; i++)
         {
             this.ChildGroup(solution, i, out var start, out var end);
+            this.evidenceNameReads += 1 + end - start;
             if (start == end && solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } &&
                 MentionsOriginSlot(pattern, solution.Binder, slot))
             {
