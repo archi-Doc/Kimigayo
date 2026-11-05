@@ -215,7 +215,7 @@ internal struct PlanRow
     /// calls take (a <c>$tryWrite</c>'s storage) has no defined value here (PLAN G103).</summary>
     internal HirAdjust Adjust;
 
-    /// <summary>The Type of the value a container or an explicit discard discards (SPEC 14.2.2, 14.2.4; DECISIONS BU-95), at the Place
+    /// <summary>The Type of the value a container or an explicit discard discards (SPEC 14.2.2, 14.2.4; DECISIONS BU-98), at the Place
     /// it takes (the outermost group): the Type the Place supplies (<c>Binding.SuppliedType</c>), a stored exclusive reference's Reborrow
     /// by Binding's name (DECISIONS BU-27), which no consumer states for a discard; written at each such Place of each pass, an explicit
     /// discard's operand included, whose Adjust is the column's. Null for any other node (a value statement holds its Meaning) and for a

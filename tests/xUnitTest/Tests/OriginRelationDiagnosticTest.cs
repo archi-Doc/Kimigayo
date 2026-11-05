@@ -291,7 +291,7 @@ public partial class OriginRelationDiagnosticTest
         Assert.True(output.Accepted, string.Join("\n", output.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
-    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-95, PLAN G233): a discarded stored `uniq` or `objuniq` Place is Reborrowed by Binding's
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-98, PLAN G233): a discarded stored `uniq` or `objuniq` Place is Reborrowed by Binding's
     // name, the meet of the layers reaching it, which each contains, so a discard needs no Origin relation in any form a container or an
     // explicit discard takes it, with or without parentheses (their twins), through a Field, a follow, a Tuple position or an element; a
     // relation a fixed Type or a destination needs, and a conflict, keep their records (the invalid twins), and a false record beside a

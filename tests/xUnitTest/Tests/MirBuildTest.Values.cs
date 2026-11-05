@@ -447,7 +447,7 @@ public sealed partial class MirBuildTest
         Assert.Equal(["PairAcquire _1", "Copy _2", "Ref Uniq _3*", "Move _4"], acquired);
     }
 
-    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-95, PLAN G233): a discarded stored exclusive reference is held in a temporary of its
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-98, PLAN G233): a discarded stored exclusive reference is held in a temporary of its
     // Reborrow's Type, Binding's name for it (the meet of the layers reaching it; BU-27), whether the discard is explicit, bare or
     // parenthesized, never of the Place's stored Type.
     [Fact]

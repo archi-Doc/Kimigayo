@@ -684,7 +684,7 @@ public sealed partial class HirFormsTest
         Assert.All(held, static x => Assert.NotNull(HirTables.PlanOf(x).DiscardedType));
     }
 
-    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-95, PLAN G233): the Place a container or an explicit discard takes holds the Type its bare
+    // SPEC 14.2.2, 14.2.4, 15.6.3 (DECISIONS BU-98, PLAN G233): the Place a container or an explicit discard takes holds the Type its bare
     // acquisition supplies in its plan row (DiscardedType), which no consumer states: a stored exclusive reference's Reborrow by Binding's
     // name, the meet of the layers reaching it (BU-27), the same for `_ = h.link`, `h.link` and `(h.link)`, the last its group's Meaning; a
     // Copy Place its own Type. A group's operand and a value statement have none (the builder holds a value statement's Meaning). Each row:
@@ -743,7 +743,7 @@ public sealed partial class HirFormsTest
         HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && (HirTables.AdjustOf(x).Acquire == HirAcquire.Unset ||
         (x.Parent is { } parent && HirTables.Op(parent) == HirOp.Group && !KotoHelper.IsValueContext(x))));
 
-    // The Places the MIR builder holds by their row's Type (MirBuilder.Held, DECISIONS BU-95): a Place outside any group that a container
+    // The Places the MIR builder holds by their row's Type (MirBuilder.Held, DECISIONS BU-98): a Place outside any group that a container
     // discards (no consumer's Adjust takes it, in Discard Context) or an explicit discard takes, as the publisher writes them.
     private static IEnumerable<Koto> HeldByTheirRow(Kotonoha module) => Reachable(module).Where(static x =>
         HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value) && x.Parent is not ParenthesizedKoto &&

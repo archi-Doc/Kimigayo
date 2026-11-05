@@ -228,7 +228,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 14.2.2, 14.2.4 (DECISIONS R4-M145, BU-95): a discarded Place's plan row. A Place in Discard Context is acquired by bare
+        // SPEC 14.2.2, 14.2.4 (DECISIONS R4-M145, BU-98): a discarded Place's plan row. A Place in Discard Context is acquired by bare
         // acquisition, its row's Adjust (Discarded); the Place a container or an explicit discard takes (Discards, outside any group) holds
         // the value its acquisition supplies, its row's DiscardedType (SuppliedType), which no consumer states. No consumer takes such a
         // Place but the group around it (Grouped's IsGroup) or the explicit discard, so only a Place with no Adjust, a group's operand or
