@@ -11,8 +11,7 @@
 // on syntax a recovery guessed, records nothing when its code is a warning and is derived from those causes when it is an Error.
 // GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), and RestingCauses, the
 // causes a check resting on one of them rests on.
-// LintErrors counts the Error records for its one reader, PLAN G428 (1)'s stopped test, until H10b-2 deletes it; LintErrorRecords lists
-// them, derived ones included, as a lasting fact whose readers are tests only (DECISIONS R5-M189).
+// LintErrorRecords lists the Error records, derived ones included, as a lasting fact whose readers are tests only (DECISIONS R5-M189).
 // Invariants: never fails a node; at one node the discard rows keep only the first (SPEC 17.5's priority); a warm rebind
 // allocates nothing (duplicates are resolved by sorting at report time, never by a Koto-keyed set).
 // Must not re-run inference or a proof to explain a record, lint the library's bodies or record from a Provisional pass.
@@ -79,23 +78,6 @@ public sealed partial class Binding
         None,
         Completion,
         Target,
-    }
-
-    /// <summary>Gets the number of the pass's lint records whose code is an Error, which its one reader, PLAN G428 (1)'s stopped test
-    /// (<c>CurrentControlFlowTest.StatementCompletionAndNestedResultsBind</c>), reads until H10b-2 deletes it.</summary>
-    [Transitional("R6", Reason = "Its one reader is PLAN G428 (1)'s stopped test; H10b-2 deletes it with the control-flow analysis.")]
-    internal int LintErrors
-    {
-        get
-        {
-            var count = 0;
-            foreach (var lint in this.lints)
-            {
-                count += IsError(lint.Row) ? 1 : 0;
-            }
-
-            return count;
-        }
     }
 
     /// <summary>Gets the pass's HIR lint records of Error severity, derived ones included, in walk order before <c>ReportDiagnostics</c>

@@ -56,6 +56,11 @@ public class ArchitectureRulesTest
         @"BorrowLivenes[s]|CallResultSourc[e]|Cleanu[p](?:Action|Reason)|InterpretationContex[t]|MovePat[h]|PackedAnalysisTabl[e]|" +
         @"Plac[e](?:State|UseKind)|PlacementKin[d]|SequenceOperatio[n]|AnalyzeLegacyOwnershi[p]|DeferredExpansionLimit_K[d])\b";
 
+    // DECISIONS R5-M189 (R6-check H10b-2, H10b D8; H8b D9): the old control-flow analysis H10b-2 deleted, as its file's top-level types,
+    // its Compilation entry and Binding's lint Error count its last stopped test read. A letter in brackets keeps the pattern from
+    // matching its source.
+    private const string DeletedByH10b2 = @"\b(?:ControlFlowAnalysi[s]|ControlFlowIssu[e]|ControlFlowNodeInf[o]|AnalyzeControlFlo[w]|LintError[s])\b";
+
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
@@ -70,11 +75,6 @@ public class ArchitectureRulesTest
     // from matching its source.
     [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
 
-    // R3 U6: tests run and read analysis and generation through the Compilation entry points. R4-M13a: direct calls of the old
-    // control-flow entries cannot grow. R6-check H8b (D8, D9), H10b (D11): PLAN G428's fix moved the three stopped methods
-    // (CurrentControlFlowTest.StatementCompletionAndNestedResultsBind, OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning,
-    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers), so no call is left; H10b-2 replaces the row by zero-reference rows.
-    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 0)]
     // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
     // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.
     [InlineData("Compiler references to R6-gen's deleted components", "src/Kimi", "*.cs", DeletedByR6Gen, 0)]
@@ -87,6 +87,12 @@ public class ArchitectureRulesTest
     [InlineData("Test references to the old ownership analysis", "tests", "*.cs", DeletedByH10b, 0)]
     [InlineData("Benchmark references to the old ownership analysis", "src/Benchmark", "*.cs", DeletedByH10b, 0)]
     [InlineData("Playground references to the old ownership analysis", "src/Playground", "*.cs", DeletedByH10b, 0)]
+    // R6-check H10b-2 (H10b D8): the same for the deleted old control-flow analysis, replacing the test-call row of its entries
+    // (R4-M13a), which PLAN G428's fix brought to 0.
+    [InlineData("Compiler references to the old control-flow analysis", "src/Kimi", "*.cs", DeletedByH10b2, 0)]
+    [InlineData("Test references to the old control-flow analysis", "tests", "*.cs", DeletedByH10b2, 0)]
+    [InlineData("Benchmark references to the old control-flow analysis", "src/Benchmark", "*.cs", DeletedByH10b2, 0)]
+    [InlineData("Playground references to the old control-flow analysis", "src/Playground", "*.cs", DeletedByH10b2, 0)]
     // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
     [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Backend reads of Koto semantic slots", "src/Kimi/Compiler/Backend", "*.cs", SemanticSlotReads, 0)]
