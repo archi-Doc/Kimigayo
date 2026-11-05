@@ -11,11 +11,12 @@
 // - Inputs: the call, the callee's call signature (TryCallable; a Closure Type's definition, BoundClosure.Of) and its receiver mode.
 //   Outputs: the call's plan (CallPlan.SetValue) and its result Type, or a failure at the call.
 // - Invariants: a bound call's result names no input or reserved atom of its callee's binder (otherwise the call is Unsupported_Kd);
-//   the images are this call's alone. A value call selects no callee, so an input's failed acquisition (the callee's or an argument's
-//   bare Place without its spelling) leaves its Type known and stops none of the call's other judgments (SPEC 3.8, 10, 23.1.2): the
-//   arguments' acquisitions, the solve, each fit's Origin rows, the input premises and the clauses; the call then rests on that record
-//   and forms no result. A named function, method or constructor call is not one: there a bare Place's Copy proof is its candidate's
-//   applicability (SPEC 10.1 step 5), so no candidate is selected and the relations judged after selection rest on it (DECISIONS BU-96).
+//   the images are this call's alone. A value call selects no callee, so an argument's failed acquisition (a bare Place without its
+//   spelling) leaves its Type known and stops none of the call's other judgments (SPEC 3.8, 10, 23.1.2): the other arguments'
+//   acquisitions, the solve, each fit's Origin rows, the input premises and the clauses; the call then rests on that record and forms
+//   no result. A failed callee stops the call: its record reads no argument, and must not rest on one. A named function, method or
+//   constructor call is not one: there a bare Place's Copy proof is its candidate's applicability (SPEC 10.1 step 5), so no candidate
+//   is selected and the relations judged after selection rest on it (DECISIONS BU-96).
 // - Prohibitions: no judgment of the callee's body; no second copy of the substitution (Binding.Storage's SubstituteStoredOrigins).
 
 using Kimi.Compiler.Parsing;
@@ -438,7 +439,13 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        var calleeAcquired = this.AcquireValueCallee(call, scope, receiver, out var receiverOperation); // Its record made; the call binds on.
+        // The callee's failure is the call's own record, which reads no argument: an argument judged after it would become its
+        // prerequisite (SPEC 23.1.2), so the arguments are then bound on their own (CompleteUnselected).
+        if (!this.AcquireValueCallee(call, scope, receiver, out var receiverOperation))
+        {
+            return null;
+        }
+
         var parameters = signature.Components[0];
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
         if (count != call.ArgumentNodes.Count)
@@ -470,7 +477,8 @@ public sealed partial class Binding
             var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
             if (ownBinder is not null && this.HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
             {
-                if (conditioned is not null)
+                // The table explains the call's NoApplicableOverload_Kd only (FailExplained), never its acquisition record.
+                if (conditioned is not null && acquired)
                 {
                     (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(conditioned, null, null)];
                 }
@@ -521,8 +529,8 @@ public sealed partial class Binding
 
             this.PublishCallRelations();
 
-            // A call whose callee or argument was not acquired rests on that record and forms no result.
-            var result = !calleeAcquired || !acquired ? null : this.ValueCallResult(
+            // A call whose argument was not acquired rests on that record and forms no result.
+            var result = !acquired ? null : this.ValueCallResult(
                 call, signature, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount), receiverOperation);
             if (result is null)
             {

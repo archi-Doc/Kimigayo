@@ -146,12 +146,13 @@ public class BorrowAcquisitionTest
         Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
-    // SPEC 3.8, 10, 23.1.2 (PLAN G421, DECISIONS BU-96): a value call selects no callee, so a failed acquisition of its callee or of an
-    // argument (a bare Place without `@move` or `@uniq`, in some or every Semantics case) stops none of its other judgments: each argument's
-    // Origin relation, A5's record, stays beside the acquisition record, before or after it, and the program stays rejected; a twin with
-    // the spelling has the relation alone, one without a relation problem the acquisition alone. A named function call is no value call: a
-    // bare Place's Copy proof is its candidate's applicability (SPEC 10.1 step 5), so the relations judged after selection rest on it.
-    // Each row: the published records in order; an accepted program has none.
+    // SPEC 3.8, 10, 23.1.2 (PLAN G421, DECISIONS BU-96): a value call selects no callee, so an argument's failed acquisition (a bare Place
+    // without `@move` or `@uniq`, in some or every Semantics case) stops none of its other judgments: each argument's Origin relation,
+    // A5's record, stays beside the acquisition record, before or after it, and the program stays rejected; a twin with the spelling has
+    // the relation alone, one without a relation problem the acquisition alone. A failed callee (a Consuming call's missing `c@move`, a
+    // payload callee through a reference) stops the call, so its own record rests on no argument. A named function or method call is no
+    // value call: a bare Place's Copy proof is its candidate's applicability (SPEC 10.1 step 5), so the relations judged after selection
+    // rest on it. Each row: the published records in order; an accepted program has none.
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (s/T, ref/i32 during static) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd p")]
@@ -160,13 +161,15 @@ public class BorrowAcquisitionTest
     [InlineData("func f(x: string, p: ref/i32, g: (string, ref/i32 during static) -> ()) -> ()\n    g(x, p)\n", "TransferRequired_Kd x; UnprovenOriginRelation_Kd p")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    let h = func (v: s/T, w: ref/i32 during static) => ()\n    h(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd p")]
     [InlineData("func f(x: i32, p: ref/i32, g: (uniq/i32, ref/i32 during static) -> ()) -> ()\n    var y: i32 = x\n    g(y, p)\n", "ExclusiveBorrowRequired_Kd y; UnprovenOriginRelation_Kd p")]
-    [InlineData("func f(p: ref/i32) -> ()\n    let t: string = \"a\"\n    let c = func [t@move] (w: ref/i32 during static) -> ()\n        let u = t@move\n        return\n    c(p)\n", "TransferRequired_Kd c; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f(p: ref/i32) -> ()\n    let t: string = \"a\"\n    let c = func [t@move] (w: ref/i32 during static) -> ()\n        let u = t@move\n        return\n    c(p)\n", "TransferRequired_Kd c")]
+    [InlineData("group State\n    public var counter: i32 = 0\nfunc call(r: ref/(rc/((ref/i32) -> ()))) -> () => r@follow(State.counter)\n", "Unsupported_Kd var counter: i32 = 0; Unsupported_Kd r@follow")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref\n    g(x@follow)\n", "UnprovenOriginRelation_Kd x@follow")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T during a) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T during a) -> ()) -> ()\n    s is ref\n    g(x@follow)\n", "")]
     [InlineData("func f<F>(x: string, p: ref/i32, g: F) -> ()\n    F is Callable<(string, ref/i32) -> ()>\n    g(x, p)\n", "TransferRequired_Kd x")]
     [InlineData("func g<s/T>(y: s/T) -> ()\n    s is ref or uniq\n    return\nfunc f<s/T>(x: ref/(s/T during a) during b) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow")]
     [InlineData("func take<s/T>(v: s/T, w: ref/i32 during static) -> ()\n    s is ref or uniq\n    return\nfunc f<s/T>(x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    take(x@follow, p)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("struct H\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func take<s/T>(self: ref/Self, v: s/T, w: ref/i32 during static) -> ()\n        s is ref or uniq\n        return\nfunc f<s/T>(h: ref/H, x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    h.take(x@follow, p)\n", "TransferRequired_Kd x@follow")]
     [InlineData("func take(v: string, w: ref/i32 during static) -> () => ()\nfunc f(x: string, p: ref/i32) -> ()\n    take(x, p)\n", "TransferRequired_Kd x")]
     public void AValueCallsAcquisitionAndRelationsAreEachRecorded(string body, string records)
     {

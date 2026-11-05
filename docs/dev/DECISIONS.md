@@ -10758,16 +10758,18 @@ resumed by R4-M86 (2026-10-20).
 
 - **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; PLAN G421; BU's design, accepted by the
   planning session without a separate design review; Major) SPEC 3.8, 10 and 10.1 step 5, 23.1.2.
-  - Rule: a value call selects no callee, so a failed acquisition of its callee or an argument (TransferRequired, ExclusiveBorrowRequired)
-    leaves the input's Type known. `AcquireValueCallArguments` adapts with `deferAcquisition`, as `FitTyped` and `CompletePayloads` do,
-    and records the first failure at the call as before, where the argument fits structurally. The callee's record stays the call's.
-    The call then judges the other arguments, the solve, each fit's Origin rows (A5's), the input premises and the clauses, and forms
-    no result. Removed: the acquisition fork in `AcquireValueCallArguments` and the return after `AcquireValueCallee`.
+  - Rule: a value call selects no callee, so an argument's failed acquisition (TransferRequired, ExclusiveBorrowRequired) leaves its
+    Type known. `AcquireValueCallArguments` adapts with `deferAcquisition`, as `FitTyped` and `CompletePayloads` do, and records the
+    first failure at the call as before, where the argument fits structurally. The call then judges the other arguments, the solve,
+    each fit's Origin rows (A5's), the input premises and the clauses, and forms no result. A failed callee, whatever its failure,
+    still stops the call: its record reads no argument, and an argument judged inside the call would become its prerequisite
+    (`IsDerived`; implementation review 1, B-1). Removed: the acquisition fork in `AcquireValueCallArguments`.
   - Boundary: a named function, method or constructor call keeps its one record. There the Copy proof is the candidate's
     applicability (SPEC 10.1 step 5), so the relations judged after selection rest on the failed selection.
-  - Records (Q13): A5's Origin relations at value calls return beside the acquisition record; no verdict moves
+  - Records (Q13): A5's Origin relations at value calls return beside the acquisition record, and a later argument's own located
+    limit (a static root's Borrow, `Unsupported_Kd`) beside it; no verdict moves
     (`BorrowAcquisitionTest.AValueCallsAcquisitionAndRelationsAreEachRecorded`). Open in PLAN: a call keeps one acquisition record (a
-    second failing argument, or one beside a failed callee), and a failed part binding stops the other arguments' fits.
+    second failing argument), a failed callee stops its arguments' judgments, and a failed part binding stops the other arguments' fits.
   - Supersedes BU-45's G421 line.
 
 - **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
