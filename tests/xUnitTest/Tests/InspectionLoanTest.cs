@@ -6,13 +6,13 @@ using Xunit;
 
 namespace XunitTest;
 
-public class BorrowDependencyStorageTest
+public class InspectionLoanTest
 {
     [Theory]
     [InlineData(32)]
     [InlineData(128)]
     [Trait("Purpose", "Allocation")]
-    public void DependentBodiesUseCompactTables(int count)
+    public void AWarmAnalysisOfStoredInspectionsAllocatesNothing(int count)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count, true));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
@@ -26,7 +26,7 @@ public class BorrowDependencyStorageTest
     [InlineData(32)]
     [InlineData(128)]
     [Trait("Purpose", "Allocation")]
-    public void InspectionOnlyBodiesNeedNoLocalDependencyTable(int count)
+    public void AWarmAnalysisOfInspectionsAllocatesNothing(int count)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));

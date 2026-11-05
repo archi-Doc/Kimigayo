@@ -210,7 +210,7 @@ public class OwnershipAnalysisTest
         [InlineData(1)]
         [InlineData(32)]
         [InlineData(128)]
-        public void WarmBindingAndBothAnalysesReuseStorage(int count)
+        public void WarmBindingAndAnalysisReuseStorage(int count)
         {
             var source = new System.Text.StringBuilder("func f(c: bool)\n");
             for (var i = 0; i < count; i++)

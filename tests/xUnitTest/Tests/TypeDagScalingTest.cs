@@ -122,9 +122,9 @@ public partial class TypeDagScalingTest
         Assert.Equal(["UnresolvedBinding_Kd", "UnprovenConstraint_Kd"], DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code));
     }
 
-    // The old analysis's walks (the owner's D5 exception): whether a cleanup observes Loans over shared struct, enum and Tuple parts,
-    // generic ones too, Origin projections and Loan dependencies over shared Origin-carrying parts, the completion of shared Tuples; for
-    // the instance chains also their collection and code generation.
+    // The MIR's walks: A5's cleanup observation (whether a cleanup observes Loans) over shared struct, enum and Tuple parts, generic ones
+    // too, the Origin projections and Loan dependencies over shared Origin-carrying parts, the completion of shared Tuples; for the
+    // instance chains also their collection and code generation.
     [Theory]
     [InlineData("structs", 28)]
     [InlineData("structUses", 24)]
@@ -134,7 +134,7 @@ public partial class TypeDagScalingTest
     [InlineData("originLets", 28)]
     [InlineData("chain", 26)]
     [InlineData("chainValues", 26)]
-    public void OldAnalysisWalksAreLinearInDistinctParts(string shape, int size)
+    public void WalksAreLinearInDistinctParts(string shape, int size)
     {
         var c = Checked(Source(shape, size));
 
