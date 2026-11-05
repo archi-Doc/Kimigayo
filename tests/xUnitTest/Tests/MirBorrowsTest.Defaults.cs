@@ -221,8 +221,8 @@ public sealed partial class MirBorrowsTest
     {
         const string Head = "func fN<T>(«N:a{0}: T, »n: i32, value: T = if n == 0 => a0 else => fN(«N:a{0}, »n - 1)) -> T\n    T is Copy\n" +
             "    return value\nfunc shape()\n    var x = 1\n    let r = x@ref\n";
-        long[] inN = [.. new[] { 8, 16, 32 }.Select(n => this.Measured(Prelude + Expand(Head, n, 0) + Calls(n, 8)).Work)];
-        long[] inM = [.. new[] { 8, 16, 32 }.Select(m => this.Measured(Prelude + Expand(Head, 8, 0) + Calls(8, m)).Work)];
+        long[] inN = [.. new[] { 8, 16, 32 }.Select(n => Measured(Prelude + Expand(Head, n, 0) + Calls(n, 8)).Work)];
+        long[] inM = [.. new[] { 8, 16, 32 }.Select(m => Measured(Prelude + Expand(Head, 8, 0) + Calls(8, m)).Work)];
         output.WriteLine($"N 8, 16, 32 at M 8: work {string.Join(", ", inN)}; M 8, 16, 32 at N 8: work {string.Join(", ", inM)}");
         Assert.True(Grows(inN, 5), $"work in N {string.Join(", ", inN)}");
         Assert.True(Grows(inM, 5), $"work in M {string.Join(", ", inM)}");
@@ -414,8 +414,8 @@ public sealed partial class MirBorrowsTest
     {
         const string Template = "func fN(«N:x{0}: uniq/i32 during q, »y: («N:ref/i32 during q, »i32) = («N:x{0}, »0)) => ()\n";
         const string Twin = "func fN(«N:x{0}: uniq/i32 during q, ») -> («N:ref/i32 during q, »i32) => («N:x{0}, »0)\n";
-        long[] template = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Expand(Template, n, 0)).Work)];
-        long[] twin = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Expand(Twin, n, 0)).Work)];
+        long[] template = [.. new[] { 16, 32, 64 }.Select(n => Measured(Prelude + Expand(Template, n, 0)).Work)];
+        long[] twin = [.. new[] { 16, 32, 64 }.Select(n => Measured(Prelude + Expand(Twin, n, 0)).Work)];
         long[] rules = [.. template.Zip(twin, static (x, y) => x - y)];
         output.WriteLine($"N 16, 32, 64: work {string.Join(", ", template)}, twin {string.Join(", ", twin)}");
         Assert.True(Grows(template, 5), $"work {string.Join(", ", template)}");
@@ -647,7 +647,7 @@ public sealed partial class MirBorrowsTest
     public void AnOmittingCallsWorkStaysDense()
     {
         const string Shape = "func fI(a: ref/i32, n: i32 = size(a)) -> i32 => n\nfunc shape()\n    var x = 1\n«N:    _ = fI(x@ref)\n»";
-        long[] work = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Expand(Shape, n, 0)).Work)];
+        long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Prelude + Expand(Shape, n, 0)).Work)];
         output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }
@@ -1004,8 +1004,8 @@ public sealed partial class MirBorrowsTest
     public void ACopysEntryWorkStaysDense()
     {
         const string Loop = "func shape(c: bool)\n    while c\n";
-        long[] copies = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Issuing + Loop + Expand("«N:        _ = fO(1)\n»", n, 0)).Work)];
-        long[] twin = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Issuing + Loop + Expand("«N:        _ = fO(1, 2)\n»", n, 0)).Work)];
+        long[] copies = [.. new[] { 16, 32, 64 }.Select(n => Measured(Prelude + Issuing + Loop + Expand("«N:        _ = fO(1)\n»", n, 0)).Work)];
+        long[] twin = [.. new[] { 16, 32, 64 }.Select(n => Measured(Prelude + Issuing + Loop + Expand("«N:        _ = fO(1, 2)\n»", n, 0)).Work)];
         long[] own = [.. copies.Zip(twin, static (x, y) => x - y)];
         output.WriteLine($"N 16, 32, 64: work {string.Join(", ", copies)}, twin {string.Join(", ", twin)}");
         Assert.True(Grows(copies, 5), $"work {string.Join(", ", copies)}");

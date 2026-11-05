@@ -40,7 +40,7 @@ public class Utf8ReserveEffectTest
             """;
         var expression = generic ? "Helpers.compareValues(left@ref, right@ref)" : "left " + operation + " right";
         var values = tuple ? "let first = Compared.init()\n        let last = Compared.init()\n        let left = (first@ref, 1)\n        let right = (last@ref, 2)" : "let left = Compared.init()\n        let right = Compared.init()";
-        AssertRefused(Analyze(prefix, values + "\n        _ = " + expression));
+        AssertRefused(Analyze(prefix, values + "\n        _ = " + expression), StateStorage);
     }
 
     [Theory]
@@ -64,13 +64,17 @@ public class Utf8ReserveEffectTest
     private const string Writer = "struct Writer\n    Self is BufferWriter\n    public var local: i32 = 1\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n";
     private const string Formatter = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        ";
 
+    // P42's StaticStorage record at State's settable static (DECISIONS R5-M82; STATUS Static members): a MIR row of every program with State.
+    private static readonly (DiagnosticCode Code, SyntaxLocation At) StateStorage =
+        (DiagnosticCode.Unsupported_Kd, MirTargetSide.At(State, "var value: i32 = 0"));
+
     [Theory]
     [InlineData("let value = Noisy.init()\n        _ = value.item")]
     [InlineData("var value = Noisy.init()\n        value.item = 1")]
     public void CustomAccessorEffectsAreChecked(string operation)
     {
         const string Accessors = "struct Noisy\n    public var item: i32 = 0\n        get(self: ref/Self) -> i32 => State.value\n        set(self: uniq/Self, value: i32) -> () => State.value = value\n";
-        AssertRefused(Analyze(State + Accessors, operation));
+        AssertRefused(Analyze(State + Accessors, operation), StateStorage);
     }
 
     [Fact]
@@ -122,7 +126,7 @@ public class Utf8ReserveEffectTest
     [InlineData("struct Numbers {source}\n    Self is Iterator\n    associate Iterator.Item is i32\n    let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\n    public func next(self: uniq/Self) -> Option<i32>\n        _ = State.value\n        return .None\nstruct Values\n    Self is Iterable\n    associate Iterable.IteratorType(source) is Numbers during source\n    var value: i32 = 7\n    public init() => ()\n    public func iterate(self: ref/Self during source) -> Numbers during source => Numbers.init(self.value@ref)\n", "let values = Values.init()\n        for n in values\n            _ = n")]
     [InlineData("struct Key\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n", "var values: Dictionary<Key, i32> = [:]\n        let borrowed = values@ref\n        _ = borrowed[Key.init()]")]
     public void SynthesizedCallEffectsAreChecked(string declarations, string operation)
-        => AssertRefused(Analyze(State + declarations, operation));
+        => AssertRefused(Analyze(State + declarations, operation), StateStorage);
 
     [Fact]
     public void BorrowingAFieldDoesNotExecuteItsDestructor()
@@ -235,7 +239,7 @@ public class Utf8ReserveEffectTest
     {
         var prefix = State + Formatter + "_ = State.value\n        return .Ok(())\n" +
             "group Helpers\n    public func text<T>(value: ref/T) -> string\n        T is Utf8Format\n        return Text.toString(value)\n";
-        AssertRefused(Analyze(prefix, "_ = Helpers.text(Value.init())"));
+        AssertRefused(Analyze(prefix, "_ = Helpers.text(Value.init())"), StateStorage);
     }
 
     [Fact]
@@ -258,7 +262,7 @@ public class Utf8ReserveEffectTest
     private static Compilation Analyze(string prefix, string operation)
         => MinimalEmissionTest.Analyze(prefix + Writer + "        " + operation + "\n        return .Err(BufferFull.init())");
 
-    // The effect reaches Writer's reserve, so A4 refuses Writer's conformance (R6-check H3b T40).
-    private static void AssertRefused(Compilation c)
-        => EffectBoundImplementationTest.AssertBound(c, valid: false, "Self is BufferWriter");
+    // The effect reaches Writer's reserve, so A4 refuses Writer's conformance (R6-check H3b T40), beside the program's other MIR records.
+    private static void AssertRefused(Compilation c, params (DiagnosticCode Code, SyntaxLocation At)[] others)
+        => EffectBoundImplementationTest.AssertBound(c, valid: false, "Self is BufferWriter", others);
 }

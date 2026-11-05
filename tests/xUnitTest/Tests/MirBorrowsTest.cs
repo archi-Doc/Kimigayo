@@ -424,7 +424,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 3.5.1, 15.6.3: a bare read of a holder of `uniq/i32` is a Reborrow, a child Loan whose access path the holder prefixes, so
     // Moving the holder while the child is live is an error, whether the holder is a parameter or a local, the child is written or only read
     // after the Move, or a Closure captures it; a child used before the Move or never, and a Copy of a shared `ref` holder, are valid.
-    // PLAN G268: the old analysis accepts the four errors until R6-check (its Loans are keyed by the root referent; frozen, D5).
+    // PLAN G268: before H5 the old analysis accepted the four errors (its Loans were keyed by the root referent; frozen, D5).
     [Fact]
     public void MovingAHolderConflictsWithItsLiveReborrow()
         => Assert.Equal(
@@ -2410,7 +2410,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var at = new Dictionary<(int N, int K), (long Work, long Bytes)>();
         foreach (var (n, k) in new[] { (32, 32), (64, 32), (128, 32), (32, 64), (128, 64), (32, 128) })
         {
-            at[(n, k)] = this.Measured(Prelude + Expand(template, n, k));
+            at[(n, k)] = Measured(Prelude + Expand(template, n, k));
         }
 
         var mixed = at[(128, 64)].Work - at[(128, 32)].Work - at[(32, 64)].Work + at[(32, 32)].Work;
@@ -2432,7 +2432,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     {
         const string Chain = "func shape(flag: bool)\n    var x = 1\n    var y = 2\n    var r0 = x@ref\n    let q = y@ref\n«K:    var r{1} = q\n»" +
             "    while flag\n«R:        r{1} = r{0}\n»«K:    inspect(r{1})\n»";
-        var runs = new[] { 32, 64, 128 }.Select(k => this.Measured(Prelude + Expand(Chain, 0, k))).ToArray();
+        var runs = new[] { 32, 64, 128 }.Select(k => Measured(Prelude + Expand(Chain, 0, k))).ToArray();
         long[] work = [.. runs.Select(static x => x.Work)];
         long[] bytes = [.. runs.Select(static x => x.Bytes)];
         output.WriteLine($"K 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
@@ -2449,9 +2449,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     {
         const string Overlap = "func shape(flag: bool)\n    var p0 = Pair.init()\n«K:    var p{1} = Pair.init()\n»    let h0 = p0.a@ref\n" +
             "«K:    let h{1} = if flag => h{0} else => p{1}.a@ref\n»«N:    p0.b = {0}\n»«K:    inspect(h{1})\n»";
-        long[] inN = [.. new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + Expand(Overlap, n, 32)).Work)];
+        long[] inN = [.. new[] { 32, 64, 128 }.Select(n => Measured(Prelude + Expand(Overlap, n, 32)).Work)];
         long[] writes = [.. new[] { 32, 64, 128 }.Select(k =>
-            this.Measured(Prelude + Expand(Overlap, 64, k)).Work - this.Measured(Prelude + Expand(Overlap, 32, k)).Work)];
+            Measured(Prelude + Expand(Overlap, 64, k)).Work - Measured(Prelude + Expand(Overlap, 32, k)).Work)];
         output.WriteLine($"N at K 32: work {string.Join(", ", inN)}; 32 writes at K 32, 64, 128: {string.Join(", ", writes)}");
         Assert.True(Grows(inN, 2), $"work in N {string.Join(", ", inN)}");
         Assert.True(Grows(writes, 5), $"writes in K {string.Join(", ", writes)}");
@@ -2558,6 +2558,23 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 $"func good() -> bool\n    let t = {Tuple}\n    let other = {Tuple}\n    return t == other\n"));
     }
 
+    // Whether a measure over three sizes, each double the one before, grows over the second doubling at most a factor times as much as
+    // over the first, with a constant's slack.
+    internal static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
+
+    // A5's work and Loan-set bytes on a program with no Loan problem.
+    internal static (long Work, long Bytes) Measured(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(c.Binding.Issues);
+        var stratum = new Stratum(c.Types);
+        stratum.Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
+        return (stratum.Borrows.Work, stratum.Borrows.Bytes);
+    }
+
     // The Loan problems of a program's own bodies.
     private static string[] Problems(string source)
     {
@@ -2618,9 +2635,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         return Regex.Replace(template, "«([NKR]):(.*?)»", runs, RegexOptions.Singleline);
     }
 
-    // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
-    private static bool Grows(long[] measure, double factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
-
     // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines, a Tuple of N operands where one is
     // given, and N after lines ({0} the index, {1} the index plus one), with no Loan problem.
     private (long[] Work, long[] Bytes) Scaled(string head, string each, string after, string operand = "")
@@ -2642,24 +2656,11 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 }
             }
 
-            (work[i], bytes[i]) = this.Measured(text.ToString());
+            (work[i], bytes[i]) = Measured(text.ToString());
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
         return (work, bytes);
-    }
-
-    // A5's work and Loan-set bytes on a program with no Loan problem.
-    private (long Work, long Bytes) Measured(string source)
-    {
-        var c = MirBuildTest.Compile(source);
-        var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        Assert.Empty(c.Binding.Issues);
-        var stratum = new Stratum(c.Types);
-        stratum.Run(program);
-        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
-        return (stratum.Borrows.Work, stratum.Borrows.Bytes);
     }
 
     // A5 over every view of every body of a built program, as the driver's step 4 runs it over the views A1 and A2 completed (R4-M57),

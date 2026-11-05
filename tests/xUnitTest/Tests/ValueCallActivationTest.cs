@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Xunit;
@@ -31,19 +32,15 @@ public class ValueCallActivationTest
         ScalarEmissionTest.EmitFixture("ValueCallActivation" + name, source, stdout);
     }
 
+    // The argument's reservation cannot activate while the receiver holds its Loan: the MIR's record (H5, DECISIONS R5-M185) relates the
+    // receiver's Borrow (a capture's is the closure), the call and the reservation.
     [Theory]
-    [InlineData("var n: i32 = 1\nlet f = func [n@ref] (v: uniq/i32) => v@follow += n\nf(n@uniq)")]
-    [InlineData("var n: i32 = 1\nlet view = n@ref\nlet f = func [view] (v: uniq/i32) => v@follow += 1\nf(n@uniq)")]
-    [InlineData("var n: i32 = 1\nlet text = \"t\"\nlet f = func [n@ref, text@move] (v: uniq/i32) -> string\n    v@follow += n\n    return text@move\n_ = f@move(n@uniq)")]
-    [InlineData("func inc(value: i32) -> i32 => value + 1\nfunc pass(f: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = inc\nlet r = g@ref\n_ = r(pass(g@uniq))")]
-    public void AnArgumentCannotTakeWhatTheReceiverHolds(string source)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var issue = Assert.Single(c.AnalyzeLegacyOwnership().Issues);
-        Assert.True(issue.Failure == OwnershipRequirement.ComparisonLoanConflict && issue.Activation, issue.ToString());
-        Assert.False(c.Generate(TextWriter.Null));
-    }
+    [InlineData("var n: i32 = 1\nlet f = func [n@ref] (v: uniq/i32) => v@follow += n\nf(n@uniq)", "f(n@uniq)", "borrow 2:9 func [n@ref] (v: uniq/i32) => v@follow += n | loan 3:1 f(n@uniq) | reservation 3:3 n@uniq")]
+    [InlineData("var n: i32 = 1\nlet view = n@ref\nlet f = func [view] (v: uniq/i32) => v@follow += 1\nf(n@uniq)", "f(n@uniq)", "borrow 2:12 n@ref | loan 4:1 f(n@uniq) | reservation 4:3 n@uniq")]
+    [InlineData("var n: i32 = 1\nlet text = \"t\"\nlet f = func [n@ref, text@move] (v: uniq/i32) -> string\n    v@follow += n\n    return text@move\n_ = f@move(n@uniq)", "f@move(n@uniq)", "borrow 3:9 func [n@ref, text@move] (v: uniq/i32) -> string\n    v@follow += n\n    return text@move | loan 6:5 f@move(n@uniq) | reservation 6:12 n@uniq")]
+    [InlineData("func inc(value: i32) -> i32 => value + 1\nfunc pass(f: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = inc\nlet r = g@ref\n_ = r(pass(g@uniq))", "pass(g@uniq)", "borrow 4:9 g@ref | loan 5:5 r(pass(g@uniq)) | reservation 5:12 g@uniq")]
+    public void AnArgumentCannotTakeWhatTheReceiverHolds(string source, string call, string related)
+        => Assert.False(CallReservationTest.AssertMirRecord(source, DiagnosticCode.CallActivationConflict_Kd, call, related).Generate(TextWriter.Null));
 
     [Trait("Purpose", "Allocation")]
     [Fact]

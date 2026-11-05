@@ -26,17 +26,17 @@ public class ObjectSlotUpdateTest
     public void CompleteSlotsShareTransferAndCleanup(string name, string factory, string borrow)
         => NativeAllocationAudit.WriteFixture("ObjectSlotUpdate" + name, Source(factory, borrow), 3, 3, 60, "three\nupdated\none\ntwo\n");
 
+    // SPEC 15.6.7: the replacement's exclusive reservation of the slot cannot activate while the payload view lives. The MIR's record
+    // (H5, DECISIONS R5-M185) relates the view's Borrow, its later use and the reservation.
     [Theory]
     [InlineData("makeObj")]
     [InlineData("makeRc")]
     [InlineData("makeArc")]
     public void AStoredPayloadViewPreventsSlotReplacement(string factory)
     {
-        var source = Item + "\nvar owner = Kimi.Intrinsics." + factory + "(Item.init(1))\nlet view = owner@objref\nKimi.Intrinsics.replace(owner@uniq, with: Kimi.Intrinsics." + factory + "(Item.init(2)))\nrequire view.id == 1 else => $abort(\"view\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(c.AnalyzeLegacyOwnership().Issues, static x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation);
-        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        var replace = "Kimi.Intrinsics.replace(owner@uniq, with: Kimi.Intrinsics." + factory + "(Item.init(2)))";
+        var source = Item + "\nvar owner = Kimi.Intrinsics." + factory + "(Item.init(1))\nlet view = owner@objref\n" + replace + "\nrequire view.id == 1 else => $abort(\"view\")";
+        var c = CallReservationTest.AssertMirRecord(source, DiagnosticCode.CallActivationConflict_Kd, replace, "borrow 9:12 owner@objref | loan 11:9 view.id == 1 | reservation 10:25 owner@uniq");
         Assert.False(c.Generate(TextWriter.Null));
     }
 

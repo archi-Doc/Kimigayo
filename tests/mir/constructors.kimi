@@ -17,3 +17,71 @@ func make() -> i32
     let shared = Kimi.Intrinsics.makeObj<Leaf>(Leaf.init("b", 3))
     let counted = Kimi.Intrinsics.makeRc(Plain.init())
     return leaf.extra + plain.x
+enum Two
+    Both(string, string)
+func constructPayloads()
+    let s = "first"
+    let x = Two.Both(s@move, "second")
+enum Made
+    Make(bool, string, i32)
+func makeText() -> string => "temporary"
+func abandonInterleaved(c: bool)
+    let t = "comparison"
+    Made.Make(makeText() == t, "payload", if c => return else => 1)
+enum Nest
+    Inner(string, i32)
+enum Wrap
+    Both(string, Nest)
+func abandonNested(c: bool)
+    Wrap.Both("outer", Nest.Inner("inner", if c => return else => 1))
+enum Pay
+    Both(string, i32)
+func returnInPayload(c: bool)
+    Pay.Both(
+        "outer",
+        if c
+            let inner = "inner"
+            return
+        else => 1
+    )
+func returnEnum(c: bool) -> Option<string>
+    Pay.Both("outer", if c => return Option<string>.Some("result") else => 1)
+    return Option<string>.None
+func loopAbandon(c: bool)
+    while c
+        Pay.Both("a", if c => continue else => 1)
+    while c
+        Pay.Both("a", if c => exit else => 1)
+func halt() -> Never
+    loop
+        ()
+func abortPayload()
+    Pay.Both("a", halt())
+func wholeReplace()
+    var x = Option<string>.Some("a")
+    x = Option<string>.None
+    x = x@move
+func conditionalEnum(c: bool)
+    var x: Option<string>
+    if c
+        x = Option<string>.Some("a")
+    x = Option<string>.None
+    if c
+        let y = x@move
+enum Flag
+    Both(bool, i32)
+func conditionText() -> string => "condition"
+func completedTemporary(c: bool)
+    let t = "test"
+    Flag.Both((if conditionText() == t => "yes" else => "no") == t, if c => return else => 1)
+enum Fixed
+    Full(i8)
+enum Generic<T>
+    Full(T)
+enum Optional<T>
+    Full(T)
+    Empty
+func designatorBaselines()
+    let a: Fixed = .Full(127)
+    let b: Generic<i8> = .Full(127)
+    let c: Optional<i32> = .Empty

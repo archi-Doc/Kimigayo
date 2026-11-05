@@ -34,12 +34,6 @@ public class StringComparisonEmissionTest
     public void ComparisonsPreserveOwnership(string name, string source, string stdout, string destructions)
     {
         name = "StringComparison" + name;
-        var checkedCompilation = MinimalEmissionTest.Analyze(source);
-        foreach (var body in checkedCompilation.AnalyzeLegacyOwnership().Bodies)
-        {
-            Assert.True(body.ValidateComparisonLoans(), string.Join("; ", body.Edges.Where(e => body.LoanInputs.Count > 0 && e.Kind != OwnershipEdgeKind.Abort && body.LoanStates[e.From] != body.LoanInputs[e.To]).Select(e => $"{e.From}:{body.Operations[e.From].Kind}({body.IsReachable(e.From)}) -> {e.To}:{body.Operations[e.To].Kind}({body.IsReachable(e.To)})")));
-        }
-
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
         StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destructions);
     }

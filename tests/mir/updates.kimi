@@ -24,3 +24,28 @@ func noncompletingWrite()
     loop
         var text = "old"
         text = (exit)
+func updateIndex() -> isize => 0
+func updateRight() -> i32 => 2
+func orderedUpdate() -> i32
+    var a: [1 of i32] = [40]
+    a[updateIndex()] += updateRight()
+    return a[0]
+func wholeLocal()
+    var x: i32 = 1
+    var y: i32 = 2
+    _ = Kimi.Intrinsics.replace(x@uniq, with: 2)
+    _ = Kimi.Intrinsics.exchange(x@uniq, with: 2)
+    _ = Kimi.Intrinsics.swap(x@uniq, y@uniq)
+func wholeBorrowed(x: uniq/i32, y: uniq/i32)
+    _ = Kimi.Intrinsics.replace(x, with: 2)
+    _ = Kimi.Intrinsics.exchange(x, with: 2)
+    _ = Kimi.Intrinsics.swap(x, y)
+func conditionalReplacement(c: bool)
+    var s: string
+    if c
+        s = "a"
+    s = "b"
+    s = s@move
+func scalarSelfAssignment()
+    var x = 1
+    x = x

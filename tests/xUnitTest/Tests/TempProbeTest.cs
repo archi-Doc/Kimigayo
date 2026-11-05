@@ -1,12 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
 
-// TEMP: not committed. Dumps bound Origins and ownership operations for a probe source.
+// The tracked KIMI_PROBE dumper: the bound Origins and the MIR of the source the variable names (R6-check H8a D8).
 public class TempProbeTest(ITestOutputHelper output)
 {
     [Fact]
@@ -28,20 +30,9 @@ public class TempProbeTest(ITestOutputHelper output)
         }
 
         output.WriteLine(MinimalEmissionTest.Describe(c));
-        foreach (var body in c.AnalyzeLegacyOwnership().Bodies)
-        {
-            output.WriteLine("BODY " + body.Function?.ToString()?.Split('\n')[0]);
-            for (var i = 0; i < body.Places.Count; i++)
-            {
-                output.WriteLine($"  place {i}: {body.Places[i].Kind} {Show(body.Places[i].Type)}");
-            }
-
-            for (var i = 0; i < body.Operations.Count; i++)
-            {
-                var o = body.Operations[i];
-                output.WriteLine($"  op {i}: {o.Kind} place={o.Place} src=`{o.Source?.ToString()?.Split('\n')[0]}`");
-            }
-        }
+        var text = new StringBuilder();
+        MirDump.Write(c.BuildMir(), 0, text);
+        output.WriteLine(text.ToString());
     }
 
     private static string Show(BoundType? type)

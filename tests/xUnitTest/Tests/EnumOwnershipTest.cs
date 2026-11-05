@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -34,13 +35,15 @@ public class EnumOwnershipTest
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 12.2 (R6-check H8a D10): every designator spelling lowers as the contextual one, with no call. The baselines' own MIR is
+    // tests/mir/constructors.kimi `designatorBaselines`.
     [Theory]
     [InlineData("E.Full(127)")]
     [InlineData(".Full(127)")]
     [InlineData("(E.Full(127))")]
     [InlineData("(.Full(127))")]
     public void NongenericDesignatorsShareConstructionOperations(string expression)
-        => CheckConstruction("enum E\n    Full(i8)\n", "E", expression, 1);
+        => CheckConstruction("enum E\n    Full(i8)\n", "E", expression, ".Full(127)");
 
     [Theory]
     [InlineData("E<i8>.Full(127)")]
@@ -48,7 +51,7 @@ public class EnumOwnershipTest
     [InlineData("(E<i8>.Full(127))")]
     [InlineData("(.Full(127))")]
     public void GenericDesignatorsShareConstructionOperations(string expression)
-        => CheckConstruction("enum E<T>\n    Full(T)\n", "E<i8>", expression, 1);
+        => CheckConstruction("enum E<T>\n    Full(T)\n", "E<i8>", expression, ".Full(127)");
 
     [Theory]
     [InlineData("E<i32>.Empty")]
@@ -56,7 +59,7 @@ public class EnumOwnershipTest
     [InlineData("(E<i32>.Empty)")]
     [InlineData("(.Empty)")]
     public void EmptyDesignatorsNeedNoRuntimeReceiver(string expression)
-        => CheckConstruction("enum E<T>\n    Full(T)\n    Empty\n", "E<i32>", expression, 0);
+        => CheckConstruction("enum E<T>\n    Full(T)\n    Empty\n", "E<i32>", expression, ".Empty");
 
     [Theory]
     [InlineData("let x = Option<string>.Some(\"a\")\nlet y = x@move\nlet z = x@move", DiagnosticCode.MovedPlace_Kd)]
@@ -85,161 +88,16 @@ public class EnumOwnershipTest
             MinimalEmissionTest.Analyze(source).Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
 
     [Fact]
-    public void SuccessfulConstructionTransfersPayloadResponsibilityExactlyOnce()
-    {
-        var c = Parse("enum E\n    Both(string, string)\nlet s = \"first\"\nlet x = E.Both(s@move, \"second\")");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c);
-        var construction = Assert.Single(body.Constructions);
-        var complete = body.Operations.Select((operation, index) => (operation, index)).Single(x => x.operation.Kind == OwnershipOperationKind.CompleteConstruction);
-        for (var i = 0; i < construction.PayloadCount; i++)
-        {
-            var payload = construction.PayloadStart + i;
-            Assert.True((body.GetInputState(complete.index, payload) & PlaceState.MustInit) != 0);
-            Assert.All(body.CleanupSteps.Where(x => x.Place == payload), x => Assert.Equal(CleanupAction.Skip, x.Action));
-            Assert.DoesNotContain(body.CleanupPlans, x => x.Reason == CleanupReason.Replacement && body.CleanupSteps.Skip(x.Start).Take(x.Count).Any(y => y.Place == payload));
-        }
-
-        var x = body.Places.Single(x => x.Source is FieldKoto field && field.NameKoto.IdentifierName == "x");
-        Assert.Single(body.CleanupSteps, step => step.Place == x.Id && step.Action == CleanupAction.Destroy);
-    }
-
-    [Fact]
-    public void AbandonmentInterleavesPlacedPayloadsAndSurvivingTemporaries()
-    {
-        var c = Parse("enum E\n    Make(bool, string, i32)\nfunc makeText() -> string => \"temporary\"\nfunc use(c: bool)\n    let t = \"comparison\"\n    E.Make(makeText() == t, \"payload\", if c => return else => 1)");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        var construction = Assert.Single(body.Constructions);
-        var steps = ReturnDestruction(body);
-        var payload0 = Array.FindIndex(steps, x => x.Place == construction.PayloadStart);
-        var payload1 = Array.FindIndex(steps, x => x.Place == construction.PayloadStart + 1);
-        var temporary = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
-        Assert.True(payload1 >= 0 && payload0 > payload1 && temporary > payload0);
-        Assert.DoesNotContain(steps, x => x.Place == construction.Place || x.Place == construction.PayloadStart + 2);
-    }
-
-    [Fact]
-    public void NestedAbandonmentCleansInnerPayloadThenOuterPayload()
-    {
-        var c = Parse("enum E\n    Inner(string, i32)\nenum Outer\n    Both(string, E)\nfunc use(c: bool)\n    Outer.Both(\"outer\", E.Inner(\"inner\", if c => return else => 1))");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        var outer = body.Constructions[0];
-        var inner = body.Constructions[1];
-        var steps = ReturnDestruction(body);
-        var innerStep = Array.FindIndex(steps, x => x.Place == inner.PayloadStart);
-        var outerStep = Array.FindIndex(steps, x => x.Place == outer.PayloadStart);
-        Assert.True(innerStep >= 0 && outerStep > innerStep);
-        Assert.DoesNotContain(steps, x => x.Place == inner.Place || x.Place == outer.Place);
-    }
-
-    [Fact]
-    public void ReturnInsidePayloadCleansLocalBeforeEarlierPayload()
-    {
-        var c = Parse("enum E\n    Both(string, i32)\nfunc use(c: bool)\n    E.Both(\n        \"outer\",\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        var steps = ReturnDestruction(body);
-        var local = Array.FindIndex(steps, x => x.Source is FieldKoto);
-        var payload = Array.FindIndex(steps, x => x.Place == body.Constructions[0].PayloadStart);
-        Assert.True(local >= 0 && payload > local);
-    }
-
-    [Fact]
-    public void ReturningAnEnumSecuresResultBeforeAbandonedConstructionCleanup()
-    {
-        var c = Parse("enum E\n    Both(string, i32)\nfunc use(c: bool) -> Option<string>\n    E.Both(\"outer\", if c => return Option<string>.Some(\"result\") else => 1)\n    return Option<string>.None");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        var cleanup = ReturnDestruction(body).Single(x => x.Place == body.Constructions[0].PayloadStart);
-        var secured = body.Operations.Take(cleanup.Operation).Last(x => x.Kind == OwnershipOperationKind.Write && body.Places[x.Place].Kind == OwnershipPlaceKind.Result);
-        Assert.True((body.GetInputState(cleanup.Operation, secured.Place) & PlaceState.MustInit) != 0);
-        Assert.DoesNotContain(ReturnDestruction(body), x => body.Places[x.Place].Kind == OwnershipPlaceKind.Result);
-    }
-
-    [Theory]
-    [InlineData("continue")]
-    [InlineData("exit")]
-    public void LoopTransferAbandonsConstructionAndResetsPayloads(string transfer)
-    {
-        var c = Parse($"enum E\n    Both(string, i32)\nfunc use(c: bool)\n    while c\n        E.Both(\"a\", if c => {transfer} else => 1)");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        var construction = Assert.Single(body.Constructions);
-        Assert.Contains(body.CleanupSteps, x => x.Place == construction.PayloadStart && x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is JumpKoto);
-        foreach (var indexed in body.Operations.Select((operation, index) => (operation, index)).Where(x => x.operation.Kind == OwnershipOperationKind.PayloadPlacement))
-        {
-            Assert.Equal(PlaceState.None, body.GetInputState(indexed.index, indexed.operation.Place));
-            Assert.Equal(PlacementKind.None, indexed.operation.Placement);
-        }
-    }
-
-    [Fact]
-    public void AbortDoesNotReachCleanupOrConstructionCompletion()
-    {
-        var c = Parse("enum E\n    Both(string, i32)\nfunc stop() -> Never\n    loop\n        ()\nfunc use()\n    E.Both(\"a\", stop())");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        Assert.All(body.Edges.Where(x => x.Kind == OwnershipEdgeKind.Abort), x => Assert.Equal(OwnershipOperationKind.Exit, body.Operations[x.To].Kind));
-        Assert.All(body.Operations.Select((operation, index) => (operation, index)).Where(x => x.operation.Kind == OwnershipOperationKind.CompleteConstruction), x => Assert.False(body.IsReachable(x.index)));
-        Assert.DoesNotContain(body.CleanupSteps, x => x.Action == CleanupAction.Destroy);
-    }
-
-    [Fact]
-    public void WholeReplacementUsesPostAcquisitionState()
-    {
-        var c = Parse("var x = Option<string>.Some(\"a\")\nx = Option<string>.None\nx = x@move");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c);
-        var local = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Local);
-        var writes = body.Operations.Where(x => x.Kind == OwnershipOperationKind.Write && x.Place == local.Id).ToArray();
-        Assert.Equal(PlacementKind.Replacement, writes[^2].Placement);
-        Assert.Equal(PlacementKind.Reinitialization, writes[^1].Placement);
-        Assert.Contains(body.CleanupSteps, x => x.Place == local.Id && body.Operations[x.Operation].Placement == PlacementKind.Reinitialization && x.Action == CleanupAction.Skip);
-    }
-
-    [Fact]
-    public void ConditionalReplacementAndCleanupUseWholeEnumState()
-    {
-        var c = Parse("func use(c: bool)\n    var x: Option<string>\n    if c\n        x = Option<string>.Some(\"a\")\n    x = Option<string>.None\n    if c\n        let y = x@move");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        var local = body.Places.Single(x => x.Source is FieldKoto field && field.NameKoto.IdentifierName == "x");
-        Assert.Contains(body.Operations, x => x.Place == local.Id && x.Kind == OwnershipOperationKind.Write && x.Placement == PlacementKind.ConditionalReplacement);
-        Assert.Contains(body.CleanupSteps, x => x.Place == local.Id && x.Action == CleanupAction.Conditional && body.Operations[x.Operation].Kind == OwnershipOperationKind.Cleanup);
-    }
-
-    [Fact]
-    public void CompletedTemporaryRegistersAfterItsConditionTemporaries()
-    {
-        var c = Parse("enum E\n    Both(bool, i32)\nfunc makeText() -> string => \"condition\"\nfunc use(c: bool)\n    let t = \"test\"\n    E.Both((if makeText() == t => \"yes\" else => \"no\") == t, if c => return else => 1)");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c, "use");
-        var steps = ReturnDestruction(body);
-        var result = Array.FindIndex(steps, x => x.Source is IfKoto && body.Places[x.Place].Type.Name == "string");
-        var condition = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
-        var payload = Array.FindIndex(steps, x => x.Place == body.Constructions[0].PayloadStart);
-        Assert.True(payload >= 0 && result > payload);
-        Assert.Equal(-1, condition); // Condition temporaries end before entering either branch.
-        Assert.Contains(body.CleanupPlans, p => p.Reason == CleanupReason.ExpressionEnd);
-    }
-
-    [Fact]
     public void RebindingChangedStorageInvalidatesTheSupportedTypeCache()
     {
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\nlet x = E.Empty");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c);
-        var originalCases = AdtDef.CaseTypes(body.Places[body.Constructions[0].Place].Type)!;
-        var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
-        c.Kotonoha.CreateCodeContext().Parse(declaration, "Again(ref/i32 during static)");
+        var originalCases = AdtDef.CaseTypes(TypeOfX(c))!;
+        c.Kotonoha.CreateCodeContext().Parse(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<EnumKoto>().Single(), "Again(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
-        Assert.False(body.IsVerified);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var rebuilt = body.Places[Assert.Single(body.Constructions).Place].Type;
         Assert.Single(originalCases);
-        var rebuiltCases = AdtDef.CaseTypes(rebuilt)!;
+        var rebuiltCases = AdtDef.CaseTypes(TypeOfX(c))!;
         Assert.NotSame(originalCases, rebuiltCases);
         Assert.Equal(2, rebuiltCases.Length);
         var reference = Assert.Single(rebuiltCases[1]!.Components);
@@ -282,37 +140,24 @@ public class EnumOwnershipTest
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    private static void CheckConstruction(string declarations, string type, string expression, int count)
-    {
-        var c = Parse(declarations + $"let x: {type} = {expression}");
-        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Body(c);
-        var construction = Assert.Single(body.Constructions);
-        Assert.Equal(count, construction.PayloadCount);
-        Assert.Equal(count, body.Operations.Count(x => x.Kind == OwnershipOperationKind.PayloadPlacement));
-        Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.CompleteConstruction);
-        Assert.DoesNotContain(body.Operations, x => x.Kind is OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry);
-        var baseline = Parse(declarations + $"let x: {type} = " + (count == 0 ? ".Empty" : ".Full(127)"));
-        Assert.True(baseline.Analyze().IsVerified, MinimalEmissionTest.Describe(baseline));
-        Assert.Equal(Body(baseline).Operations.Select(x => x.Kind), body.Operations.Select(x => x.Kind));
-        if (body.Places[construction.Place].Type.Kind == BoundTypeKind.Nominal)
-        {
-            Assert.Same(Assert.IsType<BoundEnumCase>(construction.Case).Owner.Type, body.Places[construction.Place].Type);
-        }
+    // One spelling's top-level MIR body has no call and, without its sites, equals the baseline spelling's (R6-check H8a D10).
+    private static void CheckConstruction(string declarations, string type, string expression, string baseline)
+        => Assert.Equal(TopLevel(declarations + $"let x: {type} = {baseline}"), TopLevel(declarations + $"let x: {type} = {expression}"));
 
-        if (count != 0)
-        {
-            var payload = body.Places[construction.PayloadStart];
-            Assert.Equal("i8", payload.Type.Name);
-            Assert.Equal(AcquisitionKind.Copy, payload.Acquisition);
-        }
+    // A verified program's top-level MIR body, which has no call, without its sites.
+    private static string TopLevel(string source)
+    {
+        var c = Parse(source);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var ordinal = Array.FindIndex(program.Bodies.ToArray(), static x => x.Key.Decl is null && x.Source.Module == 0);
+        Assert.DoesNotContain(program.Bodies[ordinal].Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Call);
+        return MirDumpTest.Unsited(program, ordinal);
     }
 
-    private static OwnershipCleanupStep[] ReturnDestruction(OwnershipBody body)
-        => body.CleanupSteps.Where(x => x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto).ToArray();
-
-    private static OwnershipBody Body(Compilation c, string? name = null)
-        => c.AnalyzeLegacyOwnership().Bodies.Single(x => name is null ? x.Function.IsGenerated : x.Function.Name == name);
+    // The bound Type of the local `x`.
+    private static BoundType TypeOfX(Compilation c)
+        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "x").TypeOf()!;
 
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);
@@ -330,22 +175,15 @@ public class EnumOwnershipTest
             var source = "func use(c: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}@move"));
             var c = Parse(source);
             Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-            var body = Body(c, "use");
-            var plans = body.Constructions;
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 c.Bind();
                 c.Analyze();
             }));
-            Assert.Same(body, Body(c, "use"));
-            Assert.Same(plans, body.Constructions);
-            Assert.Equal(count * 2, plans.Count);
             c.Bind();
-            Assert.False(body.IsVerified);
             Assert.False(c.Analysis.IsVerified);
             Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-            Assert.Equal(count * 2, body.Constructions.Count);
         }
     }
 }

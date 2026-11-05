@@ -298,23 +298,11 @@ public class ElementUpdateEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    // The right side runs before the location is read and stored (its MIR: tests/mir/updates.kimi `orderedUpdate`).
     [Fact]
     public void RightSidePrecedesLocationReadAndStore()
     {
         const string Source = "func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nfunc rhs() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar a: [1 of i32] = [40]\na[index()] += rhs()\nif a[0] == 42 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementUpdateOrder", Source, "rhs\nindex\nok\n");
-        var c = MinimalEmissionTest.Analyze(Source);
-        var body = c.AnalyzeLegacyOwnership().Bodies[0];
-        var update = Assert.Single(body.ElementUpdates);
-        var plan = body.Projections[update.Projection];
-        Assert.True(update.Right < plan.Operation && plan.Operation < plan.Output && plan.Output < update.Computation && update.Computation < plan.Write);
-        Assert.Equal(LoanRequirement.Ref, body.ComparisonLoans[plan.Loan].Mode);
-        Assert.Equal(LoanRequirement.Uniq, body.ComparisonLoans[plan.Exclusive].Mode);
-        Assert.Equal(plan.Loan, body.LoanInputs[plan.Operation]);
-        Assert.Equal(plan.Exclusive, body.LoanStates[plan.Operation]);
-        Assert.True(body.HasComparisonLoan(plan.Output, plan.Exclusive));
-        Assert.True(body.HasComparisonLoan(update.Computation, plan.Exclusive));
-        Assert.True(body.HasComparisonLoan(plan.Write, plan.Exclusive));
-        Assert.False(body.HasComparisonLoan(update.Result, plan.Exclusive));
     }
 }

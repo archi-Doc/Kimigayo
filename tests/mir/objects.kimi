@@ -14,3 +14,7 @@ func notCell(x: objref/Cell) -> bool => x is not Cell
 func eitherCell(x: objref/Cell, flag: bool) -> bool
     require x is not Cell or flag else => return false
     return x is Cell
+func blockedTest(x: objref/Cell) -> bool => (label work: do
+    defer => loop => ()
+    exit to work x
+) is Cell

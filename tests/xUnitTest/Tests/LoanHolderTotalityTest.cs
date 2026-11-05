@@ -1,15 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
-using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.5.5, 15.6.3, 15.8.2: the concrete engine carries a root's Loan into every holder a value flows into, whatever the
+// SPEC 13.5.5, 15.6.3, 15.8.2: A5's records carry a root's Loan into every holder a value flows into, whatever the
 // operation: a captured exclusive reference with a declared Origin roots its closure body (E1), a store through an exclusive
 // reference retains the stored value's Loans in the referent (E2), and a closure value holds its entries' Loans (E3).
-public class SharedEngineTotalityTest
+public class LoanHolderTotalityTest
 {
     private const string Copy = "    X is Copy\n";
 
@@ -56,39 +55,6 @@ public class SharedEngineTotalityTest
     [InlineData("ClosureInTuple", "func h(value: uniq/i32 during a, x: i32) -> i32\n" + Closure + "    let t = (hh@move, 1)\n    let g = t.0@move\n    let r = g() + t.1\n    v@follow = x\n    return r + v@follow\nvar n: i32 = 1\nlet r = h(n@uniq, 9)\nrequire r == 11 else => $abort(\"tuple\")")]
     public void RunsTheOrdersThatWriteAfterTheLastUse(string name, string source)
         => ScalarEmissionTest.EmitFixture("SharedEngine" + name, source, string.Empty);
-
-    // E4: every operation and value kind has a flow row of RetainBorrowAuthority; a kind without one would leave its body
-    // unverified with an internal invariant failure instead of silently carrying nothing.
-    [Fact]
-    public void EveryKindHasAFlowRow()
-    {
-        Assert.All(Enum.GetValues<OwnershipOperationKind>(), static kind => Assert.NotEqual(OwnershipFlow.OperationFlow.Unclassified, OwnershipFlow.FlowOf(kind)));
-        Assert.All(Enum.GetValues<OwnershipValueKind>(), static kind => Assert.NotEqual(OwnershipFlow.ValueFlow.Unclassified, OwnershipFlow.FlowOf(kind)));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void LivenessConsumesCleanupFactsAndDistinguishesAbort(bool observes)
-    {
-        var source = CompilationTestHelper.Parse("()").Kotonoha.RootKoto;
-        var body = new OwnershipBody();
-        body.PlaceStorage.Add(new(0, source, BoundType.Unit, OwnershipPlaceKind.Local, false, AcquisitionKind.Copy) { CleanupObservesBorrows = observes });
-        body.OperationStorage.AddRange([new(OwnershipOperationKind.Entry, source), new(OwnershipOperationKind.Cleanup, source, 0), new(OwnershipOperationKind.Read, source, 0), new(OwnershipOperationKind.Exit, source)]);
-        body.Values.AddRange(new OwnershipValue[4]);
-        body.EdgeHeads.AddRange([0, 2, 3, -1]);
-        body.EdgeStorage.AddRange([new(0, 1, OwnershipEdgeKind.Normal, 1), new(0, 2, OwnershipEdgeKind.Abort, -1), new(1, 3, OwnershipEdgeKind.Normal, -1), new(2, 3, OwnershipEdgeKind.Normal, -1)]);
-        var dependencies = new PackedAnalysisTable(2);
-        dependencies.Reset(1);
-        dependencies[0] = LoanRequirement.Ref;
-        var liveness = new BorrowLiveness();
-        liveness.Solve(body, dependencies, new[] { 0 });
-        Assert.Equal(observes, liveness.IsLive(0, 0));
-        Assert.Equal(observes, liveness.IsLive(1, 0));
-        Assert.True(liveness.IsLive(2, 0));
-        Assert.False(liveness.IsLive(3, 0));
-        Assert.Equal(LoanRequirement.Ref, dependencies[0]);
-    }
 
     private static string Text(string source, Kimi.Diagnostics.SourceSpan? span)
         => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;

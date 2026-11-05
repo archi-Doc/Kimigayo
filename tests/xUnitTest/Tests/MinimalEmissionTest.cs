@@ -354,7 +354,7 @@ public class MinimalEmissionTest
     // only reads, since a message argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c)
         => $"Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Failure} {x.Code} {LegacyRecords.Location(x.Node)}")) + "; " +
+            string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Failure} {x.Code} {CompilationTestHelper.Location(x.Node)}")) + "; " +
             string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; Emission=" +
             string.Join(", ", c.Diagnostics.Finalize(DiagnosticPartition.Emission, DiagnosticPartition.Emission).Diagnostics
                 .Select(static x => $"{x.Code} {x.Span}"));

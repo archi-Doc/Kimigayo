@@ -39,10 +39,10 @@ public sealed partial class Binding
     }
 
     /// <summary>Gets whether a node's Origin relation records are twins, the records of a relation that is also a row A5 judges, which the
-    /// MIR difference ledger compares with A5 (DECISIONS R4-M108, R4-M111).</summary>
+    /// test MIR side (<c>MirTargetSide.MirSide</c>) leaves out for A5's row (DECISIONS R4-M108, R4-M111).</summary>
     /// <param name="node">The records' node.</param>
     /// <returns>Whether its records are twins.</returns>
-    [Transitional("R6", Reason = "The ledger's twin subset; H11 deletes it with the twins (DECISIONS R4-M111).")]
+    [Transitional("R6", Reason = "The test MIR side's twin filter; H11 deletes it with the twins (DECISIONS R4-M111).")]
     internal bool IsTwinRecord(Koto node) => this.originTwins?.Contains(node) == true;
 
     // DIAGNOSTICS (Origin relations): an obligation's record is at its use, a local annotation's fit at the local's initializer, the

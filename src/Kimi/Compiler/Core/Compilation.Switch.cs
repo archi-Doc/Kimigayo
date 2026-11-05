@@ -2,8 +2,7 @@
 
 // Owns the Transitional pipeline switch: the pipeline (plan 12.1) a compilation runs, and the compiler identity the process's non-default
 // pipeline marks (SPEC 23.2.1). Every pipeline analyzes, publishes and generates alike (DECISIONS R5-M156; MIR code generation, the one
-// code generator since R6-gen's G4, DECISIONS R5-M160), so the pipeline selects only the difference ledger's observation (tests), the
-// identity mark and the test manifest entry.
+// code generator since R6-gen's G4, DECISIONS R5-M160), so the pipeline selects only the identity mark and the test manifest entry.
 // Input: KIMI_PIPELINE, read once per process. Output: the process default (DefaultPipeline), a compilation's selection (Pipeline) and
 // CompilerIdentity.
 // Invariants: the type initializer reads the variable once, so every thread gets the one value the environment names (PLAN G199);
@@ -64,6 +63,6 @@ internal enum CompilerPipeline : byte
     /// <summary>The default: the MIR decides acceptance and every merged problem publishes, as on every pipeline (DECISIONS R5-M185).</summary>
     Legacy,
 
-    /// <summary>As <see cref="Legacy"/>, observed by the difference ledger and marked in the compiler identity and the test manifest.</summary>
+    /// <summary>As <see cref="Legacy"/>, marked in the compiler identity and the test manifest.</summary>
     Mir,
 }

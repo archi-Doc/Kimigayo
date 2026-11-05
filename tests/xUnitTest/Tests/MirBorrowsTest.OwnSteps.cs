@@ -225,7 +225,7 @@ public sealed partial class MirBorrowsTest
     {
         const string Shape = "func shape()\n    var t = («N:Buf<i32>.init(1), »0)\n«N:    let p{0} = t.{0}.data\n»«N:    t.{0} = Buf<i32>.init(2)\n»" +
             "«N:    usep(p{0})\n»";
-        var runs = new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
+        var runs = new[] { 32, 64, 128 }.Select(n => Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
         long[] work = [.. runs.Select(static x => x.Work)];
         long[] bytes = [.. runs.Select(static x => x.Bytes)];
         output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
@@ -282,7 +282,7 @@ public sealed partial class MirBorrowsTest
     public void AViewNoAccessMayDepartRunsNoStratum()
     {
         const string Shape = "func shape(b: uniq/Buf<i32>)\n«N:    let p{0} = b.data\n»«N:    usep(p{0})\n»";
-        var runs = new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
+        var runs = new[] { 32, 64, 128 }.Select(n => Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
         long[] work = [.. runs.Select(static x => x.Work)];
         long[] bytes = [.. runs.Select(static x => x.Bytes)];
         output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
@@ -298,7 +298,7 @@ public sealed partial class MirBorrowsTest
     {
         const string Shape = "func shape(«N:b{0}: uniq/Buf<i32>, »n: isize)\n«N:    let p{0} = b{0}.data\n»" +
             "«N:    b{0}.length = n\n    b{0}.length = n + 1\n»«N:    usep(p{0})\n»";
-        var runs = new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
+        var runs = new[] { 32, 64, 128 }.Select(n => Measured(Prelude + RawShapes + Expand(Shape, n, 0))).ToArray();
         long[] work = [.. runs.Select(static x => x.Work)];
         long[] bytes = [.. runs.Select(static x => x.Bytes)];
         output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
