@@ -39,3 +39,8 @@ func pairs<s/T>(p: s/T, item: T)
     let t = (v, 1)
     var x = item@move
     inner(x@(s/T), 2)
+
+func give3(a: i32, b: i32 = 2, c: i32 = 3) => ()
+
+func namedDefault(x: i32, y: i32)
+    give3(c: x, a: y)

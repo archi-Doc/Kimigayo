@@ -53,14 +53,20 @@ public class ArchitectureRulesTest
     [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
 
     // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
-    // where no entry point carries it, until the stage that replaces it: dump goldens (R4). R4-M13a: the control-flow structure is read
-    // only by LegacyRecords, and direct calls of the old control-flow entries cannot grow. R6-check H5 (H0b §2.1, review B3): the old
-    // analysis is read only through its transitional entry, AnalyzeLegacyOwnership (D3 deleted Compilation's property).
+    // where no entry point carries it, until the stage that replaces it: dump goldens (R4). R4-M13a: direct calls of the old
+    // control-flow entries cannot grow. R6-check H5 (H0b §2.1, review B3): the old analysis is read only through its transitional entry,
+    // AnalyzeLegacyOwnership (D3 deleted Compilation's property).
     [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", LegacyOwnership + @"(?:Analyze|Result|ReportDiagnostics)\b", 0)]
-    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 15)]
-    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 28)]
-    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 1)]
-    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 64)]
+    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 0)]
+    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 0)]
+    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 0)]
+    // R6-check H8b (D8, D9): the 4 calls left are stopped methods, which keep their old reads until their removal condition. PLAN
+    // G428's fix: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
+    // OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning and
+    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. PLAN G52's join-cascade shape:
+    // ControlFlowAnalysisTest.DefersCoverageWhenAnUnresolvedCallCouldHaveTypeNever. Each fix moves its tests and lowers the limit; at 0,
+    // H10b replaces the row by zero-reference rows.
+    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 4)]
     // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
     // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.
     [InlineData("Compiler references to R6-gen's deleted components", "src/Kimi", "*.cs", DeletedByR6Gen, 0)]

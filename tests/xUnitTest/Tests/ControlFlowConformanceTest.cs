@@ -99,10 +99,8 @@ public class ControlFlowConformanceTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, source + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
-        var flow = c.AnalyzeControlFlow();
-        Assert.True(flow.Issues.Count == 0, source + "\n" + string.Join("\n", flow.Issues.Select(x => x.Message)));
-        Assert.Equal(0, c.Binding.LintErrors);
-        Assert.Empty(flow.PendingBinding);
+        Assert.True(c.Analyze().IsVerified, source + "\n" + MinimalEmissionTest.Describe(c));
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
     }
 
     [Theory]
@@ -153,9 +151,9 @@ public class ControlFlowConformanceTest
     public void RejectsInvalidResultsAndTargets(string source)
     {
         var c = Parse(source);
-        var bound = c.Bind();
-        var flow = c.AnalyzeControlFlow();
-        Assert.True(!bound.IsComplete || c.Binding.LintErrors > 0 || flow.Issues.Count > 0, source);
+        c.Bind();
+        c.Analyze();
+        Assert.NotEmpty(CompilationTestHelper.PublishedErrors(c));
     }
 
     [Theory]
@@ -167,7 +165,7 @@ public class ControlFlowConformanceTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, source + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
-        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Equal(warns, CompilationTestHelper.BindingWarnings(c).Any(warning => warning.Message.Contains("effect-free")));
     }
 

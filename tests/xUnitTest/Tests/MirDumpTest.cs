@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Diagnostics;
@@ -62,6 +63,14 @@ public sealed class MirDumpTest
         var text = new StringBuilder();
         MirDump.Write(c.BuildMir(), 0, text);
         return text.ToString();
+    }
+
+    // One body's dump without its sites (` @` and a syntax id), which a spelling or an edit changes (R6-check H8a D10).
+    internal static string Unsited(MirProgram program, int ordinal)
+    {
+        var text = new StringBuilder();
+        MirDump.Write(program.Bodies[ordinal], text, program.Drops, ordinal);
+        return Regex.Replace(text.ToString(), @" @\d+", string.Empty);
     }
 
     private static void Golden(string name, string actual)

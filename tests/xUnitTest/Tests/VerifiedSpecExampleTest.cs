@@ -16,10 +16,6 @@ public class VerifiedSpecExampleTest
     /// the adopted proposal Abstract Calls Reach by Paths retired.</summary>
     internal static readonly string[] Families = ["Binding", "A1", "A3", "A4", "F1", "F2", "F3", "F4", "F5", "F7", "F8", "F9", "F10"];
 
-    /// <summary>The deciders whose rules have landed on the MIR: every one since R6-check H5 (DECISIONS R5-M185; F7, F8 and F10 at R4's
-    /// exit), so it gates nothing here; the difference ledger's summary reads it until H10a.</summary>
-    internal static readonly string[] Landed = ["Binding", "A1", "A3", "A4", "F1", "F2", "F3", "F4", "F5", "F7", "F8", "F9", "F10"];
-
     private const string Document = "Hello.kimi";
 
     public static TheoryData<string> Variants => [.. DiagnosticCorpus.SpecCases.SelectMany(static x => x.Variants.Select((_, i) => $"{x.Name}/{i}"))];

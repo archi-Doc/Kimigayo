@@ -91,11 +91,9 @@ Verify accepts both `ClassName` / `ClassName.Method` and their fully qualified f
 
 After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. The common checks join each nonempty group, as `Class.*` among methods, so they add to the selection rather than narrowing it. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail. After the run, every requested class and method must also match a test the run executed, read from its per-test results (`tests-*.xml`), even when the common checks or another selector execute tests: a selector fails when it matches only Explicit methods, which discovery lists and xUnit reports Not Run, or when the class/method intersection or the purpose filter leaves it no test.
 
-`-Pipeline mir` (R3–R6; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`. From R6-gen's G2 every pipeline publishes the same records (DECISIONS R5-M156), so `-Pipeline mir` adds only the difference ledger's observation and the identity mark, and the mir lane runs only as the ledger's run below (DECISIONS R5-M152, OI-3 (a)). MIR code generation is the one code generator: `-Codegen` and `KIMI_CODEGEN` went with the selector at R6-gen's G4 (DECISIONS R5-M160).
+`-Pipeline mir` (R3–R6; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`. From R6-gen's G2 every pipeline publishes the same records (DECISIONS R5-M156), so `-Pipeline mir` adds only the identity mark (DECISIONS R5-M152, OI-3 (a)); the difference ledger that ran on it ended at R6-check H10a. MIR code generation is the one code generator: `-Codegen` and `KIMI_CODEGEN` went with the selector at R6-gen's G4 (DECISIONS R5-M160).
 
 R4's MIR-builder merges run the default checks and select the affected native families and O2 kernels (DECISIONS R5-M8, ask A-10).
-
-The MIR difference ledger (R4–R6, DECISIONS R4-M17) is recorded by the test assembly. `KIMI_MIR_DIFF=<directory>` makes its fixture `MirDifferenceLedger` compare every mir-pipeline compilation once per Binding pass and append raw rows and sources to that directory, which must be fresh (the aggregation reads every `raw-*.tsv` there), aggregated into `ledger.tsv` and `summary.md` (plan §8's metrics: the families landed on the MIR, the SPEC examples of `tests/diagnostics/spec-cases.json` checked there, and the open blocking rows, DECISIONS R4-M47) when the run ends; `KIMI_MIR_LEDGER=<directory>` with `MirDifferenceTest.RequestedLedger` aggregates a directory's raw rows again. The mir measurement of a unit runs the Functional suite under `KIMI_PIPELINE=mir` with `KIMI_MIR_DIFF` (tier 1 is `MirDifferenceTest.RequestedCorpus`, tier 2 the rest of the suite) and the `Purpose=Allocation` tests under mir without it, since the observer allocates; the Functional failure set must equal a mir run without the ledger. The ledger of a unit is kept under `artifacts/verify/mir-diff/<unit>/`.
 
 A unit that the A5 step 2 plan marks +cen (DECISIONS R4-M74, OQ1) also runs the census test that the plan's unit 2x-T1 adds (its prerequisite, plan §4): no problem of any MIR analysis in the library and the 44 milestone programs (DECISIONS R4-M12), the 31 `tests/mir` goldens or the accepting `tests/diagnostics/spec-cases.json` variants. The census is `MirCensusTest`, which the normal suite runs and `-Class MirCensusTest` selects; it asserts no validator finding and no A5 problem in any program of those sets (R4-M12), and no MIR construction record and no problem of any analysis in those Binding accepts (R4-M47), and `KIMI_MIR_PROBLEMS=<directory>` makes it write each set's problems there as `census-<set>.tsv`.
 
@@ -148,8 +146,8 @@ Sessions working in parallel on one machine share its load and their full-suite 
 the main checkout's `artifacts/`, which is ignored and therefore separate in every worktree: a unit in `bin/worktrees/<name>`
 uses the main checkout's directories by absolute path.
 
-A heavy run is a full Session (on any pipeline or code generator), a full `-TestPurpose Functional` run (also a ledger run
-with `KIMI_MIR_DIFF`), or a native fixture or milestone sweep; a Unit run of selected classes is not. At most three heavy
+A heavy run is a full Session (on any pipeline or code generator), a full `-TestPurpose Functional` run, or a native
+fixture or milestone sweep; a Unit run of selected classes is not. At most three heavy
 runs execute at once across the sessions. Before starting one, list `artifacts/heavy-runs/*.run` and delete those older
 than four hours (stale); if three or more remain, do targeted work and check again later. Otherwise create
 `<R4|BU|R5>-<unit>-<yyyyMMdd-HHmmss>.run` there, one line naming the worktree and the command, start the run, and delete
@@ -157,11 +155,10 @@ the file when the run ends, passed or failed. A script running several heavy run
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
 from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus whatever the selection, so
-`./scripts/verify.ps1 -DiagnosticSnapshot` alone, the build and that step, suffices), `mir-diff/` (the whole
-`KIMI_MIR_DIFF` directory of `-Pipeline mir -TestPurpose Functional`), optionally `semantic/` (`KIMI_SEMANTIC_SNAPSHOT=write`
+`./scripts/verify.ps1 -DiagnosticSnapshot` alone, the build and that step, suffices), optionally `semantic/` (`KIMI_SEMANTIC_SNAPSHOT=write`
 output, with the `KIMI_SEMANTIC_HIR`/`KIMI_SEMANTIC_MIR` flags it used) and `README.txt` naming the commit, the commands, the
-evidence directory and the date. Reuse an existing base for the same commit; produce a missing one, the ledger as a
-registered heavy run, and copy it there. Never edit a base in place: delete a wrong one whole and remake it. A unit compares
+evidence directory and the date. Reuse an existing base for the same commit; produce a missing one and copy it there
+(`mir-diff/`, the difference ledger's, ended at R6-check H10a; the last is W-17's `shared-base/382126932/mir-diff/`). Never edit a base in place: delete a wrong one whole and remake it. A unit compares
 against the base of the commit it starts from; pass `-DiagnosticBaseline` an absolute Windows path (`C:/...` or `C:\...`),
 since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
 

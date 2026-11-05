@@ -2,8 +2,8 @@
 
 // Owns the vocabulary of a MIR problem's facts (A6; DECISIONS R4-M3a, R4-M57, R4-M69, R4-M92, R4-M97, R4-M132): what a fact is and the
 // record of one.
-// Input: the kind, site and value a recording rule gives. Output: MirFact values, which MirReport keeps per problem and the difference
-// ledger reads.
+// Input: the kind, site and value a recording rule gives. Output: MirFact values, which MirReport keeps per problem and Core's publisher
+// (`Compilation.Publication`) reads, beside the test MIR side (`MirTargetSide.MirSide`), which reads the problems they belong to.
 // Invariants: a fact is a site the problem relates and, for a kind that names one, its typed value, never a message (R4-M132): an Inlined
 // fact names the inline default copy whose template an A1 or A2 Language problem belongs to, which a limit record never carries (R4-M69,
 // until 2g-6), an Evaluated fact the default's operation of a Loan problem a body owns inside a copy, recorded at the omitting call

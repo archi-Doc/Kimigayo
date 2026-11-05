@@ -62,3 +62,92 @@ func loopingGuard()
     match "held"
         let text if (loop => ()) => Console.writeLine("selected")
         _ => Console.writeLine("fallback")
+func fail() -> Never => fail()
+func neverSubject() -> i32 => match (fail())
+    _ => 1
+func neverParenthesized() -> i32 => match ((fail()))
+    _ => 1
+func neverBranches() -> i32 => match (if true => fail() else => fail())
+    _ => 1
+enum Duo
+    Pair(string, i32)
+func intactSubject(x: Duo) => match x@move
+    .Pair(let s, 0) => Console.writeLine(s)
+    .Pair(_, _) => ()
+func copyBinding(x: Option<i32>) -> i32 => match x@move
+    .Some(let n) => n
+    .None => 0
+enum Twin
+    Pair(string, string)
+func reverseCleanup(x: Twin) => match x@move
+    .Pair(let a, _) => ()
+enum Core
+    Pair(string, string)
+enum Shell
+    Pair(Core, string)
+func nestedCleanup(x: Shell) => match x@move
+    .Pair(.Pair(let a, _), _) => ()
+    .Pair(_, _) => ()
+func loopSubject(c: bool)
+    while c
+        match Option<string>.Some("text")@move
+            .Some(let s)
+                Console.writeLine(s)
+            .None
+                ()
+func makeOption() -> Option<string> => .Some("text")
+func evaluatedOnce() => match makeOption()
+    .Some(let s) => Console.writeLine(s)
+    .None => ()
+func returnTransfer(c: bool, x: Twin) -> string => match x@move
+    .Pair(let a, _)
+        let local = "body"
+        return a@move
+func yieldTransfer(c: bool, x: Twin) -> string => match x@move
+    .Pair(let a, _)
+        let local = "body"
+        yield a@move
+func makeOuter() -> string => "outer"
+func consumeTexts(a: string, b: string) => ()
+func deepReturn(c: bool, x: Twin)
+    consumeTexts(
+        makeOuter(),
+        match x@move
+            .Pair(let a, _)
+                if c
+                    let local = "inner"
+                    return
+                yield a@move
+    )
+func nestedSubjects(x: Twin, y: Twin) -> string => match x@move
+    .Pair(let a, _) => match y@move
+        .Pair(let b, _)
+            return b@move
+func loopContinue(c: bool)
+    while c
+        match Option<string>.Some("text")@move
+            .Some(let s)
+                continue
+            .None
+                ()
+func makeTemporary() -> string => "temporary"
+func consumeNumbers(a: i32, b: i32) => ()
+func subjectTemporaries()
+    consumeNumbers(
+        2,
+        match makeTemporary() == "expected"
+            true => 1
+            false => 0
+    )
+func abortAfterAcquisition(x: Option<string>) => match x@move
+    .Some(let s) => fail()
+    .None => fail()
+func precedes(x: bool)
+    consumeNumbers(
+        match x
+            true => 1
+            false => 0
+        , 2
+    )
+func bodyBindings(x: Twin) => match x@move
+    .Pair(let a, let b) => ()

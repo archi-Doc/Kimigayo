@@ -6,7 +6,6 @@
 // The MIR decides acceptance (DECISIONS R5-M185): Analysis is verified when the MIR of the version exists and its rows hold no Error, its
 // rows being every merged problem of its report (construction and collection records, the analyses' problems) and its validator findings,
 // which Problems gives and Core's publisher publishes (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184).
-// Observers of Analyzed (R4-M17, removal H10a) are read-only; no compiler code subscribes.
 // Analyze runs no old analysis; its test and benchmark readers reach it only through AnalyzeLegacyOwnership, which runs it once per version
 // (R6-check H0b §2.1, review B3; H0c D-c1; removal H10b).
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
@@ -27,12 +26,6 @@ public partial class Compilation
     private Backend.InstanceCollector? instances;
     private Mir.MirProgram? mir; // The MIR of the latest Analyze; null before one and after invalidation.
     private bool legacyAnalyzed; // Whether the old analysis ran for this version (AnalyzeLegacyOwnership); invalidation clears it.
-
-    /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the MIR's rows of the version are final: the one
-    /// observation point of the difference ledger (R4-M17), which runs the old analysis through <see cref="AnalyzeLegacyOwnership"/>.
-    /// Observers only read.</summary>
-    [Transitional("R6", Reason = "The difference ledger compares the old analysis with the MIR until R6-check H10a deletes it.")]
-    internal static event Action<Compilation>? Analyzed;
 
     /// <summary>Gets the result of the latest <see cref="Analyze"/>: verified when its MIR exists and no row of <see cref="Problems"/> is an
     /// Error (DECISIONS R5-M185); not verified before an analysis and after invalidation.</summary>
@@ -82,7 +75,7 @@ public partial class Compilation
     }
 
     /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9): the MIR is built, validated, analyzed and its checked
-    /// set collected, on every pipeline (SPEC 8.15.3; DECISIONS R5-M156, R5-M185); then <see cref="Analyzed"/> occurs.</summary>
+    /// set collected, on every pipeline (SPEC 8.15.3; DECISIONS R5-M156, R5-M185).</summary>
     /// <returns>The analysis result.</returns>
     /// <exception cref="InvalidOperationException">The latest Binding pass is not final.</exception>
     public AnalysisResult Analyze()
@@ -95,7 +88,6 @@ public partial class Compilation
         this.Diagnostics.Invalidate(DiagnosticPartition.ControlFlow);
         this.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
         this.mir = this.BuildMir();
-        Analyzed?.Invoke(this);
         return this.Analysis;
     }
 

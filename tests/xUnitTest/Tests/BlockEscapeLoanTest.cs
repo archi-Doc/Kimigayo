@@ -367,7 +367,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     // whose destruction check, carrying-definition walk, Borrow search through definitions, constructions and calls, and record
     // reuse retained storage. FollowedWorkload's show also has A5's two records at its valid `for` over an abstract Iterable since G264
     // (S) S2 (class 4, as GenericRequirement's in AnEscapedBorrowIsOneRecordAtTheDestruction), S2's (e)-family records that PLAN G416
-    // removes (H5's (e) list, row "S2's self-row family", the owner's O-9); the old analysis's count stays the escapes.
+    // removes (H5's (e) list, row "S2's self-row family", the owner's O-9).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(ValidWorkload, 0, 0)]
@@ -381,7 +381,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         var loop = workload.IndexOf(IterableLoop, StringComparison.Ordinal);
         Assert.Equal(g416, c.Problems.Count(x => x.Code.IsLoanConflict() && (c.SyntaxOf(x.Subject).Span.Start, c.SyntaxOf(x.Subject).Span.Length) == (loop, IterableLoop.Length)));
         Assert.Equal(escapes + g416, c.Problems.Count(static x => x.Code.IsLoanConflict()));
-        Assert.Equal(escapes, c.AnalyzeLegacyOwnership().Issues.Count(static x => x.Borrow is not null));
         var verified = escapes == 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() => verified = c.Analyze().IsVerified));
         Assert.Equal(escapes == 0, verified);

@@ -131,7 +131,7 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
     // `State.inspect()`, its "confined: a mutable static access" label, the "including unused declarations" text and the original slot's,
     // bound and effect roles are lost until A4 publishes them.
     [Fact]
-    public void TransitiveFailureRelatesTheOriginalSlotAndItsBoundInCliAndLsp()
+    public void TransitiveFailuresReachCliAndLspWithoutEvidence()
     {
         const string Source = "group State\n    public var count: i32 = 0\n    public func inspect() -> i32 => State.count\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => State.inspect()\nlet independent = missing";
         var path = Path.GetFullPath("virtual-effect-obligation.kimi");

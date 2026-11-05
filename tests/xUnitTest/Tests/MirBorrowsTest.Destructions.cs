@@ -693,7 +693,7 @@ public sealed partial class MirBorrowsTest
         const string Shape = "func shape(y: uniq/i32)\n    var slot: raw/u8 = null\n" +
             "«N:    let w{0} = y@follow@ref\n    var x{0} = Writer.init(q: w{0}@raw@raw/u8)\n    x{0}.p = slot@raw\n    x{0} = Writer.init(q: null)\n»" +
             "    usep(slot)\npublic func main() => ()\n";
-        long[] work = [.. new[] { 8, 16, 32 }.Select(n => this.Measured(DropShapes + Expand(Shape, n, 0)).Work)];
+        long[] work = [.. new[] { 8, 16, 32 }.Select(n => Measured(DropShapes + Expand(Shape, n, 0)).Work)];
         output.WriteLine($"N 8, 16, 32: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }

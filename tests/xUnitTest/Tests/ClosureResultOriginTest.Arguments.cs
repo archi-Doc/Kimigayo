@@ -8,7 +8,7 @@ namespace XunitTest;
 
 // PLAN G273's rows from implementation review 1 (R4's review-1.md B1, B2; BU's impl-review.md 1): a maker-returned Closure's Type carries
 // its makers' images as Origin arguments, and those arguments relate as SPEC 15.3.5 derives them, never more strictly. Each row states
-// the MIR side exactly and the default side D1 or D2 (AssertSides).
+// the MIR side exactly (AssertSides).
 public partial class ClosureResultOriginTest
 {
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
@@ -89,7 +89,7 @@ public partial class ClosureResultOriginTest
     [InlineData("x3_nopremise_bad", HpQ + PthenQ + "    return c()\n" + MainUnit, Unproven + " return c()")]
     [InlineData("y1_params_nocall", HpQi32 + PthenQ + "    return 0\n" + MainUnit, "")]
     [InlineData("y4_param_and_local", "func h(p: ref/i32) -> i32\n" + Local + "    return 0\n" + MainUnit, "")]
-    [InlineData("y4_ret_bad", "func h(p: ref/i32) -> ref/i32 during p\n" + Local + "    return c()\n" + MainUnit, Unsatisfied + " return c()")]
+    [InlineData("y4_ret_bad", "func h(p: ref/i32) -> ref/i32 during p\n" + Local + "    return c()\n" + MainUnit, Conflict + " let local: i32 = 1; " + Unsatisfied + " return c()")]
     [InlineData("y5_store_into_param_var", HpQi32 + StoreA + "    return 0\n" + MainUnit, "")]
     [InlineData("y5_ret_bad", HpQ + StoreA + "    return c()\n" + MainUnit, Unproven + " return c()")]
     [InlineData("y7_static_and_param", "func h(p: ref/i32) -> i32\n" + Literal + "    return 0\n" + MainUnit, "")]

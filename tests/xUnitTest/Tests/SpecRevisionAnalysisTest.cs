@@ -111,26 +111,26 @@ public class SpecRevisionAnalysisTest
     [Fact]
     public void DeferredDivergenceAffectsExitRatherThanRegistration()
     {
-        var analysis = Analyze("func f() -> i32\n    defer\n        loop\n            continue\n    let after = 1\n    return 2");
-        Assert.Empty(analysis.Issues);
-        var after = analysis.Nodes.Single(x => x.Key is FieldKoto { NameKoto.IdentifierName: "after" });
-        Assert.True(after.Value.CanCompleteNormally);
+        var tree = AssertValidAnalysis("func f() -> i32\n    defer\n        loop\n            continue\n    let after = 1\n    return 2");
+        var after = KotoTree.Walk(tree.RootKoto).OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "after");
+        Assert.Equal(HirCompletion.Completes, HirTables.CompletionOf(after));
     }
 
+    // A branch's diverging defer blocks only that branch's exits: the MIR golden branchBlockedExit (tests/mir/scopes) holds the valid
+    // form, whose `return 2` runs through the deferred loop to an `unreachable check` while `return 1` returns.
     [Fact]
     public void BranchScopedCleanupDoesNotBlockOtherReturnPaths()
     {
         var tree = Parse("func f(flag: bool) -> i32\n    if flag\n        defer\n            loop\n                continue\n        return \"text\"\n    return 1");
         tree.Compilation.Bind();
-        var analysis = tree.Compilation.AnalyzeControlFlow();
-        Assert.True(analysis.Nodes.Single(x => x.Key is FunctionKoto { IsGenerated: false }).Value.CanCompleteNormally);
+
         // The blocked return is still checked against the available result contract.
         Assert.Contains(tree.Compilation.Binding.Issues, issue => issue.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
     }
 
     [Fact]
     public void UnreachedRegistrationDoesNotBlockAnEarlierReturn()
-        => Assert.Empty(Analyze("func f() -> i32\n    return 1\n    defer\n        loop\n            continue").Issues);
+        => AssertValidAnalysis("func f() -> i32\n    return 1\n    defer\n        loop\n            continue");
 
     // SPEC 11.1: a stored Property's custom getter returns exactly the Property's Type.
     [Theory]
@@ -273,26 +273,23 @@ public class SpecRevisionAnalysisTest
         return tree;
     }
 
-    private static ControlFlowAnalysis Analyze(string source)
-    {
-        var compilation = Parse(source).Compilation;
-        compilation.Bind();
-        return compilation.AnalyzeControlFlow();
-    }
-
-    // Whether Binding accepts the source and control flow reports no Error.
+    // Whether the source publishes no Error: Binding's (its lints included) and the analysis's.
     private static bool BindsAndFlows(string source)
     {
         var compilation = Parse(source).Compilation;
-        return compilation.Bind().IsComplete && compilation.Binding.LintErrors == 0 && compilation.AnalyzeControlFlow().Issues.Count == 0;
+        compilation.Bind();
+        compilation.Analyze();
+        return CompilationTestHelper.PublishedErrors(compilation).Length == 0;
     }
 
-    private static void AssertValidAnalysis(string source)
+    // Binding accepts the source and publishes no Error, and the analysis verifies it.
+    private static Kotonoha AssertValidAnalysis(string source)
     {
-        var compilation = Parse(source).Compilation;
+        var tree = Parse(source);
+        var compilation = tree.Compilation;
         Assert.True(compilation.Bind().IsComplete, string.Join("\n", compilation.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
-        Assert.Equal(0, compilation.Binding.LintErrors);
-        var analysis = compilation.AnalyzeControlFlow();
-        Assert.True(analysis.Issues.Count == 0, string.Join("\n", analysis.Issues.Select(x => x.Message)));
+        Assert.Empty(CompilationTestHelper.BindingErrors(compilation));
+        Assert.True(compilation.Analyze().IsVerified, MinimalEmissionTest.Describe(compilation));
+        return tree;
     }
 }

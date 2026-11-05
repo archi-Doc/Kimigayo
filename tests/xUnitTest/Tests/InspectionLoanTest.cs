@@ -6,19 +6,16 @@ using Xunit;
 
 namespace XunitTest;
 
-public class BorrowDependencyStorageTest
+public class InspectionLoanTest(ITestOutputHelper output)
 {
     [Theory]
     [InlineData(32)]
     [InlineData(128)]
     [Trait("Purpose", "Allocation")]
-    public void DependentBodiesUseCompactTables(int count)
+    public void AWarmAnalysisOfStoredInspectionsAllocatesNothing(int count)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count, true));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "check");
-        var bytePerCell = (2L * body.Places.Count * body.Places.Count) + ((long)body.Places.Count * body.Operations.Count);
-        Assert.True(body.BorrowStorageBytes <= bytePerCell / 4, $"Retained {body.BorrowStorageBytes} bytes for {bytePerCell} Boolean/loan cells.");
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid);
@@ -29,15 +26,25 @@ public class BorrowDependencyStorageTest
     [InlineData(32)]
     [InlineData(128)]
     [Trait("Purpose", "Allocation")]
-    public void InspectionOnlyBodiesNeedNoLocalDependencyTable(int count)
+    public void AWarmAnalysisOfInspectionsAllocatesNothing(int count)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "check");
-        Assert.True(body.Places.Count >= count);
-        Assert.Equal(0, body.BorrowDependencyCapacity);
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
+    }
+
+    // R6-check H8c D8 (H8a OQ2): on the inspection extent's N locals and temporaries at N = 32, 64, 128, A5's work grows within A3 6.3's
+    // dense terms (factor 5), its Loan-set bytes and the cold analysis's allocation linearly (CallableRegionScalingTest's bounds).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Purpose", "Allocation")]
+    public void InspectionLoansScaleWithinTheirBound(bool stored)
+    {
+        string[] sources = [.. new[] { 32, 64, 128 }.Select(n => VerificationWorkloads.InspectionLoans(n, stored))];
+        CallableRegionScalingTest.WorkScales(output, sources, 5);
+        CallableRegionScalingTest.ColdAnalysisScales(output, sources);
     }
 
     [Theory]
@@ -48,8 +55,6 @@ public class BorrowDependencyStorageTest
         var source = VerificationWorkloads.InspectionLoans(4, stored);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
-        var body = Assert.Single(c.AnalyzeLegacyOwnership().Bodies, static x => x.Function.Name == "check");
-        Assert.Equal(stored, body.BorrowDependencyCapacity > 0);
         ScalarEmissionTest.EmitFixture("BorrowDependencyStorage" + stored, source, string.Empty);
     }
 

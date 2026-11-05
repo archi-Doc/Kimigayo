@@ -109,6 +109,9 @@ public sealed class MirAnalysisTest
         """;
 
     // A destructor's environment effect, which A4 composes from the planned cleanups, and group H's discard, open for more members.
+    // N reference locals live across N branches (ArenaWorkload's parts): they fit A1's arena but not A5's Loans table.
+    internal const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
         "    public func discard<T>(item: T) => ()\n";
 
@@ -670,8 +673,7 @@ public sealed class MirAnalysisTest
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
-        const string Scalars = "    var v{0} = {0}\n|    if flag => v{0} = 1\n|"; // Each part's line N times, with its index.
-        const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+        const string Scalars = "    var v{0} = {0}\n|    if flag => v{0} = 1\n|";
         const string Limit = "Ownership.StorageLimit OwnershipStorageLimit_Kd func f(flag: bool) -> i32";
         foreach (var (size, views, line, expected) in new[]
         {
@@ -680,17 +682,7 @@ public sealed class MirAnalysisTest
             (2_000, 1, References, Limit + " Loans over"),
         })
         {
-            var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
-                .Append("func f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n    let r = x@ref\n");
-            foreach (var part in line.Split('|'))
-            {
-                for (var n = 0; n < size; n++)
-                {
-                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, part, n);
-                }
-            }
-
-            var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
+            var c = MirBuildTest.Compile(ArenaWorkload(size, line));
             var program = c.BuildMir();
             Assert.Equal([expected], program.Problems.All.ToArray().Select(static (x, i) => (Problem: x, Index: i))
                 .Where(static x => x.Problem.Subject.Module == 0)
@@ -877,6 +869,23 @@ public sealed class MirAnalysisTest
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
 
         static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
+    }
+
+    // The arena workload (A5ChecksTheViewsA1Completed, OwnershipStorageLimitTest.TheMirsArenaLimitPublishesBesideIndependentErrors):
+    // `f`, with each '|'-separated part of `line` repeated `size` times with its index, then a Loan conflict at `x = 2`.
+    internal static string ArenaWorkload(int size, string line)
+    {
+        var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
+            .Append("func f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n    let r = x@ref\n");
+        foreach (var part in line.Split('|'))
+        {
+            for (var n = 0; n < size; n++)
+            {
+                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, part, n);
+            }
+        }
+
+        return text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString();
     }
 
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().

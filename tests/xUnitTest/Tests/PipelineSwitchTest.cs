@@ -12,10 +12,9 @@ namespace XunitTest;
 
 /// <summary>The pipeline switch and the analysis entry points (plan 12.1, 13.2; R3–R6): <c>KIMI_PIPELINE</c> selects the default,
 /// every pipeline publishes the MIR's construction records, validator findings and checked set's records at check (DECISIONS R5-M156),
-/// the non-default pipeline marks the compiler identity, and every analysis notifies the difference ledger's observer. MIR code generation,
-/// the one code generator (DECISIONS R5-M160), writes the module of an accepted program (R5 C0b1, X2). Every product generation request
-/// passes the generation entry's gate (R5 C0a): an analysis with MIR records generates nothing, and <c>kimi test</c> publishes its records
-/// as <c>kimi build</c> does.</summary>
+/// and the non-default pipeline marks the compiler identity. MIR code generation, the one code generator (DECISIONS R5-M160), writes the
+/// module of an accepted program (R5 C0b1, X2). Every product generation request passes the generation entry's gate (R5 C0a): an analysis
+/// with MIR records generates nothing, and <c>kimi test</c> publishes its records as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
     // The MIR's one Unsupported record here, at `a == b`, a form the old path's check accepts (its generation refuses it): the tuple operator
@@ -334,43 +333,6 @@ public sealed class PipelineSwitchTest
         Assert.Equal(("Unsupported_Kd", loop.Span), (record.Code, record.Span));
     }
 
-    // R4-M17: on both pipelines, every Analyze raises Compilation.Analyzed once, after the old path's records and the MIR's are final: the
-    // observer reads the analysis Analyze returns, the MIR's Unsupported record included (on every pipeline, DECISIONS R5-M156).
-    [Fact]
-    public void AnalyzeNotifiesTheObserverOnce()
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Unbuilt));
-        var observed = new List<AnalysisResult>();
-        void Observe(Compilation x)
-        {
-            if (ReferenceEquals(x, c))
-            {
-                observed.Add(x.Analysis);
-            }
-        }
-
-        Compilation.Analyzed += Observe;
-        try
-        {
-            foreach (var pipeline in Pipelines)
-            {
-                c.Pipeline = pipeline;
-                Assert.True(c.Bind().IsComplete);
-                Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-                var result = c.Analyze();
-                Assert.Equal(1, result.ErrorCount);
-                Assert.Equal([result], observed);
-                observed.Clear();
-            }
-        }
-        finally
-        {
-            Compilation.Analyzed -= Observe;
-        }
-    }
-
     // R6-check H0b §2.1 (review B3; H0c D-c1): the old analysis's readers reach it through one transitional entry, which runs it once per
     // version: a second call on one version runs nothing, so it allocates nothing and keeps the records check published (a run clears its
     // partitions).
@@ -409,53 +371,6 @@ public sealed class PipelineSwitchTest
             Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
             c.ReportAnalysis();
             Assert.Equal(expected, TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}"));
-        }
-    }
-
-    // Tests read a failure that OwnershipIssue.Code maps to several codes through one helper each: its codes are exactly the images
-    // of that failure, whatever the issue's other facts.
-    [Fact]
-    public void TheMultiCodeHelpersAreTheOwnershipMapping()
-    {
-        var images = new Dictionary<OwnershipRequirement, HashSet<DiagnosticCode>>();
-        foreach (var (failure, code) in OwnershipCodes())
-        {
-            Assert.Equal(failure == OwnershipRequirement.ComparisonLoanConflict, code.IsLoanConflict());
-            Assert.Equal(failure == OwnershipRequirement.UnprovenOrigin, code.IsUnprovenOrigin());
-            images.TryAdd(failure, []);
-            images[failure].Add(code);
-        }
-
-        Assert.Equal(4, images[OwnershipRequirement.ComparisonLoanConflict].Count);
-        Assert.Equal(2, images[OwnershipRequirement.UnprovenOrigin].Count); // DECISIONS BU-85: an unjudged non-relation is Internal.
-    }
-
-    /// <summary>Lists the code <see cref="OwnershipIssue.Code"/> gives each failure under every combination of the issue's other facts:
-    /// a call or another source, an Origin obligation refuted or not, another obligation or none, a reservation or not, an activation or
-    /// not.</summary>
-    /// <returns>Each failure with each of its codes, repeated.</returns>
-    internal static IEnumerable<(OwnershipRequirement Failure, DiagnosticCode Code)> OwnershipCodes()
-    {
-        var c = CompilationTestHelper.Parse("f(1)");
-        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
-        BindingObligation[] obligations =
-        [
-            new(BindingObligationKind.OriginOutlives, call, default, Longer: new(OriginKind.Projection), Shorter: BoundOrigin.Static),
-            new(BindingObligationKind.OriginOutlives, call, default, Longer: BoundOrigin.Static, Shorter: BoundOrigin.Static),
-            new(BindingObligationKind.TypeRole, call, default),
-        ];
-        foreach (var failure in Enum.GetValues<OwnershipRequirement>())
-        {
-            foreach (var source in new Koto[] { call, c.Kotonoha.RootKoto })
-            {
-                foreach (var obligation in obligations.Cast<BindingObligation?>().Append(null))
-                {
-                    for (var facts = 0; facts < 4; facts++)
-                    {
-                        yield return (failure, new OwnershipIssue(source, failure, Reservation: (facts & 1) - 1, Activation: facts >= 2, Obligation: obligation).Code);
-                    }
-                }
-            }
         }
     }
 
