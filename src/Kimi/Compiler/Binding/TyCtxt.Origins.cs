@@ -85,7 +85,8 @@ internal sealed partial class TyCtxt
     internal int OriginAtom(ExecutableBody body, BoundOrigin origin, SourceRef site) => binding.OriginAtomIn(body, origin, site);
 
     // SPEC 15.3.6: the index of the canonical meet of two atoms of a body's table (A5's meet law), interned there once; a meet of Fixed atoms
-    // is Fixed, and its part is its operands' union (PartOf), as for every meet, also when their parts differ.
+    // is Fixed, and its part is its operands' union (PartOf), as for every meet, also when their parts differ (a layer atom beside a body
+    // atom): A5 chooses a derived edge's oracle by its in-edge's row, as for every row edge, and by the ends only for a containment in-edge.
     internal int MeetAtom(ExecutableBody body, int a, int b, SourceRef site) => binding.MeetAtomIn(body, a, b, site);
 
     // SPEC 15.3.6, 15.6.5: the body's fixed-fixed oracle, extracted at its root (a layer's at its struct); disposed after use.

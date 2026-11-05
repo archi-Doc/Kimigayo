@@ -103,12 +103,13 @@ public sealed partial class MirOriginsTest
     // A Property's storage passed to a `during static` parameter: an accessor's Borrow of static storage (2a0-D §3 rows 7 and 7').
     private const string Storage = "group Util\n    public func keepStatic(r: ref/i32 during static) -> i32 => r@follow\ngroup Api\n";
 
-    // A callee's meet of its own Origins, whose Parameter atoms appear in its caller's rows (2a0-D's rv/meet-trans, I-1).
+    // A callee's meet of its own Origins (2a0-D's rv/meet-trans, I-1): the call's Origins are call regions of mt's body (SPEC 15.6.4
+    // step 1; U3-design.md's twelfth amendment), so t's inferred region is bounded by x alone and the program is valid.
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
 
-    // MeetTrans' call in a constructor and in its struct's Field initializer: the callee's Parameter atoms are in rows of both parts of the
-    // constructor's slice, and belong to neither part (DECISIONS BU-102; be85b19e2 threw at `t@uniq`, dev added an InternalInvariant_Kd).
+    // MeetTrans' call in a constructor and in its struct's Field initializer, one call's regions in each part of the constructor's slice
+    // (DECISIONS BU-102; be85b19e2 threw at `t@uniq` when they were the callee's Parameter atoms, dev added an InternalInvariant_Kd).
     private const string MeetTransBothParts = "group Util\n    public func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n" +
         "        slot@follow = v\nstruct S\n    public var n: i32 = if true\n        let x = 1\n        let y = 5\n        var t = x@ref\n" +
         "        Util.put(t@uniq, v: y@ref)\n        yield 0\n    else => 0\n    public init()\n        let x = 1\n        let y = 5\n" +
@@ -162,10 +163,16 @@ public sealed partial class MirOriginsTest
     // SPEC 15.6.5 and MeetNode's rule (2a0-D D15): a non-fixed meet at a row's longer end is a node of its own beside an edge per operand,
     // so what reaches the meet itself is judged at the shorter end: a local's Borrow annotated `during (p and x)` and returned `during x`,
     // and the meet of two local regions read into a `during x` local (where the operand y is also Unknown); the valid counterpart names x.
+    // The meet is also at the initializer's shorter end: the meet law's derived edge from the finite initializer into the meet's bound is
+    // Refuted at that in-edge's site too (SPEC 15.3.6; one record per edge into a Fixed node and failing source, as at the use).
     [Theory]
-    [InlineData(MeetHead + "    let m: ref/i32 during (p and x) = local@ref\n    return m\n", "UnsatisfiedOriginRelation_Kd m")]
+    [InlineData(
+        MeetHead + "    let m: ref/i32 during (p and x) = local@ref\n    return m\n",
+        "UnsatisfiedOriginRelation_Kd let m: ref/i32 during (p and x) = local@ref",
+        "UnsatisfiedOriginRelation_Kd m")]
     [InlineData(
         MeetHead + "    let m: ref/i32 during (p and q) = local@ref\n    let n: ref/i32 during x = m\n    return n\n",
+        "UnsatisfiedOriginRelation_Kd let m: ref/i32 during (p and q) = local@ref",
         "UnsatisfiedOriginRelation_Kd let n: ref/i32 during x = m",
         "UnprovenOriginRelation_Kd let n: ref/i32 during x = m")]
     [InlineData(MeetHead + "    let m: ref/i32 during (p and x) = x\n    return m\n")]
@@ -285,8 +292,11 @@ public sealed partial class MirOriginsTest
     // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215);
     // a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3); and a `$tryWrite`
     // whose writer operand is Never, a transfer or `$abort`: it supplies no value, so its writer names no Origin of Utf8Writer's own
-    // declaration (SPEC 14.10.3, 15.3.4; PLAN G410).
+    // declaration (SPEC 14.10.3, 15.3.4; PLAN G410); and MeetTrans in a function and in both parts of a constructor's slice, whose call
+    // regions satisfy every row (U3-design.md's twelfth amendment: valid, the located limit before).
     [Theory]
+    [InlineData(MeetTrans)]
+    [InlineData(MeetTransBothParts)]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
     [InlineData("struct P {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc get(p: ref/P) -> ref/i32 during p.a\n    return p.r\n")]
     [InlineData("func shallow(x: ref/(ref/i32 during a)) -> ref/i32 during a\n    return x@follow\n")]
@@ -323,14 +333,12 @@ public sealed partial class MirOriginsTest
     }
 
     // 2a0-D §3 row 9 and D19: a row with an Unclassed end forms no edge and is the located limit at its Site, whatever Binding's
-    // completeness (DECISIONS R4-M113): a callee's own Parameter atoms in a caller's rows (I-1, PLAN G195; meet-trans, which Binding rejects
-    // by its own relation record). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested result's row with a
-    // per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
+    // completeness (DECISIONS R4-M113); a callee's own Parameter atoms no longer reach a caller's rows (I-1, PLAN G195: a call's Origins
+    // are its call regions, AValidChainHasNoOriginProblem). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested
+    // result's row with a per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
     // 15.3.4, R4-M162: before H5 the invalid ones were Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front,
     // R7-O3).
     [Theory]
-    [InlineData(MeetTrans, "t@uniq")]
-    [InlineData(MeetTransBothParts, "t@uniq", "y@ref", "t@uniq", "y@ref")]
     [InlineData(NestedResult + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     [InlineData(NestedResult + "ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
     [InlineData(

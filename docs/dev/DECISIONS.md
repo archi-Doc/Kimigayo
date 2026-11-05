@@ -7826,6 +7826,8 @@ resumed by R4-M86 (2026-10-20).
     r2c's false `UnprovenConstraint_Kd`).
   - Superseded in part by BU-99 (2026-11-05): an Origin that a used default's premise bounds is solved by that premise, not opened
     as the call's region.
+  - Superseded in part by BU-104 (2026-11-06, the twelfth amendment): the region clause. Every callee Origin a solve leaves without a
+    candidate is a call region, whatever position names it; `OpenResultOnlyOrigins` is removed.
 
 - **BU-52 Rule A starts at every position the one walk names for input j: a by-value input's raw layers are storage the call writes,
   its cleanup among the writes; the class of shadow false errors of A5's whole-value Φ_E at calls as the owner's interim** (2026-10-29;
@@ -9302,6 +9304,25 @@ resumed by R4-M86 (2026-10-20).
     composition read completion state and found no child rows, so the root was judged as one Evidence leaf; each form had one solve,
     whose `PremiseSolved` was empty because `EvidenceNames` read the join root's Evidence mark.
   - Not in U3a: composition beneath a slot (R5, U3b); the Join record as a waiting fact, the survey path and one formation (U6).
+  - Twelfth amendment (2026-11-06; U3-design.md's twelfth amendment, C-49 and its re-check ACCEPT; the owner, verbatim 「Dは放棄します。
+    U3aについては、もう一度だけ設計して下さい。」 and 「B1 を直す」). Supersedes BU-51's region clause.
+    - Call regions (SPEC 15.6.4 step 1): after each candidate's solve, and at a function reference, a callee Origin that 15.3.6 leaves
+      without a candidate is a region of the executable body the call lies in, one per call and Origin (`OpenUnsolvedOrigins`,
+      replacing `OpenResultOnlyOrigins` and its result-only guard). Every relation of the call over it is a body row
+      (`JudgeCallPosition`'s `BodyChain`): Binding neither judges nor drops it, and no caller row names a callee's Parameter atom.
+    - A5's meet law at a shorter end (SPEC 15.3.6), the last step of `ClassEdges`, read by Judge and by Outlives: for a non-Fixed meet
+      and each in-edge whose tail is not an operand, an edge to the canonical meet of each choice of one bound per operand, at the
+      in-edge's site and row, judged as any edge into a Fixed node. An operand's bounds are the operand when Fixed, else each Fixed
+      node its walk meets and each bound of a meet it enters; the walk stops at Fixed nodes and never follows an operand's edge into
+      its own meet (`o outlives (o and ...)` bounds nothing). `TyCtxt.MeetAtom` (the view's `Meet` and `InternAtom`) gives the
+      canonical meet, Fixed, its part the operands' union.
+    - The nested-body limit: the view publishes on an atom's entry that it is an enclosing body's call region
+      (`OriginAtomEntry.EnclosingCallRegion`, set at `ClassifyAtom`'s row 6 and carried by a meet from an operand). A5 reads it at
+      Refuted and at Unknown (a Direct edge included): a failing chain with such an end, source or target, is the located
+      `Unsupported_Kd` at the chain's site, since only the enclosing body's rows decide it. Passing the requirement to the enclosing
+      body is G216 (b)'s.
+    - Rejected: the seventh's regions, the ninth as a placeholder, the tenth's narrowing and the eleventh's Rule E. Each reasoned at
+      the judgment about a callee Parameter atom the call had left in the caller.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and

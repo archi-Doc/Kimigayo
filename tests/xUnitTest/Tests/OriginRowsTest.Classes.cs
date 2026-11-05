@@ -85,14 +85,15 @@ public sealed partial class OriginRowsTest
         Assert.Equal((kind, role), (slice.Atoms[row.Longer].Kind.ToString(), slice.Atoms[row.Longer].Role.ToString()));
     }
 
-    // Rows 1, 2', 8 and 9 on the shorter ends: B's contract and static are Fixed, a meet with a Finite operand an Inferred node, a local's
-    // inference Inferred, a callee's own meet of Parameter atoms forms no edge (Unclassed, PLAN G195's located limit); an end a Binding
-    // failure left Unbound, and a meet of such ends, are Dependent (DECISIONS R4-M118).
+    // Rows 1, 2' and 8 on the shorter ends: B's contract and static are Fixed, a meet with a Finite operand an Inferred node, a local's
+    // inference Inferred, and a call's meet of its call regions Inferred (MeetTrans' `t@uniq`; Unclassed while they were the callee's
+    // Parameter atoms, U3-design.md's twelfth amendment); an end a Binding failure left Unbound, and a meet of such ends, are Dependent
+    // (DECISIONS R4-M118).
     [Theory]
     [InlineData(EnvStoreConsuming, "", "x@ref", "Fixed")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "g", "3@ref", "Inferred")]
     [InlineData(MeetTrans, "mt", "x", "Inferred")]
-    [InlineData(MeetTrans, "mt", "t@uniq", "Unclassed")]
+    [InlineData(MeetTrans, "mt", "t@uniq", "Inferred")]
     [InlineData("func needsStatic(x: ref/i32 during static) -> i32 => x@follow\nfunc caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", "caller", "local@ref", "Fixed")]
     [InlineData(MirOriginsTest.FailedClause, "f", "local@ref", "Dependent")]
     [InlineData(MirOriginsTest.RepeatedSet, "run", "k", "Dependent")]
@@ -105,8 +106,9 @@ public sealed partial class OriginRowsTest
 
     // DECISIONS R4-M118's precedence: a meet with an Unclassed operand (row 9, a located limit) is Unclassed whatever its Dependent
     // operands and their order, so the limit stays when the failure is repaired. No program forms such a meet: it is built in one
-    // compilation from FailedClause's Unbound end and an Unclassed atom that sorts before it (`put`'s own Parameter atom, meet-trans) or
-    // after it (an anchor formed in another body, `mt`), since a canonical meet orders its operands by kind.
+    // compilation from FailedClause's Unbound end and an Unclassed atom that sorts before it (`put`'s own Parameter atom, taken from its
+    // declaration, since a caller's rows name call regions instead) or after it (an anchor formed in another body, `mt`), since a canonical meet
+    // orders its operands by kind.
     [Fact]
     public void AnUnclassedOperandDecidesBeforeADependentOne()
     {
@@ -117,9 +119,11 @@ public sealed partial class OriginRowsTest
         var (unbound, site) = (slice.Atoms[row.Shorter].Atom, c.SyntaxOf(row.Site));
         var mtBody = Bodies(c).Single(static x => x.Key.Decl?.Name == "mt").Key.Body;
         var mt = c.Types.OriginRows(mtBody);
-        var foreign = mt.Atoms.First(static x => x is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Parameter }).Atom;
+        var put = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "put");
+        var foreign = put.Parameters[1].Type.TypeOf()!.Origin!.Operands[0];
         var anchor = new BoundOrigin(OriginKind.Anchor, c.SyntaxOf(mt.Rows[0].Site)) { Body = mtBody };
         Assert.Equal(OriginKind.Unbound, unbound.Kind);
+        Assert.Equal((OriginKind.Parameter, OriginAtomKind.Unclassed), (foreign.Kind, Atom(c, f, foreign, site).Kind));
         Assert.Equal(OriginAtomKind.Unclassed, Atom(c, f, anchor, site).Kind);
         foreach (var (other, order) in new[] { (foreign, "Parameter Unbound"), (anchor, "Unbound Anchor") })
         {
