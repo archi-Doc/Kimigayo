@@ -531,6 +531,13 @@ public sealed partial class Binding
         if ((IsBorrow(pattern.Semantics) || pattern.Kind == BoundTypeKind.Slice) && pattern.Origin is { } outer && result.Origin is { } substituted &&
             pattern.Components.Count != 0)
         {
+            // G216 (a) U3b WIP (eighth amendment): an open outer Origin of a solution's layer beside an Evidence leaf is bounded by the
+            // leaf's Origin, not judged. Unverified beyond the five slot rows.
+            if (actual?.Origin is { } bound && substituted.Kind == OriginKind.Inference && ReferenceEquals(outer, substituted))
+            {
+                outer = substituted = bound;
+            }
+
             var stored = visit with { Query = this.storedParts.Begin(this.storageVersion) };
             if (!this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, stored))
             {
