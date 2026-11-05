@@ -38,9 +38,9 @@ namespace Kimi.Compiler;
 //   each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies the defaults
 //   (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the Constraints over it
 //   (Prove); F1 (DECISIONS R4-M164), what each argument's position contributes to its selected call, one closed Contribution
-//   (Evidence, Signature, Result): PartContribution by the part's recorded kind, and SlotSolution.Contribute, which writes each
-//   candidate's root rows (SlotSolution.Rows, PositionRow; Binding.ArgumentKinds.Rows.cs, with the child rows of its selected call's
-//   judgment) once its expected result has solved its slots, read by SolveLate and JudgeSelectedCall.
+//   (Evidence, Signature): PartContribution by the part's recorded kind, and SlotSolution.Contribute, which writes each candidate's
+//   root rows (SlotSolution.Rows, PositionRow; Binding.ArgumentKinds.Rows.cs, with their child rows) after its late evidence pass, read
+//   by SolveLate and JudgeSelectedCall.
 // - Invariants: a recorded part (ArgumentPart: its kind, a Literal's default and its relation to its call, CallRelation) is keyed by
 //   its core's syntax identity (PartCore, SourceRef) and lives for one pass; RecordPart is the one writer of its kind and Awaits, by one
 //   row (every kind awaits but Literal), TakeArgument the one writer of Taken, and a writer of another column keeps the rest of the
