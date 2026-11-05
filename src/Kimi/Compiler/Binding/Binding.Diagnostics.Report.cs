@@ -11,6 +11,7 @@ namespace Kimi.Compiler;
 //   23.2.2's fallback for an incomplete pass without an Error.
 // - Inputs: the latest pass's issues, derived issues and explanation tables. Outputs: the Binding partition's records.
 // - Invariants: invoked after final analysis, not between Mods; each call replaces the partition's records. R7-E5 deletes ReportIssue's chain.
+// - Prohibitions: no failure is decided and no node's binding state is written here.
 public sealed partial class Binding
 {
     /// <summary>Records Binding's facts, replacing any it recorded before. Invoke after final analysis, not between Mods.</summary>

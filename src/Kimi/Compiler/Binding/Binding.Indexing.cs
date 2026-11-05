@@ -5,14 +5,20 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Indexing (IndexSources, IndexLibrary, IndexVisitor, TestSyntaxVisitor): the walk over the source modules and the embedded library
-// after ResetPass, before any header, Type or expression is bound.
+// after ResetPass, before any header, Type or expression is bound. One part enters later: a try propagation's arms are deferred
+// (SemanticsIndexed false), and BindMatch indexes them during body binding (IndexMatchArms), once the Subject's Type selects Option
+// or Result (Binding.Patterns.cs).
 // - Responsibility: per node, its semantic fields reset (the HIR row, plan activity, conversion and clause bindings), its scopes
 //   created and its symbols declared (containers, functions, parameters, locals, generic and length parameters, enum cases,
 //   pattern bindings and guard candidates); a test function the build does not include is resolved without indexing its signature
 //   or body, and TestSyntaxVisitor records only its Layout and misplaced Test attributes.
 // - Inputs: the numbered source trees and the restored library (Library.Restore); the scopes and symbols kept across passes.
-// - Outputs: the pass's nodes, pattern nodes, aliases, scopes and symbols, and Declare's Duplicate failures.
+// - Outputs: the pass's nodes, pattern nodes, aliases, scopes and symbols, and the failures recorded in this file: Duplicate (Declare,
+//   a repeated Semantics parameter), InvalidTypeFormation (a second self parameter, a property with neither storage nor getter),
+//   Unsupported (an unknown marker on an excluded test), InvalidTestDefinition and InvalidLayoutAttribute (IndexInvalidTestAttribute,
+//   IndexLayoutAttribute), with the attributes' targets invalidated (InvalidateAttributeTarget).
 // - Invariants: a recursive descent as deep as the syntax (R7-D3 bounds it); R7-D2 c replaces the walk with SyntaxTable's pre-order.
+// - Prohibitions: no name is resolved and no written Type, header or expression is bound here.
 public sealed partial class Binding
 {
     private readonly IndexVisitor indexer;

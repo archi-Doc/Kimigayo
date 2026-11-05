@@ -5,12 +5,16 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Signatures: a declaration's header and the signature rules of a member group.
-// - Responsibility: BindHeader binds a function's, property's or annotated variable's header once per pass, when first demanded
-//   (BindDeclarations' header loop forces the rest); ValidateSignatures checks a member group's one receiver shape (SPEC 7.3), its
-//   duplicate overloads (SPEC 7.4, by SignatureEquals) and a Contract's same-name requirements with those they inherit (SPEC 8.4.2).
+// - Responsibility: BindHeader binds a function's, property's or annotated variable's header when first demanded (BindDeclarations'
+//   header loop forces the rest), once per pass, except while a pending associated Type keeps a function's header open:
+//   BindFunctionHeader then leaves it unbound, and a later BindHeader binds it again. A demand while the header is being bound returns,
+//   and an anonymous function's header belongs to its expression context. ValidateSignatures checks a member group's one receiver
+//   shape (SPEC 7.3), its duplicate overloads (SPEC 7.4, by SignatureEquals) and a Contract's same-name requirements with those they
+//   inherit (SPEC 8.4.2).
 // - Inputs: the declared symbols and scopes; the bound parameter Types. Outputs: each symbol's header state and Type, and the
 //   ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are Binding.ParameterShapes.cs's.
 // - Invariants: a header is its declaration's, never the body that demands it (BindHeader binds it outside any body).
+// - Prohibitions: no call is selected and no overload ranked here; ValidateSignatures only fails declarations.
 public sealed partial class Binding
 {
     /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>

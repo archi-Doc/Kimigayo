@@ -10,6 +10,8 @@ namespace Kimi.Compiler;
 // - Inputs: the indexing walk and the declaration steps that declare a symbol. Outputs: scopes, symbols, each declaring node's
 //   BoundSymbol, Duplicate failures.
 // - Invariants: scopes and symbols are kept across passes by their key (a node or a source document) and reset by ResetPass.
+// - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's table only
+//   to chain a name's symbols (Next) and apply the duplicate rule.
 public sealed partial class Binding
 {
     internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => function.Accessor is { } accessor

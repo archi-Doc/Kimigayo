@@ -6,6 +6,7 @@ namespace Kimi.Compiler;
 // - Responsibility: every per-pass fact discarded, through the tables cleared here and the owning concerns' Reset* steps.
 // - Inputs: the mode (read by ResetCapabilities). Outputs: empty per-pass tables, reset scopes and symbols, the next storageVersion.
 // - Invariants: the cross-pass storage ResetPass's comment lists stays. R7-D2 b replaces the Clears with generation-stamped tables.
+// - Prohibitions: no fact is computed or recorded here; ResetPass only empties tables and resets state.
 public sealed partial class Binding
 {
     // Discards every fact of the latest pass. Cross-pass storage stays: interned Types, Origins and Constraints, scopes and
