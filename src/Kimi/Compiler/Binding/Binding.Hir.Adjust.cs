@@ -62,7 +62,7 @@ public sealed partial class Binding
         upcast.Left.BoundType?.Semantics != view.Semantics ? view.Semantics == SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow : HirAdaptation.None;
 
     // A body or operand that supplies its construct's value (SPEC 14.9); none in Discard Context.
-    private static Koto? ResultOf(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
+    private static Koto? ResultOf(Koto? source) => source is not null && IsValueContext(source) ? source : null;
 
     // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): the Adjust of a call input that a later call of its consumer replaces by another (a compound
     // update's getter before its setter), which the builder still builds as the input's plan-row Adjust; none at the first call.

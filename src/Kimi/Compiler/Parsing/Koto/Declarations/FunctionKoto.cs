@@ -91,9 +91,6 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the written parameter index after the ! boundary, or -1 when absent.</summary>
     public int NameBoundaryIndex { get; internal set; } = -1;
 
-    internal bool AllowsPositionalArgument(int index)
-        => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
-
     internal int FindParameter(string name)
     {
         var parameters = this.parameters;
@@ -126,40 +123,6 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         return this.parameterIndices.GetValueOrDefault(name, -1);
-    }
-
-    internal bool TryMapArgument(string? label, ref int next, ref bool named, Span<bool> used, out int slot)
-    {
-        if (label is not null)
-        {
-            named = true;
-            slot = this.FindParameter(label);
-        }
-        else
-        {
-            slot = -1;
-            if (named)
-            {
-                return false;
-            }
-
-            // Only a receiver can already be supplied during the positional prefix.
-            while (next < this.Parameters.Count && used[next])
-            {
-                next++;
-            }
-
-            slot = next++;
-        }
-
-        if ((uint)slot >= (uint)this.Parameters.Count || used[slot] ||
-            (label is null && !this.AllowsPositionalArgument(slot)))
-        {
-            return false;
-        }
-
-        used[slot] = true;
-        return true;
     }
 
     /// <summary>Gets the return type, if specified.</summary>

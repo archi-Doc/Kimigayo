@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // - Responsibility: the positions that do (IsBareAcquisitionPosition, a discarded node among them: Discards) and the Reborrow of a Place
 //   storing an exclusive reference there (StoredReborrow), recorded as the node's one adaptation, exactly as an annotation of the same
 //   complete Type would record it.
-// - Inputs: the node, its bound Type, its Place (IsBarePlace), its position and Discard Context (KotoHelper.IsValueContext), and the
+// - Inputs: the node, its bound Type, its Place (IsBarePlace), its position and Discard Context (IsValueContext), and the
 //   common adaptation (ExpectedAdaptation), which names the Reborrow.
 // - Outputs: the recorded adaptation and its Type; the bare entries of pair layers per Semantics case are Binding.PairCases'; how a
 //   consumer takes each child is the Adjust rule's (Binding.Hir.Adjust.cs).
@@ -32,7 +32,7 @@ public sealed partial class Binding
             TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto => true,
             FunctionKoto { IsAnonymous: true } function => ReferenceEquals(function.ExpressionBody, target),
             JumpKoto jump => ReferenceEquals(jump.Expression, target),
-            _ => Discards(target) || (ResultTarget(target) is IfKoto or MatchKoto or DoKoto && KotoHelper.IsValueContext(target)),
+            _ => Discards(target) || (ResultTarget(target) is IfKoto or MatchKoto or DoKoto && IsValueContext(target)),
         };
     }
 
@@ -40,7 +40,7 @@ public sealed partial class Binding
     // explicit discard's operand, or a node in Discard Context (a standalone expression, an indented body's direct expression, a
     // discarding single-item body). IsBareAcquisitionPosition and the HIR publisher's discarded Type (PlanRow.DiscardedType) read it.
     private static bool Discards(Koto target)
-        => target.Parent is DiscardKoto discard ? ReferenceEquals(discard.Operand, target) : !KotoHelper.IsValueContext(target);
+        => target.Parent is DiscardKoto discard ? ReferenceEquals(discard.Operand, target) : !IsValueContext(target);
 
     // The outermost group around `node`, the node its consumer takes (DECISIONS R4-M145): IsBareAcquisitionPosition, ClosureEffects'
     // ConsumedByValue and the HIR publisher's discard rows read this one rule.

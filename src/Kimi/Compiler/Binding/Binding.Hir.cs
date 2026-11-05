@@ -244,7 +244,7 @@ public sealed partial class Binding
         {
             var unset = HirTables.AdjustOf(node).Acquire == HirAcquire.Unset;
             var grouped = IsGroup(node.Parent);
-            if ((unset || grouped) && !KotoHelper.IsValueContext(node))
+            if ((unset || grouped) && !IsValueContext(node))
             {
                 var discarded = binding.Discarded(node);
                 HirTables.PlanFor(node, discarded != default).Adjust = discarded;

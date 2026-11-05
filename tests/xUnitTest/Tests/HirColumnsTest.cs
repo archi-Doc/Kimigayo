@@ -281,7 +281,7 @@ public sealed class HirColumnsTest
     {
         if (HirTables.PlanOf(jump).Plan is Koto row)
         {
-            return ReferenceEquals(row, KotoHelper.TransferTarget(jump));
+            return ReferenceEquals(row, Binding.TransferTarget(jump));
         }
 
         return CompilationTestHelper.BindingErrors(jump.CodeContext.Compilation)
@@ -374,7 +374,7 @@ public sealed class HirColumnsTest
         return own.Concat(calls).Concat(payloads);
 
         // A body or operand that supplies its construct's value.
-        static Koto? Result(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
+        static Koto? Result(Koto? source) => source is not null && Binding.IsValueContext(source) ? source : null;
     }
 
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type

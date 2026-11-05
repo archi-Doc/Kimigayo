@@ -281,7 +281,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (!KotoHelper.IsValueContext(target))
+            if (!IsValueContext(target))
             {
                 return ConsumedTakes.ByValue(binding.Discarded(place));
             }

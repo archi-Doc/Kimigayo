@@ -36,6 +36,9 @@ public class ArchitectureRulesTest
     // R6-check H14 (D7): a read or write of a Koto semantic slot, as a member access or as a property pattern's name, nested or not (a
     // static `BoundType.X` argument is neither).
     private const string SemanticSlotReads = @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:" + SemanticSlots + @")(?:\.\w+)*\s*:";
+    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=11;" +
+        "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;Koto/Expressions/InvocationKoto.cs=4;" +
+        "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=4";
 
     // DECISIONS R5-M162 and R5-M163 (plan §4.9 row G10, §5.4 item 4): the old generator's components R6-gen deleted, their stems
     // included, and the old analysis's instance entry points; the R8 runtime helpers are not among them. A letter in brackets keeps the
@@ -122,6 +125,9 @@ public class ArchitectureRulesTest
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
+    // R6-check H14 (D7): Parsing reads the Koto semantic slots only in their declarations' bodies and on their write paths (a replaced
+    // child's reset, the views and synthetic Kotos Binding builds), which R7 removes with the slots (DECISIONS R5-M9).
+    [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, or MeasureOnce for one run that cannot
     // repeat, which retire the thread's allocation context first; a window that reads the thread's counter itself can be charged a
     // runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks (src/Benchmark) are not tests. A letter in brackets keeps

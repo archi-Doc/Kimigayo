@@ -20,7 +20,7 @@ public class DefaultBindingTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var function = (FunctionKoto)Assert.Single(Calls(c)).CallOf()!.Target.Declaration;
         var value = function.Parameters[0].DefaultValue!;
-        Assert.True(KotoHelper.IsValueContext(value));
+        Assert.True(Binding.IsValueContext(value));
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 

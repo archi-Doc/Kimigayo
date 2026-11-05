@@ -19,7 +19,7 @@ public sealed class BaseReferenceKoto : IdentifierNameKoto
 
     internal BoundMemberPath? BasePath
     {
-        get => this.HasCurrentBinding ? this.basePath : null;
+        get => this.basePath;
         set => this.basePath = value;
     }
 

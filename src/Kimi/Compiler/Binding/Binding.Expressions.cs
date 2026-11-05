@@ -434,8 +434,8 @@ public sealed partial class Binding
                 BoundType? blockType = BoundType.Unit;
                 for (var i = 0; i < block.Items.Count; i++)
                 {
-                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression && KotoHelper.IsValueContext(block) ? expected : null);
-                    if (block.HasTrailingExpression && KotoHelper.IsValueContext(block))
+                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression && IsValueContext(block) ? expected : null);
+                    if (block.HasTrailingExpression && IsValueContext(block))
                     {
                         blockType = type;
                     }
