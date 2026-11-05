@@ -316,10 +316,13 @@ public sealed partial class Binding
         }
 
         // SPEC 15.3.4: a named function's set binds inside its header's Origin declaration, whose relations complete it in any order, so
-        // the first binding of one, an occurrence or a use's pull, binds the header first. The header is its declaration's, never the
-        // consulting Type's prerequisite (SPEC 23.1.2), and inside it the trigger finds the header resolving.
+        // the first binding of one, an occurrence or a use's pull, demands the header (Binding.DeclQuery's Signature): NotStarted binds it;
+        // Running (inside it, the common case) and Done return at once. The header is its declaration's, never the consulting Type's
+        // prerequisite (SPEC 23.1.2), so the demand runs with the consultation frame suspended. After a Running or Done demand
+        // syntax.BoundType is null: the first test above returned a known Type, and its closure-header exception's syntax has an
+        // anonymous Origin owner, which this test excludes.
         if (syntax is TypeSemanticsKoto { BindingSetName: not null } &&
-            OriginOwner(syntax) is FunctionKoto { IsAnonymous: false, BoundSymbol: { HeaderBound: false, Resolving: false } function })
+            OriginOwner(syntax) is FunctionKoto { IsAnonymous: false, BoundSymbol: { } function })
         {
             var consultation = (this.consultationStart, this.consultationNode);
             (this.consultationStart, this.consultationNode) = (-1, null);

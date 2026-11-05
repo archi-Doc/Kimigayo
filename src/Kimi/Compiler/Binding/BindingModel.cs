@@ -287,6 +287,11 @@ internal enum BindingFailure : byte
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
 public sealed class BindingSymbol
 {
+    // The declaration queries' states (Binding.DeclQuery), valid in the pass queryPass names.
+    private DeclStates queries;
+
+    private uint queryPass;
+
     internal BindingSymbol(string name, BindingSymbolKind kind, Koto declaration, BindingScope scope)
     {
         this.Name = name;
@@ -346,8 +351,6 @@ public sealed class BindingSymbol
 
     internal bool Resolving { get; set; }
 
-    internal bool HeaderBound { get; set; }
-
     /// <summary>Gets or sets a declaration container's published closed-clause check (Binding.SourceStates): Unknown while pending or under check.</summary>
     internal ConstraintProof SourceState { get; set; }
 
@@ -372,6 +375,27 @@ public sealed class BindingSymbol
 
     /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.7.3), or null when the Type may be an object payload.</summary>
     internal BindingSymbol? ObjectPayloadOptOut { get; set; }
+
+    /// <summary>Gets a declaration query's state in a pass (Binding.DeclQuery).</summary>
+    /// <param name="kind">The query's kind.</param>
+    /// <param name="pass">The pass stamp.</param>
+    /// <returns>The state, NotStarted when set in another pass.</returns>
+    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? this.queries[(int)kind] : DeclState.NotStarted;
+
+    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
+    /// <param name="kind">The query's kind.</param>
+    /// <param name="pass">The pass stamp.</param>
+    /// <param name="state">The state.</param>
+    internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
+    {
+        if ((uint)pass != this.queryPass)
+        {
+            this.queries = default;
+            this.queryPass = (uint)pass;
+        }
+
+        this.queries[(int)kind] = state;
+    }
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>

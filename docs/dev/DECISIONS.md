@@ -9247,6 +9247,31 @@ resumed by R4-M86 (2026-10-20).
   - Removal conditions that remain: join arguments (U3); `PartContribution` (U6). A non-Result root row is the part's contribution at
     the last `Contribute`; property rows are Evidence where `PartContribution` may say Signature, inert because the input carries no
     Origin. Open: `CompleteWaiting` completes a waiting part at a ParameterType that still holds the callee's unsolved Origins (PLAN).
+- **BU-105 Declaration queries: one state per declaration and kind, `Binding.DeclQuery`** (2026-11-05; R7-D1a, plan §5.1 D1 and
+  §6's row, adopted by the owner with the plan 2026-11-03 (RQ1-RQ17, R7-M1); design `r7-d1/D1-design.md` revision 2, review 1
+  REVISE, re-check 1 ACCEPT on condition R1, re-check 2 ACCEPT) SPEC 9 "No backtracking", 11.6.
+  - `Binding.DeclQuery` owns the state of each query Binding computes once per pass for one declaration: NotStarted, Running, Done,
+    inline on the declaration's own `BindingSymbol`, valid in the pass `storageVersion` (the pass stamp) names; no Clear, no table,
+    0 B cold and warm. The state keeps a `uint` copy of the stamp: a state not written in 2^32 - 1 passes aliases one 2^32 passes
+    old (about 4.3 * 10^9 Binds of one `Binding`), stated in the contract's invariant (re-check 1's R1).
+  - A kind is a row: its owner and writer, its output (kept where the owner publishes it), its re-entry rule (a SPEC cycle error at
+    the declaration, or no evidence) and its not-ready path (Abandon to NotStarted). Kind: `Signature` (`BindHeader`): an inferred
+    stored Property's re-entry is `CyclicBinding_Kd`, another header's re-entry reads no evidence, a header waiting on an associated
+    Type is abandoned. BU-95's set demand (`Binding.Types.cs`) is an ordinary demand inside its suspended consultation frame; its
+    state guard, a second copy of `BindHeader`'s entry rule, is deleted.
+  - Interims: the cycle record stays at today's demanders (`BindReference`, `BindVariableCore`) until D2 d2 moves it into the row
+    with the Error state; the header and variable guards read each other's Running state (`Resolving`) until D2 d4 makes the
+    variable binding a kind. These two are the only reads of a state outside the component; `SetQueryState` is called only there
+    (ArchitectureRulesTest).
+  - Removes `BindingSymbol.HeaderBound` (6 references) and `Resolving`'s header use (5 of 10 references; the other 5, the variable
+    binding's, are counted by ArchitectureRulesTest, at most 5, 0 at d4); D2 d1-d4 call through it. `SourceState` is not a kind
+    until C3 replaces `PublishSourceStates`' rounds by demand: BU-59's reason holds (a round fixpoint in which a reader cannot tell
+    Pending from a final Unknown); BU-57 and BU-59 unchanged.
+  - Rejected: a per-kind epoch (a second pass stamp beside `storageVersion`); a `TypeMemo` table (per query, over Types); fields per
+    kind on the symbol (an open family); a Koto- or SourceRef-keyed table; a full `ulong` copy of the stamp (+11.5 KB cold); an
+    Error state before its writer (d2); memoizing the abandoned header (a wait, not a failure); a `SourceCheck` kind now (review 1's
+    B1); a `Variable` kind now (its callers re-bind a failed local on each use; d4); a state read at BU-95's site (a second copy of
+    the entry rule).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

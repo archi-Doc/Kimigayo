@@ -5,14 +5,15 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Signatures: a declaration's header and the signature rules of a member group.
-// - Responsibility: BindHeader binds a function's, property's or annotated variable's header when first demanded (BindDeclarations'
-//   header loop forces the rest), once per pass, except while a pending associated Type keeps a function's header open:
-//   BindFunctionHeader then leaves it unbound, and a later BindHeader binds it again. A demand while the header is being bound returns,
-//   and an anonymous function's header belongs to its expression context. ValidateSignatures checks a member group's one receiver
-//   shape (SPEC 7.3), its duplicate overloads (SPEC 7.4, by SignatureEquals) and a Contract's same-name requirements with those they
-//   inherit (SPEC 8.4.2).
-// - Inputs: the declared symbols and scopes; the bound parameter Types. Outputs: each symbol's header state and Type, and the
-//   ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are Binding.ParameterShapes.cs's.
+// - Responsibility: BindHeader, the owner of Binding.DeclQuery's Signature kind, binds a function's, property's or annotated variable's
+//   header when first demanded (BindDeclarations' header loop forces the rest), once per pass, except while a pending associated Type
+//   keeps a function's header open: BindFunctionHeader then leaves it unbound (AbandonQuery), and a later BindHeader binds it again. A
+//   demand while the header is being bound returns, and an anonymous function's header belongs to its expression context.
+//   ValidateSignatures checks a member group's one receiver shape (SPEC 7.3), its duplicate overloads (SPEC 7.4, by SignatureEquals)
+//   and a Contract's same-name requirements with those they inherit (SPEC 8.4.2).
+// - Inputs: the declared symbols and scopes; the bound parameter Types. Outputs: each header's Type, its Signature state (BeginQuery,
+//   CompleteQuery, AbandonQuery), and the ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are
+//   Binding.ParameterShapes.cs's.
 // - Invariants: a header is its declaration's, never the body that demands it (BindHeader binds it outside any body).
 // - Prohibitions: no call is selected and no overload ranked here; ValidateSignatures only fails declarations.
 public sealed partial class Binding
@@ -73,7 +74,9 @@ public sealed partial class Binding
 
     private void BindHeader(BindingSymbol symbol)
     {
-        if (symbol.HeaderBound || symbol.Resolving || symbol.Declaration is FunctionKoto { IsAnonymous: true })
+        // Resolving is the variable binding's own Running flag (interim until R7-D2 d4, Binding.DeclQuery).
+        if (symbol.Declaration is FunctionKoto { IsAnonymous: true } || symbol.Resolving ||
+            this.BeginQuery(symbol, DeclQueryKind.Signature) != DeclState.NotStarted)
         {
             // An anonymous header belongs to its fixed expression context, including on a later binding pass.
             return;
@@ -83,12 +86,11 @@ public sealed partial class Binding
         var saved = this.EnterBody(default);
         try
         {
-            symbol.Resolving = true;
             if (symbol.Declaration is FunctionKoto function)
             {
                 if (!this.BindFunctionHeader(symbol, function))
                 {
-                    symbol.Resolving = false;
+                    this.AbandonQuery(symbol, DeclQueryKind.Signature);
                     return;
                 }
             }
@@ -101,8 +103,7 @@ public sealed partial class Binding
                 symbol.Type = this.BindType(type, symbol.Scope);
             }
 
-            symbol.HeaderBound = true;
-            symbol.Resolving = false;
+            this.CompleteQuery(symbol, DeclQueryKind.Signature);
         }
         finally
         {
