@@ -25,7 +25,7 @@ is asserted before printing `ok`. The ten inputs form five matched pairs:
 | RequirementErased / FunctionErased | Those Items converted to the same common Function signature |
 
 Compiler measurements reuse `CompilerPlanMeasurements`: 32 warm-ups, seven samples of 64 iterations, collection
-outside each interval, separate Binding/ownership/emission times and thread allocation counts. Each invocation must
+outside each interval, separate Binding/check/emission times and thread allocation counts (from R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass). Each invocation must
 remain valid. Native runs build each original generated source once per O0/O2, exclude the first checked process
 from the median and time seven more fresh processes. Process startup remains included; there is no timing threshold.
 Report IR bytes (original at O0, optimized at O2), executable bytes and the PE `.text` virtual/raw sizes separately. `.text` includes the

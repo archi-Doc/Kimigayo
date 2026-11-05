@@ -25,11 +25,20 @@ public class ArchitectureRulesTest
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
-    // A read of the old analysis, through its transitional entry, its only path (R6-check H0b §2.1, review B3; H5 D3).
-    private const string LegacyOwnership = @"\.AnalyzeLegacyOwnership\(\)\.";
+    // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE. R6-check H14 (D7): the names
+    // of the Koto semantic slots, except Formatting, Adaptation, Mode, Iteration and BasePath, whose names live members of other types share.
+    private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|" +
+        "BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|" +
+        "EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|" +
+        "ImplementationStorage|ClosureDefinition|ClosureAsCreated|ArithmeticStorage|ComparisonStorage|ComparisonActive|CreationStorage|" +
+        "AdaptationStorage";
 
-    // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
-    private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
+    // R6-check H14 (D7): a read or write of a Koto semantic slot, as a member access or as a property pattern's name, nested or not (a
+    // static `BoundType.X` argument is neither).
+    private const string SemanticSlotReads = @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:" + SemanticSlots + @")(?:\.\w+)*\s*:";
+    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=11;" +
+        "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;Koto/Expressions/InvocationKoto.cs=4;" +
+        "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=4";
 
     // DECISIONS R5-M162 and R5-M163 (plan §4.9 row G10, §5.4 item 4): the old generator's components R6-gen deleted, their stems
     // included, and the old analysis's instance entry points; the R8 runtime helpers are not among them. A letter in brackets keeps the
@@ -37,6 +46,15 @@ public class ArchitectureRulesTest
     private const string DeletedByR6Gen =
         @"\b(?:BodyLowerin[g]|EmissionModul[e]|EmissionOpcod[e]|LlvmModuleWrite[r]|LlvmEmitte[r]|GenericStoragePla[n]|StaticScalarEntr[y]|" +
         @"(?:Object|Virtual|Default)GenerationPla[n]|CompilerFunctionAdapter[s]|WindowsLowerin[g]|(?:Failed|Failure|Analyze)Instanc[e]\b)";
+
+    // DECISIONS R5-M189 (R6-check H10b, D8): the old ownership analysis H10b deleted, as its files' top-level types, its transitional
+    // entry and its limit code. A letter in brackets keeps the pattern from matching its source.
+    private const string DeletedByH10b =
+        @"\b(?:Ownershi[p](?:Analysis|Body|Call|CallInput|CallReservation|CleanupPlan|CleanupStep|ComparisonLoan|ConstructionPlan|" +
+        @"DeferredPlan|Edge|EdgeKind|ElementUpdate|Flow|Identity|Issue|Lending|MatchArmPlan|MatchPlan|Operation|OperationKind|PhiInput|" +
+        @"Place|PlaceKind|Projection|Result|Sequence|Storage|StorageLimitException|Transfers|Value|ValueKind)|AcquisitionKin[d]|" +
+        @"BorrowLivenes[s]|CallResultSourc[e]|Cleanu[p](?:Action|Reason)|InterpretationContex[t]|MovePat[h]|PackedAnalysisTabl[e]|" +
+        @"Plac[e](?:State|UseKind)|PlacementKin[d]|SequenceOperatio[n]|AnalyzeLegacyOwnershi[p]|DeferredExpansionLimit_K[d])\b";
 
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
@@ -52,27 +70,41 @@ public class ArchitectureRulesTest
     // from matching its source.
     [InlineData("Test collectible assemblies and load context unloads", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\bRunAndCollec[t]\b|\.Unload\(\)", 0)]
 
-    // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
-    // where no entry point carries it, until the stage that replaces it: dump goldens (R4). R4-M13a: direct calls of the old
-    // control-flow entries cannot grow. R6-check H5 (H0b §2.1, review B3): the old analysis is read only through its transitional entry,
-    // AnalyzeLegacyOwnership (D3 deleted Compilation's property).
-    [InlineData("Test calls of the old analysis entry points", "tests/xUnitTest", "*.cs", LegacyOwnership + @"(?:Analyze|Result|ReportDiagnostics)\b", 0)]
-    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 0)]
-    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 0)]
-    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 0)]
-    // R6-check H8b (D8, D9): the 4 calls left are stopped methods, which keep their old reads until their removal condition. PLAN
-    // G428's fix: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
+    // R3 U6: tests run and read analysis and generation through the Compilation entry points. R4-M13a: direct calls of the old
+    // control-flow entries cannot grow. R6-check H8b (D8, D9), H10b (D11): the 3 calls left are stopped methods, which keep their old
+    // reads until PLAN G428's fix moves them: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
     // OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning and
-    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. PLAN G52's join-cascade shape:
-    // ControlFlowAnalysisTest.DefersCoverageWhenAnUnresolvedCallCouldHaveTypeNever. Each fix moves its tests and lowers the limit; at 0,
-    // H10b replaces the row by zero-reference rows.
-    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 4)]
+    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. The fix lowers the limit; at 0, H10b-2 replaces the row by
+    // zero-reference rows.
+    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 3)]
     // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
     // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.
     [InlineData("Compiler references to R6-gen's deleted components", "src/Kimi", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Benchmark references to R6-gen's deleted components", "src/Benchmark", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Playground references to R6-gen's deleted components", "src/Playground", "*.cs", DeletedByR6Gen, 0)]
     [InlineData("Test references to R6-gen's deleted components", "tests", "*.cs", DeletedByR6Gen, 0)]
+    // R6-check H10b (D8): the same for the deleted old ownership analysis, replacing the test-read rows of its transitional entry; the
+    // compiler's row is H11a's (D8), landing when the last Binding comment naming it goes.
+    [InlineData("Compiler references to the old ownership analysis", "src/Kimi", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Test references to the old ownership analysis", "tests", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Benchmark references to the old ownership analysis", "src/Benchmark", "*.cs", DeletedByH10b, 0)]
+    [InlineData("Playground references to the old ownership analysis", "src/Playground", "*.cs", DeletedByH10b, 0)]
+    // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
+    [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Backend reads of Koto semantic slots", "src/Kimi/Compiler/Backend", "*.cs", SemanticSlotReads, 0)]
+    // The root helpers, each by its file (SourceFiles recurses), and the other areas outside Binding.
+    [InlineData("ComparisonTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ComparisonTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("DefaultParameters reads of Koto semantic slots", "src/Kimi/Compiler", "DefaultParameters.cs", SemanticSlotReads, 0)]
+    [InlineData("ElementAccess reads of Koto semantic slots", "src/Kimi/Compiler", "ElementAccess.cs", SemanticSlotReads, 0)]
+    [InlineData("FormattingTypes reads of Koto semantic slots", "src/Kimi/Compiler", "FormattingTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("SharedReadTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SharedReadTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
+    [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
+    [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Compiler/Documentation", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Testing reads of Koto semantic slots", "src/Kimi/Testing", "*.cs", SemanticSlotReads, 0)]
+    [InlineData("Benchmark reads of Koto semantic slots", "src/Benchmark", "*.cs", SemanticSlotReads, 0)]
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
     // them (G163); fixed-fixed entailment has one owner, so OriginPremiseClosure.AddEdge has one caller, the premise catalog's writer
     // (AddPremiseEdge, bu20's C0d).
@@ -94,6 +126,9 @@ public class ArchitectureRulesTest
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
+    // R6-check H14 (D7): Parsing reads the Koto semantic slots only in their declarations' bodies and on their write paths (a replaced
+    // child's reset, the views and synthetic Kotos Binding builds), which R7 removes with the slots (DECISIONS R5-M9).
+    [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, or MeasureOnce for one run that cannot
     // repeat, which retire the thread's allocation context first; a window that reads the thread's counter itself can be charged a
     // runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks (src/Benchmark) are not tests. A letter in brackets keeps

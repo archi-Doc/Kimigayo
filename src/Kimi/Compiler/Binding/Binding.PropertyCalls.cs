@@ -15,10 +15,6 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
             KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
 
-    internal MemberAccessKoto? PropertyUpdateStorage(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is { BindingState: BindingState.Resolved, BoundSymbol.Property: { } property } target &&
-            (!property.Getter.IsStandard || !property.Setter.IsStandard) && this.propertyUpdateStorage.GetValueOrDefault(target) is { BindingState: BindingState.Resolved } storage ? storage : null;
-
     internal FunctionKoto AccessorFunction(BoundAccessor accessor)
     {
         var function = accessor.ExecutionFunction ??= new(accessor);

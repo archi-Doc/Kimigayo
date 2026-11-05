@@ -17,7 +17,7 @@ public partial class TypeDagScalingTest
     // callee's atom walk); a comparison of the Tuple tree (ComparisonProof), a Copy requirement on it (DependentType), a called closure
     // capturing it (HasUnsubstitutedInput). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
     // candidates' and results' Origin tests (the Origin summary), the published result and a Closure with two captures, one of which names
-    // the result's Origin (ResultFixedForCall).
+    // the result's Origin.
     [Theory]
     [InlineData("tuple", 40)]
     [InlineData("array", 40)]

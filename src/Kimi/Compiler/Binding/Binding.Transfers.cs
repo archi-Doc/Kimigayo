@@ -101,7 +101,7 @@ public sealed partial class Binding
         return HirTables.AdjustOf(node).Acquire switch
         {
             HirAcquire.Move => !ExplicitTransfer(node),
-            HirAcquire.Unset => !KotoHelper.IsValueContext(node) && node.BoundType is { } type &&
+            HirAcquire.Unset => !IsValueContext(node) && node.BoundType is { } type &&
                 this.BareAcquire(type, node, out var proof) == HirAcquire.Move && proof != ConstraintProof.Error,
             HirAcquire.None or HirAcquire.Copy or HirAcquire.Reborrow or HirAcquire.ByCase => false, // Not a Move.
             HirAcquire.Temporary or HirAcquire.Failed => false, // A value, or one derived from its failure.

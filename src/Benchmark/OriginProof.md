@@ -14,8 +14,9 @@ well-formedness premises), `anonymous` (an anonymous function input), `generic`,
 
 Each family runs at sizes 1, 2, 4, 6, 8, 12 and 16. Every case runs in its own process (`--origin-proof-case family size`) with
 a 30-second limit; a case over the limit, and the larger sizes of its family, are recorded as censored. The limit is a
-measurement control, never a language rule. A case reports its cold Binding and ownership times, the proof counters of
-`OriginProofMetrics` (top-level requests and premise closures per phase, nested environments, nodes, edges and meet
+measurement control, never a language rule. A case reports its cold Binding and Analyze times (from R6-check H9; earlier
+reports timed the legacy ownership pass and its proof requests), the proof counters of
+`OriginProofMetrics` (Binding's top-level requests and premise closures, nested environments, nodes, edges and meet
 incidences with the largest environment, worklist insertions, edge activations and operand decrements, closures over their
 work bound, the time spent building and closing environments, edges per catalog rule and distinct normalized queries), the
 outcome codes and, while one check stays below a second, the median of five warm checks after four warm-ups and one more warm

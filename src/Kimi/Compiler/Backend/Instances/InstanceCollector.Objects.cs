@@ -61,13 +61,13 @@ internal sealed partial class InstanceCollector
         }
 
         _ = TyCtxt.Layer(TyCtxt.Signature(function!, null, function!.ReceiverIndex, out _), out var self, out _);
-        return self is null ? null : this.Applies(self, VTableDef.Of(function.Scope.Owner.BoundSymbol!)!, slot, out _);
+        return self is null ? null : this.Applies(self, VTableDef.Of(VTableDef.Owner(function)!)!, slot, out _);
     }
 
     // The first layer on a Type's base chain whose struct owns a function (F 4.2's consumer rule), or null off the chain.
     private static BoundType? Owning(BoundType type, BindingSymbol function)
     {
-        var owner = function.Scope.Owner.BoundSymbol;
+        var owner = VTableDef.Owner(function);
         var layer = (BoundType?)type;
         while (layer is not null && !ReferenceEquals(layer.Symbol, owner))
         {

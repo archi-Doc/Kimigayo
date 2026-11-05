@@ -54,13 +54,6 @@ internal static class ScalarTypes
     }
 
     // Selected-precision literal bits, independent of integer fitting and arithmetic.
-    internal static bool TryFloatLiteral(Koto source, out long bits)
-    {
-        var number = KotoHelper.SignedNumber(source, out var negative);
-        bits = 0;
-        return number is not null && TryFloatLiteral(number, source.BoundType, negative, out bits);
-    }
-
     internal static bool TryFloatLiteral(NumberLiteralKoto number, BoundType? type, bool negative, out long bits)
     {
         if (!number.IsInteger)

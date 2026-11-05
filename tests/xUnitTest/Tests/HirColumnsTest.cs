@@ -211,7 +211,7 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} views {IntrinsicDisposition.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
 
-            if (op == HirOp.Closure && (((FunctionKoto)node).ClosureDefinition is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
+            if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
             {
                 problems.Add($"{where} without its closure definition");
             }
@@ -300,7 +300,7 @@ public sealed class HirColumnsTest
     {
         if (HirTables.PlanOf(jump).Plan is Koto row)
         {
-            return ReferenceEquals(row, KotoHelper.TransferTarget(jump));
+            return ReferenceEquals(row, Binding.TransferTarget(jump));
         }
 
         return CompilationTestHelper.BindingErrors(jump.CodeContext.Compilation)
@@ -335,7 +335,7 @@ public sealed class HirColumnsTest
         var found = 0;
         foreach (var node in nodes)
         {
-            var type = HirTables.Meaning(node) as BoundType;
+            var type = HirTables.TypeOf(node);
             for (var i = 0; i < HirTables.PlaceOf(node).Layers; i++)
             {
                 found += TyCtxt.Layer(type, out type, out var binder) == HirPlaceKind.PairLayer && binder is not null ? 1 : 0;
@@ -393,7 +393,7 @@ public sealed class HirColumnsTest
         return own.Concat(calls).Concat(payloads);
 
         // A body or operand that supplies its construct's value.
-        static Koto? Result(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
+        static Koto? Result(Koto? source) => source is not null && Binding.IsValueContext(source) ? source : null;
     }
 
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type

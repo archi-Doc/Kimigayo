@@ -102,7 +102,7 @@ public sealed class BlockClosureInferenceTest
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         Assert.Equal(type, TyCtxt.Name(closure.SymbolOf()!.Type!));
         var returned = Assert.Single(KotoTree.Walk(closure).OfType<ReturnKoto>());
-        Assert.Equal(operand, TyCtxt.Name((BoundType)HirTables.Meaning(returned.Expression!)!));
+        Assert.Equal(operand, TyCtxt.Name(HirTables.TypeOf(returned.Expression!)!));
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 

@@ -91,8 +91,8 @@ public sealed partial class MirOriginsTest
     // source, fixed target): both rows of r7-inv (one direction of its `==`), a chain through a local region (the j-f chain), a meet at the
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
     // ways (one problem with Equality set), a local's callable store (cd1535825466, 597510880fb0, cab8c776076f), a Closure's parameter fit
-    // (8e4cca7290b1), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected on both
-    // pipelines since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
+    // (8e4cca7290b1), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
+    // since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
     // its written Type is a local's (PLAN G215's twin); a nested result's relation among enclosing Origins, the containing declaration's,
     // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), p4's value call without its clause (SPEC 15.6.4), and an
@@ -144,7 +144,7 @@ public sealed partial class MirOriginsTest
     // Opaque on the MIR, so the stratum forms no problem for it: j-f, j-pick (each case), c-detach (SPEC 15.5), c-box, c-peekU, c-pair (each
     // case), n-pass, x-skip (an Iterator's item Reborrowed through `self`), p1's direct form and r7-subst's call. So is a relation formed over a
     // Closure's pending receiver atoms that Binding judges once the Closure is classified, fixed there (DECISIONS R4-M126 §2.5 (b), F3): its
-    // obligation leaves as one judged at binding time forms none, Binding's one record on each pipeline (rv/env-store; g65a annotated and
+    // obligation leaves as one judged at binding time forms none, Binding's one record (rv/env-store; g65a annotated and
     // returned; g6b).
     [Theory]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    let r = x\n    return r\n", "return r")]

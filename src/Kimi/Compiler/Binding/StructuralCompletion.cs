@@ -71,7 +71,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         _ => false,
     };
 
-    // The forms a jump inside them can target (KotoHelper.TransferTarget): an exit targets an iteration or a Do (a continue an
+    // The forms a jump inside them can target (Binding.TransferTarget): an exit targets an iteration or a Do (a continue an
     // iteration), a yield a selection. Function and Scope Exit targets run no contents here.
     private static bool IsTransferTarget(Koto node) => node switch
     {
@@ -282,7 +282,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         var outward = this.Transfers(null);
         foreach (var jump in result.Transfers)
         {
-            if (KotoHelper.TransferTarget(jump) == node)
+            if (Binding.TransferTarget(jump) == node)
             {
                 normal |= jump is not ContinueKoto;
             }

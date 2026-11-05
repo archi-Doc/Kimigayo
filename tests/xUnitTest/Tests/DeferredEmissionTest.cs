@@ -140,7 +140,7 @@ public class DeferredEmissionTest
 
     // An expansion past the old analysis's deferred-cleanup limit (its 8192 operations) has no
     // MIR counterpart: since the MIR decides acceptance (R6-check H5; 1a, the owner 2026-11-03, DECISIONS R5-M182's O-2), check accepts
-    // it with no record, DeferredExpansionLimit_Kd included, and generates its module, on every analysis.
+    // it with no record and generates its module, on every analysis.
     [Fact]
     public void AnExpansionPastTheOldLimitIsGeneratedOnEveryAnalysis()
     {
@@ -154,9 +154,6 @@ public class DeferredEmissionTest
             Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
             Assert.NotEmpty(writer.ToString());
         }
-
-        c.ReportAnalysis();
-        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.DeferredExpansionLimit_Kd));
     }
 
     [Fact]

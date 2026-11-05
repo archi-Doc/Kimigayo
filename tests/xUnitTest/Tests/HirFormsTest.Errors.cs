@@ -146,7 +146,7 @@ public sealed partial class HirFormsTest
             CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
-    // SPEC 14.5.2, 14.9.1-14.9.3, 23.1.2 (DECISIONS BU-101): an invalid transfer goes to no target (KotoHelper.TransferTarget). Its row is
+    // SPEC 14.5.2, 14.9.1-14.9.3, 23.1.2 (DECISIONS BU-101): an invalid transfer goes to no target (Binding.TransferTarget). Its row is
     // null and Binding records row 9 or 10 at it; it supplies no result source and completes no construct, and its operand is bound with
     // no expected Type. A selection whose every transfer is invalid is a Never form (Never, Diverges). One with another source takes that
     // source's Type: an omitted or written `else`'s Unit, a valid labeled yield's, or the enclosing join's sources beside an inner Never

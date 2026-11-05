@@ -11,7 +11,7 @@ namespace XunitTest;
 // takes its Type from the call: a nested generic call, a part of a Tuple, array or empty literal, a part inside a Closure body, a joined
 // argument, a Case and a value call's argument. A record of an argument's well-formedness is at that argument; under D-1 (the owner,
 // 2026-10-29, 「選択肢 (a)：引数に記録し、payload を関連位置に添える」) a call records a relation that a contextual Case's payload supplies at
-// the argument it judges, with the payload as a related location. Each row names its form, states every Error record on both pipelines as
+// the argument it judges, with the payload as a related location. Each row names its form, states every Error record as
 // `Code text` (AssertRecords) and has its twin.
 // The rows that wait for PLAN G216 (a) U2.2 (contextual parts, joins, nested generic calls, instantiated Types at calls and
 // constructions, D-1) are kept on `claude/a5-g216a-t2-tests` and return with U2.2; the comments below may name them.

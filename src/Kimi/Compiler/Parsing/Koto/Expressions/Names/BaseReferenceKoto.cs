@@ -17,9 +17,10 @@ public sealed class BaseReferenceKoto : IdentifierNameKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.BaseReference;
 
+    [Transitional("R7", Reason = "Base-path slot on syntax; R7 moves Binding's facts off syntax (DECISIONS R5-M9, R5-M190).")]
     internal BoundMemberPath? BasePath
     {
-        get => this.HasCurrentBinding ? this.basePath : null;
+        get => this.basePath;
         set => this.basePath = value;
     }
 

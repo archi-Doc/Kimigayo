@@ -69,8 +69,8 @@ public class PrimitiveIntegerTest
     [Fact]
     public void WideDivisionIsDiagnosedForTheInstance()
     {
-        // SPEC 8.7.4: the generic body is valid; the initial profile refuses its 128-bit instance before optimization, at check on every
-        // pipeline, at the body's operation (DECISIONS R5-M54, R5-M156).
+        // SPEC 8.7.4: the generic body is valid; the initial profile refuses its 128-bit instance before optimization, at check,
+        // at the body's operation (DECISIONS R5-M54, R5-M156).
         const string Source = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nlet a = half(10)\nlet b = half(10@i128)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));

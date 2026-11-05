@@ -17,7 +17,7 @@ function Expect([bool] $condition, [string] $message) {
 # Each fixture records a source location and returns its value; runs default to passing O0 and O2 with output "ok".
 function New-Run([string] $name, [hashtable] $returns, [hashtable] $native = @{}, [hashtable] $stdout = @{}, [string] $location = 'a.kimi') {
     $directory = Join-Path $work $name
-    $summary = [ordered]@{ configuration = 'Release'; pipeline = 'legacy'; head = $name; workDirectory = (Join-Path $directory 'work'); steps = @([ordered]@{ step = 'tests'; result = 'PASS' }) }
+    $summary = [ordered]@{ configuration = 'Release'; head = $name; workDirectory = (Join-Path $directory 'work'); steps = @([ordered]@{ step = 'tests'; result = 'PASS' }) }
     Put (Join-Path $directory 'summary.json') ($summary | ConvertTo-Json -Depth 3)
     $records = foreach ($stem in @($returns.Keys | Sort-Object)) {
         Put (Join-Path $directory "fixtures-Release/$stem.ll") "; $location`ndefine i32 @main() {`n  ret i32 $($returns[$stem])`n}`n"

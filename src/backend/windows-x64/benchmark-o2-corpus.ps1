@@ -3,7 +3,7 @@
 # Benchmark. Every kernel is built at -Optimization (O2, or O0 for the O0 times) by both compilers and checked; the executables
 # then run A, B, A, ..., A, and every run's output is checked. Benchmark --compiler-pipeline of each checkout then runs A, B, A,
 # ..., A. With B equal to A, the series records the variation of matched runs (P4). -CandidateEnvironment NAME=value pairs are set only for B's builds and
-# B's --compiler-pipeline runs; A runs the default pipeline and code generator.
+# B's --compiler-pipeline runs.
 [CmdletBinding()]
 param(
     [string] $Baseline = '',
@@ -17,9 +17,6 @@ param(
     [string] $Name = ''
 )
 $ErrorActionPreference = 'Stop'
-# A's processes get only the inherited environment, so an inherited selector would leave A off the default.
-$selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE' | ForEach-Object Name)
-if ($selectors) { throw "The baseline (A) would inherit $($selectors -join ', '); unset it and pass B's selectors with -CandidateEnvironment." }
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))

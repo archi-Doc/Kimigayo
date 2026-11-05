@@ -10,7 +10,7 @@
 // Output: adapter calls only (DiagnosticCollection.ReportLocation, Koto.Report and Koto.ReportDerived, in the subject's collection); no table
 // of its own.
 // Invariants: PublishMirRecords publishes every merged problem through Publish, then each finding as InternalInvariant_Kd located in the
-// ControlFlow requirement, on every pipeline (DECISIONS R5-M156, R5-M185): the rows Compilation.Problems gives, in its order. A record is a
+// ControlFlow requirement (DECISIONS R5-M156, R5-M185): the rows Compilation.Problems gives, in its order. A record is a
 // code without facts, so its location is its subject (DIAGNOSTICS 4.1, DECISIONS R4-M71): the records of two nodes at one location, such as
 // the siblings a for expansion synthesizes with its span, are one problem. Publish maps one merged problem (design 3.1-3.4): Located (a
 // record class, or a code of category Unsupported, Resource or Internal without Arguments) by its location, which carries no fact, any
@@ -21,7 +21,7 @@
 // fact is a related location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations,
 // Required, Limit and Table OwnershipStorageLimit_Kd's arguments and table; the case text is Binding.CaseFact's over the members' masked
 // views, only when every member gives the same (Binding renders it).
-// Must not: be steered by a pipeline mode, flag or optional parameter, or publish a MIR record any other way.
+// Must not: be steered by a mode, flag or optional parameter, or publish a MIR record any other way.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;

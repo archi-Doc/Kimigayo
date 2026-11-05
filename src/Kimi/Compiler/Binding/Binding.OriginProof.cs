@@ -87,8 +87,8 @@ public sealed partial class Binding
         }
 
         // SPEC 15.6.5: a meet outlives an Origin when each of its operands does, each the end of its own chain (as OriginOutlives
-        // and VerifiedRegionOutlives read it): a raw Place borrow's anchor is an inferred region (SPEC 5.2.2), a local region is judged
-        // through its sources; the worst operand decides.
+        // reads it): a raw Place borrow's anchor is an inferred region (SPEC 5.2.2), a local region is judged through its sources; the
+        // worst operand decides.
         var worst = OriginJudgment.Proven;
         for (var i = 0; i < longer.Operands.Count; i++)
         {

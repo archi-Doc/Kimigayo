@@ -263,7 +263,7 @@ public sealed partial class Binding
         var earlierReceiver = earlierSymbol.ReceiverIndex;
         var laterReceiver = laterSymbol.ReceiverIndex;
         var receivers = earlierReceiver >= 0 && laterReceiver >= 0;
-        if (later.AllowsPositionalArgument(j))
+        if (AllowsPositionalArgument(later, j))
         {
             // The bound sequence of two instance functions omits the receivers; it is the usual call form, so it is recorded first.
             if (receivers && j != laterReceiver)
@@ -302,7 +302,7 @@ public sealed partial class Binding
             var position = 0;
             for (var i = 0; i < index; i++)
             {
-                if (i != receiver && function.AllowsPositionalArgument(i))
+                if (i != receiver && AllowsPositionalArgument(function, i))
                 {
                     position++;
                 }
@@ -315,7 +315,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                if (i != receiver && function.AllowsPositionalArgument(i) && position-- == 0)
+                if (i != receiver && AllowsPositionalArgument(function, i) && position-- == 0)
                 {
                     return i;
                 }

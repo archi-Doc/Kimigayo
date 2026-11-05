@@ -34,7 +34,7 @@ public sealed partial class Binding
     internal static BoundType? DeclaredResult(Koto boundary) => boundary switch
     {
         FunctionKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
-        FunctionKoto function => KotoHelper.DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
+        FunctionKoto function => DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
         PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Set } => BoundType.Unit,
         PropertyAccessorKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
         PropertyAccessorKoto { Parent: PropertyKoto { BindingState: BindingState.Resolved } property } => property.BoundType,
@@ -97,12 +97,12 @@ public sealed partial class Binding
     internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
         target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
 
-    // SPEC 14.5.2, 14.9.1 (DECISIONS BU-101): the construct a transfer goes to (KotoHelper.TransferTarget), which the jump binding writes
+    // SPEC 14.5.2, 14.9.1 (DECISIONS BU-101): the construct a transfer goes to (TransferTarget), which the jump binding writes
     // to the jump's target row. A null row is a jump the HIR lints record as invalid (rows 9-10): it supplies no result source and its
     // operand has no expected Type, and no transfer is built from it.
     private static Koto? BindTransferTarget(JumpKoto jump)
     {
-        var target = KotoHelper.TransferTarget(jump);
+        var target = TransferTarget(jump);
         HirTables.PlanFor(jump, target is not null).Plan = target;
         return target;
     }
@@ -111,7 +111,7 @@ public sealed partial class Binding
     // the bounds resolved by LocalOrigins. A discard position and while/for fix Unit.
     private static BoundType? ResultExpectation(Koto target, BoundType? expected)
     {
-        if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
+        if ((target is not (TryKoto or FunctionKoto) && !IsValueContext(target)) || target is WhileKoto or ForKoto)
         {
             return BoundType.Unit;
         }
@@ -209,7 +209,7 @@ public sealed partial class Binding
     private void AddBodyResult(Koto body, ResultContext context, StructuralCompletion structural)
     {
         var item = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
-        if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
+        if (KotoHelper.IsBodyExpression(item) && IsValueContext(item))
         {
             // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
             context.Add(body, this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);

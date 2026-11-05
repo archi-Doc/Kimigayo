@@ -119,11 +119,6 @@ internal sealed class TestCatalog
             "kimi-test-artifact-v1", Compilation.CompilerVersion, compilation.BuildMetadata!.TargetTriple,
             compilation.BuildMetadata.LanguageVersion, this.ProjectId, project.KimiOptions.Debug.ToString(), project.ProjectFile.Optimization,
         };
-        if (compilation.Pipeline == CompilerPipeline.Mir)
-        {
-            inputs.AddRange(["pipeline", "mir"]); // Plan 12.1: the pipeline is part of the effective configuration (R3–R5).
-        }
-
         var aliases = Compilation.EffectiveAliases(project.ProjectFile.Alias).ToArray();
         Section("aliases", aliases.Length);
         inputs.AddRange(aliases);
@@ -249,7 +244,7 @@ internal sealed class TestCatalog
                     return;
                 }
 
-                if (!TestDefinition.IsValidSyntax(function) || function.BoundSymbol is not { Type: var type, ReceiverIndex: < 0 } symbol ||
+                if (!TestDefinition.IsValidSyntax(function) || HirTables.Symbol(function) is not { Type: var type, ReceiverIndex: < 0 } symbol ||
                     !ReferenceEquals(type, BoundType.Unit))
                 {
                     throw new InvalidDataException("Invalid test signature: " + function.Name);

@@ -203,7 +203,7 @@ public sealed partial class MirBuildTest
 
     // SPEC 8.2.3 (DECISIONS BU-72; PLAN G168b): a selection Binding resolved through an identity premise whose subject is the Type
     // parameter of its receiver's Place (an Array, a fixed array or a Tuple, also through a chain, at a position, ^x, a key or a range) is one
-    // located Unsupported_Kd at the selection on every pipeline, its Opaque site naming only the receiver's root, decided before anything
+    // located Unsupported_Kd at the selection, its Opaque site naming only the receiver's root, decided before anything
     // reads the receiver, with no projection or length the MIR validator rejects and no InternalInvariant_Kd (fail-before: a typeless
     // projection or Len, a validator finding and InternalInvariant_Kd beside Unsupported_Kd at the member, for ^x and a key at the
     // selection); a struct Field of such a Place stays Unsupported_Kd (chainTU). A ^x Binding applied directly (Op Range), a position or a
@@ -224,20 +224,16 @@ public sealed partial class MirBuildTest
     {
         var source = "struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\nfunc pos(y: string) -> isize => 0\n" +
             $"func f<{types}>({parameters}) -> i32\n    {premises}\n    {statement}\npublic func main() => ()\n";
-        foreach (var pipeline in (CompilerPipeline[])[CompilerPipeline.Legacy, CompilerPipeline.Mir])
-        {
-            var c = Compilation.CreateForTest();
-            c.Pipeline = pipeline;
-            Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
-            c.Bind();
-            c.Binding.CheckStartup(OutputKind.Application);
-            c.Analyze();
-            c.Binding.ReportDiagnostics();
-            c.ReportAnalysis();
-            var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
-            Assert.Equal([("Unsupported_Kd", selection)], errors);
-        }
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text));
+        Assert.Equal([("Unsupported_Kd", selection)], errors);
 
         var program = Compile(source).BuildMir();
         Assert.Empty(program.Findings);

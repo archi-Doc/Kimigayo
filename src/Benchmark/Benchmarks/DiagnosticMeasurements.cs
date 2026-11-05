@@ -204,7 +204,6 @@ internal static class DiagnosticMeasurements
                 count = Count,
                 sourcePath,
                 sourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text))),
-                pipeline = compilation.Pipeline.ToString(),
                 retainedBytes = retained,
                 medianRetainedBytes = retained.Order().ElementAt(3),
                 cold,
@@ -241,7 +240,7 @@ internal static class DiagnosticMeasurements
         Require(compilation.Bind().IsComplete != rejected);
         var declarations = compilation.Kotonoha.RootKoto.NestedContainers;
         Require(declarations.Count == count);
-        Require(declarations.All(x => (x.BindingState == BindingState.Invalid) == rejected));
+        Require(declarations.All(x => (HirTables.State(x) == BindingState.Invalid) == rejected));
         return compilation;
     }
 

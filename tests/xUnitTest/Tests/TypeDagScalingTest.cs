@@ -139,7 +139,7 @@ public partial class TypeDagScalingTest
         var c = Checked(Source(shape, size));
 
         // originLets' last Tuple holds 2^28 references, 2^31 bytes, past the layout size bound: check's one record, at the local's
-        // declaration (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+        // declaration (DECISIONS R5-M44, R5-M156).
         var bound = shape == "originLets" ? "GenerationResourceLimit_Kd let a27 = (a26, a26)" : string.Empty;
         Assert.Equal(bound, MinimalEmissionTest.Problems(c));
         Assert.Equal(bound.Length == 0, c.Analysis.IsVerified);
@@ -152,7 +152,7 @@ public partial class TypeDagScalingTest
     // SPEC 15.6.6: a part shared at depth 0 and 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later write
     // meets A5's depth bound, a located OwnershipDepthLimit_Kd at `let d` (DECISIONS R4-M153), where the old analysis's bound retained the
     // Loan and the write conflicted with it (R6-check H5; H3b T48, class 3); without the write there is none. At 70 each Tuple more than
-    // 64 levels high is also a layout depth record at check, one per erased Type (DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+    // 64 levels high is also a layout depth record at check, one per erased Type (DECISIONS R5-M44, R5-M156).
     [Theory]
     [InlineData(70, false, false, "")]
     [InlineData(70, false, true, "OwnershipDepthLimit_Kd")]
@@ -188,7 +188,7 @@ public partial class TypeDagScalingTest
         Assert.Equal(Codes(code), Problems(Checked(source)));
     }
 
-    // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (AddType's set per Place).
+    // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (the MIR's Loan).
     [Theory]
     [InlineData(false, "")]
     [InlineData(true, "ComparisonLoanConflict_Kd")]

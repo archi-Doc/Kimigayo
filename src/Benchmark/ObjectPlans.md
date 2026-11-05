@@ -10,9 +10,10 @@ Use a fresh evidence filename per run. `StoredObjectViewTest` shares the exact d
 `tests/Workloads/VerificationWorkloads.cs`; its zero-allocation assertions keep 32 warm-up and 64 measured iterations.
 `SharedObjectRuntimeTest` and `SharedArcRuntimeTest` share the rc/arc factory/clone input with the same fixed counts.
 Reports name all four workloads; only the factory spelling changes between rc and arc.
-The opt-in runner measures ownership analysis and IR emission separately, with 32 warm-up iterations and seven samples
+The opt-in runner measures the check and IR emission separately, with 32 warm-up iterations and seven samples
 of 64 iterations. Each sample follows a full collection outside the measured interval. It reports every timing and
 thread allocation count, source hashes and runtime/platform identity, and fails if an input stops verifying or emitting.
+From R6-check H9 the `check` phase times Bind, CheckStartup and Analyze; earlier reports' `ownership` phase timed the legacy ownership pass.
 
 Native fixtures separately check values, retained owner Loans and allocation/free counts at O0/O2. Timings are observations,
 not pass thresholds or speedup evidence without matched before/after runs on the same machine and configuration.

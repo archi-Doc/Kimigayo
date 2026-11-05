@@ -102,7 +102,7 @@ public class InlineLayoutTest
         // DECISIONS R5-M37 (a declared change of P7c): the old pool resolves each Type once per body, so t65's one-component Tuple,
         // 65 levels high, reused t64's resolution and was generated, while a fresh resolution reports the depth limit; Layout's
         // placement height now decides it whatever the order. Check reports it once per erased Type, at t65 to t70, the locals whose Types
-        // are more than 64 levels high (K13b, DECISIONS R5-M44), on every pipeline (DECISIONS R5-M156).
+        // are more than 64 levels high (K13b, DECISIONS R5-M44, R5-M156).
         var source = new StringBuilder("func f() -> i32\n    let t0 = 1\n");
         for (var i = 1; i <= 70; i++)
         {
@@ -139,7 +139,7 @@ public class InlineLayoutTest
     [Fact]
     public async Task AnInferredCLayoutInstanceReportsALaterFieldsResourceLimit()
     {
-        // SPEC 8.15.3 (DECISIONS R4-M134 Q8): the inferred instance's zero-sized Field is InvalidCLayout_Kd at check on every pipeline (the
+        // SPEC 8.15.3 (DECISIONS R4-M134 Q8): the inferred instance's zero-sized Field is InvalidCLayout_Kd at check (the
         // checked set's layout obligations), before code generation could see the later Field's resource limit.
         var directory = Path.Combine(Path.GetTempPath(), "kimi-inline-layout-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);

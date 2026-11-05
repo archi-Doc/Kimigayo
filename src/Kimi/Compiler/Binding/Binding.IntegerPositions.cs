@@ -9,16 +9,6 @@ namespace Kimi.Compiler;
 // integer Type, and integers gain no members.
 public sealed partial class Binding
 {
-    /// <summary>Adds the Kimi integer Position witness that a requirement call on an integer dispatches to.</summary>
-    /// <param name="destination">The function list to extend without duplicates.</param>
-    internal void CollectIntegerPositionWitness(List<FunctionKoto> destination)
-    {
-        if (this.IntegerPositionWitness()?.Declaration is FunctionKoto function && !destination.Contains(function))
-        {
-            destination.Add(function);
-        }
-    }
-
     // The slot of the witness's integer Type parameter `I` (the materializer and TyCtxt.Witness); -1 when it has none.
     internal int IntegerPositionSlot(BindingSymbol witness)
         => this.scopes.TryGetValue(witness.Declaration, out var scope) && scope.Types.TryGetValue("I", out var parameter) ? parameter.Slot : -1;

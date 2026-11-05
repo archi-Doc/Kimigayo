@@ -32,8 +32,7 @@ takes two checkouts with Release builds of Kimi and Benchmark (`dotnet build Kim
 script's own checkout, and Benchmark's copy of Kimi.dll must be that checkout's compiler.
 
 `-CandidateEnvironment` sets its variables only for B's kernel builds and B's `--compiler-pipeline` runs, for example
-`KIMI_PIPELINE=mir`; both variants' executables run in the script's environment. A runs the default pipeline (MIR code generation
-is the one code generator from R6-gen's G4): the script fails before any work if it would inherit `KIMI_PIPELINE`.
+`DOTNET_TieredPGO=0`; both variants' executables run in the script's environment.
 Pass the list with `pwsh -Command` or as separate array elements: `pwsh -File` binds `A=x,B=y` as one string, which the
 script rejects.
 
@@ -48,9 +47,9 @@ script rejects.
   coefficient of variation; per B run, its ratio to the mean of the A runs before and after it, summarized the same way.
 - `Benchmark --compiler-pipeline` ([CompilerPipeline.md](CompilerPipeline.md)) of A and B then alternates A, B, ..., A for
   `PipelineRuns` + 1 runs of A. Every report must have the first one's schema, stage names and input hashes. Its generic shape
-  at 32, 64 and 128 item Types is the generic-heavy input at 1×, 2× and 4×. Collection is timed in stage 3 (`BuildMir`), so
-  emission lowering plus IR writing is code generation alone; CompilerPipeline.md gives the comparison that adds stage 3's
-  collection share. Per
+  at 32, 64 and 128 item Types is the generic-heavy input at 1×, 2× and 4×. Collection is timed in stage 4 (`Analyze`; stage 3
+  until R6-check H9), so emission lowering plus IR writing is code generation alone; CompilerPipeline.md gives the comparison
+  that adds the collection share. Per
   input, each run gives the median of its samples for that stage and for the whole compilation; their spread across runs and
   the B/A ratios over them are the matched-run variation. Allocated bytes are each run's mean.
 

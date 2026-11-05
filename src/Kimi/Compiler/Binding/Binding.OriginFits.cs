@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 //   below: the failing positions by composed variance and the failing operand chains of a meet, in its body and mode, OriginFitMode);
 //   RecordMismatch's Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure); and the reset of the pass's
 //   Origin relation records, a failed node's first chain and its others (ResetOriginRecords).
-// - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives, VerifiedRegionOutlives), the judge
+// - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives), the judge
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
 //   other chains through RecordFurtherOriginRecord, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
@@ -29,13 +29,11 @@ public sealed partial class Binding
     private HashSet<Koto>? originTwins;
 
     // SPEC 15.6.1, 15.6.5: how OriginFitSearch decides that a position's relation fails: unproven by the premises visible at the use
-    // (Proof), also failed by the relation judge in the search's body (Judged, a body fit), or not proven by the verified regions
-    // (Verified, lowering's recheck of a verified contract).
+    // (Proof), or also failed by the relation judge in the search's body (Judged, a body fit).
     private enum OriginFitMode : byte
     {
         Proof,
         Judged,
-        Verified,
     }
 
     /// <summary>Gets whether a node's Origin relation records are twins, the records of a relation that is also a row A5 judges, which the
@@ -213,7 +211,7 @@ public sealed partial class Binding
 
             // Transitional until G216 (a) U2.2 removes this search (DECISIONS R4-M155, Staged): a Function component is one comparison,
             // which the fit's walk judged and records as its contract fact (RecordComparisonFacts), so its members are no plain positions.
-            if (mode != OriginFitMode.Verified && actual.Kind == BoundTypeKind.Function)
+            if (actual.Kind == BoundTypeKind.Function)
             {
                 return first;
             }
@@ -280,15 +278,15 @@ public sealed partial class Binding
 
             if (variance == OriginVariance.Contravariant)
             {
-                return this.Fails(expected, actual, condition) ? this.FailedChain(expected, actual, condition) : null;
+                return this.OriginPartFails(expected, actual, condition) ? this.FailedChain(expected, actual, condition) : null;
             }
 
             if (variance == OriginVariance.Covariant)
             {
-                return this.Fails(actual, expected, condition) ? this.FailedChain(actual, expected, condition) : null;
+                return this.OriginPartFails(actual, expected, condition) ? this.FailedChain(actual, expected, condition) : null;
             }
 
-            if (!this.Fails(actual, expected, condition) && !this.Fails(expected, actual, condition))
+            if (!this.OriginPartFails(actual, expected, condition) && !this.OriginPartFails(expected, actual, condition))
             {
                 return null;
             }
@@ -298,10 +296,6 @@ public sealed partial class Binding
             all?.Add(equality);
             return equality;
         }
-
-        // Whether a position's relation fails in the search's mode: one the verified regions do not prove, or one OriginPartFails fails.
-        private bool Fails(BoundOrigin longer, BoundOrigin shorter, ulong condition)
-            => mode == OriginFitMode.Verified ? !binding.VerifiedRegionOutlives(longer, shorter, use) : this.OriginPartFails(longer, shorter, condition);
 
         // SPEC 15.3.6, 15.6.1: a meet at the longer end outlives an Origin exactly when each operand does, so an `outlives` relation names
         // the chain of one failing operand, never the meet itself, and keeps the whole meet for a result bound. With `all`, the chain of

@@ -48,7 +48,7 @@ internal sealed partial class MirBuilder
             case HirOp.Literal:
                 this.Use(destination, this.Literal(node), node);
                 break;
-            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.Meaning(node) is BoundType item:
+            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.TypeOf(node) is { } item:
                 this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.7.4: a constant of its Item Type.
                 break;
             case HirOp.Group: // Its operand, which the group acquires as the operand's Adjust says.
@@ -278,7 +278,7 @@ internal sealed partial class MirBuilder
     // SPEC 12.2 (A3 E13 (2)): a capture before a later one whose acquisition builds code is secured where it is evaluated.
     private void Closure(MirPlace destination, FunctionKoto closure)
     {
-        var captures = closure.ClosureDefinition!.Captures;
+        var captures = BoundClosure.Of(closure)!.Captures;
         var start = this.arguments.Count;
         var last = -1;
         for (var i = 0; i < captures.Count; i++)

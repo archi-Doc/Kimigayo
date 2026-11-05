@@ -103,8 +103,8 @@ public class ControlFlowAnalysisTest
         // SPEC 14.9: a yield in a discarded selection has no target, so its plan row is null and Binding reports it.
         var c = Compile("if true\n    if false\n        yield 1\n    else\n        yield 2\nelse\n    ()");
         var selections = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().ToArray();
-        Assert.False(KotoHelper.IsResultRequiringSelection(selections[0]));
-        Assert.False(KotoHelper.IsResultRequiringSelection(selections[1]));
+        Assert.False(Binding.IsResultRequiringSelection(selections[0]));
+        Assert.False(Binding.IsResultRequiringSelection(selections[1]));
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<YieldKoto>(), static x => Assert.Null(HirTables.PlanOf(x).Plan));
 
         // SPEC 14.9.1, 23.1.2 (DECISIONS BU-101): the invalid yields go to no target, so their operands have no expected Type and no
@@ -131,16 +131,24 @@ public class ControlFlowAnalysisTest
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
     }
 
+    // R6-check H10b (D11): an unresolved call could have Type Never, so its cause is published and no fallthrough or coverage code rests on
+    // it; the function form publishes the cause alone. The join form's exact set is AJoinPastAnUnresolvedCallPublishesOnlyItsCause's.
     [Fact]
     public void DefersCoverageWhenAnUnresolvedCallCouldHaveTypeNever()
     {
-        var analysis = Analyze("func f() -> i32\n    abort()");
-        Assert.Empty(analysis.Issues);
-        Assert.Contains(analysis.PendingBinding, x => x is FunctionKoto { Name: "f" });
-        analysis = Analyze("let x = if true\n    abort()\nelse => 1");
-        Assert.Empty(analysis.Issues);
-        Assert.Contains(analysis.PendingBinding, x => x is IfKoto);
+        Assert.Equal(["UnresolvedBinding_Kd abort"], PublishedErrors("func f() -> i32\n    abort()"));
+        var errors = PublishedErrors("let x = if true\n    abort()\nelse => 1");
+        Assert.Contains("UnresolvedBinding_Kd abort", errors);
+        Assert.DoesNotContain(errors, static x => x.Split(' ')[0] is nameof(Kimi.DiagnosticCode.FunctionFallthrough_Kd)
+            or nameof(Kimi.DiagnosticCode.RequireFallthrough_Kd) or nameof(Kimi.DiagnosticCode.NonExhaustiveMatch_Kd));
     }
+
+    // R6-check H10b (D11): a join past an unresolved call publishes only the call's cause. Today the join also publishes TypeMismatch_Kd at
+    // `1`, resting on the failed call: PLAN G52's join cascade. Explicit until G52 decides it, its expectation unchanged; then a default
+    // test (the kept-apart form of MirBorrowsTest's G264 row).
+    [Fact(Explicit = true)]
+    public void AJoinPastAnUnresolvedCallPublishesOnlyItsCause()
+        => Assert.Equal(["UnresolvedBinding_Kd abort"], PublishedErrors("let x = if true\n    abort()\nelse => 1"));
 
     [Fact]
     public void UsesBoundNeverCallsAndContextualFunctionResultTypes()
@@ -174,7 +182,7 @@ public class ControlFlowAnalysisTest
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(compilation.Kotonoha), ref restored);
         restored!.OnDeserialized(compilation);
-        var selection = Assert.Single(KotoTree.Walk(restored.RootKoto).OfType<IfKoto>(), KotoHelper.IsResultRequiringSelection);
+        var selection = Assert.Single(KotoTree.Walk(restored.RootKoto).OfType<IfKoto>(), Binding.IsResultRequiringSelection);
         Assert.True(selection.Branches[0].Body.IsExpressionBody);
         Assert.True(selection.Branches[0].Body.HasTrailingExpression);
         Assert.False(selection.ElseBody!.IsExpressionBody);
@@ -218,7 +226,13 @@ public class ControlFlowAnalysisTest
         => compilation.BuildMir().Problems.All.ToArray().Where(static x => x.Code == Kimi.DiagnosticCode.RequireFallthrough_Kd)
             .Select(x => compilation.SyntaxOf(x.Subject)).OrderBy(static x => x.Span.Start).ToArray();
 
-    private static ControlFlowAnalysis Analyze(string source) => Compile(source).AnalyzeControlFlow();
+    // The published Errors of an analyzed source as code and text (CompilationTestHelper.PublishedErrors asserts that the MIR exists).
+    private static string[] PublishedErrors(string source)
+    {
+        var c = Compile(source);
+        c.Analyze();
+        return [.. CompilationTestHelper.PublishedErrors(c).Select(static x => $"{x.Code} {x.Text}")];
+    }
 
     private static Compilation Compile(string source)
     {

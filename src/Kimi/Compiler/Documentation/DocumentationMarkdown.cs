@@ -39,7 +39,7 @@ public sealed class DocumentationMarkdown
         }
 
         var declaration = this.Comment.Declaration;
-        if (declaration?.BoundSymbol is null)
+        if (declaration is null || HirTables.Symbol(declaration) is null)
         {
             return this.Document.GetItemCandidates(cancellationToken).ToArray();
         }
@@ -75,7 +75,7 @@ public sealed class DocumentationMarkdown
 
     public IEnumerable<DocumentationDiagnostic> GetDiagnostics(CancellationToken cancellationToken = default)
     {
-        if (!this.Comment.IsSelected || this.Comment.Declaration?.BoundSymbol is null)
+        if (!this.Comment.IsSelected || this.Comment.Declaration is not { } declaration || HirTables.Symbol(declaration) is null)
         {
             yield break;
         }
@@ -129,7 +129,7 @@ public sealed class DocumentationMarkdown
         {
             for (var index = 0; index < f.Parameters.Count; index++)
             {
-                parameters.Add(new(f.Parameters[index].ExternalName, index == f.BoundSymbol!.ReceiverIndex));
+                parameters.Add(new(f.Parameters[index].ExternalName, index == HirTables.Symbol(f)!.ReceiverIndex));
             }
         }
     }

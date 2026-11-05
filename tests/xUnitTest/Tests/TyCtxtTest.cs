@@ -1298,10 +1298,11 @@ public sealed class TyCtxtTest
         Assert.All(["Block", "Cell"], x => Assert.Contains(instances, y => TyCtxt.Name(y) == x && ReferenceEquals(c.Types.Erase(y), y)));
     }
 
-    // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it is the call Binding forwards into that
-    // instance (InstantiateForwardedCall), over the corpus and over generic, length, Origin, member and requirement calls in defaults.
+    // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it instantiates each declared Type of
+    // its callee as the two substitutions applied in turn, over the corpus and over generic, length, Origin, member and requirement calls
+    // in defaults.
     [Fact]
-    public void ComposeIsTheForwardedInstantiation()
+    public void ComposeIsTheTwoStepInstantiation()
     {
         var problems = new List<string>();
         var corpus = 0;
@@ -1316,7 +1317,7 @@ public sealed class TyCtxtTest
         var calls = ComposeProblems(direct, direct.Kotonoha, problems);
         Assert.True(corpus == 6 && calls == 7 && problems.Count == 0, $"{corpus} corpus and {calls} direct nested calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
-        // copy, count, first, same (a requirement, so the forwarding resolves its witness) and get bind a Type, a length, an Origin, Self and
+        // copy, count, first, same (a requirement, whose Self the composition closes) and get bind a Type, a length, an Origin, Self and
         // a declaring Type of the instance.
         var composed = NestedCalls(direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!).Subst!)).ToArray();
         Assert.Equal(["i32", "bool"], composed.Where(static x => x.Name == "copy").Select(static x => x.Subst.Types[0]!.Name));
@@ -1327,11 +1328,11 @@ public sealed class TyCtxtTest
         Assert.Same(BoundType.I32, composed.Single(static x => x.Name == "get").Subst.Declaring!.Components[0]);
     }
 
-    // DECISIONS R5-M61 (F package 4.5): a requirement call in a generic body, in the instance a closed call of that body makes, has under
-    // Witness the target Binding's forwarding into that instance materializes (InstantiateForwardedCall), over every such call of the
-    // generic library and the milestones and over WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type.
+    // DECISIONS R5-M61 (F package 4.5): every requirement call in a generic body, in the instance a closed call of that body makes, resolves
+    // under Witness to a Body, Builtin or Storage target, over every such call of the generic library and the milestones and over
+    // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type.
     [Fact]
-    public void WitnessIsTheForwardedRequirementCall()
+    public void WitnessResolvesEveryRequirementCallOfTheCorpus()
     {
         var problems = new List<string>();
         var corpus = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -1354,8 +1355,8 @@ public sealed class TyCtxtTest
     }
 
     // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception. A caller's
-    // instance that makes a requirement call's Self nest past it has no composed substitution, as it has no forwarded call (PLAN G157 (4)),
-    // so no substitution without its Self reaches Witness.
+    // instance that makes a requirement call's Self nest past it has no composed substitution (PLAN G157 (4)), so no substitution without
+    // its Self reaches Witness.
     [Fact]
     public void ADeepSelfHasTheLimitTarget()
     {
@@ -1387,7 +1388,6 @@ public sealed class TyCtxtTest
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
         Assert.Equal((null, Binding.StorageOutcome.Limit), (composed.Subst, composed.Storage));
         Assert.Same(nested, composed.Part);
-        Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
     }
 
     // DECISIONS BU-36, BU-12: storage preparation's verdict depends on the Type alone. A part Binding did not bind ends no storage walk,
@@ -1496,7 +1496,7 @@ public sealed class TyCtxtTest
     }
 
     // DECISIONS BU-38: Compose carries the worst verdict of its parts' storage in the outer instance. inner's call in outer's instance at
-    // Bad<i32>, whose Field m did not bind, is Rejected with the substitution of Binding's forwarded call; beside a Type argument nested past
+    // Bad<i32>, whose Field m did not bind, is Rejected with its composed substitution; beside a Type argument nested past
     // the bound it is a Limit without a substitution in either order, as its repair's is (before: null for each, which the collector
     // published as the storage-nesting gap). The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32>
     // when Rejected, also before Bad<i64>, and the nested Type beside it in either order; a Rejected composition always has one.
@@ -1515,7 +1515,6 @@ public sealed class TyCtxtTest
         Assert.Equal(expected, storage.ToString());
         Assert.Same(part < 0 ? null : c.Types.SubstOf(calls["outer"])!.Types[part], decided);
         Assert.True(storage != Binding.StorageOutcome.Rejected || decided is not null);
-        Assert.Same(subst is null ? null : c.Types.SubstOf(c.Binding.InstantiateForwardedCall(calls["inner"], calls["outer"])!), subst);
         Assert.Equal(storage == Binding.StorageOutcome.Limit, subst is null);
     }
 
@@ -1812,8 +1811,8 @@ public sealed class TyCtxtTest
         }
     }
 
-    // The forwarded call has the composed substitution and instantiates each declared Type of the callee as Apply does; a requirement call,
-    // which the forwarding resolves to its witness, composes as applying the two substitutions in turn.
+    // Each nested call composes, and the composed substitution instantiates each declared Type of the callee as applying the call's and
+    // then the context's substitution does.
     private static int ComposeProblems(Compilation c, Kotonoha module, List<string> problems)
     {
         var count = 0;
@@ -1821,17 +1820,10 @@ public sealed class TyCtxtTest
         {
             count++;
             var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst;
-            var forwarded = inner.Kind == CalleeKind.Requirement ? null : c.Binding.InstantiateForwardedCall(inner, outer);
             var where = $"{module.Compilation.Kotonoha.Name} {outer.Target.Name} > {inner.Target.Name}";
-            if (inner.Kind != CalleeKind.Requirement && (forwarded is null || !ReferenceEquals(c.Types.SubstOf(forwarded), composed)))
-            {
-                problems.Add($"{where}: {composed is null} {forwarded is null}");
-                continue;
-            }
-
             foreach (var declared in ((FunctionKoto)inner.Target.Declaration).Parameters.Select(static x => x.Type.TypeOf()).Append(inner.Target.Type))
             {
-                var expected = declared is null ? null : forwarded is not null ? c.Binding.InstantiateStorageType(declared, forwarded)
+                var expected = declared is null ? null
                     : c.Types.Apply(declared, c.Types.SubstOf(inner)!) is { } once ? c.Types.Apply(once, c.Types.SubstOf(outer)!) : null;
                 if (composed is null || !ReferenceEquals(declared is null ? null : c.Types.Apply(declared, composed), expected))
                 {
@@ -1937,7 +1929,7 @@ public sealed class TyCtxtTest
             subst.Origins.SequenceEqual(call.Origins) && subst.Inputs.SequenceEqual(call.InputOrigins);
 
     // Each requirement call in the body of a generic function, with each call of that function in a module whose instance closes the
-    // requirement's Self, as InstantiateForwardedCall pairs them (a call in a nested function or closure is its own binder's).
+    // requirement's Self (a call in a nested function or closure is its own binder's).
     private static IEnumerable<(CallPlan Inner, CallPlan Outer)> RequirementCalls(Compilation c, Kotonoha module)
     {
         var bodies = new Dictionary<FunctionKoto, CallPlan[]>();
@@ -1978,11 +1970,9 @@ public sealed class TyCtxtTest
     private static RequirementTarget Witness(Compilation c, (CallPlan Inner, CallPlan Outer) call)
         => c.Types.Witness(call.Inner.Target, call.Inner.RequirementContract, Composed(c, call)!);
 
-    // Each Witness of RequirementCalls agrees with the forwarded call (the CallPlan materializer's): a Body is the function the forwarded call
-    // runs under its substitution; a Builtin the same compiler function, and a Storage witness the Field its bridge reads with the bridge's
-    // operation, each under the requirement call's own substitution, which binds what the forwarded call binds; Refused has no forwarded
-    // call; None and Limit occur for no closed Self of an accepted program. A bound Contract reference is the substitution's declaring Type.
-    // The views leave Binding's records and the HIR version unchanged. Counts the targets by kind and the bound references.
+    // Counts each Witness of RequirementCalls by kind, which the caller pins (Refused, None and Limit occur for no closed Self of an
+    // accepted program), and the bound Contract references, each the substitution's declaring Type. The views leave Binding's records and
+    // the HIR version unchanged.
     private static void WitnessProblems(Compilation c, Kotonoha module, string label, IDictionary<string, int> kinds, List<string> problems)
     {
         var version = HirTables.Publish(c);
@@ -2005,38 +1995,8 @@ public sealed class TyCtxtTest
                     problems.Add($"{where} bound reference");
                 }
             }
-
-            var forwarded = c.Binding.InstantiateForwardedCall(inner, outer);
-            var agrees = target.Kind switch
-            {
-                RequirementTargetKind.Body => ReferenceEquals(target.Target, forwarded?.Target) && ReferenceEquals(target.Subst, c.Types.SubstOf(forwarded!)),
-                RequirementTargetKind.Builtin => ReferenceEquals(target.Target, forwarded?.Target) && ReferenceEquals(target.Subst, subst) &&
-                    Same(c.Types.SubstOf(forwarded!)!, subst),
-                RequirementTargetKind.Storage => forwarded?.Target.Declaration is FunctionKoto { IsPropertyWitness: true, Accessor: { } bridge } function &&
-                    ReferenceEquals(target.Target, bridge.Property.Symbol) && target.Access == Access(function) && ReferenceEquals(target.Subst, subst) &&
-                    c.Types.SubstOf(forwarded) is { } storage && ReferenceEquals(storage.Declaring, subst.Self) && Same(storage, subst, self: false),
-                RequirementTargetKind.Refused => forwarded is null,
-                _ => false,
-            };
-
-            if (!agrees)
-            {
-                problems.Add($"{where}; forwarded {forwarded?.Target.Name}");
-            }
         }
 
         void Count(string key) => kinds[key] = kinds.TryGetValue(key, out var count) ? count + 1 : 1;
-
-        // A standard bridge's operation, by the body PropertyWitnessFunction gives it.
-        static PropertyWitnessKind Access(FunctionKoto bridge) => bridge.ExpressionBody switch
-        {
-            ConversionKoto => PropertyWitnessKind.StorageBorrow,
-            BinaryKoto { Akind: KotoKind.Equals } => PropertyWitnessKind.StorageSet,
-            _ => PropertyWitnessKind.StorageCopy,
-        };
-
-        // Two substitutions bind the same Self (when asked), Types, lengths, Origins and inputs.
-        static bool Same(Subst a, Subst b, bool self = true) => (!self || ReferenceEquals(a.Self, b.Self)) && a.Types.SequenceEqual(b.Types) &&
-            a.Lengths.SequenceEqual(b.Lengths) && a.Origins.SequenceEqual(b.Origins) && a.Inputs.SequenceEqual(b.Inputs);
     }
 }
