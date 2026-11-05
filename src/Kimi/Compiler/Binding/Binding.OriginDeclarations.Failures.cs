@@ -255,7 +255,7 @@ public sealed partial class Binding
 
         // A declared Origin: a slot or an input, or a binding set's slot; never a body atom such as a parameter Place's Borrow.
         static bool Declared(BoundOrigin origin)
-            => origin.Kind is OriginKind.Parameter or OriginKind.Input || (origin.Kind == OriginKind.Projection && origin.Binder is TypeSemanticsKoto { BindingSetName: not null });
+            => origin.Kind is OriginKind.Parameter or OriginKind.Input or OriginKind.ConstraintSet || (origin.Kind == OriginKind.Projection && origin.Binder is TypeSemanticsKoto { BindingSetName: not null });
 
         static bool Encloses(Koto ancestor, Koto node)
         {

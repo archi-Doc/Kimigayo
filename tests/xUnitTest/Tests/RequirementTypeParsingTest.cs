@@ -25,6 +25,9 @@ public class RequirementTypeParsingTest
     [InlineData("(S{k}).Item")]
     [InlineData("(S{k}).(C).Item")]
     [InlineData("((S{k}).Item or i32)")]
+    [InlineData("(S during y).Item")]
+    [InlineData("(S during y).(C).Item")]
+    [InlineData("((S during y).Item or i32)")]
     public void RequirementsPreserveSyntaxThroughWritingAndReload(string requirement)
     {
         var tree = ParseTestHelper.ParseSuccess($"func use<T>(value: T)\n    T is {requirement}\n    ()");
@@ -121,12 +124,12 @@ public class RequirementTypeParsingTest
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
     }
 
-    // SPEC F: a BoundContainerQualifier `(S{k})` takes a PathSuffix, so `(S{k}).Item` is an associated specification's Type, and a
-    // missing member is Binding's record; a grouped Type `(S during w)` takes none and stays a parse error.
+    // SPEC F.5: a BoundContainerQualifier, `(S{k})` or `(S during w)` (SPEC 15.3.1's single-slot binding), takes a PathSuffix, so
+    // `(S{k}).Item` and `(S during w).Item` are an associated specification's Type, and a missing member is Binding's record.
     [Theory]
     [InlineData("(S{k}).Item\n        origin k.s == w", "")]
     [InlineData("(S{k}).Nope\n        origin k.s == w", "InvalidAssociatedType_Kd UnresolvedBinding_Kd")]
-    [InlineData("(S during w).Item", "IncompatibleContractImplementation_Kd ExpectedSyntax_Kd")]
+    [InlineData("(S during w).Item", "")]
     public void BoundQualifierProjectionsAreSpecificationTypes(string specification, string codes)
     {
         var source = "contract Src\n    associate Item\n    func read(self: ref/Self) -> Self.Item\nstruct S {s}\n    Self is Src\n    public let v: ref/i32 during s\n    public init(v: ref/i32 during s) => self.v = v\n    public func read(self: ref/Self) -> ref/i32 during s => self.v\n" +
@@ -134,8 +137,49 @@ public class RequirementTypeParsingTest
         Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(source).Select(static x => x.Code)));
     }
 
+    // SPEC F.5: one decision covers the whole qualifier, so the same Type parses in every requirement and Type position (a
+    // specification, a `when` condition, a local, a parameter, a result, a Field, after a Semantics prefix, in a Type argument and an
+    // alias target), and a form outside F does not (G250 (3)'s note). A Contract-qualified projection keeps any grouped base (SPEC
+    // 8.5.2: the base may be a Core).
     [Theory]
-    [InlineData("(S during y).Item")]
+    [InlineData("struct W {w}\n    associate Item is TYPE\n")]
+    [InlineData("struct W<T>\n    Self is C when T is TYPE\n")]
+    [InlineData("func f(y: ref/i32) -> i32\n    let v: TYPE = y\n    return 0\n")]
+    [InlineData("func f(y: ref/i32, v: TYPE) -> i32 => 0\n")]
+    [InlineData("func f(y: ref/i32) -> TYPE => y\n")]
+    [InlineData("struct W {y}\n    let v: TYPE\n")]
+    [InlineData("func f(y: ref/i32, v: ref/TYPE) -> i32 => 0\n")]
+    [InlineData("func f(y: ref/i32, v: Option<TYPE>) -> i32 => 0\n")]
+    [InlineData("alias A => TYPE\n")]
+    public void QualifiersParseInEveryTypePosition(string format)
+    {
+        foreach (var type in (string[])["(S{k}).Item", "(S during y).Item", "(S during y).(C).Item", "(S during (y and z)).Item", "(i32, u8).(C).Item"])
+        {
+            Assert.Contains(type, ParseTestHelper.Unparse(ParseTestHelper.ParseSuccess(format.Replace("TYPE", type, StringComparison.Ordinal))));
+        }
+
+        foreach (var type in (string[])["(S{k}?).Item", "(S{k} during y).Item", "(S?).Item", "(ref/S during y).Item", "(S).Item"])
+        {
+            Assert.True(ParseTestHelper.Parse(format.Replace("TYPE", type, StringComparison.Ordinal)).Compilation.Diagnostics.HasErrors, type);
+        }
+    }
+
+    // SPEC F.5's note: an expression qualifier takes only binding sets, also in a qualifier nested in it.
+    [Theory]
+    [InlineData("(S during y).init(y)", true)]
+    [InlineData("(S during y).make()", true)]
+    [InlineData("((S during y).Inner{j}).init(y)", true)]
+    [InlineData("((S during y).Inner{j}).make(y)", true)]
+    [InlineData("((S{k}).Inner during y).init(y)", true)]
+    [InlineData("(S{k}).init(y)", false)]
+    [InlineData("(S{k}).make()", false)]
+    [InlineData("((S{k}).Inner{j}).init(y)", false)]
+    public void ExpressionQualifiersTakeOnlyABindingSet(string expression, bool error)
+        => Assert.Equal(error, ParseTestHelper.Parse($"func f(y: ref/i32) -> i32\n    let v = {expression}\n    return 0\n").Compilation.Diagnostics.HasErrors);
+
+    [Theory]
+    [InlineData("(S{k}?).Item")]
+    [InlineData("(S{k} during y).Item")]
     [InlineData("(S).Item")]
     [InlineData("(i32).Item")]
     [InlineData("((i32) -> i32).Item")]

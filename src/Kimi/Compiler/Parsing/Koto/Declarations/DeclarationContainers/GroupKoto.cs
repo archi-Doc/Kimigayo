@@ -164,6 +164,12 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
             reader.TryConsume(TokenKind.ColonColon);
             var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
+            if (targetSyntax is not null)
+            {
+                // The line ends after the target, as after a plain path; an attached Origin block may follow.
+                reader.ExpectLineEnd(bodyMayFollow: true);
+            }
+
             var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
             if (qualifiedName is null)
             {

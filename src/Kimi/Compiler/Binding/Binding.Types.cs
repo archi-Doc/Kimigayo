@@ -313,6 +313,29 @@ public sealed partial class Binding
             return null; // A failed local inference request is not a Type name to look up again.
         }
 
+        // SPEC 15.3.4: a named function's set binds inside its header's Origin declaration, whose relations complete it in any order, so
+        // the first binding of one, an occurrence or a use's pull, binds the header first. The header is its declaration's, never the
+        // consulting Type's prerequisite (SPEC 23.1.2), and inside it the trigger finds the header resolving.
+        if (syntax is TypeSemanticsKoto { BindingSetName: not null } &&
+            OriginOwner(syntax) is FunctionKoto { IsAnonymous: false, BoundSymbol: { HeaderBound: false, Resolving: false } function })
+        {
+            var consultation = (this.consultationStart, this.consultationNode);
+            (this.consultationStart, this.consultationNode) = (-1, null);
+            try
+            {
+                this.BindHeader(function);
+            }
+            finally
+            {
+                (this.consultationStart, this.consultationNode) = consultation;
+            }
+
+            if (syntax.BoundType is { } bound)
+            {
+                return bound;
+            }
+        }
+
         if (!this.resolvingTypes.Add(syntax))
         {
             return this.Fail(syntax, BindingFailure.Cycle, true);

@@ -131,6 +131,9 @@ public sealed partial class Binding
         {
             case OriginKind.Static:
                 return new(atom, OriginAtomKind.Fixed, ProjectionRole.None);
+            case OriginKind.ConstraintSet:
+                // DECISIONS BU-100: fixed in every body; its callers prove every choice, so only `static` can carry it into one.
+                return new(atom, OriginAtomKind.Fixed, ProjectionRole.None);
             case OriginKind.Parameter or OriginKind.Input:
                 // Rows 1 and 9: B's contract (its or an enclosing declaration's), or another declaration's universal atom (PLAN G195).
                 return new(atom, this.InContract(atom.Binder, slice.Body) ? OriginAtomKind.Fixed : OriginAtomKind.Unclassed, ProjectionRole.None);

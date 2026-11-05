@@ -38,9 +38,10 @@ public sealed partial class Binding
     internal ReadOnlySpan<InvocationKoto> ReceiverDependentCalls
         => this.receiverDependentPass == this.storageVersion ? CollectionsMarshal.AsSpan(this.receiverDependentCalls) : default;
 
-    // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
+    // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature; or an unrelated Constraint
+    // set's atom, fixed in every body (DECISIONS BU-100).
     private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
-        => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
+        => IsLocalRegion(origin) || origin.Kind == OriginKind.ConstraintSet || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
             (origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner));
 
     // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
