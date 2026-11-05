@@ -105,7 +105,7 @@ public sealed partial class Binding
             // leaves no result behind.
             this.Result = default;
             this.compilation.Diagnostics.InvalidateSemantics();
-            this.compilation.InvalidateOwnership();
+            this.compilation.InvalidateMir();
             this.ResetPass(mode);
             this.IndexSources();
             this.IndexLibrary();

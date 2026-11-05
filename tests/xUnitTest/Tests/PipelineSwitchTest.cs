@@ -333,23 +333,6 @@ public sealed class PipelineSwitchTest
         Assert.Equal(("Unsupported_Kd", loop.Span), (record.Code, record.Span));
     }
 
-    // R6-check H0b §2.1 (review B3; H0c D-c1): the old analysis's readers reach it through one transitional entry, which runs it once per
-    // version: a second call on one version runs nothing, so it allocates nothing and keeps the records check published (a run clears its
-    // partitions).
-    [Fact]
-    [Trait("Purpose", "Allocation")]
-    public void TheLegacyOwnershipEntryRunsOncePerVersion()
-    {
-        var c = MinimalEmissionTest.Analyze("let text = \"x\"\n_ = text@move\n_ = text@move");
-        c.ReportAnalysis();
-        var reported = TestDiagnostics.Of(c).Select(static x => x.ToString()).ToArray();
-        Assert.Contains(reported, static x => x.Contains(nameof(DiagnosticCode.MovedPlace_Kd), StringComparison.Ordinal));
-        var ownership = c.AnalyzeLegacyOwnership();
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.AnalyzeLegacyOwnership()));
-        Assert.Same(ownership, c.AnalyzeLegacyOwnership());
-        Assert.Equal(reported, TestDiagnostics.Of(c).Select(static x => x.ToString()));
-    }
-
     // R6-check H5 (DECISIONS R5-M185): the MIR decides acceptance on every pipeline. A program it rejects fails Analysis, its problem in
     // Problems and published by ReportAnalysis, where the old analysis accepted it (A5 P1's part borrow); a program it accepts is
     // verified with no problem, where the old analysis rejected it (`f()`'s result keeps no Loan live, PLAN G147 (7)).

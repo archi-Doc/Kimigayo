@@ -60,13 +60,12 @@ public class ArchitectureRulesTest
     [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Issues\b", 0)]
     [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"Bodies\b", 0)]
     [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", LegacyOwnership + @"ControlFlow\b", 0)]
-    // R6-check H8b (D8, D9): the 4 calls left are stopped methods, which keep their old reads until their removal condition. PLAN
-    // G428's fix: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
+    // R6-check H8b (D8, D9), H10b (D11): the 3 calls left are stopped methods, which keep their old reads until PLAN G428's fix moves
+    // them: CurrentControlFlowTest.StatementCompletionAndNestedResultsBind,
     // OptionalTryDiscardTest.NeverSuccessStillChecksFailureAndHasNoDiscardWarning and
-    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. PLAN G52's join-cascade shape:
-    // ControlFlowAnalysisTest.DefersCoverageWhenAnUnresolvedCallCouldHaveTypeNever. Each fix moves its tests and lowers the limit; at 0,
-    // H10b replaces the row by zero-reference rows.
-    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 4)]
+    // PatternBindingTest.AbruptSubjectDoesNotPropagateGuardTransfers. The fix lowers the limit; at 0, H10b-2 replaces the row by
+    // zero-reference rows.
+    [InlineData("Test calls of the old control-flow entries (R6)", "tests/xUnitTest", "*.cs", @"\bAnalyzeControlFlow\(\)|\bControlFlowAnalysis\.Analyze\(", 3)]
     // Zero-reference rows (DECISIONS R5-M162's Q3): they replace the test-read rows of the deleted emitter's members, which no
     // reference to its type admits, and of the instance entry points; comments count, so no deleted component is named as current.
     [InlineData("Compiler references to R6-gen's deleted components", "src/Kimi", "*.cs", DeletedByR6Gen, 0)]

@@ -7,8 +7,6 @@
 // The MIR decides acceptance (DECISIONS R5-M185): Analysis is verified when the MIR of the version exists and its rows hold no Error, its
 // rows being every merged problem of its report (construction and collection records, the analyses' problems) and its validator findings,
 // which Problems gives and Core's publisher publishes (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184).
-// Analyze runs no old analysis; its test and benchmark readers reach it only through AnalyzeLegacyOwnership, which runs it once per version
-// (R6-check H0b §2.1, review B3; H0c D-c1; removal H10b).
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
 using Kimi.Compiler.Parsing;
@@ -26,7 +24,6 @@ public partial class Compilation
     private Mir.MirAnalysis? mirAnalysis;
     private Backend.InstanceCollector? instances;
     private Mir.MirProgram? mir; // The MIR of the latest Analyze; null before one and after invalidation.
-    private bool legacyAnalyzed; // Whether the old analysis ran for this version (AnalyzeLegacyOwnership); invalidation clears it.
 
     /// <summary>Gets the result of the latest <see cref="Analyze"/>: verified when its MIR exists and no row of <see cref="Problems"/> is an
     /// Error (DECISIONS R5-M185); not verified before an analysis and after invalidation.</summary>
@@ -146,28 +143,7 @@ public partial class Compilation
     /// <returns>The program, with its construction records and validator findings.</returns>
     internal Mir.MirProgram ConstructMir() => (this.mirBuilder ??= new(this)).Build();
 
-    /// <summary>Runs the old ownership analysis once per version and returns it: the one entry of its test and benchmark readers (R6-check
-    /// H0b §2.1, review B3; H0c D-c1). A second call on one version runs nothing.</summary>
-    /// <returns>The old analysis of this version.</returns>
-    [Transitional("R6-check", Reason = "Its readers migrate off by H8a–c and H9; H10b deletes it with the old analysis.")]
-    internal OwnershipAnalysis AnalyzeLegacyOwnership()
-    {
-        var ownership = this.ownership ??= new(this);
-        if (!this.legacyAnalyzed)
-        {
-            ownership.Analyze();
-            this.legacyAnalyzed = true;
-        }
-
-        return ownership;
-    }
-
-    internal void InvalidateOwnership()
-    {
-        this.ownership?.Invalidate();
-        this.legacyAnalyzed = false;
-        this.mir = null;
-    }
+    internal void InvalidateMir() => this.mir = null;
 
     // The checked set of a built and validated program, on every pipeline (SPEC 8.15.3: its layout obligations are judged at check), whose
     // records join the program's report.
