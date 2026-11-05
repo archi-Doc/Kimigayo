@@ -254,17 +254,17 @@ public sealed partial class Binding
     private HirAdjust Discarded(Koto place) => this.ChildAdjust(place, HirAdaptation.None, UseKind.Acquisition, claimed: false);
 
     // Binding's bare acquisition of a Place (BareAcquire) as it is: a Move there is the explicit Move a Place whose Copy is unproven needs
-    // (SPEC 3.5, TransferRequired), and only an Error proof leaves it unset; a value that is not a Place is a Temporary.
+    // (SPEC 3.5, TransferRequired); a Place without a Type, or whose Move rests on an Error Copy proof, failed (SPEC 23.1.2; DECISIONS
+    // BU-103); a value that is not a Place is a Temporary.
     private HirAcquire BareOf(Koto child)
     {
-        var place = this.IsPlace(child);
-        if (!place || child.BoundType is not { } type)
+        if (!this.IsPlace(child))
         {
-            return place ? HirAcquire.Unset : HirAcquire.Temporary;
+            return HirAcquire.Temporary;
         }
 
-        var bare = this.BareAcquire(type, child, out var proof);
-        return bare == HirAcquire.Move && proof == ConstraintProof.Error ? HirAcquire.Unset : bare;
+        return child.BoundType is { } type && this.BareAcquire(type, child, out var proof) is var bare &&
+            !(bare == HirAcquire.Move && proof == ConstraintProof.Error) ? bare : HirAcquire.Failed;
     }
 
     // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2), a static, or the storage a formatting plan prepared (its buffer, its writer).

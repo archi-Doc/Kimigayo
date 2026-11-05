@@ -57,7 +57,7 @@ a SPEC basis and owner approval.
 | `BindingFailure` | 89 |
 | `HirOp` | 40 |
 | `HirRes` | 9 |
-| `HirAcquire` | 7 |
+| `HirAcquire` | 8 |
 | `HirAdaptation` | 9 |
 | `HirPlaceKind` | 11 |
 | `HirCompletion` | 3 |
