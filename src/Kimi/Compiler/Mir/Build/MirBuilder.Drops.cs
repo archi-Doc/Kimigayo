@@ -237,12 +237,17 @@ internal sealed partial class MirBuilder
 
     // SPEC 16.1: a defer body where its scope is left, built once per target of the drop tree it is in (plan 5.6.4), in the scope that
     // registered it; its end and an exit to it go on with the cleanup after it (End), and a body that does not complete goes on there for
-    // the checks only (its Check).
+    // the checks only (its Check). A copy the body budget refuses where it would begin builds nothing (Refuses, IMPL 21.3.2).
     private void Deferred(in Registration registration)
     {
+        var defer = (DeferredBlockKoto)registration.Defer!;
+        if (this.Refuses(0, defer))
+        {
+            return;
+        }
+
         var scope = this.scope;
         var start = this.statementStart;
-        var defer = (DeferredBlockKoto)registration.Defer!;
         var next = this.body.AddBlock();
         (this.scope, this.statementStart) = (registration.Scope, false);
         var depth = this.scopes.Count;

@@ -782,9 +782,9 @@
     Message="String interpolation nesting exceeds the limit of {0}"
     Arguments="limit:Number"
 
-  + Name="DefaultExpansionLimit_Kd"
+  + Name="ExpansionLimit_Kd"
     Category="Resource"
-    Message="Expanding the omitted defaults of this call exceeds the implementation limit of 65536 MIR statements per function body"
+    Message="This expansion is not built: its function body has passed, or would pass, the implementation limit of 65536 MIR statements"
 
   + Name="OwnershipStorageLimit_Kd"
     Category="Resource"

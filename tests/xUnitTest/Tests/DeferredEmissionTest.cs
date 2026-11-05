@@ -4,6 +4,7 @@ using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -152,6 +153,19 @@ public class DeferredEmissionTest
         }
     }
 
+    // SPEC 16.2 (PLAN G427, the residual family's nested-Body form; the owner's 「上限付きで受入（推奨）」): a Body inside a defer body that
+    // registers a defer and that a self exit leaves has two continuations, so each level at most doubles the body (as on dev); the body
+    // budget bounds it (AnExpansionPastTheBodyLimitReportsExpansionLimit).
+    [Fact]
+    public void NestedBodiesInDeferredBodiesAtMostDoublePerLevel()
+    {
+        var blocks = new[] { 3, 4, 5, 6 }.Select(static depth => TopLevelBlocks(MinimalEmissionTest.Analyze(NestedBodySource(depth)))).ToArray();
+        for (var i = 1; i < blocks.Length; i++)
+        {
+            Assert.True(blocks[i] <= (2 * blocks[i - 1]) + 64, string.Join(", ", blocks));
+        }
+    }
+
     // SPEC 16.2 (PLAN G427 F4, F3): a labeled do's exit, or a function's return, and the body's completion share the target's drop
     // tree, so the defer body is built once (dev before G427: twice, in the transfer's tree and inline at the end); an indented body's last
     // item is a statement (SPEC 14.2.2), so the bodies are Unit. Calls: the defer's and the end's.
@@ -221,6 +235,30 @@ public class DeferredEmissionTest
         }
     }
 
+    // IMPL 21.3.2, SPEC 23.1.1 (PLAN G427 U2, the owner's 「上限付きで受入（推奨）」): the body budget both expansions consult refuses a defer
+    // copy that would begin past 65,536 MIR statements; the refused copy builds nothing, and each defer statement whose copy is refused
+    // records ExpansionLimit_Kd once, a Resource Error, so no module is generated, and the analyses' arena limit is not reached (before
+    // U2: OwnershipStorageLimit_Kd after the whole body was built). The body passes the limit only by what the copies begun before it
+    // build (89 statements), and the records are the same on reanalysis. The twin, one level less, stays under the limit and is accepted.
+    [Fact]
+    public void AnExpansionPastTheBodyLimitReportsExpansionLimit()
+    {
+        var under = MinimalEmissionTest.Analyze(NestedBodySource(10));
+        Assert.True(under.Accepts, MinimalEmissionTest.Describe(under));
+        Assert.Empty(under.Problems);
+        var c = MinimalEmissionTest.Analyze(NestedBodySource(11));
+        var first = c.Problems.Select(x => (x.Code, c.SyntaxOf(x.Subject))).ToArray();
+        Assert.NotEmpty(first);
+        Assert.All(first, static x => Assert.Equal(DiagnosticCode.ExpansionLimit_Kd, x.Code));
+        Assert.All(first, static x => Assert.IsType<DeferredBlockKoto>(x.Item2));
+        Assert.Equal(first.Length, first.Select(static x => x.Item2).Distinct().Count());
+        var statements = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0).Statements.Length;
+        Assert.InRange(statements, 65_537, 65_536 + 1_000);
+        Assert.False(c.Generate(TextWriter.Null));
+        c.Analyze();
+        Assert.Equal(first, c.Problems.Select(x => (x.Code, c.SyntaxOf(x.Subject))));
+    }
+
     // SPEC 14.11, 14.3 (PLAN G427 F6, F7): a require's failure body and an unsafe block, each indented or a single item, are Bodies no
     // target ends: the defers they register run where they are left, and a failure body has no successor (its fallthrough rows are
     // MirAnalysisTest's RequireEnds). The valid forms are accepted; a defer reading a local moved later in its body is one MovedPlace_Kd
@@ -282,6 +320,25 @@ public class DeferredEmissionTest
         for (var i = depth - 2; i >= 0; i--)
         {
             source.Append(' ', (i * 8) + 12).Append("if c => exit\n").Append(' ', (i * 8) + 12).Append("continue\n");
+        }
+
+        return source.Append("    n += 1\n    if n == 1 => continue\n    exit\nConsole.writeLine(\"ok\")").ToString();
+    }
+
+    // A while loop whose body nests `depth` levels of a defer whose body declares a local, then, but at the last level, an if Body holding
+    // the next level, a self exit and a Unit item (the residual family's nested-Body form).
+    private static string NestedBodySource(int depth)
+    {
+        var source = new StringBuilder("var c = true\nvar c2 = false\nvar n = 0\nwhile n < 3\n");
+        for (var i = 0; i < depth; i++)
+        {
+            source.Append(' ', (i * 8) + 4).Append("defer\n").Append(' ', (i * 8) + 8).Append("var local").Append(i).Append(" = 1\n");
+            source.Append(' ', (i * 8) + 8).Append(i + 1 < depth ? "if c\n" : "()\n");
+        }
+
+        for (var i = depth - 2; i >= 0; i--)
+        {
+            source.Append(' ', (i * 8) + 12).Append("if c2 => exit\n").Append(' ', (i * 8) + 12).Append("()\n");
         }
 
         return source.Append("    n += 1\n    if n == 1 => continue\n    exit\nConsole.writeLine(\"ok\")").ToString();

@@ -8,6 +8,7 @@
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
 // An Opaque temp, which holds a derived or unsupported value where its consumer needs a Place, is no storage: no Ref, pair-case
 // acquisition or case adaptation lends a Place in it; its consumer receives a derived value (DECISIONS R4-M149).
+// A body's expansions, a default's template copy and a defer body's copy, consult one body budget where a copy would begin (Refuses).
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
 using Kimi.Compiler.Parsing;
@@ -26,6 +27,7 @@ namespace Kimi.Compiler.Mir;
 /// <param name="compilation">The compilation.</param>
 internal sealed partial class MirBuilder(Compilation compilation)
 {
+    private const int ExpansionLimit = 65_536; // MIR statements (IMPL 21.3.2): no copy begins past it, one of known size never ends past it.
     private readonly MirProgram program = new();
     private readonly MirValidator validator = new(compilation.Types);
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
@@ -284,6 +286,22 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         this.ends.Clear();
         this.validator.Validate(body, this.program.Findings);
+    }
+
+    // IMPL 21.3.2 (DECISIONS R4-M176): the body budget both expansions consult where a copy would begin: a default's template copy, of its
+    // known size, and a defer body's copy, whose size is not known before it is built (0). No copy begins past the limit, and one of known
+    // size never ends past it, so a body passes it only by what the copies begun before it build. A refused copy is not built, and the
+    // node of this body whose expansion it is, the omitting call or the defer statement, records ExpansionLimit_Kd (Resource; once per
+    // node, MirReport's key).
+    private bool Refuses(int size, Koto node)
+    {
+        if (this.body.Statements.Length + size <= ExpansionLimit)
+        {
+            return false;
+        }
+
+        this.Record(node, DiagnosticCode.ExpansionLimit_Kd);
+        return true;
     }
 
     // An argument local located at a syntax node, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
