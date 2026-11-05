@@ -432,15 +432,15 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check H3-2 (Q-R4-2): every analysis InternalInvariant_Kd names Ownership.Internal (MirReport's defects and Merged's disagreement
-    // record, A5's broken contracts, the C1-F4 view's findings), so the disagreement record never disagrees again: each site of the code
-    // in the analyses states that requirement before it in its block, and a new site joins this list after review.
+    // record, A5's broken contracts; the C1-F4 view throws at its own, DECISIONS BU-102), so the disagreement record never disagrees again:
+    // each site of the code in the analyses states that requirement before it in its block, and a new site joins this list after review.
     [Fact]
     public void EveryAnalysisInternalInvariantNamesOwnershipInternal()
     {
         var code = new Regex(@"DiagnosticCode\.InternalInvariant_Kd");
         var pinned = new Regex(@"OwnershipRequirement\.Internal\)[^}]*?DiagnosticCode\.InternalInvariant_Kd");
         Assert.Equal(
-            ["MirBorrows.Reports.cs 1 1", "MirOrigins.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
+            ["MirBorrows.Reports.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
             Directory.EnumerateFiles(Path.Combine(Repository.Root, "src/Kimi/Compiler/Mir/Analysis"), "*.cs")
                 .Select(x => (Name: Path.GetFileName(x), Text: File.ReadAllText(x))).Where(x => code.IsMatch(x.Text))
                 .Select(x => $"{x.Name} {code.Count(x.Text)} {pinned.Count(x.Text)}").Order(StringComparer.Ordinal));
@@ -749,10 +749,9 @@ public sealed class MirAnalysisTest
 
     // DECISIONS R5-M168: at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, so this is the library's A3 and A5 check, on
     // each target, at full strength through the driver check uses with the library as a root module: a library construction record,
-    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit and the C1-F4 view's findings
-    // included. It reuses the compilation's TyCtxt, so MirOrigins.Findings adds again every finding TyCtxt collected, the first run's
-    // pass-walk findings included (none today): a pass-walk finding shows both in the program's records and here. Every unit changing A3 or
-    // A5 runs it.
+    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit included, and a broken C1-F4
+    // view contract throws (DECISIONS BU-102). It reuses the compilation's TyCtxt, whose view throws again at every later read. Every unit
+    // changing A3 or A5 runs it.
     [Theory]
     [InlineData(WindowsProfile.Target)]
     public void TheLibraryHasNoAnalysisProblem(string target)

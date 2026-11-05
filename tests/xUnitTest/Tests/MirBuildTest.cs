@@ -502,7 +502,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
 
         var adjust = HirTables.AdjustOf(node);
-        return adjust.Adaptation == HirAdaptation.None && adjust.Acquire is HirAcquire.Unset or HirAcquire.Copy or HirAcquire.Move or HirAcquire.Temporary or HirAcquire.None
+        return adjust.Adaptation == HirAdaptation.None && adjust.Acquire is not (HirAcquire.Reborrow or HirAcquire.ByCase)
             ? key : $"{key} {adjust.Acquire}/{adjust.Adaptation}";
     }
 

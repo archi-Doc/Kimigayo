@@ -81,20 +81,27 @@ public sealed partial class Binding
         {
             if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
             {
-                this.RequireInputPremises(at, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
+                // The parameter's pattern as the candidate reads it, the receiver's too (DECISIONS BU-99).
+                var pattern = i < argumentCount ? solution.Rows[i].Pattern : solution.Pattern(selected.Parameters[receiver.ParameterIndex].Type.BoundType!);
+                this.RequireInputPremises(at, pattern!, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
             }
-            else if (i < argumentCount && solution.Rows[i].Contribution != Contribution.Result && operations[i] is { Source: { } whole, ParameterType: { } type })
+            else if (i < argumentCount && operations[i] is { Source: { } whole, ParameterType: { } type })
             {
                 // SPEC 10.2: a composite borrowed at `ref/T` (its cross-semantics borrow) is walked at its value Type T, the operation's
-                // SourceType (FitComposite).
-                var borrowed = operations[i] is { Adaptation: ArgumentAdaptation.CrossSemanticsBorrow, SourceType: { } value } ? value : null;
-                this.JudgePositionRows(whole, solution.Rows[i], borrowed ?? type);
+                // SourceType (FitComposite), beside the pattern's referent; a slot's solution stays its contributor's (BU-99).
+                var root = solution.Rows[i] with { Type = type };
+                if (operations[i] is { Adaptation: ArgumentAdaptation.CrossSemanticsBorrow, SourceType: { } value })
+                {
+                    root = root with { Pattern = IsBorrow(root.Pattern!.Semantics) ? root.Pattern.Components[0] : root.Pattern, Type = value };
+                }
+
+                this.JudgePositionRows(whole, root);
             }
         }
 
         foreach (var argument in defaults)
         {
-            this.RequireInputPremises(call, argument.ParameterType, null, Contribution.Signature);
+            this.RequireInputPremises(call, solution.Pattern(argument.Parameter.Type!)!, argument.ParameterType, null, Contribution.Signature);
         }
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);

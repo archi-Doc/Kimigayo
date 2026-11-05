@@ -297,7 +297,7 @@ public sealed partial class Binding
             return "self"; // SPEC 5.7: the holding value, and a constructor's or destructor's receiver.
         }
 
-        if (origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input)
+        if (origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input or OriginKind.ConstraintSet)
         {
             var display = OriginDisplay(origin, null, typeLevel: true);
             return display.Kind == "expression" ? display.Text : "<" + display.Kind + " origin: " + display.Text + ">";

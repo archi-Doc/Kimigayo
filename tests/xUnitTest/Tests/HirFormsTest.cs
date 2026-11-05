@@ -16,7 +16,7 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
-    // The programs AnAcceptedProgramLeavesNoDiscardRowUnset sweeps: every SPEC example variant without an expected record that the MIR
+    // The programs AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed sweeps: every SPEC example variant without an expected record that the MIR
     // accepts too (Binding records none), the library and the milestone programs.
     public static TheoryData<string> AcceptedPrograms
     {
@@ -275,6 +275,43 @@ public sealed partial class HirFormsTest
         var operands = Reachable(c.Kotonoha).OfType<ConversionKoto>().Where(static x => x.ToString()!.EndsWith("/Base", StringComparison.Ordinal))
             .Select(static x => $"{x.Left} {HirTables.AdjustOf(x.Left).Acquire}/{HirTables.AdjustOf(x.Left).Adaptation}");
         Assert.Equal(["value@move Temporary/None", "value None/None"], operands);
+    }
+
+    // SPEC 7.7.4, 12.4.1, 10.5.4 (G386; DECISIONS BU-83's rule E): an erasure is adjusted once, at the node Binding erased, whatever
+    // groups enclose it: a named call's anonymous function or function group, also at a generic callee, a method or an initializer, as
+    // its unparenthesized twin is; a Closure local's group, erased itself; a `let` initializer's group and a payload's.
+    [Theory]
+    [InlineData("return k(func [] (o) => 0)", "func [] (o) => 0")]
+    [InlineData("return k((func [] (o) => 0))", "func [] (o) => 0")]
+    [InlineData("return k(((func [] (o) => 0)))", "func [] (o) => 0")]
+    [InlineData("return k((func [] (o: i32) => 0))", "func [] (o: i32) => 0")]
+    [InlineData("return k0((func [] () => 0))", "func [] () => 0")]
+    [InlineData("return gk(func [] (o: i32) => o, 1)", "func [] (o: i32) => o")]
+    [InlineData("return gk((func [] (o: i32) => o), 1)", "func [] (o: i32) => o")]
+    [InlineData("return k(g1)", "g1")]
+    [InlineData("return k((g1))", "g1")]
+    [InlineData("return k((gid))", "gid")]
+    [InlineData("let b = Box.init()\n    return b.apply((func [] (o) => o))", "func [] (o) => o")]
+    [InlineData("let h = Holder.init((func [] (o) => o))\n    return 0", "func [] (o) => o")]
+    [InlineData("let c = func [] (o: i32) => 0\n    return k((c))", "(c)")]
+    [InlineData("let f: (i32) -> i32 = (func [] (o) => 0)\n    return 0", "func [] (o) => 0")]
+    [InlineData("let f: Option<(i32) -> i32> = .Some((func [] (o) => 0))\n    return 0", "func [] (o) => 0")]
+    public void AnErasureIsAdjustedOnceAtTheNodeBindingErased(string body, string erased)
+    {
+        const string Callees = "func k(g: (i32) -> i32) -> i32 => 0\nfunc k0(g: () -> i32) -> i32 => 0\nfunc gk<T>(g: (T) -> T, x: T) -> T => x@move\n" +
+            "func g1(o: i32) -> i32 => o\nfunc g1(o: bool) -> i32 => 0\nfunc gid<T>(o: T) -> T => o@move\n" +
+            "struct Box\n    public var v: i32\n    public init() => self.v = 1\n    public func apply(self: ref/Self, g: (i32) -> i32) -> i32 => 0\n" +
+            "struct Holder\n    public var v: i32\n    public init(g: (i32) -> i32) => self.v = 1\n";
+        var source = Callees + "func run() -> i32\n    " + body + "\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var adjusted = Reachable(c.Kotonoha).Where(static x => HirTables.AdjustOf(x).Adaptation == HirAdaptation.Erasure)
+            .Select(x => source.Substring(x.Span.Start, x.Span.Length));
+        var recorded = Reachable(c.Kotonoha).Where(static x => HirTables.ErasedType(x) is not null).Select(x => source.Substring(x.Span.Start, x.Span.Length));
+        Assert.Equal([erased], adjusted);
+        Assert.Equal([erased], recorded);
     }
 
     // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
@@ -696,9 +733,10 @@ public sealed partial class HirFormsTest
         Assert.Equal(["u@follow Reborrow", "owned[0] Reborrow", "z@follow ByCase", "bx.v ByCase", "q@follow ByCase"], rows);
     }
 
-    // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145): in a program Binding accepts, every Place the MIR builder takes as its value by its plan
-    // row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, so the builder's
-    // derived reading of an unset row arises only beside a Binding error (MirBuildTest.AnUnsetDiscardRowIsDerivedFromABindingError).
+    // SPEC 14.2.2, 23.1.2 (DECISIONS R4-M145, BU-103): in a program Binding accepts, every Place the MIR builder takes as its value by its
+    // plan row (a Place no consumer's Adjust takes, or a group's operand in Discard Context) has its bare acquisition there, neither unset
+    // nor failed, so the builder's derived reading of a failed row arises only beside a Binding error
+    // (MirBuildTest.AFailedDiscardRowIsDerivedFromABindingError).
     // The forms below each discard a Place; a group's operand is a parenthesized one (a label wraps only a control-flow construct, never
     // a Place: Parser's label rule).
     [Theory]
@@ -713,7 +751,7 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         var built = BuiltByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(built);
-        Assert.All(built, static x => Assert.NotEqual(HirAcquire.Unset, HirTables.PlanOf(x).Adjust.Acquire));
+        Assert.All(built, static x => Assert.True(HirTables.PlanOf(x).Adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Failed), $"{x}"));
         var held = HeldByTheirRow(c.Kotonoha).ToArray();
         Assert.NotEmpty(held);
         Assert.All(held, static x => Assert.NotNull(HirTables.PlanOf(x).DiscardedType));
@@ -770,10 +808,10 @@ public sealed partial class HirFormsTest
         Assert.Null(HirTables.PlanOf(statement).DiscardedType);
     }
 
-    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset.
+    // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset or failed.
     [Theory]
     [MemberData(nameof(AcceptedPrograms))]
-    public void AnAcceptedProgramLeavesNoDiscardRowUnset(string name)
+    public void AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed(string name)
     {
         Kotonoha module;
         if (name.StartsWith("spec/", StringComparison.Ordinal))
@@ -790,7 +828,7 @@ public sealed partial class HirFormsTest
         }
 
         HirTables.Publish(module.Compilation);
-        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire == HirAcquire.Unset);
+        var unset = BuiltByTheirRow(module).Where(static x => HirTables.PlanOf(x).Adjust.Acquire is HirAcquire.Unset or HirAcquire.Failed);
         Assert.Empty(unset.Select(static x => $"{x.Span.Start} {x}"));
         var untyped = HeldByTheirRow(module).Where(static x => HirTables.PlanOf(x).DiscardedType is null);
         Assert.Empty(untyped.Select(static x => $"{x.Span.Start} {x}"));

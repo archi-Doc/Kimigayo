@@ -275,6 +275,100 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """));
 
+    // SPEC 15.6, 15.6.1, 15.2.3 (PLAN G405): a Loan is live while a value that carries it may be used, and the carriers are the borrow,
+    // its Copies, references derived from it and the aggregates, Closures or storage holding one of these; Origin regions and `outlives`
+    // relations never keep a Loan live (15.6), so 15.6.1's Liveness puts a later use of a value whose Type names `y` only in y's Origin's
+    // region, and a signature's or Type's Origins are dependencies that imply no Loan (15.2.3). `x = 7` is therefore valid while a Closure,
+    // a Function value, an empty Option, a Tuple holding the Closure or a nested function names `y` but holds nothing of it (each also
+    // called before the write), and while a Function value whose result names `y` returns what its argument carries; a value holding `y`
+    // (`.Some(y)`, a `[y]` capture) carries its Loan, so the write conflicts.
+    [Fact]
+    public void ATypeThatNamesALocalOriginKeepsNoLoanLive()
+        => Assert.Equal(
+            ["someCarryingY: x = 7", "closureCapturingY: x = 7"],
+            Problems("""
+                func take(s: Option<ref/i32 during a>) -> i32 => 0
+                func closureNamingYButCarryingNothing() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let h = func [] (p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    x = 7
+                    return h(w@ref)
+                func closureNamingYCalledBeforeTheWrite() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let h = func [] (p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    let v = h(w@ref)
+                    x = 7
+                    return v
+                func functionTypeNamingYButCarryingNothing() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let f: (ref/(ref/i32 during y)) -> i32 = func (p) => p@follow@follow
+                    x = 7
+                    return f(w@ref)
+                func functionTypeNamingYCalledBeforeTheWrite() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let f: (ref/(ref/i32 during y)) -> i32 = func (p) => p@follow@follow
+                    let v = f(w@ref)
+                    x = 7
+                    return v
+                func noneNamingYButCarryingNothing() -> i32
+                    var x = 5
+                    let y = x@ref
+                    let s: Option<ref/i32 during y> = .None
+                    x = 7
+                    return take(s)
+                func someCarryingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    let s: Option<ref/i32 during y> = .Some(y)
+                    x = 7
+                    return take(s)
+                func functionTypeResultNamingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let f: (ref/(ref/i32 during y)) -> ref/i32 during y = func (p) => p@follow
+                    x = 7
+                    let r = f(w@ref)
+                    return r@follow
+                func tupleHoldingAClosureNamingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    let h = func [] (p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    let t = (h@move, 1)
+                    x = 7
+                    return t.0(w@ref)
+                func nestedFunctionNamingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    var z = 1
+                    let w = z@ref
+                    func g(p: ref/(ref/i32 during y)) -> i32 => p@follow@follow
+                    let h = g
+                    x = 7
+                    return h(w@ref)
+                func closureCapturingY() -> i32
+                    var x = 5
+                    let y = x@ref
+                    let h = func [y] () -> i32 => y@follow
+                    x = 7
+                    return h()
+                """));
+
     // SPEC 4.3.3, 4.4.2, 15.6 (DECISIONS R4-M81): a fill holds its value's Loans, at a generic length (which may be positive), at a
     // constant one and at length 0 (the owner's Q2: the value is acquired once even then), so a write while the array lives conflicts
     // (fail-before: the generic fill was an Opaque value and the zero-length one had no operand, neither a problem).

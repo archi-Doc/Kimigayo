@@ -93,7 +93,8 @@ public class NestedTypeParseTest
     [InlineData("ref/(i32) -> bool")]
     [InlineData("i32 -> bool")]
     [InlineData("i32{a} -> bool")]
-    [InlineData("(Outer).Inner -> bool")]
+    [InlineData("(Outer{o}).Inner -> bool")]
+    [InlineData("(Outer during o).Inner -> bool")]
     [InlineData("(Outer){a} -> bool")]
     public void FunctionArrowRequiresAParameterList(string type)
     {

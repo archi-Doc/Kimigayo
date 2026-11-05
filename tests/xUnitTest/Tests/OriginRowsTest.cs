@@ -59,9 +59,9 @@ public sealed partial class OriginRowsTest
         "put(other@uniq, r)\n";
 
     // SPEC 15.6.1: in the library, the milestones, the goldens and the accepting SPEC variants, each Origin row lies once in the slice of the
-    // body Binding formed it in; Binding's declaration judge consumes a declaration's rows (DECISIONS BU-26), so none remains; no broken
-    // contract is found; no row names another declaration's universal atom (+cen: I-1's shape, PLAN G195, is the only one, and it occurs in
-    // none of them).
+    // body Binding formed it in; Binding's declaration judge consumes a declaration's rows (DECISIONS BU-26), so none remains; every
+    // body's slice builds, so no contract breaks (the view throws, BU-102); no row names another declaration's universal atom (+cen: I-1's
+    // shape, PLAN G195, is the only one, and it occurs in none of them).
     [Fact]
     public void EachCensusRowLiesOnceInTheSliceOfItsBody()
     {
@@ -88,8 +88,6 @@ public sealed partial class OriginRowsTest
                     slice.Atoms[x.Shorter] == shorter && x.Equality == o.Equality && ReferenceEquals(x.Destination, o.Type));
                 Assert.True(count == (ReferenceEquals(longer.Atom, shorter.Atom) ? 0 : 1), $"{name}: {count} rows at {o.Use}");
             }
-
-            Assert.Empty(c.Types.OriginFindings);
 
             // PLAN G215: every layer with rows has a constructor whose slice includes them.
             foreach (var layer in Rows(c, library).Select(static x => x.Body).Where(static x => x.Definition is { Kind: BindingSymbolKind.Type }).Distinct())
@@ -147,7 +145,7 @@ public sealed partial class OriginRowsTest
         var c = MirBuildTest.Compile(source + Main);
         Assert.Equal(complete, c.Binding.Result.IsComplete);
         Assert.DoesNotContain(Rows(c, false), static x => Contains(default, x.Use));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
     }
 
     // DECISIONS R4-M101 E3 for a specialization: its signature's well-formedness rows are a declaration's, formed with no body, so Binding's
@@ -159,7 +157,7 @@ public sealed partial class OriginRowsTest
             "specialize func f<i32>(x: ref/(ref/i32 during b) during a) -> i32 => 1\n" + Main);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.DoesNotContain(Rows(c, false), static x => Within(x.Use, static y => y is FunctionKoto { IsSpecialization: true }));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
     }
 
     // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit in
@@ -207,7 +205,7 @@ public sealed partial class OriginRowsTest
         Assert.All(constructors, x => Assert.Equal("Layer:S", Describe(x.Layer)));
         Assert.All(constructors, x => Assert.Equal(2, x.Rows.Count - x.LayerStart));
         Assert.All(constructors, x => Assert.All(x.Rows.Skip(x.LayerStart), y => Assert.Equal(OriginAtomKind.Finite, x.Atoms[y.Longer].Kind)));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
 
         c = MirBuildTest.Compile(InitPremise + Main);
         var init = Bodies(c).Single(IsProgramConstructor);
@@ -230,7 +228,7 @@ public sealed partial class OriginRowsTest
         Assert.Equal((2, 2, false), (template.Rows.Count, template.LayerStart, template.Layer.IsBody));
         var init = Assert.Single(slices, static x => x.Body.Index < 0);
         Assert.Equal(("Layer:S", 2), (Describe(init.Layer), init.Rows.Count - init.LayerStart));
-        Assert.Empty(c.Types.OriginFindings);
+        TheViewBuilds(c);
     }
 
     // G215's boundary, A5's located limit (DECISIONS R4-M168; removal condition: a body of the layer's own): a layer whose struct has no
@@ -493,6 +491,9 @@ public sealed partial class OriginRowsTest
     private static bool InProgram(Koto node) => node.CodeContext.SourceDocument?.Path == "Program.kimi";
 
     private static MirBody[] Bodies(Compilation c) => c.BuildMir().Bodies.ToArray();
+
+    // DECISIONS BU-102: every MIR body's slice of the view builds; a broken contract throws in a complete compilation.
+    private static void TheViewBuilds(Compilation c) => Assert.All(Bodies(c), x => _ = c.Types.OriginRows(x.Key.Body));
 
     private static bool IsProgramConstructor(MirBody body) => body.Key.Decl is { Name: "init" } constructor && InProgram(constructor.Declaration);
 

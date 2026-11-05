@@ -33,6 +33,14 @@ public sealed partial class MirOriginsTest
 
     private const string Callback = "struct C {s}\n    public let call: (ref/i32 during s) -> i32\n    public init(call: (ref/i32 during s) -> i32) => self.call = call@move\n";
 
+    // A function whose Constraint names the set k that no relation relates: its slot is OriginKind.ConstraintSet, fixed in every body
+    // (SPEC 15.3.4; DECISIONS BU-100); x and y reach the result through the local region of r, rows the stratum judges.
+    private const string ConstraintSet = "contract Source\n    associate Item\nstruct Cursor {at}\n    Self is Source\n    associate Item is ref/i32 during at\n" +
+        "    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n" +
+        "func f<T>(v: ref/T, x: ref/i32 during k.at, y: ref/i32";
+
+    private const string ConstraintSetBody = ") -> ref/i32 during k.at\n    T is Source\n    T.(Source).Item is (Cursor{k}).Item\n    var r = x\n    r = y\n    return r\n";
+
     // A meet at the longer end of a well-formedness row (the ledger's bc801917a239).
     private const string Meet = "func g(a: ref/i32, b: ref/i32, x: ref/i32) -> i32\n    let k: Option<ref/(ref/i32 during (a and b)) during x> = .None\n    return 0\n";
 
@@ -87,7 +95,8 @@ public sealed partial class MirOriginsTest
     // since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
     // its written Type is a local's (PLAN G215's twin); a nested result's relation among enclosing Origins, the containing declaration's,
-    // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), and p4's value call without its clause (SPEC 15.6.4).
+    // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), p4's value call without its clause (SPEC 15.6.4), and an
+    // unrelated Constraint set's slot, fixed in the body, reached from an input no premise relates to it (DECISIONS BU-100).
     [Theory]
     [InlineData(R7Inv, "uniq/(ref/i32 during a): a > in1", "let z: uniq/(ref/i32 during a) = y: a > b")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n", "r: in0 > in1")]
@@ -104,13 +113,15 @@ public sealed partial class MirOriginsTest
     [InlineData(EnclosingHead + EnclosingClosure, "ref/(ref/i32 during q) during r: in0 > in1")]
     [InlineData(EnclosingHead + EnclosingFunctionType, "ref/(ref/i32 during q) during r: in0 > in1")]
     [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n" + ValueCall, "s: b > in0")]
+    [InlineData(ConstraintSet + ConstraintSetBody, "r: in2 > k")]
     public void AChainBetweenFixedOriginsThePremisesDoNotDeriveIsUnknown(string source, params string[] expected)
         => Assert.Equal(expected, Unknowns(MirBuildTest.Compile(source + Main)));
 
     // SPEC 15.6.5's valid counterparts: the clause proves both directions of the `==` (r7-inv-eq), the result names the meet of the
     // region's sources, a meet's operands outlive the target, a Reborrow's containment in the layers its name meets (c-cut, SPEC 15.6.3's
     // cut), a pair layer's well-formedness under its premise, the constructor's own body judged under its clause, and a nested result's
-    // relation among enclosing Origins under the containing declaration's clause (PLAN G216 (b)'s r3 and r6).
+    // relation among enclosing Origins under the containing declaration's clause (PLAN G216 (b)'s r3 and r6), and an unrelated
+    // Constraint set's slot reached only from inputs of that slot (DECISIONS BU-100).
     [Theory]
     [InlineData("func f(x: uniq/(ref/i32 during a), y: uniq/(ref/i32 during b)) -> ()\n    origin a == b\n    let z: uniq/(ref/i32 during a) = y\n")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during (x and y)\n    var r = x\n    r = y\n    return r\n")]
@@ -121,6 +132,7 @@ public sealed partial class MirOriginsTest
     [InlineData(LayerBody)]
     [InlineData(EnclosingHead + "    origin q outlives r\n" + EnclosingClosure)]
     [InlineData(EnclosingHead + "    origin q outlives r\n" + EnclosingFunctionType)]
+    [InlineData(ConstraintSet + " during k.at" + ConstraintSetBody)]
     public void ARelationThePremisesDeriveHasNoUnknown(string source)
     {
         var c = MirBuildTest.Compile(source + Main);

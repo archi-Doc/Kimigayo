@@ -463,12 +463,12 @@ public sealed partial class MirBuildTest
         Assert.Equal(Enumerable.Repeat(("uniq/i32 during (s and a)", "uniq/i32 during (s and a)"), 4), held);
     }
 
-    // SPEC 23.1.2 (DECISIONS R4-M145): a Place whose bare acquisition Binding left unset, a Place without a Type (its parameter's Type
-    // unresolved), is a derived Opaque with no record, discarded (its plan row unset) or as an item no consumer took (its Adjust unset,
-    // which the container reads as a discard), as any consumed child's unset Adjust is; a complete compilation has no such row
+    // SPEC 23.1.2 (DECISIONS R4-M145, BU-103): a Place whose bare acquisition failed, a Place without a Type (its parameter's Type
+    // unresolved), is a derived Opaque with no record, discarded or as an item no consumer took (its Adjust unset, which the container
+    // reads as a discard), its plan row Failed, as any consumed child's Failed Adjust is; a complete compilation has no such row
     // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition).
     [Fact]
-    public void AnUnsetDiscardRowIsDerivedFromABindingError()
+    public void AFailedDiscardRowIsDerivedFromABindingError()
     {
         var c = Compile("func f(b: Missing, n: i32)\n    b\n    n\nfunc g(b: Missing) -> i32\n    b\npublic func main() => ()\n");
         Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.UnresolvedBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
@@ -480,6 +480,29 @@ public sealed partial class MirBuildTest
             var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
             var b = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "b");
             Assert.Equal([b], Assert.Single(Opaques(body)).Roots);
+        }
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-103): a consumed Place whose acquisition failed (no Type, or a Move resting on an Error Copy proof; an
+    // Error node's folds to (Temporary, None), R4-M109) gives its consumer a derived value, which writes the destination: a body's result
+    // (`_0`) and each branch of a Var's initializer, also through a group or a typeless alias (fail-before: `_0` and the else path's `y`
+    // were never written, so A1 reported UninitializedPlace_Kd at `y`). No record is added.
+    [Fact]
+    public void AFailedAcquisitionWritesItsDestination()
+    {
+        var c = Compile("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc a(b: Bad) -> Bad => b\n" +
+            "func f(t: (i32, i32)) -> i32 => t.5\nfunc k(c: bool) -> i32\n    let x = missing\n    let y: i32 = if c => 1 else => x\n    return y\n" +
+            "func e(c: bool) -> i32\n    let x = missing\n    let y: i32 = if c => 1 else => (x)\n    return y\n" +
+            "func g(c: bool) -> i32\n    let x = missing\n    let z = x\n    let y: i32 = if c => 1 else => z\n    return y\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        foreach (var (name, local) in new[] { ("a", (string?)null), ("f", null), ("k", "y"), ("e", "y"), ("g", "y") })
+        {
+            var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
+            var root = local is null ? 0 : Array.FindIndex(body.Locals.ToArray(), x => x.Name == local);
+            var writes = body.Statements.ToArray().Count(x => x.Kind == MirStatementKind.Assign && x.Place == new MirPlace(root));
+            Assert.True(writes == (local is null ? 1 : 2), $"{name}: {writes} writes of _{root}");
         }
     }
 

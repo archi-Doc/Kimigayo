@@ -186,7 +186,7 @@ public sealed partial class Binding
             // SPEC 5.7: a raw layer states the Origin its `during` writes (WrittenRawOrigin) or none, and forms no borrow Origin.
             if (written)
             {
-                if (this.WrittenRawOrigin(annotation!, use, scope, context.Position) is not { } raw)
+                if (this.WrittenRawOrigin(annotation!, use, scope) is not { } raw)
                 {
                     return null;
                 }
@@ -444,6 +444,13 @@ public sealed partial class Binding
             if (node is TypeSemanticsKoto { BoundType.RawOrigin: { } raw } written)
             {
                 this.JudgeRawOrigin(written, raw); // SPEC 5.7: every written raw Origin, after the last fixed point.
+            }
+
+            // SPEC 15.3.2 (DECISIONS BU-100): storage holds only public Origins; a written Origin there that is a Constraint set's
+            // unrelated slot is a hidden Origin, judged once every declaration completed.
+            if (node is TypeSemanticsKoto { OriginExpression: { } expression, BoundType.Origin.Kind: OriginKind.ConstraintSet } && StorageType(node) is not null)
+            {
+                this.Fail(expression, BindingFailure.InvalidOrigin);
             }
 
             var invalid = false;

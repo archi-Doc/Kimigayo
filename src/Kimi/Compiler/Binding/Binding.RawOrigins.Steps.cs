@@ -43,6 +43,7 @@ public sealed partial class Binding
         null or OriginKind.Unbound or OriginKind.Unstated => RawStep.Unstated,
         OriginKind.Holder => RawStep.Own,
         OriginKind.Static => RawStep.Static,
+        OriginKind.ConstraintSet => RawStep.Exclusive, // DECISIONS BU-100: a fixed unknown Origin, as any other.
         _ => RawStep.Exclusive,
     };
 

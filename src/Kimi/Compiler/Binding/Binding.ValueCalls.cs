@@ -62,11 +62,6 @@ public sealed partial class Binding
             Complete(generic.TypeArguments[0], BoundType.Unit);
         }
 
-        if (scope.Owner is FunctionKoto { BoundSymbol: { } function } && !function.HeaderBound)
-        {
-            this.BindHeader(function);
-        }
-
         var signature = this.BindType(generic.TypeArguments[^1], scope);
         this.borrowAnnotationVisitor.Found = false;
         this.borrowAnnotationVisitor.Visit(generic.TypeArguments[^1]);
@@ -518,7 +513,7 @@ public sealed partial class Binding
             {
                 if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
                 {
-                    this.RequireInputPremises(at, parameter, adapted, this.PartContribution(at));
+                    this.RequireInputPremises(at, parameter, parameter, adapted, this.PartContribution(at));
                 }
             }
 

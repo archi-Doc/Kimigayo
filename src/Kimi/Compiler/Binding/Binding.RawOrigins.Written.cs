@@ -17,10 +17,10 @@ public sealed partial class Binding
     // in inline storage (a Field's or Case payload's Type or a Tuple or fixed-array element of one) and nothing elsewhere in storage; a
     // borrow's name its outer Origin (BindOriginName accepts no other carrier), a slot projection `x.s` the slot's binding, a declared
     // slot, a universal name or `static` itself. JudgeRawOrigin judges it after the last fixed point. Null when the annotation failed.
-    private BoundOrigin? WrittenRawOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope, TypePosition position)
+    private BoundOrigin? WrittenRawOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope)
     {
         var name = annotation.OriginExpression is null ? annotation.OriginName : (annotation.OriginExpression as IdentifierNameKoto)?.IdentifierName;
-        if (name == "self" && (position == TypePosition.InstanceStorage || OriginOwner(annotation) is { Akind: KotoKind.EnumCase }))
+        if (name == "self" && StorageType(annotation) is not null)
         {
             if (!InlineStorage(annotation))
             {
@@ -95,6 +95,13 @@ public sealed partial class Binding
     // needs it valid. Whether `node` failed.
     private bool InvalidRawOrigin(Koto node, BoundOrigin raw, OriginParameter? projected, BoundType? instance)
     {
+        if (raw.Kind == OriginKind.ConstraintSet)
+        {
+            // DECISIONS BU-100: SPEC 5.7 does not settle whether an unrelated Constraint set's slot keeps raw authority (STATUS).
+            this.Fail(node, BindingFailure.Unsupported);
+            return true;
+        }
+
         if ((projected ?? NamedSlot(raw, out instance)) is { } slot && this.RequirementAt(slot, instance).Weakest == LoanRequirement.None)
         {
             var cases = this.FailingCase(slot, instance, LoanRequirement.None);

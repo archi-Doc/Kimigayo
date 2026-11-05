@@ -330,6 +330,12 @@ PLAN §7 rows closed from 2026-11-01 on, one line each (the owner, 2026-11-01, v
 - **G420 (R4):** the docs/dev reduction (the owner, 2026-11-05: 「Q-a： 削除して」「Q-b： draft に移して」「Q-c： promptsも削除して」「Q-d： …→認めます」「Q-e： 一度に行って。…」, then 「規則 A」 for DECISIONS and 「(B」 for PLAN_HISTORY) landed in one push, dev bfa96470a: docs/dev 3,114,096 → 2,467,775 B; every DECISIONS id, PLAN G number and linked anchor kept; the pre-compaction text at 4fb6fcdb1.
 <a id="g384"></a>
 - **G384 (R4):** a write then a read through an index Place (`items[0]@follow = 7`, then `let r = items[0]@follow`) gave a false `ComparisonLoanConflict_Kd`; the old analysis made it, and it went with the H5 merge 70fd9deb9 (R4's triage, 2026-11-05). Closed by its regression rows (`TransferJudgmentTest.AnElementIsWrittenAndReadInPlace`, the form and three invalid twins), W-16, dev 279c891b7.
+<a id="g106"></a>
+- **G106 (R4):** the ledger's mixed signatures (X-1's nine open rows in two signatures, X-1a under OQ10); closed at H10a, landed in W-18 (dev `4862b9fc7`; DECISIONS R5-M188): the ledger ended and every X-1 row has a verdict.
+<a id="g217"></a>
+- **G217 (R4, R5):** a route reference rewritten during an argument is the MIR's `CallReservationConflict_Kd` at the write since H5 (SPEC 15.6.7; STATUS Reservations; `CallReservationTest.ARouteReferenceRewrittenInAnArgumentConflictsWithTheReservation`); the old path's precision items and their pins (`OldPathGaps`, the recorded-difference test) went with H8a, landed in W-18 (dev `4862b9fc7`). gx9 and its guard rows are rejected at their concrete twins' sites (`AbstractCallReachTest`).
+<a id="g405"></a>
+- **G405 (R4):** `q1_closure_liveness_bad` and `q2_fntype_liveness_bad` (a Closure or Function Type value whose signature Origin is not kept live) are SPEC-valid, not an unsound acceptance (R4's design and an independent review, 2026-11-05: values carry Loans and Origin regions never keep one live, 15.6; a signature's Origin dependencies imply no Loan, 15.2.3). Closed by its guard rows (`MirBorrowsTest.ATypeThatNamesALocalOriginKeepsNoLoanLive`), W-19, dev `66de6a02a`. The pre-existing limit its review found is PLAN G432.
 
 ## Retired audit records
 

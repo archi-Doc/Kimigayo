@@ -65,7 +65,7 @@ public sealed partial class Binding
             return true;
         }
 
-        return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
+        return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input or OriginKind.ConstraintSet;
     }
 
     // SPEC 15.6.5: an Origin fixed in `body`: by the contract, as `body`'s own call receiver or call result (the view's row 5), or as an

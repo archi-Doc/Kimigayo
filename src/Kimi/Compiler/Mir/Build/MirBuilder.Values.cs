@@ -186,12 +186,20 @@ internal sealed partial class MirBuilder
             return HirTables.Op(node) == HirOp.Literal ? this.Literal(node) : MirOperand.Move(this.Value(node, into, reserves, expected));
         }
 
-        if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
+        if (adjust.Acquire == HirAcquire.Unset)
+        {
+            // Unset means that no consumer takes the node, so a value taken without its Adjust is a broken HIR contract (DECISIONS BU-103):
+            // InternalInvariant_Kd, the value a derived Opaque.
+            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
+            return MirOperand.Move(this.Unsupported(node, derived: true, expected));
+        }
+
+        if (adjust.Acquire == HirAcquire.Failed || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
             expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            // An Error proof or a Place without a Type (Bare) leaves a consumed child's acquisition unset, so its value is derived from
-            // that error (SPEC 23.1.2); a projected receiver's storage is its Field's (Member), and the other adaptations are not built yet.
-            return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Unset, expected));
+            // A failed acquisition (HirAcquire.Failed) is derived from that error (SPEC 23.1.2; DECISIONS BU-103); a projected receiver's
+            // storage is its Field's (Member), and the other adaptations are not built yet.
+            return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Failed, expected));
         }
 
         var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);

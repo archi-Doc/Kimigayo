@@ -14,9 +14,9 @@ public static partial class Parser
 {
     private static bool IsParenthesizedTypeRequirement(ref TokenReader reader)
     {
-        // A comma at this level identifies a Tuple; an arrow after the closing parenthesis identifies a Function Parameter List,
-        // and a dot after a BoundContainerQualifier its PathSuffix, as in (S{k}).Item (SPEC F). Nested Types own their commas.
-        if (reader.PeekKind() == TokenKind.CloseParenthesis)
+        // A Unit Type and a BoundContainerQualifier, as in (S{k}).Item or (S during y).Item (SPEC F.5), are Types; a comma at this level
+        // identifies a Tuple, and an arrow after the closing parenthesis a Function Parameter List. Nested Types own their commas.
+        if (reader.PeekKind() == TokenKind.CloseParenthesis || IsBoundContainerQualifier(ref reader, out _))
         {
             return true;
         }
@@ -38,8 +38,7 @@ public static partial class Parser
             }
             else if (kind == TokenKind.CloseParenthesis && --parentheses == 0)
             {
-                return reader.PeekKind(offset + 1) == TokenKind.MinusGreaterThan ||
-                    (reader.PeekKind(offset + 1) == TokenKind.Dot && IsBoundContainerQualifier(ref reader));
+                return reader.PeekKind(offset + 1) == TokenKind.MinusGreaterThan;
             }
             else if (kind == TokenKind.OpenBracket)
             {

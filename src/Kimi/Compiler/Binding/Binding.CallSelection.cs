@@ -78,7 +78,7 @@ public sealed partial class Binding
         var index = evaluation.Count++;
         var operations = evaluation.Operations.AsSpan(index * evaluation.OperationStride, evaluation.OperationStride);
         operations.Clear();
-        evaluation.Rows.AsSpan(index * call.ArgumentNodes.Count, call.ArgumentNodes.Count).Clear(); // F1: no root row holds a Result yet.
+        evaluation.Rows.AsSpan(index * call.ArgumentNodes.Count, call.ArgumentNodes.Count).Clear(); // F1: each candidate writes its own root rows.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
         evaluation.Scratch.AsSpan(0, CallSlotCount(function)).Clear();

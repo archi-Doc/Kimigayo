@@ -1282,6 +1282,15 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   is the premise visits' stop at a slot pattern (the pattern beside the instantiated Type; a layer's stored premise ranges over the
   slot's solution), so the Result column value and `ResultSolved` are superseded (§4, §5, §6's U2 row). No other text changed; the
   proposal stays 一部取り込み (open), nothing frozen.
+- Revision 4 (2026-11-05, U3's design by the planning session, `artifacts/verify/g216a-oracle/U3-design.md`, designed before U2's
+  landing on the owner's decision, verbatim 「設計の先行を開始して下さい」): U3 composes a candidate's child rows once at its solve and
+  retains them (an `Index` column; `Type` the reader's), judges by rows wherever a root has child rows, composes a composite beneath a
+  slot with a null pattern (M's N8) and gives value calls rows; rule 5 (one formation), the Join record as a waiting fact, the survey
+  path and q20 move to U6 (§6's U3 and U6 rows). No other text changed; the proposal stays 一部取り込み (open), nothing frozen.
+- Revision 5 (2026-11-05, U3's design review 1 by the middle, N3 and N5): U6 retires the Join record, the survey path and one
+  formation itself, before and independently of R7-I2 parts d and i; U3 is implemented in two parts, U3a (the retained composition,
+  the judgment by rows, value calls) and U3b (composition beneath a slot), one review each (§6's U3 and U6 rows). No other text
+  changed; the proposal stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
