@@ -53,17 +53,18 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void EachAxisScalesWithinItsBound(string axis, double factor)
         => WorkScales(output, Sizes(axis), factor);
 
-    // V16: the cold analysis's allocation on each axis at N = 16, 32, 64 grows linearly; fixed-roots since a shorter meet's operand edges
-    // form once per class (MirOrigins.Relate). fixed-joins has no row: its cold growth lies outside A5's linear bytes, an open issue (PLAN)
-    // until its stage is attributed.
+    // V16: the cold analysis's allocation on each axis at N = 16, 32, 64 grows within the axis's bound: linearly (3), fixed-roots since a
+    // shorter meet's operand edges form once per class (MirOrigins.Relate); 5 on fixed-joins, whose Loan stratum's Remove memo
+    // (MirLoanSets.removes) holds the Work's distinct Removes, A3 6.3's "(ended points) × holders" term, N²/2 entries.
     [Theory]
-    [InlineData("results")]
-    [InlineData("regions")]
-    [InlineData("fixed-calls")]
-    [InlineData("fixed-roots")]
+    [InlineData("results", 3)]
+    [InlineData("regions", 3)]
+    [InlineData("fixed-calls", 3)]
+    [InlineData("fixed-roots", 3)]
+    [InlineData("fixed-joins", 5)]
     [Trait("Purpose", "Allocation")]
-    public void TheColdAnalysisScalesLinearly(string axis)
-        => ColdAnalysisScales(output, Sizes(axis));
+    public void TheColdAnalysisScalesWithinItsBound(string axis, double factor)
+        => ColdAnalysisScales(output, Sizes(axis), factor);
 
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
@@ -78,8 +79,8 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     }
 
     // The cold Analyze of three sizes of a workload, each double the one before, bound with its startup checked outside the window:
-    // each verifies, and the allocation grows linearly (V16: a[2] - a[1] <= 3 (a[1] - a[0])).
-    internal static void ColdAnalysisScales(ITestOutputHelper output, string[] sources)
+    // each verifies, and the allocation grows within the factor (V16: a[2] - a[1] <= factor (a[1] - a[0]); 3 is linear).
+    internal static void ColdAnalysisScales(ITestOutputHelper output, string[] sources, double factor)
     {
         var compilations = new Compilation[sources.Length];
         var allocated = AllocationMeasurement.MeasureSeries(sources.Length, i =>
@@ -89,7 +90,7 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         });
         output.WriteLine($"cold analysis allocation {string.Join(", ", allocated)}");
         Assert.All(compilations, static c => Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c)));
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
+        Assert.True(allocated[2] - allocated[1] <= factor * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
     }
 
     private static string[] Sizes(string axis) => [.. new[] { 16, 32, 64 }.Select(n => VerificationWorkloads.CallableRegions(axis, n))];

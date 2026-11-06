@@ -44,7 +44,7 @@ public class InspectionLoanTest(ITestOutputHelper output)
     {
         string[] sources = [.. new[] { 32, 64, 128 }.Select(n => VerificationWorkloads.InspectionLoans(n, stored))];
         CallableRegionScalingTest.WorkScales(output, sources, 5);
-        CallableRegionScalingTest.ColdAnalysisScales(output, sources);
+        CallableRegionScalingTest.ColdAnalysisScales(output, sources, 3);
     }
 
     [Theory]
