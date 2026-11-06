@@ -1131,17 +1131,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    // Retain a forbidden effect list on its conditional premise so Binding can locate and explain it.
-                    var lookahead = reader;
-                    lookahead.Advance();
-                    lookahead.SkipSeparators();
-                    if (conditions.Count > 0 && conditions[^1] is IsKoto last && Parser.IsEffectStart(ref lookahead, specification: true))
-                    {
-                        Parser.ParseCallableEffects(ref reader, last);
-                        this.AddLast(new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(span.Start, last.Span.End), KotoKind.ConditionalConformance, string.Empty, [constraint, premises], separator: " when "));
-                        return;
-                    }
-
+                    // A condition takes no effect list (SPEC F.6): the block is the conformance's, whatever item starts it.
                     var block = Parser.ParseDeclarationDirectiveBody(ref reader, this);
                     this.AddLast(new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(span.Start, block.Span.End), KotoKind.ConditionalConformance, string.Empty, [constraint, premises, block], separator: " when "));
                     return;

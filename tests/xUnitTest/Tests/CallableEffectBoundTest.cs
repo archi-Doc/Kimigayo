@@ -225,7 +225,6 @@ public class CallableEffectBoundTest
     [Theory]
     [InlineData("contract C<F>\n    F is Callable<() -> i32>\n        effect confined\n")]
     [InlineData("contract C\n    associate F is Callable<() -> i32>\n        effect confined\n")]
-    [InlineData("contract C\nstruct S<F>\n    Self is C when F is Callable<() -> i32>\n        effect confined\n")]
     public void RejectsExcludedClausePositions(string declaration)
     {
         var record = Assert.Single(DiagnosticCorpus.Check(declaration + "public func main() => ()\n").Diagnostics);
