@@ -166,7 +166,8 @@ archive, kernel32 library, runner scripts and `profile.json`, the allowed symbol
 its `.ll`, `.stdout`, `.stderr`, `.exit` and `.observation` files, its status and when it last executed. `verify.ps1 -NativeReuse
 <base>/native-results.json` (the runner's `-ReuseResults`) skips a fixture whose entry has both keys equal, status `passed` and an
 execution within `-ReuseHours` (24); every other fixture executes, so each fixture runs at least daily and at once when an input
-changes. The success line reports the split (`N fixtures run, M reused`); a base without the file means a full native run.
+changes. The success line reports the split (`N fixtures run, M reused`); a base without the file means a full native run. The keys
+do not see machine load or the inherited environment, so a flaky observation or deadline failure can stay hidden for up to a day.
 
 ## Specification acceptance and support boundaries
 
