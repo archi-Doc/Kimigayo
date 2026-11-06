@@ -15,6 +15,10 @@ public class AcquisitionCorrelationTest
     private const string Methods = "struct S\n    public init() => ()\n    public func m<U>(self: ref/Self, value: (U, i32), code: i32) => ()\n    public func m<U>(self: ref/Self, value: ref/(i64, U), name: string) => ()\n";
     private const string Waiting = "struct Item<T>\n    public init(value: T, code: i32, f: (T) -> ()) => ()\n    public init(value: T, name: string, f: () -> ()) => ()\n";
     private const string Signatures = "func h<T, F>(value: T, code: i32, action: F) -> ()\n    F is Callable<(T) -> ()>\n    return\nfunc h<T, F>(value: T, name: string, action: F) -> ()\n";
+    private const string Elements = "struct C<T>\n    public init(value: T, code: i32, w: ((T, i32), i32)) => ()\n    public init(value: T, name: string, w: ((i64, T), i64)) => ()\n";
+    private const string Results = "func f<T>(value: T, code: i32) -> (T, i32) => (value@move, 0)\nfunc f<T>(value: T, name: string) -> (i64, T) => (0, value@move)\n";
+    private const string Joins = "func g<T>(x: Option<T>, y: T, z: Option<i64>) -> i32 => 0\nfunc g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\nfunc k(c: bool, v: i64, b: Option<bool>) -> i32\n";
+    private const string Never = "func fail() -> Never => $abort(\"no value\")\n";
     private const string Applied = "    return\nfunc g(v: i32) -> () => ()\n" + Body + "    let n: i32 = 42\n    h(n, 0, g)";
 
     [Theory]
@@ -75,30 +79,46 @@ public class AcquisitionCorrelationTest
     [InlineData(Waiting + "func g(v: i32) -> () => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, g)")]
     [InlineData("struct Item<T>\n    public init(value: T, code: i32, f: (T) -> ()) => ()\n    public init(value: T, name: string, f: (i64) -> ()) => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, func [] (v: i32) => ())")]
     [InlineData(Signatures + "    F is Callable<((T, i32)) -> ()>\n" + Applied)]
+    [InlineData(Elements + Body + "    let n: i32 = 42\n    let p: (i32, i32) = (1, 2)\n    let c = C.init(n, 0, (p, 1))")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\n" + Results + Body + "    let r: (i32, i32) = f(identity(1), 0)")]
+    [InlineData(Results + Body + "    let r: (i32, i32) = f(42, 0)")]
     public void EvidenceAlongAnotherPathIsNoCorrelation(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnprovenAcquisitionCorrelation);
     }
 
-    // SPEC 10.5.1: a waiting part, whole or as a Tuple element, is never evidence, so a parameter that only it reaches does not
-    // break the correlation, for a Literal or a typed source alike.
+    // SPEC 10.5.1, 10.8: a waiting part, whole, as a Tuple element or as a join's results, and a Never part are never evidence, so a
+    // parameter that only they reach does not break the correlation, for a Literal or a typed source alike.
     [Theory]
     [InlineData(Waiting + Body + "    let item = Item.init(42, 0, func [] (v) => ())")]
     [InlineData(Waiting + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, func [] (v) => ())")]
     [InlineData("struct Item<T>\n    public init(value: T, code: i32, w: (i32, (T) -> ())) => ()\n    public init(value: T, name: string, w: (i32, () -> ())) => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, (1, func [] (v) => ()))")]
-    public void WaitingPartsGiveNoEvidence(string source)
+    [InlineData(Joins + "    return g(if c => .None else => .None, v, b)")]
+    [InlineData(Never + "struct C<T>\n    public init(value: (T, i32), code: i32, w: T) => ()\n    public init(value: ref/(i64, T), name: string, w: T) => ()\n" + Body + "    let n: i32 = 42\n    let c = C.init(fail(), 0, n)")]
+    [InlineData(Never + Elements + Body + "    let n: i32 = 42\n    let c = C.init(n, 0, (fail(), 1))")]
+    public void WaitingAndNeverPartsGiveNoEvidence(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
-    // SPEC 7.4.4, 10.8: the same witness or call-signature path, an expected result that fills nothing an argument binds, and a
-    // fixed explicit binding establish the contract.
+    // SPEC 23.1.2 (DECISIONS BU-78 site 3): a failed part makes its join's position wait, so it is no evidence and adds no record.
+    [Fact]
+    public void AFailedPartIsNoEvidence()
+    {
+        var c = MinimalEmissionTest.Analyze(Joins + "    return g(if c => undefinedName else => .None, v, b)");
+        c.Binding.ReportDiagnostics();
+        Assert.Equal("UnresolvedBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
+    }
+
+    // SPEC 7.4.4, 10.8, 10.5.1: the same witness or call-signature path, a Tuple element at its own position below a `ref/` layer
+    // one candidate has, an expected result that fills nothing an argument binds, and a fixed explicit binding establish the contract.
     [Theory]
+    [InlineData("struct C<T>\n    public init(value: T, code: i32, w: ref/(T, i32)) => ()\n    public init(value: T, name: string, w: (T, i64)) => ()\n" + Body + "    let n: i32 = 42\n    let c = C.init(n, 0, (n, 1))")]
     [InlineData(Wrappers + "struct Item<T>\n    public init(value: T, code: i32, witness: Tag<T>) => ()\n    public init(value: T, name: string, witness: Tag<T>) => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, Tag<i32>.init())")]
     [InlineData(Signatures + "    F is Callable<(T) -> ()>\n" + Applied)]
-    [InlineData("func f<T>(value: T, code: i32) -> (T, i32) => (value@move, 0)\nfunc f<T>(value: T, name: string) -> (i64, T) => (0, value@move)\n" + Body + "    let n: i32 = 42\n    let r: (i32, i32) = f(n, 0)")]
+    [InlineData(Results + Body + "    let n: i32 = 42\n    let r: (i32, i32) = f(n, 0)")]
     [InlineData("func f<T>(value: T, code: i32) -> (T, i32) => (value@move, 0)\nfunc f<T>(value: T, name: string) -> (T, i32) => (value@move, 0)\n" + Body + "    let n: i32 = 42\n    let r: (i32, i32) = f(n, 0)")]
     [InlineData(Methods + Body + "    let s = S.init()\n    let x: (i32, i32) = (1, 2)\n    s.m<i32>(x, 0)")]
     [InlineData(Pairs + Body + "    let c = C<i32>.init(P<i32, i32>.init(), 0)")]

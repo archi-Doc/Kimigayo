@@ -29,79 +29,124 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 7.4.4: whether both candidates take the same evidence for the slot from the call's arguments, by argument index. Each
-    // part gives it by its kind (SPEC 10.5.1): a waiting part, an anonymous function included, only the callable slot it stands at,
-    // and an anonymous function also the parts its header writes (SPEC 10.5.4); a Tuple or array literal element by element; any
-    // other part its parameter Type's occurrences and, at a callable slot, its call signature's. Every occurrence must have the same
-    // structural path and extraction rule; an extra candidate-specific source fails. `occurs`: some argument gives the slot evidence
-    // in both candidates.
-    private bool SameArgumentEvidence(InvocationKoto call, FunctionKoto left, FunctionKoto right, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap, out bool occurs)
+    // SPEC 7.4.4: whether both candidates take the same evidence for the slot; null when they do not, else whether some evidence
+    // reaches it. Each argument is read at its positions by the kinds ArgumentKinds publishes, as the evidence walk reads it
+    // (SlotSolution.InferPosition): a typed position other than Never by its parameter Type's occurrences and, at a callable slot,
+    // its call signature's; a Literal one likewise; an aggregate or a classified join by its child positions, each candidate's
+    // `ref/` layer dropped (InferComposite); an anonymous function by the Types its header writes (SPEC 10.5.4); a waiting or failed
+    // position (DECISIONS BU-78) none but the callable slot it stands at (DECISIONS BU-2). Where no typed position binds the slot,
+    // the expected result fills it (SPEC 10.8), so the candidates' results are compared too. Every occurrence must have the same
+    // structural path and extraction rule; an extra candidate-specific source fails.
+    private bool? SameArgumentEvidence(
+        InvocationKoto call, ShapePair pair, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap, BoundType? expected)
     {
-        var found = false;
-        occurs = false;
+        var (left, right) = (pair.Left, pair.Right);
+        var hits = 0;
+        var bound = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var a = leftMap[i] < 0 ? null : left.Parameters[leftMap[i]].Type.BoundType;
             var b = rightMap[i] < 0 ? null : right.Parameters[rightMap[i]].Type.BoundType;
-            if (!Part(call.ArgumentNodes[i], a, b))
+            var start = this.OpenPosition(call.ArgumentNodes[i]);
+            var same = Position(start, a, b);
+            this.ClosePosition(start);
+            if (!same)
             {
-                return false;
+                return null;
             }
         }
 
-        occurs = found;
-        return true;
+        return bound || expected is null || left.IsConstructor || Paths(left.BoundSymbol!.Type, right.BoundSymbol!.Type) ? hits > 0 : null;
 
-        bool Part(Koto part, BoundType? a, BoundType? b)
+        bool Position(int start, BoundType? a, BoundType? b)
         {
-            var core = KotoHelper.UnwrapParentheses(part);
-            var literal = core as FunctionKoto;
-            if (literal is { IsAnonymous: true } || this.IsWaiting(core))
+            var end = this.positionParts.Count;
+            if (end == start)
             {
-                // A waiting part binds only the callable slot it stands at (SPEC 10.5.4, DECISIONS BU-2).
-                if (!Paths(CallableSlot(a, left), CallableSlot(b, right)))
+                return true; // Never in every source.
+            }
+
+            var node = KotoHelper.UnwrapParentheses(this.positionParts[start]);
+            BoundType? type = null;
+            var kind = end - start == 1 ? this.KindOf(node) : this.PositionKind(start, end, out type);
+            if (kind is PartKind.Aggregate or PartKind.Join)
+            {
+                return Composite(start, end, Referent(a), Referent(b));
+            }
+
+            if (end - start == 1 && kind != PartKind.Literal)
+            {
+                if (node is FunctionKoto { IsAnonymous: true } closure)
+                {
+                    return Paths(CallableSlot(a, left), CallableSlot(b, right)) && Header(closure, a, b);
+                }
+
+                (kind, type) = node.BoundType is null || this.WasDeferred(node) ? (PartKind.Call, null) : (PartKind.Typed, node.BoundType);
+            }
+
+            if (kind == PartKind.Call)
+            {
+                return Paths(CallableSlot(a, left), CallableSlot(b, right)); // A waiting or failed position (DECISIONS BU-78).
+            }
+
+            if (kind != PartKind.Literal && (type is null || ReferenceEquals(type, BoundType.Never)))
+            {
+                return true;
+            }
+
+            return kind == PartKind.Literal ? Paths(a, b) : Early(a, b) && Early(Signature(a, left), Signature(b, right));
+        }
+
+        // SPEC 10.8, 4.3.1: a composite by its child positions; at a bare slot the whole, only when every part is evidence.
+        bool Composite(int start, int end, BoundType? a, BoundType? b)
+        {
+            if (a?.Kind == BoundTypeKind.Parameter || b?.Kind == BoundTypeKind.Parameter)
+            {
+                if (this.IndependentPositionType(start, fitLiterals: true) is not null)
+                {
+                    return Paths(a, b);
+                }
+            }
+
+            for (var i = 0; i < this.ChildPositions(start, end); i++)
+            {
+                var child = this.positionParts.Count;
+                var eb = this.AddChildPosition(start, end, i, b);
+                this.ClosePosition(child);
+                var ea = this.AddChildPosition(start, end, i, a);
+                var same = Position(child, ea, eb);
+                this.ClosePosition(child);
+                if (!same)
                 {
                     return false;
                 }
-
-                if (literal is not { IsAnonymous: true })
-                {
-                    return true;
-                }
-
-                var sa = a is null ? null : this.ExpectedCallSignature(left, a);
-                var sb = b is null ? null : this.ExpectedCallSignature(right, b);
-                for (var p = 0; p < literal.Parameters.Count; p++)
-                {
-                    if (literal.Parameters[p].Type.BoundType is not null && !Paths(Header(sa, p), Header(sb, p)))
-                    {
-                        return false;
-                    }
-                }
-
-                return literal.ReturnType?.BoundType is null || Paths(Header(sa, -1), Header(sb, -1));
             }
 
-            if (CallableParts(core) is { Count: > 0 } elements)
+            return true;
+        }
+
+        bool Header(FunctionKoto closure, BoundType? a, BoundType? b)
+        {
+            var sa = a is null ? null : this.ExpectedCallSignature(left, a);
+            var sb = b is null ? null : this.ExpectedCallSignature(right, b);
+            for (var p = 0; p < closure.Parameters.Count; p++)
             {
-                // A borrowed literal's elements are read below the reference layer both candidates share.
-                var (ea, eb) = a is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var ra] } &&
-                    b is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var rb] } ? (ra, rb) : (a, b);
-                if (ChildPattern(core, 0, ea) is not null && ChildPattern(core, 0, eb) is not null)
+                if (closure.Parameters[p].Type.BoundType is not null && !Early(SignaturePart(sa, p), SignaturePart(sb, p)))
                 {
-                    for (var e = 0; e < elements.Count; e++)
-                    {
-                        if (!Part(elements[e], ChildPattern(core, e, ea), ChildPattern(core, e, eb)))
-                        {
-                            return false;
-                        }
-                    }
-
-                    return true;
+                    return false;
                 }
             }
 
-            return Paths(a, b) && Paths(Signature(a, left), Signature(b, right));
+            return closure.ReturnType?.BoundType is null || Early(SignaturePart(sa, -1), SignaturePart(sb, -1));
+        }
+
+        // Typed evidence and a written header bind the slot before the expected result can (SPEC 10.8); a Literal does not.
+        bool Early(BoundType? a, BoundType? b)
+        {
+            var before = hits;
+            var same = Paths(a, b);
+            bound |= hits > before;
+            return same;
         }
 
         BoundType? Signature(BoundType? pattern, FunctionKoto function)
@@ -110,7 +155,10 @@ public sealed partial class Binding
         static BoundType? CallableSlot(BoundType? pattern, FunctionKoto function)
             => pattern is not null && CallableSlotType(pattern, CallSlotOwner(function)) is not null ? pattern : null;
 
-        static BoundType? Header(BoundType? signature, int index)
+        static BoundType? Referent(BoundType? pattern)
+            => pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : pattern;
+
+        static BoundType? SignaturePart(BoundType? signature, int index)
             => signature is { Kind: BoundTypeKind.Function, Components: [var parameters, var returns] }
                 ? (index < 0 ? returns : index < parameters.Components.Count ? parameters.Components[index] : null) : null;
 
@@ -130,7 +178,7 @@ public sealed partial class Binding
 
             if (a.Kind == BoundTypeKind.Parameter)
             {
-                found = true;
+                hits++;
                 return this.InfersReadReferent(a, left) == this.InfersReadReferent(b, right);
             }
 
@@ -176,8 +224,8 @@ public sealed partial class Binding
 
     // This phase reads the whole resolved group. Applicability, defaults and literal defaults
     // supply no evidence; a failure at another source position does not discard a binding here.
-    // A slot not fixed in both candidates needs the same argument evidence (SameArgumentEvidence)
-    // before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
+    // A slot not fixed in both candidates needs the same evidence (SameArgumentEvidence, the expected
+    // result's included) before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
     private bool CheckCallShapeContracts(InvocationKoto call, GenericsKoto? generic, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
     {
         var needed = false;
@@ -387,8 +435,13 @@ public sealed partial class Binding
                         var b = (c * slotStride) + slot;
                         var ma = (AcquisitionModes)(modes[a] & 7);
                         var mb = (AcquisitionModes)(modes[b] & 7);
-                        var occurs = false;
-                        if (((fixedSlots[a] && fixedSlots[b]) || this.SameArgumentEvidence(call, contract.Pair.Left, function, slot, allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count), allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count), out occurs)) &&
+                        if ((fixedSlots[a] && fixedSlots[b] ? true : this.SameArgumentEvidence(
+                                call,
+                                contract.Pair,
+                                slot,
+                                allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
+                                allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
+                                expected)) is { } occurs &&
                             ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
                             (types[a] is { } ta && types[b] is { } tb && SameShapeBinding(ta, tb)) ||
                             (modes[a] == 0 && modes[b] == 0 && occurs)))

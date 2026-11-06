@@ -142,10 +142,10 @@ public partial class OriginRelationDiagnosticTest
     // adaptation rules bridge in neither direction: i64 against bool at the join's position (n1_ov), as an element (f2_ov) and at a
     // child position (e3_ov), Option<i64> against Option<bool> in a nested join (g238, g238g), Option<T> against Array<U> (rh_head) and
     // [2 of i64] against [3 of i64] (rl_len), whose typed twins are valid. Every other ambiguity is reported: i64 against i64 (h3e,
-    // h3, h3b), own slots (h8, perm, p1, p2, sel3_order, sel3_swap, sel6), an evidence-fixed slot (pe3), clauses, which are not
-    // compared (c1-c4, c7_chain, c9_mixed), and a Function Type, whose value's own header decides its fit (fe: a generic reference fits
-    // both); literal-only joins (b3f) too. Each twin is Ambiguous. pe1's group relies on correlating y's T and U, and the join at x is
-    // an extra source in g<T> only, so its call contract fails before any ambiguity, in each twin (SPEC 7.4.4, G512). Toward reporting, a
+    // h3, h3b), own slots (h8, perm, p1, p2, sel3_order, sel3_swap, sel6), an evidence-fixed slot (pe1: y fixes T, so the name cannot
+    // separate them; pe3), clauses, which are not compared (c1-c4, c7_chain, c9_mixed), and a Function Type, whose value's own header
+    // decides its fit (fe: a generic reference fits both); literal-only joins (b3f) too. Each twin is Ambiguous, but pe1's typed
+    // twins: their join at x is an extra source in g<T> only, so the call contract fails first (SPEC 7.4.4, G512). Toward reporting, a
     // dependent record SPEC 23.1.2 allows: Equatable against Addable (c6), own slots that meet (inc_pair, c5, sel2_order) and c3_same,
     // c7_same and c8_order_chain, as dev gives. The selector rows keep their declarations' records, as p2's do; two pair slots per
     // function hit OwnershipCaseLimit_Kd (sel2_order), so no wholly valid selector form exists.
@@ -197,7 +197,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6 cert", "sel6_whole_join", IdentityT + GWholeSelector + "func g<V, p/W>(x: (V, p/W), y: Option<bool>) -> i32 => 1\n" + KM + "    return g(if c => undefinedName else => (identity(3), m), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), m), .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "sel6_swap", IdentityT + GWholeSelector + "func g<p/W, V>(x: (p/W, V), y: Option<bool>) -> i32 => 1\n" + KM + "    return g(if c => undefinedName else => (identity(3), m), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), m), .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "sel6_t", IdentityT + GWholeSelector + "func g<V, p/W>(x: (V, p/W), y: Option<bool>) -> i32 => 1\n" + KM + "    return g(if c => (identity(4), m) else => (identity(3), m), .None)\n", "AmbiguousBinding_Kd g(if c => (identity(4), m) else => (identity(3), m), .None)")]
-    [InlineData("U1.6 cert", "pe1", GEvidenceFixed + "func g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\n" + KV + "    return g(if c => undefinedName else => .None, v, .None)\n", "UnprovenAcquisitionCorrelation_Kd g(if c => undefinedName else => .None, v, .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "pe1", GEvidenceFixed + "func g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\n" + KV + "    return g(if c => undefinedName else => .None, v, .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => .None, v, .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "pe1_t", GEvidenceFixed + "func g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\n" + "func k(c: bool, v: i64, w: Option<i64>) -> i32\n    return g(if c => w else => .None, v, .None)\n", "UnprovenAcquisitionCorrelation_Kd g(if c => w else => .None, v, .None)")]
     [InlineData("U1.6 cert", "pe1_d", GEvidenceFixed + "func g<U>(x: Option<i64>, y: U, z: Option<bool>) -> i32 => 1\n" + "func k(c: bool, v: i64, w: Option<bool>) -> i32\n    return g(if c => w else => .None, v, .None)\n", "UnprovenAcquisitionCorrelation_Kd g(if c => w else => .None, v, .None)")]
     [InlineData("U1.6 cert", "pe3", GEvidenceFixed + "func g<U>(x: Option<U>, y: U, z: Option<bool>) -> i32 => 1\n" + KV + "    return g(if c => undefinedName else => .None, v, .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => .None, v, .None); UnresolvedBinding_Kd undefinedName")]
