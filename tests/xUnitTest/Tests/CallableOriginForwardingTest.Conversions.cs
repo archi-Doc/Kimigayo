@@ -162,8 +162,10 @@ public partial class CallableOriginForwardingTest
 
     private const string NestedClauseHead = NestedT + "func k(q: ref/i32, f: (() -> Option<T during q>) -> i32) -> i32\n    return 0\n\n";
 
-    private const string NestedClauseK = NestedT + "func k(q: ref/i32, f: (() -> Option<T during q>) -> i32) -> i32\n" +
-        "    origin q outlives static\n    return 0\n\n" + NestedHost;
+    private const string ClauseK = NestedT + "func k(q: ref/i32, f: (() -> Option<T during q>) -> i32) -> i32\n" +
+        "    origin q outlives static\n    return 0\n\n";
+
+    private const string NestedClauseK = ClauseK + NestedHost;
 
     private const string NestedHost = "func host(s: ref/i32) -> i32\n";
 
@@ -496,18 +498,23 @@ public partial class CallableOriginForwardingTest
         Assert.Equal($"{form}: {sites}", $"{form}: {Sites(body + Main)}");
     }
 
-    // PLAN G418 (DECISIONS BU-93; STATUS Diagnostics, G10/G56): a failed Closure contract hides the call's other argument Origin
-    // records. A nested identical Function Type now fails the Closure's (UnprovenOriginContract_Kd), so the call loses k's clause record,
-    // UnprovenOriginRelation_Kd at `s` (12:14), and its own UnprovenConstraint_Kd at `k` (12:12), as base does beside a non-identical
-    // Closure (pk_noclause_nonid_n); a Function value argument keeps both. When G418 lands these rows fail, and the restored records join
-    // them. The written Closure's own parameter annotation record, UnprovenOriginRelation_Kd at `Option<T during s>` (pk_noclause_int,
-    // 12:35, its only occurrence), is not the call's: the old ownership analysis lost it beside the Closure's record before H5, as
-    // ANestedIdenticalContractKeepsTheIndependentRecords' pl_n_written at 8:66, and H3-2 publishes it (DECISIONS R5-M184; SPEC 23.1.2,
-    // class 1r).
+    // PLAN G418 (SPEC 23.1.2, 10.7, 15.6.1; DECISIONS BU-96, BU-93): a Closure argument whose contract fails after selection is its own
+    // record (UnprovenOriginContract_Kd), and the call still judges its clauses over the selected solution, which the Closure's verdict
+    // does not enter: k's clause record at `s` stays beside it for a nested identical Function Type (pk_noclause, written in
+    // pk_noclause_int), a non-identical one (pk_nonid) and a body TypeMismatch (pk_tm), and a body-local input refutes it (pk_local). A
+    // `static` input proves the clause (pk_static, valid; pk_static_nonid keeps only the Closure's annotation record). pk_noclause_int's
+    // annotation record at `Option<T during s>` is the Closure's own (DECISIONS R5-M184). These five rows still lack the call's
+    // UnprovenConstraint_Kd, its plan's Type-constraint check, which a Function value argument keeps: a call that rests on a part has no
+    // plan (PLAN G464), and they gain it when G464 lands.
     [Theory]
-    [InlineData("pk_noclause", NestedClauseK + "    return k(s, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5")]
-    [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten + "; UnprovenOriginRelation_Kd Option<T during s>")]
-    public void AFailedClosureContractMasksTheCallsOtherRecordsUntilG418(string form, string body, string records)
+    [InlineData("pk_noclause", NestedClauseK + "    return k(s, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd s")]
+    [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten + "; UnprovenOriginRelation_Kd Option<T during s>; UnprovenOriginRelation_Kd s")]
+    [InlineData("pk_nonid", ClauseK + "func host(s: ref/i32, t: ref/i32 during static) -> i32\n    return k(s, func [] (g: () -> Option<T during t>) -> i32 => 5)\n", "UnprovenOriginContract_Kd func [] (g: () -> Option<T during t>) -> i32 => 5; UnprovenOriginRelation_Kd s")]
+    [InlineData("pk_tm", NestedClauseK + "    return k(s, func [] (g) => true)\n", "TypeMismatch_Kd true; UnprovenOriginContract_Kd func [] (g) => true; UnprovenOriginRelation_Kd s")]
+    [InlineData("pk_local", ClauseK + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnsatisfiedOriginRelation_Kd a@ref")]
+    [InlineData("pk_static", ClauseK + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] (g) => 5)\n", "")]
+    [InlineData("pk_static_nonid", ClauseK + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    return k(s, func [] (g: () -> Option<T during t>) -> i32 => 5)\n", "UnprovenOriginRelation_Kd Option<T during t>")]
+    public void AFailedClosureContractKeepsTheCallsClauseRecords(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     // The published Error records of a source: each code and its span's start as line:column (1-based), in ordinal order.

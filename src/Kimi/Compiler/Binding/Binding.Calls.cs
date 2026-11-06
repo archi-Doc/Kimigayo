@@ -475,18 +475,22 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.CompleteArguments(call, scope, selectedOperations))
-            {
-                return Complete(call, null);
-            }
+            var completed = this.CompleteArguments(call, scope, selectedOperations);
 
             // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources, a
-            // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type (SPEC 23.1.2).
+            // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type, and the other
+            // inputs and the clauses also when a part failed after selection, which then forms no result and on which the call rests
+            // (SPEC 23.1.2; DECISIONS BU-96, BU-51).
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
             var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
             var solution = this.Solution(evaluation, winnerIndex, selected, selectedType);
             var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
             this.JudgeSelectedCall(call, solution, selectedOperations, defaults.AsSpan(0, formed ? defaultCount : 0));
+            if (!completed)
+            {
+                return Complete(call, null);
+            }
+
             if (!formed)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
