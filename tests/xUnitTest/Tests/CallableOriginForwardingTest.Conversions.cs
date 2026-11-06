@@ -184,6 +184,32 @@ public partial class CallableOriginForwardingTest
 
     private const string NestedWritten = "func [] (g: () -> Option<T during s>) -> i32 => 5";
 
+    private const string StaticHost = "func host(s: ref/i32 during static) -> i32\n";
+
+    private const string Hf = "func hf(x: () -> Option<T during static>) -> i32 => 5\n\n";
+
+    private const string GenericK = NestedT + "func kk<U>(q: ref/U, " + NestedF + ") -> i32\n    origin q outlives static\n    return 0\n\n";
+
+    private const string MethodK = NestedT + "struct H\n    public let n: i32\n\n    public init(n: i32) => self.n = n\n\n" +
+        "    public func m(self: ref/Self, q: ref/i32, " + NestedF + ") -> i32\n        origin q outlives static\n        return 0\n\n";
+
+    private const string PlainK = "func k3(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n\n" +
+        "func h3(x: ref/i32 during static) -> i32 => 5\n\nfunc h4(x: ref/i32) -> i32 => 5\n\n";
+
+    private const string ClosurePlace = "func kc(f: () -> i32, q: ref/i32) -> i32 => 0\n\n" + NestedHost +
+        "    let t = \"a\"\n    let c = func [t@move] () -> i32 => 1\n    let g = kc\n";
+
+    private const string WellFormedOverS = "the 1st parameter's result's well-formedness requires s outlives static, which is not proven";
+
+    private const string InputOverS = "the 1st parameter requires s outlives static, which is not proven";
+
+    private const string PremiseHost = "func host(s: ref/i32, t: ref/i32) -> i32\n";
+
+    private const string TwoAcquisitions = "func kc2(f: () -> i32, v: Array<i32>) -> i32 => 0\n\nfunc host() -> i32\n    let t = \"a\"\n" +
+        "    let c = func [t@move] () -> i32 => 1\n    let values: Array<i32> = []\n    let g = kc2\n    return g(c, values)\n";
+
+    private const string PremiseClosure = "    let c = func [] (x: ref/i32 during t) -> i32 => 5\n    let g = k3\n    return g(s, c)\n";
+
     private const string HolderConstraint = "UnprovenConstraint_Kd H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>";
 
     private const string LeakMk = "func mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n";
@@ -555,6 +581,46 @@ public partial class CallableOriginForwardingTest
     [InlineData("c_expected", CaseE + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let e: E during t = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during t")]
     public void AFailedClosureContractKeepsTheCallsClauseRecords(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // PLAN G494 (SPEC 10.5.1, 10.5.4, 7.7.4, 15.6.4 steps 1-3): a value call completes its waiting parts and erases its callables at its
+    // instantiated parameters, after solving the callee's Origins, as a named call does after selection; no Type of the caller names the
+    // callee's own `q`. Valid at a generic instance (gv), a method value (mv), a Function Item (fi, k3), a Closure value (cl) and an
+    // anonymous function, also without a clause (v8: `(ref/i32 during q) -> i32` at a free `s`) and through a join of Items (vj); dev
+    // crashed (InternalInvariant_Kd) on v_fi_ok, gv_fi_ok, mv_fi_ok, v3_ok and vcl2_ok. A written header keeps only its own annotation
+    // record (v_static_nonid, as pk_static_nonid). An erasure is decided once, under the use's premises (r04_cvprem: the caller's clause
+    // admits a Closure value; dev crashed). The invalid twins keep their records, now over `s`; k's clause record at `s` beside a failed
+    // part is unit 2's (rule W). A part that fails before the solve leaves the waiting parts their declared parameter, so their own
+    // records stay (vd, va); of two acquisitions the call records the evidence part's, as its named twin does (r17).
+    [Theory]
+    [InlineData("v_ok", ClauseK + StaticHost + "    let g = k\n    return g(s, func [] (x) => 5)\n", "", null)]
+    [InlineData("v_fi_ok", ClauseK + Hf + StaticHost + "    let g = k\n    return g(s, hf)\n", "", null)]
+    [InlineData("gv_ok", GenericK + StaticHost + "    let g = kk<i32>\n    return g(s, func [] (x) => 5)\n", "", null)]
+    [InlineData("gv_fi_ok", GenericK + Hf + StaticHost + "    let g = kk<i32>\n    return g(s, hf)\n", "", null)]
+    [InlineData("mv_ok", MethodK + "func host(h: ref/H, s: ref/i32 during static) -> i32\n    let g = H.m\n    return g(h, s, func [] (x) => 5)\n", "", null)]
+    [InlineData("mv_fi_ok", MethodK + Hf + "func host(h: ref/H, s: ref/i32 during static) -> i32\n    let g = H.m\n    return g(h, s, hf)\n", "", null)]
+    [InlineData("v3_ok", PlainK + StaticHost + "    let g = k3\n    return g(s, h3)\n", "", null)]
+    [InlineData("v8b_ok", PlainK + NestedHost + "    let g = k3\n    return g(s, h4)\n", "", null)]
+    [InlineData("v8c_ok", PlainK + NestedHost + "    let g = k3\n    return g(s, func [] (x) => 5)\n", "", null)]
+    [InlineData("vcl_ok", PlainK + NestedHost + "    let c = func [] (x: ref/i32) -> i32 => 5\n    let g = k3\n    return g(s, c)\n", "", null)]
+    [InlineData("vcl2_ok", PlainK + StaticHost + "    let c = func [] (x: ref/i32 during static) -> i32 => 5\n    let g = k3\n    return g(s, c)\n", "", null)]
+    [InlineData("vj_ok", PlainK + "func host(s: ref/i32, c: bool) -> i32\n    let g = k3\n    return g(s, if c => h4 else => h4)\n", "", null)]
+    [InlineData("r10b_join_same_bad", PlainK + "func host(s: ref/i32, c: bool) -> i32\n    let g = k3\n    return g(s, if c => h3 else => h3)\n", "UnprovenOriginContract_Kd if c => h3 else => h3", InputOverS)]
+    [InlineData("r04_cvprem_ok", PlainK + PremiseHost + "    origin s outlives t\n" + PremiseClosure, "", null)]
+    [InlineData("r04_cvprem_bad", PlainK + PremiseHost + PremiseClosure, "UnprovenOriginContract_Kd c", "the 1st parameter requires s outlives t, which is not proven")]
+    [InlineData("v_static_nonid", ClauseK + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let g = k\n    return g(s, func [] (x: () -> Option<T during t>) -> i32 => 5)\n", "UnprovenOriginRelation_Kd Option<T during t>", null)]
+    [InlineData("vc_closure", NestedClauseK + "    let g = k\n    return g(s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5", WellFormedOverS)]
+    [InlineData("gv_bad", GenericK + NestedHost + "    let g = kk<i32>\n    return g(s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5", WellFormedOverS)]
+    [InlineData("mv_bad", MethodK + "func host(h: ref/H, s: ref/i32) -> i32\n    let g = H.m\n    return g(h, s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5", WellFormedOverS)]
+    [InlineData("v_fi", ClauseK + Hf + NestedHost + "    let g = k\n    return g(s, hf)\n", "UnprovenOriginContract_Kd hf", null)]
+    [InlineData("v3_bad", PlainK + NestedHost + "    let g = k3\n    return g(s, h3)\n", "UnprovenOriginContract_Kd h3", InputOverS)]
+    [InlineData("v8d_bad", PlainK + NestedHost + "    let g = k3\n    return g(s, func [] (x: ref/i32 during static) -> i32 => 5)\n", "UnprovenOriginContract_Kd func [] (x: ref/i32 during static) -> i32 => 5", InputOverS)]
+    [InlineData("vcl_bad", PlainK + NestedHost + "    let c = func [] (x: ref/i32 during static) -> i32 => 5\n    let g = k3\n    return g(s, c)\n", "UnprovenOriginContract_Kd c", InputOverS)]
+    [InlineData("vd_bad", "func kd(f: (i32) -> i32, q: ref/i32) -> i32 => 0\n\n" + NestedHost + "    let g = kd\n    return g(func [] (x) => undefinedName2, undefinedName)\n", "UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2", null)]
+    [InlineData("va_bad", ClosurePlace + "    return g(c, undefinedName)\n", "TransferRequired_Kd c; UnresolvedBinding_Kd undefinedName", null)]
+    [InlineData("va2_bad", ClosurePlace + "    return g(c, s)\n", "TransferRequired_Kd c", null)]
+    [InlineData("r17_two_acq_bad", TwoAcquisitions, "TransferRequired_Kd values", null)]
+    public void AValueCallCompletesItsWaitingPartsAtTheInstantiatedParameter(string form, string body, string records, string? label)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 
     // The published Error records of a source: each code and its span's start as line:column (1-based), in ordinal order.
     private static string Sites(string source)
