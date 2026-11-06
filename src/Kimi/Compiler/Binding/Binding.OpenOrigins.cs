@@ -16,8 +16,12 @@ public sealed partial class Binding
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
 
-    // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the Reason.
-    private Dictionary<Koto, (Koto Argument, string Reason)>? perCallOrigins;
+    // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
+    private Dictionary<Koto, PerCallOriginFact>? perCallOrigins;
+
+    // The argument whose own per-call Origin alone would satisfy a slot of the selected callee, and that callee's first Type parameter
+    // whose solution holds the argument's open region (-1 when none does, displayed as the Type argument).
+    private readonly record struct PerCallOriginFact(Koto Argument, FunctionKoto Selected, int Slot);
 
     // SPEC 10.8: an Origin that the evidence's own binder quantifies, such as a per-call input, never becomes the solution of an Origin
     // inside a slot. The slot keeps the structure and Semantics, and each such Origin is replaced by an open region of the call (SPEC
@@ -287,20 +291,20 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 10.8: after selection, a slot that only the argument's own per-call Origin would satisfy is MissingOriginBinding_Kd
-    // at the call, whose Reason names the argument and the slot, with the argument related.
+    // at the call, whose Reason names the argument and the slot (ReportPerCallOrigin), with the argument related.
     private BoundType? FailPerCallOrigin(InvocationKoto call, FunctionKoto selected, BoundType?[] slots, Koto argument)
     {
-        var slot = "the Type argument";
+        var slot = -1;
         for (var g = 0; g < selected.GenericArguments.Count; g++)
         {
             if (slots[g] is { } solution && HasOpenOriginFrom(solution, argument))
             {
-                slot = selected.GenericArguments[g].Identifier;
+                slot = g;
                 break;
             }
         }
 
-        return this.FailExplained(ref this.perCallOrigins, call, BindingFailure.MissingOrigin, (argument, $"only a per-call Origin of {argument} would satisfy {slot}"));
+        return this.FailExplained(ref this.perCallOrigins, call, BindingFailure.MissingOrigin, new PerCallOriginFact(argument, selected, slot));
     }
 
     // SPEC 15.3.6, 10.8: `type` with each open region that the known call signature of `source` put in place of its k-th per-call input

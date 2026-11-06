@@ -367,8 +367,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins?.TryGetValue(issue.Node, out var perCallOrigin) == true)
         {
-            // SPEC 15.3.6, 10.8: only the argument's own per-call Origin would satisfy the slot; the argument is related.
-            issue.Node.Report(requirement, issue.Code, evidence: [perCallOrigin.Reason], related: [("argument", perCallOrigin.Argument, null)]);
+            ReportPerCallOrigin(issue.Node, perCallOrigin, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
         {
