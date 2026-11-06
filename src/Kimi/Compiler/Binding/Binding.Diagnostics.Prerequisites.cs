@@ -165,7 +165,8 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2: a check whose result the node being checked does not read runs with no frame open, so nothing it fails becomes that
-    // node's prerequisite: a header that a set Type demands is its declaration's (BindType). ResumeConsultation reopens the frame.
+    // node's prerequisite: a header that a set Type demands is its declaration's (BindType), and a part an unselected call binds on its
+    // own is read by no check of that call (CompleteUnselected; DECISIONS U4b). ResumeConsultation reopens the frame.
     private (int Start, Koto? Node) SuspendConsultation()
     {
         var parent = (this.consultationStart, this.consultationNode);
