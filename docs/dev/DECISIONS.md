@@ -9729,6 +9729,24 @@ resumed by R4-M86 (2026-10-20).
     show it: r27n, r27 and r29 were accepted, though invalid. The binder condition of 22d1216a0 (the cap judges only an Origin the
     walked callee binds; O-23 (b)): it rejected c10 and c11, valid by 5.2.1's letter.
 
+- **BU-114 Raw-pointer forms take the operand's own Type** (2026-11-06; PLAN G157 (42), R4 #27, unit r4-oi-g157-42; Major; the
+  owner, R5's dialog, verbatim 「やめる方向で決定します。修正お願いします。」 answering 「(42) は、この規則をやめる方向でよいですか？」; an
+  explicitly requested SPEC revision of 13.3.4 and 3.4.3, not of SPECJ) SPEC 13.3.4, 3.4.3, 5.3, 3.5.3. 13.3.4 followed safe
+  value-reference layers before its table, so `q + n` for `q: ref/raw/i32` read as the raw route, against 3.5.3 (a referent of no read
+  Type is copied only through `@follow`) and 13.2's `@follow` for `*p`.
+  - Rule: the raw-pointer row and `p[n]` take the left operand's or receiver's own Type; `q@follow + n` is the one spelling. 13.4
+    (comparisons through layers) is unchanged.
+  - `Binding.OperatorApplicability`'s `OperatorApplicabilityOf`, the route owner, rejects `+` and `-` (and `+=`, `-=` through
+    `OperatorKind`) whose followed left terminal is a raw pointer reached through a layer, with the existing typed
+    `OperatorOperandFailure` (Operand = own Type, Terminal = followed `raw/T`): `OperatorNotDefined_Kd` at the operation, the location
+    of every operator-applicability record. It replaces `CompleteBinary`'s `TypeMismatch_Kd` at `n` (and `UnprovenOriginRelation_Kd`
+    for `p + q`), which judged the unfollowed Type after `n` was fitted under the followed one's `isize` expectation.
+  - `p[n]` keeps `NotIndexable_Kd` (index resolution owns it; `Binding.Elements` already tests the receiver's own Type).
+  - Acceptance does not change (every such form was already rejected); MIR and codegen do not change.
+  - Rejected: reading `q + n` as valid (the owner's decision); one code shared by the operator and index forms (a new code and
+    `BindingFailure` entry); an `@follow` repair (SPEC 23.3 has no such kind; it would hide the read's undecided legality);
+    `ArithmeticTerminal` stopping before a raw pointer (two rules for `q * 2`); reporting in `CompleteBinary` (after the wrong fit).
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
