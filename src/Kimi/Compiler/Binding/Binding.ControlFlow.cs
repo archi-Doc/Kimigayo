@@ -302,14 +302,6 @@ public sealed partial class Binding
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
         }
 
-        // SPEC 10.5.1, 23.1.2 (G368 (1), DECISIONS BU-78 as amended): a typed join that holds a failed source fixes no complete Type
-        // without its call, so its call classifies it (ClassifiedByCall) and its typed sources meet the selected candidate's Type.
-        if (context.Inferred && types.Count > 0 && context.Cause is not null && this.ClassifiedByCall(node, null))
-        {
-            context.Wait(this.SourcesAwait(context));
-            return Complete(node, null);
-        }
-
         var suppliedValue = types.Count > 0 || awaiting;
         var common = context.Expected;
         if (common is not null && types.Count > 0 && HasArrayLengthHole(common))
@@ -319,19 +311,10 @@ public sealed partial class Binding
 
         BoundType? failed = null;
         var failure = default(ComparisonFailure);
+        var conflict = false;
         if (common is null)
         {
-            common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
-            if (conflict && this.ConflictWaits(node))
-            {
-                context.Wait(this.SourcesAwait(context));
-                return Complete(node, null); // SPEC 10.5.1: no complete Type without its call's expectation; its call decides it.
-            }
-
-            if (conflict)
-            {
-                context.Conflict();
-            }
+            common = this.SelectCommonType(types, this.ConstraintScope(node), out conflict);
         }
         else
         {
@@ -349,6 +332,20 @@ public sealed partial class Binding
                     }
                 }
             }
+        }
+
+        // SPEC 10.5.1, 23.1.2: a typed join fixes no complete Type without its call when its typed parts have no common Type (U1.6g
+        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended); under its
+        // call's argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
+        if (conflict ? this.ConflictWaits(node) : context.HasTyped && context.Cause is not null && this.ClassifiedByCall(node, null))
+        {
+            context.Wait(this.SourcesAwait(context));
+            return Complete(node, null);
+        }
+
+        if (conflict)
+        {
+            context.Conflict();
         }
 
         // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
@@ -434,6 +431,10 @@ public sealed partial class Binding
 
         internal bool HasLiteral { get; set; }
 
+        // Whether the join holds a typed part (G368 (1)): its survey found one at any depth (its evidence, ResultSurvey.Typed), kept
+        // after the survey drops its evidence and whatever Expected it chose, or a collected source is one (ResultCandidates).
+        internal bool HasTyped { get; set; }
+
         internal bool PartialEvidence { get; set; }
 
         internal bool HasNever { get; set; }
@@ -447,7 +448,7 @@ public sealed partial class Binding
 
         internal void Clear(BoundType? expected)
         {
-            this.HasLiteral = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.HasLiteral = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;

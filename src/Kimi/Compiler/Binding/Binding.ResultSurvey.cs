@@ -148,6 +148,7 @@ public sealed partial class Binding
             context.Conflict();
         }
 
+        context.HasTyped = context.Evidence.Count > 0;
         context.Evidence.Clear();
         context.Collecting = true; // The survey binds what it reads at once; the sources bound after it collect.
     }
