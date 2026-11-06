@@ -81,7 +81,7 @@ fn init @26
       return @33
 fn drop @49
   _0: () return @50
-  _1: Derived arg self @49
+  _1: Derived arg self (Receiver) @49
   _2: () temp @52 s1
   _3: bool temp @53 s1
   _4: () temp (Result) @49

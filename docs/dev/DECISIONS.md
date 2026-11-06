@@ -7563,6 +7563,12 @@ resumed by R4-M86 (2026-10-20).
   - Vocabulary (O1, a MIR vocabulary member): `MirLocalRole.Receiver`. The owner approved it (2026-10-27; BU's question 「G158 (3) の修正で、
     MIR の語彙に `MirLocalRole.Receiver` … を 1 つ追加しました … 承認しますか？」, the answer 「承認する (推奨)」), as R4-M132 recorded
     `MirLocalRole.Result`'s.
+  - Amended (G283, 2026-11-06; the owner, 「承認する」, to BU's question whether `Receiver` may also be a destructor's `self` local `_1`,
+    SPEC 16.3.1): `Receiver` is a constructor's `_0` and a destructor's `_1`, the destruction receiver being like the construction
+    receiver (16.3.1: no owner, never Copied or Moved; the destroyed value's creation is its use). The validator allows exactly those two
+    (a destructor's body is the one MIR names by its `_1` Type's destructor); `LayOutLocals` skips both, so an uncalled `drop` of a
+    struct without a layout has no record (it had `InvalidCLayout_Kd`, or `GenerationResourceLimit_Kd` over the size limit, at `drop`);
+    `InstanceCollector.Generates` checks such a destructor only and does not generate it, as R5-M149's constructor.
   - Locations: (a) a parameter's record at its Type occurrence and a result's at its result Type occurrence: the builder sources each
     written parameter's Arg local and a function's Return local at their written Type (an accessor's arguments, a Closure's
     environment, a constructor's or destructor's `self` and a result without a written Type stay at the declaration, and so do the drop

@@ -112,9 +112,15 @@ public partial class LayoutAttributeBindingTest
     // empty C struct with a written init is accepted, a called constructor is a record at the let that holds its value, and a Field
     // initializer that constructs one is a record at its construction expression in the implicit constructor that runs it (6.3.3). Any
     // other value of the struct's Type in its own constructor stays a use. A function's result is a record at its result Type
-    // occurrence and a parameter's at its own (settled (a); `keep`'s two, settled (b)). On default, mir and sel.
-    public static TheoryData<string, string, string> ConstructorRows => new()
+    // occurrence and a parameter's at its own (settled (a); `keep`'s two, settled (b)). On default, mir and sel. SPEC 16.3.1 (BU-48,
+    // amended by G283): a destructor's receiver is like the construction receiver, so an uncalled drop is no use, nor is a Field read
+    // through its self; any other value of the struct's Type in it stays a use, and a construction is the use, not the drop.
+    public static TheoryData<string, string, string> ReceiverRows => new()
     {
+        { "drop-unused", "#Layout(\"C\")\nstruct S\n    drop => ()\nlet zz = 1\n", string.Empty },
+        { "drop-field", "#Layout(\"C\")\nopen struct S\n    var n: i32\n    drop\n        let k = self.n\nlet zz = 1\n", string.Empty },
+        { "drop-other", "#Layout(\"C\")\nstruct S\n    var n: i32\n    var u: ()\n    drop\n        var other: S\nlet zz = 1\n", "InvalidCLayout_Kd var other: S" },
+        { "drop-constructed", "#Layout(\"C\")\nstruct S\n    drop => ()\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
         { "init-unused", "#Layout(\"C\")\nstruct S\n    public init() => ()\nlet zz = 1\n", string.Empty },
         { "init-called", "#Layout(\"C\")\nstruct S\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
         { "init-written-called", "#Layout(\"C\")\nstruct S\n    public init() => ()\nlet s = S.init()\n", "InvalidCLayout_Kd let s = S.init()" },
@@ -134,8 +140,8 @@ public partial class LayoutAttributeBindingTest
     };
 
     [Theory]
-    [MemberData(nameof(ConstructorRows))]
-    public void AConstructorsReceiverIsNoUseItsConstructionIs(string form, string source, string records)
+    [MemberData(nameof(ReceiverRows))]
+    public void AReceiverIsNoUseItsConstructionIs(string form, string source, string records)
         => AssertUses(form, source, records);
 
     [Theory]

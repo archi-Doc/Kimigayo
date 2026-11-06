@@ -60,9 +60,9 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // The locals of an item's body in its instance, each a by-value use at its declaration, but its drop flags and a constructor's
-    // construction receiver (MirLocalRole.Receiver), whose storage its caller's construction expression made and laid out (SPEC 6.3.2-6.3.4,
-    // 8.15.3; DECISIONS BU-48): the body reaches it only for its Fields' access.
+    // The locals of an item's body in its instance, each a by-value use at its declaration, but its drop flags and a constructor's or
+    // destructor's receiver (MirLocalRole.Receiver), whose storage its caller's construction expression, or the destroyed value's creation,
+    // made and laid out (SPEC 6.3.2-6.3.4, 8.15.3, 16.3.1; DECISIONS BU-48, amended by G283): the body reaches it only for its Fields' access.
     private void LayOutLocals(int item, MirBody body)
     {
         foreach (var local in body.Locals)

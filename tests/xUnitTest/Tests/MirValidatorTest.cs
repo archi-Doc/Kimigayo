@@ -1204,26 +1204,33 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
-    // DECISIONS BU-48: MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver: the builder's is valid; the role
-    // dropped from a constructor's _0, set on another local of the constructor, or set on _0 of a body that is not a constructor, is a Local
-    // finding.
+    // DECISIONS BU-48 (amended by G283, SPEC 16.3.1): MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver, and
+    // a destructor's _1, its destruction receiver: the builder's are valid; the role dropped from either, set on another local of the
+    // constructor or on a destructor's _0, or set on _0 of a body that is neither, is a Local finding.
     [Theory]
     [InlineData(null)]
     [InlineData("dropped")]
     [InlineData("other")]
     [InlineData("function")]
-    public void AReceiverIsExactlyAConstructorsResultLocal(string? broken)
+    [InlineData("destructor")]
+    [InlineData("destructor dropped")]
+    [InlineData("destructor result")]
+    public void AReceiverIsExactlyAConstructorsResultOrADestructorsSelf(string? broken)
     {
-        var c = MirBuildTest.Compile("struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f(n: i32) -> i32 => n\n");
+        var c = MirBuildTest.Compile("struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\n    drop => ()\nfunc f(n: i32) -> i32 => n\n");
         var bodies = c.BuildMir().Bodies.ToArray();
-        var body = bodies.Single(x => x.Source.Module == 0 && (broken == "function" ? x.Key.Decl?.Name == "f" : AdtDef.IsConstructor(x.Key.Decl)));
+        var destructor = broken?.StartsWith("destructor", StringComparison.Ordinal) == true;
+        var body = bodies.Single(x => x.Source.Module == 0 && (broken == "function" ? x.Key.Decl?.Name == "f"
+            : destructor ? x.Key.Decl?.Declaration is FunctionKoto { IsDestructor: true } : AdtDef.IsConstructor(x.Key.Decl)));
         var locals = body.Locals.ToArray();
-        Assert.Equal(broken == "function" ? MirLocalRole.None : MirLocalRole.Receiver, locals[0].Role);
+        Assert.Equal(broken == "function" ? [] : [destructor ? 1 : 0], Enumerable.Range(0, locals.Length).Where(x => locals[x].Role == MirLocalRole.Receiver));
         var (at, role) = broken switch
         {
             "dropped" => (0, MirLocalRole.None),
             "other" => (1, MirLocalRole.Receiver),
             "function" => (0, MirLocalRole.Receiver),
+            "destructor dropped" => (1, MirLocalRole.None),
+            "destructor result" => (0, MirLocalRole.Receiver),
             _ => (-1, MirLocalRole.None),
         };
         if (at >= 0)
@@ -1231,7 +1238,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Role = role };
         }
 
-        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+        Assert.Equal(broken is null or "destructor" ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
     // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,
