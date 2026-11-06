@@ -5703,6 +5703,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `NonExhaustiveMatch_Kd` and `UnreachablePattern_Kd`. No acceptance moves.
   - Rejected: an `Acquisition`-aware test in `MirBuilder.Match` (a second copy of the rule); a new plan flag (a mode); waiting for
     G121 (a resolved match is not its case).
+
+- **R4-M180 An erased substitution binds no Origin (PLAN G157 (30))** (2026-11-07; the owner, R5's dialog, verbatim 「(A)で決定します。」;
+  supersedes R5-M39's clause on a substitution's and a closure context's Origins and Inputs) SPEC 8.13.3. `TyCtxt.Erase(Subst)`, and
+  the closure context inside `TyCtxt.Erase(BoundType)`, intern empty Origins and Inputs; Target, Self, the declaring Type, Types
+  (erased) and lengths are kept, and a Type's Origin arguments still become static. The reason R5-M39's clause no longer holds: it
+  took a substitution's Origin count for the instance's, but the count is the path's (a call's selected function's own, a witness's,
+  a requirement Item context's inputs only, Compose's inner one's; `SubstOfItem`, `Synthesized`, `Identity` and `HeldContext` none),
+  so one instance reached by a call and by an Item, a VTable or a base call had two keys, two items and two closure bodies, while
+  SPEC 8.13.3's selection key excludes Origins. Now an instance has one item, one closure body and one adapter, glue and Limit key,
+  and Closure Types differing only in their context's counts erase alike. The held-closure representative an erased context gives
+  (BU-60) keeps its declared Origins unsubstituted, the shape an Item's representative already has; the collector reads no Origin of
+  it (BU-60's exception, which R5 consented to). No proof runs on an erased value.
+  - `Binding.Retention` (Rows.cs:285-288, Sources.cs:264-288) and A3 (`MirBorrows.Calls.cs:251-282`, `Reach.cs:364`) compare such
+    Closure Types equal, as SPEC 3.3.1/8.13.3 make them one Type; the unit's gate (the oracle, the A5 and retention classes) showed
+    no verdict or record move: 0 record differences on the 1,764-program oracle, and the A5, scaling and retention classes
+    pass.
+  - Rejected: (B), normalizing every constructor's counts to the binder's (ten sites, keeping a count no key reader reads).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10739,6 +10756,8 @@ structure is recorded here by the unit that first implements it.
     will rely on, K10a).
   - Rejected: a separate `TyCtxt.Erasure.cs` (X8, X26); the null rule inside Type erasure for closure contexts (it would tie the
     structural memo to `Instantiates`); a second Origin sentinel (KD2).
+  - Amended by R4-M180 (PLAN G157 (30)): a substitution's and a closure context's Origins and Inputs erase to none, not to static; the
+    other clauses stand.
 - **R5-M40 Admission, the location rule and `Capability`** (2026-10-18; plan K4a, KD3, KD9, KD10, KD12, PD30; under R5-M18; its
   limit clause superseded by R5-M170) The instance collector (R5-M35) composes each site's substitution with its item's
   representative (`TyCtxt.Compose`) and admits generic callees, keyed by definition and `Erase` (R5-M39). The first composed
