@@ -126,6 +126,13 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
+        // SPEC 6.3.4, 7.3.3: a method call acquires its Receiver Expression whole, a use of the whole receiver that a special receiver's
+        // row without Whole never permits (BindReference rejects its other uses).
+        if (Receiver(this.CallReceiver(callee)) is { Whole: false })
+        {
+            return this.Fail(call, BindingFailure.InvalidAssignment);
+        }
+
         if (unknownArgument)
         {
             return Complete(call, null);

@@ -54,11 +54,15 @@ public class InheritedStorageTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
-    // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
-    // a Non-Copy Move, each one Language record at the access. Since the MIR decides acceptance (R6-check H5), a rejected read
-    // while a Field is uninitialized also has A1's `mir` record at the access (PLAN G105): published directly until A6's 2g-1
-    // (DECISIONS R5-M184; H3b T51, class 4).
+    // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls,
+    // method calls (whatever the receiver form, before or after placement; PLAN G454) and a Non-Copy Move, each one Language
+    // record at the access. Since the MIR decides acceptance (R6-check H5), a rejected read while a Field is uninitialized also
+    // has A1's `mir` record at the access (PLAN G105): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
     [Theory]
+    [InlineData("struct S\n    var a: i32\n    public init()\n        self.a = 1\n        let h = self.peek()\n    func peek(self: ref/Self) -> i32 => self.a\n", "self.peek()")]
+    [InlineData("struct S\n    var a: i32\n    public init()\n        self.a = 1\n        self.bump()\n    func bump(self: uniq/Self) => self.a += 1\n", "self.bump()")]
+    [InlineData("struct S\n    Self is Copy\n    var a: i32\n    public init()\n        self.a = 1\n        let h = self.get()\n    func get(self) -> i32 => self.a\n", "self.get()")]
+    [InlineData("struct S\n    var a: i32\n    public init()\n        _ = self.peek()\n        self.a = 1\n    func peek(self: ref/Self) -> i32 => 1\n", "self.peek()", nameof(DiagnosticCode.UninitializedPlace_Kd))]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x", nameof(DiagnosticCode.UninitializedPlace_Kd))]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32 = 0\n    public init()\n        self.x = 3\n", "self.x")]
     [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "self.b", nameof(DiagnosticCode.UninitializedPlace_Kd))]
@@ -73,6 +77,17 @@ public class InheritedStorageTest
         var start = source.LastIndexOf(at, StringComparison.Ordinal);
         (string, int, int)[] expected = [(nameof(DiagnosticCode.InvalidAssignment_Kd), start, at.Length), .. mir.Select(code => (code, start, at.Length))];
         Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
+    }
+
+    // SPEC 6.3.4, 7.3.3: in a constructor, a method call on an initialized own Field (a shared Receiver Expression) and a Type function
+    // call are no method calls on the construction receiver.
+    [Fact]
+    public void AConstructorCallsMethodsOfItsFieldsAndTypeFunctions()
+    {
+        const string Source = "struct Inner\n    var v: i32\n    public init(v: i32) => self.v = v\n    public func get(self: ref/Self) -> i32 => self.v\n" +
+            "struct Tally\n    var inner: Inner\n    var count: i32\n    public init(start: i32)\n        self.inner = Inner.init(start)\n" +
+            "        self.count = self.inner.get() + Tally.seed(start)\n    func seed(x: i32) -> i32 => x + 1\npublic func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
     }
 
     // SPEC 6.3.4, 15.1.5: a constructor's writable Fields are lent exclusively, but no analysis models those Loans yet ("Field borrows end
