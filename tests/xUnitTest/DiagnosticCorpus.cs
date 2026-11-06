@@ -120,7 +120,7 @@ internal sealed record SpecVariant(string? Uncomment, SpecRecord[] Expected, str
 internal sealed record SpecRecord(string Code, string Line, bool Dependent = false, string? Basis = null);
 
 /// <summary>The MIR's records of a variant where they differ from the SPEC, with the difference category (COMPILER_ARCHITECTURE) of the difference
-/// ((a) an old-path error, which goes with the old path at R6-check; (b) a new-path error, including Binding's, which both paths share;
+/// ((a) an old-path error, which went with the old path at R6-check H10b; (b) a new-path error, including Binding's;
 /// (c) a SPEC ambiguity; (d) an intended change, a rule the SPEC changed that MIR alone implements, plan §9.2; or (e) a form MIR does not
 /// build yet) and the SPEC clause.</summary>
 /// <param name="Records">The MIR's Error records.</param>

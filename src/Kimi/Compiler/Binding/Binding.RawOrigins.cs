@@ -18,8 +18,8 @@ namespace Kimi.Compiler;
 //   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
 //   layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)); the borrows keeping a declared slot (Keepers, D15);
 //   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): AdtDef's view of an instance's stored Types (Instance,
-//   design-final §15; its kept parts keep them, DECISIONS BU-41) and, as the D5 exception (the owner's Q-O3, DECISIONS BU-24), the old
-//   analysis's view at its Type intake, removed with it at R6-check.
+//   design-final §15; its kept parts keep them, DECISIONS BU-41); the old analysis's view at its Type intake (the D5 exception, the
+//   owner's Q-O3, DECISIONS BU-24) went with that analysis at R6-check H10b.
 // - Inputs: bound Types; a declaration's schema and keepers after the requirement fixed point; a signature's input Types; PathOrigin.
 // - Outputs: raw Origins, steps, member borrows, relation verdicts and the OriginRelation failure facts of the allowlist.
 // - Invariants: Holder only in declared Field and payload Types, which every read replaces, and in an instance's kept parts, whose

@@ -431,7 +431,7 @@ public class RawStorageTest
     // SPEC 5.2.2, 15.6.5 (bu23 S3): a raw Place borrow's Origin is its anchor, an inferred region, met with the pointer's Origin; the
     // meet outlives an Origin when each operand does, so a borrow kept in a local and then returned has the direct form's verdict: valid
     // through a `var` local whose region's source is the input, an error through a local's own borrow: Binding's record at the returned
-    // borrow and, since the MIR decides acceptance (R6-check H5), A5's twin at the `return` (H0b §5.4, twins until H11, DECISIONS
+    // borrow and, since the MIR decides acceptance (R6-check H5), A5's twin at the `return` (H0b §5.4, twins until R7, DECISIONS
     // R4-M108; H3b T50, class 4).
     [Theory]
     [InlineData(Remainder + "func take<E>(source: R<E> during a) -> uniq/E during a\n    var state = source@move\n    unsafe\n        let item = state.at[0]@uniq\n        return item@move", null)]

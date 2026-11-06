@@ -206,7 +206,7 @@ public sealed partial class MirBorrowsTest
     // its Origin is not Fixed, a local a call writes that is read later, a call result read by part, a conflict with no Refuted relation, a
     // report of one key both derived and direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the
     // storage the body does not own (B's read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails
-    // chain-through-e); the twins' literal forms report the relation only (H11, R4-M122) and a repair loses the conflict. Pins: each passes
+    // chain-through-e); the twins' literal forms report the relation only (until R7, R4-M122) and a repair loses the conflict. Pins: each passes
     // before.
     [Theory]
     [InlineData("m-write", "w: x = 1")]

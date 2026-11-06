@@ -104,7 +104,7 @@ public partial class ClosureResultOriginTest
     // Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome. The call's result rests on that record (P9's
     // image of the call result atom is an Unbound end), so Binding's record is the program's one; dev adds F1's located Unsupported_Kd at
     // the call. Question: does G280 (or G206 (6)) give an Unbound end its cause, so that the call records nothing? Since the MIR decides
-    // (H5, R5-M182), A5's twin of Binding's record is published beside it until H11 (H0b §5.4, R4-M108): at the literal, or at the block
+    // (H5, R5-M182), A5's twin of Binding's record is published beside it until R7 (H0b §5.4, R4-M108): at the literal, or at the block
     // form's `return` (`twin`, the twin's text before the literal).
     [Theory]
     [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x", AtLiteral)]
@@ -142,7 +142,7 @@ public partial class ClosureResultOriginTest
     // the literal keeps its signature (h4, d4, and eff1, whose MIR keeps its independent UnsatisfiedEffectBound_Kd). The Owned proof's
     // UnprovenConstraint_Kd at `a`, in every twin alike, is a cascade of the P8 record: the environment's Borrow has P9's image of the
     // call result atom, an Unbound end resting on that record (PLAN G280). Since the MIR decides (H5, R5-M182), A5's twin of the literal's
-    // record is published beside it until H11 (H0b §5.4, R4-M108), at the literal or at the block form's `return` (`twin`), and eff1's
+    // record is published beside it until R7 (H0b §5.4, R4-M108), at the literal or at the block form's `return` (`twin`), and eff1's
     // UnsatisfiedEffectBound_Kd is published at `f@move` (R5-M184).
     [Theory]
     [InlineData(Apply + Use + "    let outer = func (x: i32) => func [x@ref] () -> i32 => x@follow\n" + ApplyA, "func [x@ref] () -> i32 => x@follow", AtLiteral, "a", null)]

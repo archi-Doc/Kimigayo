@@ -673,6 +673,9 @@ ending) and **P12**.
 - Its specification work goes separately: the SETTLED "Instance-evaluated generic defaults" revision at H15 (R5-M11) and
   any SPEC or IMPL change H0's check-only pass finds, each as an explicit revision recorded here when it lands. Adoption
   implies no implementation support.
+  - SETTLED "Instance-evaluated generic defaults" revised at H15 (2026-11-06; R5-M11, the owner's OQ15 decision of
+    2026-10-18): its "Why not applied" mechanism text and reopening conditions now state the inline fold
+    (`MirBuilder.Defaults`); its Problem, Example, Proposed fix, decision and reason stay. No SPEC or IMPL change.
 
 ## 2026-10-19 — A5 step 2 implementation plan
 
@@ -1262,6 +1265,16 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   manifest); SPEC §8.4.4's OCC revision is proposed at R9's exit (RQ14). Adoption implies no implementation support.
 - Revision 1 (2026-11-03, plan §14): R8-L0a's census corrected §5.2's unit parts and `.ll.in` dispositions, the allocation inventory and
   SP1–SP4's citations; the plan stays 一部取り込み (open), nothing frozen.
+- Revision 3 (2026-11-06, plan §14, R6-check's exit H15): the R6-check items the owner moved to R7 are recorded with each decision:
+  H7 and `BaseReferenceKoto.BasePath` (2026-11-05, verbatim 「推奨どおり」), R2b-D5's rename (2026-11-06, verbatim 「R7 に送る」), H11b-0
+  and H11b into the Problem records (2026-11-06, verbatim 「Cで決定します」) with their named exceptions (R4-M108's twins with
+  `IsTwinRecord` and MirSide's filter, OriginRecoveryTest's two pins, D-1, D-2); the plan stays 一部取り込み (open), nothing frozen.
+- Revision 4 (2026-11-06, plan §14, R6-check's exit H15; the owner, verbatim 「一括承認します。」): §5.4's middle list takes G318,
+  G258's W with G263 item 4, G289 (5), G220 (M's C-47 consented) and G157 (39) (R5's own row, no consent needed); `JudgeChains`
+  and BU-72's three R4 tags are retagged R7 (M's C-47 consented to `JudgeChains`' retag, F's C-48 to the retags: `JudgeChains`'
+  with G318, and BU-72's three); row 3 names
+  H11b's two `UntilH11` test methods. With Revision 3 this fixes R6-check's exit list to R7 (DECISIONS R5-M194); the plan stays
+  一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 

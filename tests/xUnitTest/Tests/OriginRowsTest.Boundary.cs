@@ -10,7 +10,7 @@ namespace XunitTest;
 // not fixed) keeps its record, `Binding.OriginRelation` with its code and location, and its node has rows in its body for A5 (no MIR
 // reader yet; 2a-1a reads them): every position of a non-call fit, the fixed-fixed ones of a mixed fit included, and a local's clause.
 // A node whose records are all fixed-fixed has no row (Binding's until R7), nor, until 2c-6, a Closure result over call-local storage.
-// A5's record of a relation Binding records is published beside Binding's as its twin until H11 (R6-check H5, DECISIONS R5-M185; H0b
+// A5's record of a relation Binding records is published beside Binding's as its twin until R7 (R6-check H5, DECISIONS R5-M185; H0b
 // §5.4, R4-M108; H3b T50): at `return X` beside X, at the clause beside its initializer, or at the same span.
 public sealed partial class OriginRowsTest
 {
@@ -57,7 +57,7 @@ public sealed partial class OriginRowsTest
     public void AFixedRecordHasNoRow(string source, string at, string site)
         => Assert.Empty(Recorded(source, [$"{Unproven} {at}"], site));
 
-    // Pinned until H11 (DECISIONS R4-M108, BU's `fncomp`): CheckTypeUse stops at the first differing Function Type component, so the
+    // Pinned until R7 (DECISIONS R4-M108, BU's `fncomp`): CheckTypeUse stops at the first differing Function Type component, so the
     // positions after it have no row: the recorded body chain `local@ref` over x has a row only when it comes first. The records are the
     // same in either order (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC 15.6.1, 23.1.2): the Function component's failed condition
     // is one UnprovenOriginContract_Kd at the value (it was an UnprovenOriginRelation_Kd per member position), beside the borrow's

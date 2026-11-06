@@ -138,7 +138,7 @@ public partial class OriginRelationDiagnosticTest
     // valid and stay ClosureEnvironmentOriginTest's rows (not repeated). Their twins store a Closure local's Borrow toward the enclosing `q`
     // through the same shapes: a Refuted relation. A Case whose expected Type the parameter fixes (r03_n, r04_n, r06_n) is judged by its own
     // fit, at the payload; only a position the call opens records at the argument (r05_n's `.None`; D-1's scope, decided 2026-10-29).
-    // r03_n's, r04_n's and r06_n's payload record has the MIR's twin at the same span until H11 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
+    // r03_n's, r04_n's and r06_n's payload record has the MIR's twin at the same span until R7 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
     // r05_n also has A5's Loan conflict at `let short = 2`: `*s` may retain `short`'s Loan through the aggregate argument, which is neither
     // the borrow nor a Copy, so the record is independent by SPEC 15.6.5 rule W's letter (family F-b, class 4; R4's verdict, R6-check H5).
     [Theory]
@@ -166,9 +166,9 @@ public partial class OriginRelationDiagnosticTest
     // Explicit qualifiers and Cases with payload (d3 §6): `Option.Some(v)` types itself from `v`, whose signature Type gives q outlives r
     // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument. cs1's contextual inner `Option.None` is judged at
     // the argument; when an annotation settles the construction (cs1_ty), the annotation proves its contextual payload at its written Type,
-    // as in ea1 (R4-M164 U1d; the payload's record waits for H11). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
+    // as in ea1 (R4-M164 U1d; the payload's record waits for R7). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
     // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
-    // cr5's and cr6's payload record has the MIR's twin at the same span until H11 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
+    // cr5's and cr6's payload record has the MIR's twin at the same span until R7 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
     [Theory]
     [InlineData("cv1", PayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "", null)]
     [InlineData("cv1_n", WeakPayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "UnprovenOriginRelation_Kd Option.Some(v)", null)]

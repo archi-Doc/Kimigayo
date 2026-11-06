@@ -206,7 +206,13 @@
   ```
 
 - **Proposed fix:** Evaluate generic defaults as instantiated plans or instance evaluator functions, removing the per-operation default stage of interpretation.
-- **Why not applied:** Inline replicas keep the specified evaluation order, prepared-slot protections and cleanup. Each replica operation and Place records one interpretation context whose composed substitution and proof anchor resolve declared information once, and a generated matrix checks that every placement agrees with an ordinary generic body. Reconsider only when a consumer cannot obtain its context from an operation, Place or plan record; one context needs more than one proof environment; a defect needs analysis to be re-run rather than a context selected; or a fixed-condition measurement regresses beyond run-to-run variation that bounded context reuse cannot remove.
+- **Why not applied:** Inline replicas keep the specified evaluation order, prepared-slot protections and cleanup. A replica is a copy of its default's template in the calling body:
+  - Binding checks each default once at its declaration, reading an earlier parameter as the slot its call prepared (`HirRes.PreparedParam`). The HIR lists the defaults it evaluated (`HirTables.Defaults`), and a call's `CallPlan.DefaultArguments` lists its omitted defaults in parameter order with their parameter Types under the call's substitution.
+  - MIR builds each default once as a template body (`MirBodyKind.DefaultTemplate`) checked like an ordinary generic body. `MirBuilder.Call` acquires the explicit arguments into pending slots in source order, then `MirBuilder.Defaults` fills each omitted default's slot in parameter order with a copy that reads shared borrows of the earlier slots.
+  - `MirBuilder.Inline` folds each Type, callee substitution, Place and case-dependent acquisition of the copy once under the call's substitution, in a scope `Inlined` at the call, so consumers read the copy as ordinary MIR and no context is recorded.
+  - A copy takes no `MustNotComplete` row (`MirLints` judges its template's once), and `MirBorrows.Defaults` gives the template a borrow failure that lies in one evaluation of one copy. A default that reaches itself through omitted defaults is a call of its template. The generated matrix `GenericDefaultTest.ReplicasAgreeWithTheirBody` checks that every placement agrees with an ordinary generic body.
+  - Reconsider only when a consumer cannot read a copy from its folded MIR and `Inlined` scope; one copy needs more than one proof environment; a defect needs a template's check re-run for a copy rather than the copy folded; or a fixed-condition measurement regresses beyond run-to-run variation that a cheaper fold cannot remove.
+- **Revised:** the mechanism text above at R6-check's H15 (DECISIONS R5-M11).
 
 ## Pair-slot premises in every Semantics case
 

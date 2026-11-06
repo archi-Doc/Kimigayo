@@ -271,7 +271,7 @@ public sealed partial class MirOriginsTest
         => Assert.Equal(origins, string.Join("; ", Origins(MirBuildTest.Compile(source + Main)).Order(StringComparer.Ordinal)));
 
     // audit-origins row 19 read into a local Option: the MIR's Origin problem is the one Binding's twin records at the same site, so the
-    // ledger paired them (DECISIONS R4-M108; H11 removes the twins).
+    // ledger paired them (DECISIONS R4-M108; R7 removes the twins).
     [Fact]
     public void AnAuditRowsChainPairsBindingsTwin()
     {

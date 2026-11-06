@@ -90,7 +90,7 @@ internal struct HirTables
     /// is the identical complete Type Binding resolved the access on; null for any other node.</summary>
     /// <param name="node">The node.</param>
     /// <returns>The interned identity, or null.</returns>
-    [Transitional("R4", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
+    [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
     /// <summary>Publishes the Op, Res, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>

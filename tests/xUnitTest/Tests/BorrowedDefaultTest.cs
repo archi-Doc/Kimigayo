@@ -39,7 +39,7 @@ public class BorrowedDefaultTest
         Assert.False(c.Generate(TextWriter.Null));
     }
 
-    // Binding's record and A5's twin at the same span: A5's records at Binding's twin rows stay until H11 (R6-check H0b §5.4,
+    // Binding's record and A5's twin at the same span: A5's records at Binding's twin rows stay until R7 (R6-check H0b §5.4,
     // DECISIONS R4-M108; H3b T50, class 4).
     [Fact]
     public void APreparedSlotsBorrowCannotFitAnExternalOrigin()

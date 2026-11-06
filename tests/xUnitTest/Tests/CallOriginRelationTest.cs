@@ -92,7 +92,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload,
     // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch. Beside Binding's record at the
-    // borrowed payload, A5 publishes its twin at the same span until H11 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // borrowed payload, A5 publishes its twin at the same span until R7 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
     [Theory]
     [InlineData("func needs(o: Option<ref/i32 during static>) -> i32 => 1\nfunc caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    return needs(.Some(local@ref)) + needs(.Some(p))\n")]
     [InlineData("func caller(p: ref/i32) -> i32\n    let local: i32 = 3\n    let o: Option<ref/i32 during static> = .Some(local@ref)\n    let q: Option<ref/i32 during static> = .Some(p)\n    return 1\n")]
@@ -169,7 +169,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // meet at its longer end names the failing operand (SPEC 15.3.6). A constructor call whose local's clause fixes its slot is that
     // record at the call (it was NoApplicableOverload_Kd at the call, and a fact-less UnprovenConstraint_Kd before local slots were
     // judged by variance). Since H5 the MIR judges a local annotation's fit at its declaration (H3b T45), and beside Binding's record at
-    // a returned call A5's twin at the return statement precedes it until H11 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // a returned call A5's twin at the return statement precedes it until R7 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
     [Theory]
     [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\nfunc f(a: ref/i32, b: ref/i32) -> i32\n    let h: H{x} = H.init(a)\n        origin x.s == b\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let h: H{x} = H.init(a)", "requires a outlives b, which is not proven", null)]
     [InlineData("func take(x: ref/i32) -> ref/i32 during x => x\nfunc f(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 5\n    return take(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "take(local)", "requires the borrow local outlives x, which is false", "local", "return take(local)")]
@@ -305,7 +305,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     // SPEC 15.6.4 step 3: an Origin shared with an input's inner position bounds the call's solution, so the result over it is shortened
     // to the borrow and fails at its destination (PLAN G85: these programs read a dead local before). Beside Binding's record at the call,
-    // A5's twin at the return statement precedes it until H11 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
+    // A5's twin at the return statement precedes it until R7 (R6-check H5; H0b §5.4, DECISIONS R4-M108; H3b T50).
     [Theory]
     [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "", "f(m@ref, q)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "    let h = f\n", "h(m@ref, q)")]
@@ -365,7 +365,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     public void ADefaultedInputsWellFormednessIsJudgedAtTheCall(string body, string code, string text, string? source, string? twin = null)
     {
         // Since H5 A5 records the Loan conflict at the destroyed local's declaration (H3b T44), and beside Binding's record at a returned
-        // call its twin at the return statement precedes it until H11 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
+        // call its twin at the return statement precedes it until R7 (`twin`; H0b §5.4, DECISIONS R4-M108; H3b T50).
         var program = body + Main;
         var errors = DiagnosticCorpus.Check(program).Diagnostics;
         (string, string)[] expected = twin is null ? [(code, text)] : [(code, twin), (code, text)];

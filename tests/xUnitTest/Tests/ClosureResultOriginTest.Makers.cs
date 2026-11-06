@@ -381,7 +381,7 @@ public partial class ClosureResultOriginTest
     // records and the MIR's, is exactly `mir`: each Error record as its code and the trimmed source line its subject starts on, in source
     // order. A verdict Binding owns, an Origin relation at a returned or stored value or a Callable or erasure constraint, is published
     // as well: the published records are exactly `published`, code and span (since the MIR decides, H5, an Origin relation's record beside
-    // A5's twin at its statement until H11: H0b §5.4, R4-M108).
+    // A5's twin at its statement until R7: H0b §5.4, R4-M108).
     private static void AssertSides(string form, string source, string mir, string? published)
     {
         var c = VerifiedSpecExampleTest.Bind(source);

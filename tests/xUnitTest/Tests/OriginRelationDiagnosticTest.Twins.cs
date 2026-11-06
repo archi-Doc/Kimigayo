@@ -8,7 +8,7 @@ using Xunit;
 namespace XunitTest;
 
 // R4-M111 (R4-M108; R6-check H10a D4, D12): Binding's Origin relation records of a node whose relation is also a row A5 judges are its
-// twins, which the MIR side leaves out while A5's twin stands for each (until H11).
+// twins, which the MIR side leaves out while A5's twin stands for each (until R7).
 public partial class OriginRelationDiagnosticTest
 {
     // A fit's twin (SPEC 15.6.5's `bad`), a mixed fit whose first recorded chain is fixed-fixed (BU's `fncomp`) and an all-fixed-fixed fit.
@@ -37,7 +37,7 @@ public partial class OriginRelationDiagnosticTest
     // beside a body-chain position of the same call, a row without a record at the same node (BU's review N6). Each row has a record that
     // stays. The mixed fit's Function component is one UnprovenOriginContract_Kd (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC
     // 15.6.1; it was an Origin relation record compared as `return t`), so only its borrow's record is a twin, and only when the borrow
-    // comes first (no row after the differing Function component until H11).
+    // comes first (no row after the differing Function component until R7).
     [Theory]
     [InlineData(TwinFits, "UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
     [InlineData(TwinFitsSwapped, "UnsatisfiedOriginRelation_Kd A5 return t", "")]

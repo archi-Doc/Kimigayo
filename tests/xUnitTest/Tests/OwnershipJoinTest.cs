@@ -37,7 +37,7 @@ public class OwnershipJoinTest
     }
 
     // SPEC 14.9.2, 15.6 (F1): a joined borrow's Type names both Origins and its value carries both Loans, so a write of either owner while
-    // it is live conflicts, on the MIR (A5) as on the old path, which decides until R6-check.
+    // it is live conflicts on the MIR (A5).
     [Theory]
     [InlineData("if c => a@ref else => b@ref")]
     [InlineData("if c => b@ref else => a@ref")]

@@ -161,7 +161,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     // SPEC 13.5.5, 13.6.2, 16.2.2: a payload follow, a Field borrow and a receiver-borrow result keep a Loan on the handle,
     // and a handle whose payload borrows a local keeps that local's Loan wherever it goes. Each row: the records in result order, by
     // code and text. The MIR's conflict is at the access statement or the destroyed root's declaration (H5, the flip); a returned
-    // handle's relation is Binding's record with A5's twin at `return X` (H0b §5.4, twins until H11).
+    // handle's relation is Binding's record with A5's twin at `return X` (H0b §5.4, twins until R7).
     [Theory]
     [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet moved = owner@move\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner")]
     [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nsink(owner@move)\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd owner")]

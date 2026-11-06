@@ -752,8 +752,8 @@ public sealed partial class MirBorrowsTest
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
     // verdict is its written twin ER's (eh, er: no Loan is held past `.A(null)`). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
-    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which reads AdtDef's view, gives each form its twin's record (none: it
-    // accepts the stated forms until R6-check, DECISIONS BU-46).
+    // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
+    // accepted the stated forms, DECISIONS BU-46) until R6-check H10b deleted it.
     [Fact]
     public void ACompletedProjectionGivesItsSubjectsLayer()
     {
@@ -878,7 +878,7 @@ public sealed partial class MirBorrowsTest
     // `HK<Range<T, T>>` (range) and `HK<[2 of T]>` (fixedArray), each with its closed use. Before (ca97a317e's final none), the generic
     // declaration's storage was Rejected and A4's retention over it gave its limit verdict, Unsupported_Kd at the generic function's
     // signature, its local, the init and the return: a problem of the whole MIR analysis, which Binding's issues, the program's findings,
-    // the collector's records and the Loan stratum alone never observe. The old path accepts each too.
+    // the collector's records and the Loan stratum alone never observe. The old path accepted each too (deleted at H10b).
     [Fact]
     public void APendingProjectionIsCompletedByTheInstanceAUseForms()
     {
