@@ -164,7 +164,7 @@ public sealed partial class Binding
             }
 
             // A layer steps by its position (RawStepAt, as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-113).
-            var step = this.RawStepAt(type, at.Written, at.Holder, declared, captured: at.Captured);
+            var step = this.RawStepAt(type, at.Written, at.Holder, declared);
             below = below with { Signature = DeclaredComponent(declared, type, 0) };
             if (step == RawStep.Own)
             {

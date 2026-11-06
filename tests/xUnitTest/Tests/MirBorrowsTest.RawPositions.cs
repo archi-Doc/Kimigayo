@@ -174,13 +174,17 @@ public sealed partial class MirBorrowsTest
     // (BU-108, W-42) accepted s01, s03, s05, a03 and e02/e03 by counting the callee's Type argument `V = ref/… during a`. Where the
     // binder states `a` only by `ref`, a pointer stating it has no write authority, so v01, v02, v03 and r20 (`Wrap.put<U>`) are valid
     // (v02 and r20 erred before), and b01's body-formed `uniq` borrow during `a` does not count (5.2.1). s02, s04 and e01 are guards.
+    // A generic's Function Item has that generic's declared signature, so s01 through `let f = g<…>` errs too (t04i, accepted before;
+    // t04v valid). A Closure environment's layer is judged by its binder as well: `ref` alone keeps t10v and t10w valid (they erred
+    // before). put's own pair binder `s/T during a` admits `uniq`, so its layer is not capped whatever case the call selects: t11u, whose
+    // pointer comes from `u: uniq`, errs (accepted before), as t11i does.
     [Fact]
     public void ATypeArgumentsLayerIsJudgedWhereItsOriginIsBound()
         => Assert.Equal(
             [
                 "s01: z = 5", "s02: z = 5", "s03: z = 5", "s04: z = 5",
                 "s05: z = 5", "a02: z = 5", "a03: z = 5", "a03: let vw: ViewA03 during a = ViewA03.init(r)",
-                "e02: var z = 3", "e03: var z = 3", "x04: z = 5",
+                "e02: var z = 3", "e03: var z = 3", "x04: z = 5", "t04i: z = 5", "t11u: z = 5", "t11i: z = 5", "t11i: var q = u@follow@raw",
             ],
             Problems("""
                 func putAny<U, V>(t: uniq/U, v: V) => ()
@@ -320,6 +324,56 @@ public sealed partial class MirBorrowsTest
                     h.put(w@raw@raw/u8)
                     z = 5
                     inspect(s)
+                func gT04i<U, V>(w: uniq/Wrap<U>, k: V, v: raw/u8) => ()
+                func t04i(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var h = Wrap.init(u@follow@raw)
+                    let f = gT04i<raw/(raw/u8) during a, ref/(raw/u8) during a>
+                    f(h@uniq, r, w@raw@raw/u8)
+                    z = 5
+                func gT04v<U, V>(w: uniq/Wrap<U>, k: V, v: raw/u8) => ()
+                func t04v(r: ref/(raw/u8) during a, r2: ref/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var h = Wrap.init(r2@follow@raw)
+                    let f = gT04v<raw/(raw/u8) during a, ref/(raw/u8) during a>
+                    f(h@uniq, r, w@raw@raw/u8)
+                    z = 5
+                func t10v(r: ref/(raw/u8) during a, r2: ref/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let p = r2@follow@raw
+                    var k = func [p] (q: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *p = v
+                    k(r, w@raw@raw/u8)
+                    z = 5
+                func gT10w<U, V>(w: uniq/U, k: V, v: raw/u8) => ()
+                func t10w(r: ref/(raw/u8) during a, r2: ref/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var h = Wrap.init(r2@follow@raw)
+                    var c = func [h@move] () => ()
+                    gT10w(c@uniq, r, w@raw@raw/u8)
+                    z = 5
+                func putT11u<s/T>(x: s/T during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8)
+                    s is ref or uniq
+                    return
+                func t11u(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var q = u@follow@raw
+                    putT11u(r, q@uniq, w@raw@raw/u8)
+                    z = 5
+                func putT11i<s/T>(x: s/T during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8)
+                    s is ref or uniq
+                    return
+                func t11i(u: uniq/(raw/u8))
+                    var z = 3
+                    let w = z@ref
+                    var q = u@follow@raw
+                    putT11i(u, q@uniq, w@raw@raw/u8)
+                    z = 5
                 """));
 
     // SPEC 5.2.1 condition 3, 15.3.4 (DECISIONS BU-113, PLAN G501): a nested signature's own layer is capped by its declared inputs only.

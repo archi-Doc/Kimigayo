@@ -59,9 +59,8 @@ public sealed partial class Binding
     private readonly HashSet<BoundType> retentionReached = new(ReferenceEqualityComparer.Instance);
 
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
-    // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
-    // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
-    // in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
+    // (RawContent), reused, and how many of them are a callee's own signature inputs (none for an erased signature, a Function Type's or
+    // a Callable bound's, whose raw layers read their kind, RawStepAt: SPEC 5.2.1 caps a layer written in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
     // (RetentionWalk), so each is walked once; and whether a member walk was incomplete (CallRetention.Limit).
     private readonly List<BoundType> retentionErasedScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
@@ -88,7 +87,7 @@ public sealed partial class Binding
     {
         var use = callee.OriginBinder;
         var declaring = types?.Declaring;
-        this.DeclareSignature(types?.Target, inputs, result);
+        this.DeclareSignature(types?.Target ?? (callee.ClosureDefinition is null ? callee.BoundSymbol : null), inputs, result);
         var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
         try
         {
@@ -270,10 +269,10 @@ public sealed partial class Binding
         this.retentionDeclared.Clear();
     }
 
-    // The walked signature as its declaration writes it (retentionDeclared): a call's target's parameter Types and result without the
-    // call's substitution, or, where the call substitutes nothing (`target` null: a Value call's declared signature, a function's own
-    // contract), the inputs and result themselves; none where the declaration's parameters are not the inputs. TyCtxt.Signature reads the
-    // declaration in place, so this allocates nothing.
+    // The walked signature as its declaration writes it (retentionDeclared): its function's parameter Types and result without any
+    // substitution (`target`: a call's target, else the callee's own symbol, also for a Value call of a Function Item, whose signature
+    // binds the generic's arguments; SPEC 7), or a Closure's own signature, the inputs and result themselves (`target` null); none where
+    // the declaration's parameters are not the inputs. TyCtxt.Signature reads the declaration in place, so this allocates nothing.
     private void DeclareSignature(BindingSymbol? target, ReadOnlySpan<BoundType> inputs, BoundType result)
     {
         this.retentionDeclared.Clear();

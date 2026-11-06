@@ -140,8 +140,8 @@ public sealed partial class Binding
     // of a raw layer without an Origin or with `static`, or a value the call may write, whose nominal Type may hide an exclusive layer)
     // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer
     // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
-    // the callee's own signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
-    // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
+    // the step makes Shared (`at.Shared`; RawStepAt: the signature's or the binder's inputs state its Origin only by shared borrows, so a
+    // pointer read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
     // pair layer whose binder admits no exclusive Semantics (an exclusive borrow layer, uniq, objuniq, or a pair layer admitting one, is
     // walked by value in every case, DECISIONS BU-3). Which of an input's occurrences retain its own value, and where, is the storage
     // walk's and the sources' (Binding.Retention.Storage.cs, .Sources.cs; DECISIONS R4-M154). A raw layer with another Origin
@@ -209,7 +209,7 @@ public sealed partial class Binding
         }
 
         var rawOrigin = type.RawOrigin;
-        var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature, captured: at.Captured) : RawStep.Unstated;
+        var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : RawStep.Unstated;
         var past = at.Shared || shared || step == RawStep.Shared;
         var through = raw ? !past && step is RawStep.Unstated or RawStep.Static : at.Writable && !shared;
         var below = at with { Layer = layer, Writable = !inside && (through || writable), Place = past ? at.Place | RetentionPlace.Shared : at.Place };

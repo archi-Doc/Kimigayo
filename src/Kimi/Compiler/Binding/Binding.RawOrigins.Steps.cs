@@ -82,24 +82,27 @@ public sealed partial class Binding
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-113, superseding BU-108's gate): the step of a raw layer a contract's walk meets, by its
-    // position: a layer a declaration writes (`written`, a Field's or payload's) by DeclaredStep; a layer at a position the walked
-    // signature declares (`signature`, the declared Type there) by the cap over the callee's declared inputs, its Origin read as written;
-    // a layer in a Closure's environment (`captured`, BU-108's route for a layer the body's captures wrote) and one of an erased
-    // signature (a Function Type's or a Callable bound's, which SPEC 5.2.1 does not cap) by its kind; any other, one a Type argument
-    // supplies, where its Origin is bound (BinderStep).
-    internal RawStep RawStepAt(BoundType layer, BoundType? written, BoundType? holder, BoundType? signature, bool captured)
+    // position: a layer a declaration writes (`written`, a Field's or payload's) by DeclaredStep; one of an erased signature (a Function
+    // Type's or a Callable bound's, which SPEC 5.2.1 does not cap) by its kind; one at a position the walked signature declares
+    // (`signature`, the declared Type there) by the cap over the callee's declared inputs, its Origin read as written, which is where the
+    // signature binds it; any other, a Type argument's or a Closure environment's, where its Origin is bound (BinderStep). A declared
+    // layer's binder reading is not joined in: where the declaration states its slot by an exclusive Loan, a caller's shared statement
+    // does not bound the call's write (M's v2).
+    internal RawStep RawStepAt(BoundType layer, BoundType? written, BoundType? holder, BoundType? signature)
     {
         if (ReferenceTypes.IsPointer(written))
         {
             return this.DeclaredStep(layer, written, holder);
         }
 
-        if (ReferenceTypes.IsPointer(signature) && this.retentionDeclared.Count > 0)
+        if (this.retentionInputs == 0)
         {
-            return this.SignatureStep(SlotArgument(OwnedOrigin(signature!)), CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1]);
+            return StepOf(OwnedOrigin(layer));
         }
 
-        return captured || this.retentionInputs == 0 ? StepOf(OwnedOrigin(layer)) : this.BinderStep(OwnedOrigin(layer));
+        return ReferenceTypes.IsPointer(signature) && this.retentionDeclared.Count > 0
+            ? this.SignatureStep(SlotArgument(OwnedOrigin(signature!)), CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1])
+            : this.BinderStep(OwnedOrigin(layer));
     }
 
     // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): the step of a raw layer written in a signature whose input
@@ -169,8 +172,8 @@ public sealed partial class Binding
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
 
-    // SPEC 5.7 Authority (DECISIONS BU-113): a Type argument's raw layer judged where its Origin is bound, "never by the caller's actual
-    // borrow": a function's Input or Parameter Origin by that function's declared inputs (SignatureStep over TyCtxt.Signature, read in
+    // SPEC 5.7 Authority (DECISIONS BU-113): a raw layer judged where its Origin is bound, "never by the caller's actual borrow": a
+    // function's Input or Parameter Origin by that function's declared inputs (SignatureStep over TyCtxt.Signature, read in
     // place into retentionBinderInputs), a Type's own slot by its Loan requirement over its declaration's cases; any other (an accessor's
     // or a Closure's own Origin, which has no declared signature here, a body-local Place or inference atom, a set, `static`) by its kind.
     private RawStep BinderStep(BoundOrigin? raw)

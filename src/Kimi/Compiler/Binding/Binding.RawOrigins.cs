@@ -11,8 +11,9 @@ namespace Kimi.Compiler;
 //   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a slot Phantom in a case its Type selects, also through
 //   a written projection; an atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its
 //   Origin's kind; DeclaredStep over StoredLayer, a Field's or Case payload's layer in the instance's kept part, in the cases that
-//   instance selects, which StoredStep, StoredMembers and the hold walk read; SignatureStep, a
-//   signature's layer), which retention and A5 read, and the borrows its Origin belongs to (RawMembers), which retention and
+//   instance selects, which StoredStep, StoredMembers and the hold walk read; RawStepAt, a layer a contract's walk meets by its position,
+//   over SignatureStep, the walked signature's declared layer, and BinderStep, an Origin where it is bound; DECISIONS BU-113), which
+//   retention and A5 read, and the borrows its Origin belongs to (RawMembers), which retention and
 //   InvalidRawOrigin read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
 //   (CallRetention.Limit), never a silent stop; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
 //   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
