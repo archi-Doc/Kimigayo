@@ -119,6 +119,23 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.True(deep.Depth <= L, $"depth {deep.Depth}");
     }
 
+    // The depth of a tree, its root at 0 (SyntaxNesting's measure, also KimiLibraryShapeTest's), by an explicit stack: the test thread has the default stack.
+    internal static int Depth(Koto root)
+    {
+        var deepest = 0;
+        var stack = new Stack<(Koto Node, int Depth)>([(root, 0)]);
+        while (stack.TryPop(out var top))
+        {
+            deepest = Math.Max(deepest, top.Depth);
+            foreach (var child in top.Node.ChildNodes)
+            {
+                stack.Push((child, top.Depth + 1));
+            }
+        }
+
+        return deepest;
+    }
+
     private static string Source(string shape, int levels)
         => shape switch
         {
@@ -162,23 +179,6 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Deep.kimi", source));
         return c.Kotonoha.RootKoto;
-    }
-
-    // The depth of a tree, its root at 0, by an explicit stack: the test thread has the default stack.
-    private static int Depth(Koto root)
-    {
-        var deepest = 0;
-        var stack = new Stack<(Koto Node, int Depth)>([(root, 0)]);
-        while (stack.TryPop(out var top))
-        {
-            deepest = Math.Max(deepest, top.Depth);
-            foreach (var child in top.Node.ChildNodes)
-            {
-                stack.Push((child, top.Depth + 1));
-            }
-        }
-
-        return deepest;
     }
 
     // Parsed, bound, checked and reported as a Library build runs them.

@@ -8,8 +8,8 @@
 // Invariants: a published tree has depth at most L, so every later walk recurses at most L levels and needs no guard of its own;
 // nothing under a cut is walked or recorded; the walk itself recurses at most L + 1 levels; nodes of earlier documents are walked
 // only at the module's merge points (declaration containers, the generated function and its body). One exception: declaration
-// containers nested past L keep their depth (no slot above them takes an ErrorKoto) and are recorded where they stand; the library's
-// fixed sources (KimiLibrarySources) are not walked yet (PLAN G444).
+// containers nested past L keep their depth (no slot above them takes an ErrorKoto) and are recorded where they stand. The library's
+// trees (KimiLibrarySources) are checked by KimiLibraryShapeTest, not walked at run time: compiler-owned source fixed at build time.
 // Must not decide anything but depth, and must not be bypassed by another parse entry that publishes syntax to later phases.
 
 using Kimi.Diagnostics;

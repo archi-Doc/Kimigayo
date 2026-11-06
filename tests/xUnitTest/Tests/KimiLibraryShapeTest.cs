@@ -150,6 +150,12 @@ public partial class KimiLibraryShapeTest
         Assert.Equal([KimiDeclarationId.Downgrade, KimiDeclarationId.Upgrade, KimiDeclarationId.MakeRcCyclic, KimiDeclarationId.MakeArcCyclic, KimiDeclarationId.Weak], unsourced);
     }
 
+    // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
+    // run time: each lies within IMPL A.4's syntax depth L, measured as SyntaxNesting measures it (a node's distance from its root).
+    [Fact]
+    public void TheLibraryLiesWithinTheSyntaxNestingLimit()
+        => WithinTheSyntaxNestingLimit(Compilation.CreateForTest().Library.Kotonoha.RootKoto);
+
     // R5 K package 4.4 (P5, DECISIONS R5-M41): the bundled library collected with every module a root module, so every closed library body
     // is a root, has no collector record; with no library declaration under a compile-time Condition and one target profile, rooting it in
     // each compilation would add none.
@@ -717,4 +723,7 @@ public partial class KimiLibraryShapeTest
     }
 
     private static int Indent(string line) => line.Length - line.TrimStart(' ').Length;
+
+    private static void WithinTheSyntaxNestingLimit(Koto root)
+        => Assert.InRange(SyntaxNestingTest.Depth(root), 0, SyntaxNesting.Limit);
 }
