@@ -326,7 +326,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 3.1.3, 14.10.3 (DECISIONS R5-M38, BU-6): a named Place of Type Never takes the acquisition Binding publishes into its node's
     // Never temp, Copy for a bare read (Never is Copy, BU-4) and Move for x@move, which keeps its effect on the assumed path: a Never
-    // parameter read twice is no MovedPlace, a read after x@move is one, and a read before it is not.
+    // parameter read twice is no MovedPlace, a read after x@move is one, and a read before it is not. A MovedPlace's subject is the bare
+    // read, the node that takes Copy.
     [Theory]
     [InlineData(" => g(x, x)\n", "Copy Copy", "")]
     [InlineData(" => g(x@move, x)\n", "Move Copy", "MovedPlace_Kd x 1")]
@@ -342,6 +343,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(acquisitions, string.Join(' ', reads.Select(static x => HirTables.AdjustOf(x).Acquire)));
         var absurd = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
         Assert.Equal(acquisitions, string.Join(' ', absurd.Operands.ToArray().Where(static x => x.Place == new MirPlace(1)).Select(static x => x.Kind)));
+        Assert.All(
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code == DiagnosticCode.MovedPlace_Kd),
+            x => Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(c.SyntaxOf(x.Subject)).Acquire));
         Assert.Equal(problems, string.Join(" | ", Problems(source)));
     }
 
