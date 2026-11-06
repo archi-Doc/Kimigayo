@@ -45,7 +45,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     private const string Identity = "func id(x: ref/i32) -> ref/i32 during x => x\n";
 
-    private const string ResultOnly ="func z2(v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
+    private const string ResultOnly = "func z2(v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
 
     private const string SharedInput = "func z5(x: ref/i32 during a, v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
 
