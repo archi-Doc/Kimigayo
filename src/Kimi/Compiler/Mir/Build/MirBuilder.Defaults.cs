@@ -114,7 +114,7 @@ internal sealed partial class MirBuilder
                 this.roots.Clear();
                 for (var i = 0; i < decl.Index; i++)
                 {
-                    this.roots.Add(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
+                    this.Root(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
                 }
 
                 if (unsupported)

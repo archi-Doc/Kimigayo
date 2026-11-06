@@ -35,15 +35,16 @@ internal sealed partial class InstanceCollector
 
     // SPEC 8.15.3, 22.6 (DECISIONS R5-M150): an import a root module declares is checked as a nongeneric body is, called or not (22.6 makes
     // it nongeneric): its parameters' and result's Types (TyCtxt.Signature; none where Binding failed it) are by-value uses at their written
-    // Types (TyCtxt.SignatureSite), beside the Unsupported_Kd Binding gives a struct, Tuple or fixed array there (a valid import's Types are
-    // always laid out). It is no item: no body, no target, nothing generated.
+    // Types (TyCtxt.SignatureSite, which indexes the written parameters by the slot: an import is receiverless, without special parameters),
+    // beside the Unsupported_Kd Binding gives a struct, Tuple or fixed array there (a valid import's Types are always laid out). It is no
+    // item: no body, no target, nothing generated.
     private void LayOutImports()
     {
         var imports = this.types.Imports; // Read by index: a warm run allocates no enumerator.
         for (var i = 0; i < imports.Count; i++)
         {
             var function = imports[i];
-            if (TyCtxt.SignatureSite(function, -1).Module >= this.rootModules)
+            if (SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, -1)).Module >= this.rootModules)
             {
                 continue;
             }
@@ -51,8 +52,8 @@ internal sealed partial class InstanceCollector
             _ = TyCtxt.Signature(function, null, -1, out var count);
             for (var slot = -1; slot < count; slot++)
             {
-                if (TyCtxt.Signature(function, null, slot, out _) is { } type && TyCtxt.SignatureSite(function, slot) is var site &&
-                    this.Verdict(site, type).IsLimit)
+                if (TyCtxt.Signature(function, null, slot, out _) is { } type &&
+                    SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, slot)) is var site && this.Verdict(site, type).IsLimit)
                 {
                     this.Limit(this.types.Erase(type), new(function, MirBodyKind.Fn), site); // The import is its own declaration.
                 }

@@ -65,6 +65,22 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>Whether the input is reserved.</returns>
     internal static bool Reserves(MirBody body, BoundType? type) => MirTypes.IsExclusive(type) || Binder(body, type) >= 0;
 
+    /// <summary>Gets the source Type of an Adapt as its body states it: its source token's (the constant of its second operand), which each
+    /// reader closes, under a view (<see cref="Adapt"/>) or in an item's instance, before <see cref="Operation"/>.</summary>
+    /// <param name="body">The Adapt's body.</param>
+    /// <param name="adapt">An Adapt of the body.</param>
+    /// <returns>The source token's Type.</returns>
+    internal static BoundType AdaptSource(MirBody body, in MirRvalue adapt) => body.Consts[body.Operands[adapt.Start + 1].Arg].Type;
+
+    /// <summary>Gets the operation an Adapt selects between its two Types, each closed by its reader (SPEC 8.14, 13.5.3): the one Binding
+    /// selects (<see cref="TyCtxt.Adaptation"/>), as a shorthand where the Adapt's bit says so.</summary>
+    /// <param name="source">The closed source Type (<see cref="AdaptSource"/>).</param>
+    /// <param name="target">The closed target Type.</param>
+    /// <param name="adapt">The Adapt.</param>
+    /// <returns>The operation; None where none is selected.</returns>
+    internal static ConversionBinding Operation(BoundType source, BoundType target, in MirRvalue adapt)
+        => TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
+
     /// <summary>Selects a view of a body: for each resolved binder, the admitted Semantics its digit of <paramref name="index"/> picks. A
     /// binder without an admitted Semantics (a Binding error) has no case: its entry is empty, so its layers keep their declared Types and
     /// its steps and acquisitions read as the owner case's.</summary>
@@ -194,9 +210,9 @@ internal sealed class MirCases(TyCtxt types)
     internal MirRvalue Adapt(in MirRvalue adapt, out ConversionBinding operation)
     {
         var operands = this.Body.Operands;
-        var source = this.Type(this.Body.Consts[operands[adapt.Start + 1].Arg].Type);
+        var source = this.Type(AdaptSource(this.Body, adapt));
         var target = this.Type(adapt.Type!);
-        operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
+        operation = Operation(source, target, adapt);
         return operation switch
         {
             ConversionBinding.None => adapt,

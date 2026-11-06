@@ -459,6 +459,25 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(nameof(DiagnosticCode.InternalInvariant_Kd), codes);
     }
 
+    // SPEC 23.1.2 (DECISIONS R5-M63, R5-M84): the Opaque site of a jump Binding rejects names the root of the Place its operand
+    // designates, built already, a parameter's or a static's, and none for a constant (fail-before: a static's root, ~index, was taken for
+    // none and dropped).
+    [Theory]
+    [InlineData("x.b", "_1")]
+    [InlineData("G.s.b", "static0")]
+    [InlineData("1", "")]
+    public void ARejectedJumpsSiteNamesItsOperandsRoot(string operand, string roots)
+    {
+        var program = Compile("struct S\n    public var b: i32 = 2\n    public init() => ()\ngroup G\n    public var s: S = S.init()\n" +
+            $"func f(x: S)\n    if true\n        yield {operand}\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
+        var site = Assert.Single(Regex.Matches(dump.Split("\nfn ")[0], @"opaque \d+ @\d+:([^\r\n]*)"));
+        Assert.Equal(roots, site.Groups[1].Value.Trim());
+    }
+
     // SPEC 15.6.2: whether a Place is reached through a Deref of a shared reference or view, which grants Read only.
     private static bool BelowSharedDeref(MirBody body, MirPlace place)
     {

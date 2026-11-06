@@ -4,9 +4,9 @@
 // location order, each with whether a runtime path from the body's entry reaches it, which replaying an item's template resolves.
 // Input: a built, validated MirProgram; the number of root modules; the Target and Need columns of the intrinsic rows; LayoutNeeds and
 // Layout.Indirect (DECISIONS R5-M149).
-// Output: each body's sites (none for a body with a finding, MirBody.HasFinding), `sites` from `starts[body.Ordinal]` to
-// `starts[body.Ordinal + 1]`, which Replay reads; and its layout needs
-// past its Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads.
+// Output: each body's sites (none for a body with a finding, MirBody.HasFinding, whose operations take no A3b check; a static's
+// declaration row reads no body and stays), `sites` from `starts[body.Ordinal]` to `starts[body.Ordinal + 1]`, which Replay reads;
+// and its layout needs past its Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads.
 // Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call none,
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
@@ -75,7 +75,8 @@ internal sealed partial class InstanceCollector
     }
 
     // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each; a body with a
-    // finding, which no consumer reads (DECISIONS R5-M183), has an empty range and is not read.
+    // finding, which no consumer reads (DECISIONS R5-M183), has an empty range and is not read. A root-module static's declaration row
+    // (A3b, CheckStatic) reads no body content, so every body takes it first.
     private void Templates(MirProgram program)
     {
         var bodies = program.Bodies;
@@ -90,25 +91,21 @@ internal sealed partial class InstanceCollector
         foreach (var body in bodies)
         {
             (this.starts[body.Ordinal], this.needStarts[body.Ordinal]) = (count, this.needCount);
+            this.CheckStatic(body);
             count = body.HasFinding ? count : this.Template(body, count);
         }
 
         (this.starts[bodies.Length], this.needStarts[bodies.Length]) = (count, this.needCount);
     }
 
-    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations, and a root-module
-    // static's declaration, are checked against the capability table on the way (A3b), and the layout needs of its Places past their roots'
-    // storage are listed (K 4.8, ListNeeds) where a step may leave it. Returns the new count.
+    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations are checked against
+    // the capability table on the way (A3b), and the layout needs of its Places past their roots' storage are listed (K 4.8, ListNeeds)
+    // where a step may leave it. Returns the new count.
     private int Template(MirBody body, int count)
     {
         var blocks = body.Blocks;
         var root = body.Source.Module < this.rootModules;
         var leaves = MayLeave(body);
-        if (root)
-        {
-            this.CheckStatic(body);
-        }
-
         this.reach.Clear(blocks.Length);
         this.reach.Walk(body, 0, checks: false);
         for (var block = 0; block < blocks.Length; block++)

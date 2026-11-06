@@ -204,8 +204,7 @@ internal sealed partial class MirBuilder
     {
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
-        this.roots.Clear();
-        this.roots.Add(receiver.Root);
+        this.SiteRoots(receiver);
         this.Unsupported(node, temp, node);
         return temp;
     }
@@ -224,8 +223,7 @@ internal sealed partial class MirBuilder
 
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
-        this.roots.Clear();
-        this.roots.Add(receiver.Root);
+        this.SiteRoots(receiver);
         if (owner is null)
         {
             this.Unsupported(node, temp, node);
