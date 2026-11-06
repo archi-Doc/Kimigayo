@@ -220,6 +220,10 @@ public class GenericFunctionReferenceTest
     [InlineData(ContractMethod + Caller + "(ref/M, i32, ref/i32 during q, ref/i32 during q) -> (i32, ref/i32 during p) = M.m<i32>\n    return 0", "M.m<i32>", "the result requires q outlives p, which is not proven")]
     [InlineData(GenericOwner + Caller + "(ref/Holder<i32>, ref/i32 during q, ref/i32 during q) -> ref/i32 during p = Holder<i32>.m\n    return 0", "Holder<i32>.m", "the result requires q outlives p, which is not proven")]
     [InlineData(Contract + Caller + "(i32, ref/i32 during q) -> (i32, ref/i32 during q) = f<i32>\n    return 0", "f<i32>", "expected (i32, ref/i32) -> (i32, ref/i32), found (T, ref/i32, ref/i32) -> (T, ref/i32)", nameof(DiagnosticCode.TypeMismatch_Kd))]
+
+    // A trial that ends before its slots bind (a written argument count that differs) leaves no substituted signature, also where the
+    // signature does not mention the slot and its contract would fit (InternalInvariant_Kd before).
+    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during q = unbound<i32, i64>\n    return 0", "unbound<i32, i64>", "expected (ref/i32, ref/i32) -> ref/i32, found (ref/i32, ref/i32) -> ref/i32", nameof(DiagnosticCode.TypeMismatch_Kd))]
     public void AReferenceRecordReadsItsSubstitutedSignature(string source, string reference, string label, string code = nameof(DiagnosticCode.UnprovenOriginContract_Kd))
     {
         var c = MinimalEmissionTest.Analyze(source);
