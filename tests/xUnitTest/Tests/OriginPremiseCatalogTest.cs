@@ -40,6 +40,8 @@ public class OriginPremiseCatalogTest
 
     private const string Converted = "func g(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives b\n    return v\n";
 
+    private const string Compared = "func h(w: ref/i64 during a, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w\n";
+
     private const string Two = "struct Two {a, b}\n    origin b outlives a\n    public let both: ref/(ref/i64 during b) during a\n" +
         "    public init(both: ref/(ref/i64 during b) during a) => self.both = both\n";
 
@@ -101,8 +103,10 @@ public class OriginPremiseCatalogTest
     // SPEC 15.2.2, 15.3.4, 15.6.1 (PLAN G491): R5 is the well-formedness obligation of the body that declares the local, never a premise
     // of a nested signature or body. A nested function's or anonymous function's inputs, or a comparison's required signature, may name
     // `z` (`Projection[x]`), but `p outlives z` stays outer's obligation, so `p outlives q` is Unknown there; in an anonymous function's
-    // body, `x` and `z` are fixed Origins (SPEC 15.6.5, 15.8.2), so `x outlives z` is Unknown too.
+    // body, `x` and `z` are fixed Origins (SPEC 15.6.5, 15.8.2), so `x outlives z` is Unknown too. A required signature's own input
+    // (`ref/(ref/i64 during x) during z`) still gives its condition.
     [Theory]
+    [InlineData("func h2(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during x) during z, ref/i64 during z) -> ref/i64 during z = h2\n    return 0\n", null)]
     [InlineData(Outer + "    let f = func() -> i32\n        let w: ref/i64 during z = x\n        return 0\n    return f()\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Outer + "    let f = func() -> ref/i64 during z => x\n    let k = f()\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Outer + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
@@ -132,6 +136,22 @@ public class OriginPremiseCatalogTest
     public void ANestedBodyKeepsLocalPlaceForItsOwnLocals(string body)
     {
         var (codes, metrics, _) = Check(body + Main);
+        Assert.Empty(codes);
+        Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
+    }
+
+    // SPEC 15.6.5 (the owner's 「(b)にする」, PLAN G491, G492): a comparison in the body that declares the locals judges a relation
+    // between their Origins as a body chain, as the local fit `let w: ref/i64 during z = x` does: `x outlives z` ends at the finite
+    // Origin of `z`, so R5 proves it, at a function's, a nested function's own and the top level's locals.
+    [Theory]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during p, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    func inner(q: ref/i64) -> i32\n        let x = q\n        let z = x@ref\n        let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n        return 0\n    return inner(p)\n" + Main)]
+    [InlineData(Compared + "let y: i64 = 1\nlet x = y@ref\nlet z = x@ref\nlet f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n")]
+    public void AComparisonInTheDeclaringBodyKeepsLocalPlace(string source)
+    {
+        var (codes, metrics, _) = Check(source);
         Assert.Empty(codes);
         Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
     }

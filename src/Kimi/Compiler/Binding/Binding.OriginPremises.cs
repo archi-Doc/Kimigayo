@@ -181,7 +181,8 @@ public sealed partial class Binding
     // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or
     // requirement Property's header being its getter's result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
     // Then every borrowed complete local Place of the use's own body among the graph's expressions adds its stored Origins (R5),
-    // including Places that those Origins introduce, so the closure applies R5 at every expression it reaches.
+    // including Places that those Origins introduce, so the closure applies R5 at every expression it reaches; last, the premises of
+    // the comparisons the request is made in.
     private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
     {
         Koto? previous = null;
@@ -231,23 +232,11 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 15.3.7, the owner's (a): a request made in a Callable comparison assumes the own well-formedness of the comparison's
-        // required signature and of each enclosing comparison's; no other request sees them.
-        this.AddRequiredPremises(environment, environment.Comparison.Expected);
-        for (var outer = environment.Comparison.Outer; outer is not null; outer = outer.Outer)
-        {
-            this.AddRequiredPremises(environment, outer.Required);
-        }
-
         // R5, SPEC 15.6.1, 15.6.5: the well-formedness of a borrow of a complete local Place, the body's obligation, which its finite
-        // Origin proves without premises. So it serves only a request of the body that declares the local, never its own declaration;
-        // a request in a nested body or signature (a nested or anonymous function's, a Function Type's, a comparison's) has only its own
-        // premises, the local's Origins being fixed there (SPEC 15.2.2, 15.3.4, 15.6.5; PLAN G491).
-        if (environment.Comparison.Expected is not null || environment.Comparison.Outer is not null)
-        {
-            return;
-        }
-
+        // Origin proves without premises. So it serves only a request of the body that declares the local, never its own declaration,
+        // and reaches only the Origins of that body: those of the request and of its declarations' premises, read above. A nested body or
+        // signature (a nested or anonymous function's, a Function Type's, a comparison's required one, read below) has only its own
+        // premises, the local's Origins being fixed there (SPEC 15.2.2, 15.3.4, 15.3.7; PLAN G491; the owner's 「(b)にする」).
         var closure = environment.Closure;
         var body = PremiseSignature(environment.Use);
         for (var node = 0; node < closure.NodeCount; node++)
@@ -258,6 +247,14 @@ public sealed partial class Binding
             {
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }
+        }
+
+        // SPEC 15.3.7, the owner's (a): a request made in a Callable comparison assumes the own well-formedness of the comparison's
+        // required signature and of each enclosing comparison's; no other request sees them.
+        this.AddRequiredPremises(environment, environment.Comparison.Expected);
+        for (var outer = environment.Comparison.Outer; outer is not null; outer = outer.Outer)
+        {
+            this.AddRequiredPremises(environment, outer.Required);
         }
     }
 
