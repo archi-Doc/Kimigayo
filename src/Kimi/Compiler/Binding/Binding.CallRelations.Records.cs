@@ -8,8 +8,9 @@ namespace Kimi.Compiler;
 // Origin records beyond the first (SPEC 15.6.1: every failed chain; SPEC 23.1.2: independent problems; contract of the concern, the
 // judgment in Binding.CallRelations.cs).
 // - Responsibility: the Origin relation records that one judgment collects (callRelationScratch: a selected call's JudgeCallPosition,
-//   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record (PublishCallRelations); and the
-//   one channel of a node's records beyond its first, Origin relation and Origin contract records alike (furtherOriginRecords,
+//   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record or published with its contract
+//   record (FollowsContract; PublishCallRelations); and the one channel of a node's records beyond its first, Origin relation and
+//   Origin contract records alike (furtherOriginRecords,
 //   RecordFurtherOriginRecord, also for RecordOriginFitFailure's other chains), reported after the node's first record, whichever its kind,
 //   each with its own condition (ReportOriginRecords, ReportFurtherOriginRecords); whether a node has a collected record (HasCallRelation).
 // - Inputs: OriginRelationFact and OriginContractFact values with their nodes; the node's first record in originRelations or
@@ -31,6 +32,11 @@ public sealed partial class Binding
     // The lists of furtherOriginRecords, kept across passes so that a warm rebind allocates none: the dictionary's i-th node holds the
     // i-th list, since it only grows within a pass and is cleared at the pass's start (ResetOriginRecords), which empties every list.
     private List<List<OriginRecord>>? furtherOriginLists;
+
+    // SPEC 15.6.1, 23.1.2: whether a node's Origin relations are all records beyond its first: its own record is a comparison's
+    // contract (RecordComparisonFacts), and every relation judged at it is published with that record (RecordOriginChains,
+    // PublishCallRelations).
+    private static bool FollowsContract(Koto node) => node.BindingFailure == BindingFailure.OriginContract;
 
     // A node's first Origin relation or Origin contract record, then its records beyond the first; false when it has neither.
     private bool ReportOriginRecords(Koto node, DiagnosticCode code, DiagnosticRequirement requirement)
@@ -87,12 +93,18 @@ public sealed partial class Binding
         return false;
     }
 
-    // Fails each node with its first record and keeps the others for publication with it.
+    // Fails each node with its first record and keeps the others for publication with it; beside a contract, each is a further record.
     private void PublishCallRelations()
     {
         for (var i = 0; i < this.callRelationScratch.Count; i++)
         {
             var (node, fact) = this.callRelationScratch[i];
+            if (FollowsContract(node))
+            {
+                this.RecordFurtherOriginRecord(node, new(fact, null));
+                continue;
+            }
+
             var first = true;
             for (var j = 0; j < i; j++)
             {

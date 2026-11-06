@@ -17,7 +17,7 @@ public sealed partial class Binding
     // arguments against its Types, and the waiting callables of its Tuple and array literal arguments and of its control-flow
     // arguments' results that bind an F, `ref/F` or `uniq/F` of it, a join they alone kept waiting then decided (DecideTaken; DECISIONS
     // BU-43). A body or capture failure never retries another candidate, and an inferred result never supplies outer signature
-    // evidence. False when one fails.
+    // evidence. Every part is completed, a failed one being its own record (SPEC 23.1.2, PLAN G418); false when one fails.
     private bool CompleteWaiting(ref CallEvaluation evaluation, int winner, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var call = evaluation.Call;
@@ -26,6 +26,7 @@ public sealed partial class Binding
         var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
         var contract = this.activeRequirementContract;
         this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
+        var completed = true;
         try
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -37,22 +38,16 @@ public sealed partial class Binding
                 {
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
-                    if (this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope) is null)
-                    {
-                        return false;
-                    }
+                    completed &= this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope) is not null;
                 }
                 else
                 {
                     var awaited = this.AwaitsPosition(argument);
-                    if (!this.TakeWaiting(argument, pattern, solution.SlotOwner, solution) || (awaited && !this.DecideTaken(argument)))
-                    {
-                        return false;
-                    }
+                    completed &= this.TakeWaiting(argument, pattern, solution.SlotOwner, solution) && (!awaited || this.DecideTaken(argument));
                 }
             }
 
-            return true;
+            return completed;
         }
         finally
         {
@@ -82,11 +77,11 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.2: completes the selected candidate's arguments at its operations: a part still unbound is bound at its parameter's
-    // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. False when one fails; every
-    // failing erasure is reported, since the call rests on it and another candidate is never selected.
+    // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. Every part is completed; false
+    // when one fails. Every failing part is reported, since the call rests on it and another candidate is never selected.
     private bool CompleteArguments(InvocationKoto call, BindingScope scope, Span<BoundArgumentOperation> operations)
     {
-        var erased = true;
+        var completed = true;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
@@ -99,7 +94,8 @@ public sealed partial class Binding
                 this.activeRequirementContract = selectedContract;
                 if (argument.BindingState != BindingState.Resolved)
                 {
-                    return false;
+                    completed = false;
+                    continue;
                 }
 
                 operations[i] = operations[i] with { SourceType = argument.BoundType };
@@ -107,12 +103,12 @@ public sealed partial class Binding
             else if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType &&
                 operations[i].ParameterType is { Kind: BoundTypeKind.Function } erasedType && operations[i].Adaptation == ArgumentAdaptation.Erasure)
             {
-                erased &= this.ErasePart(argument, closureType, erasedType);
+                completed &= this.ErasePart(argument, closureType, erasedType);
                 operations[i] = operations[i] with { SourceType = erasedType };
             }
         }
 
-        return erased;
+        return completed;
     }
 
     // SPEC 7.7.4, 10.5: a Closure or Function Item part completed at a common Function Type is converted to it; its signature, Shared
