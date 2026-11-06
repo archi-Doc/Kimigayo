@@ -206,7 +206,10 @@ public sealed partial class HirFormsTest
     // an enclosing join's at another source (r4's `2`) go. The operand's own records stay (TransferRequired_Kd at `yield xs`, as row 9
     // gives it), and so does the fallthrough the Dependent construct hid (FunctionFallthrough_Kd, SPEC 14.9.3's example). A valid labeled
     // yield to a discarded selection keeps its TypeMismatch_Kd (SPEC 14.7), and its Unit twin is valid. Fail-before: the first six rows'
-    // constructs were Unresolved or `()` and Completes, with a TypeMismatch_Kd at each operand that is not Unit.
+    // constructs were Unresolved or `()` and Completes, with a TypeMismatch_Kd at each operand that is not Unit. SPEC 10.5.4 (DECISIONS
+    // BU-109): an anonymous function's single-item body keeps the context fixed before it, so a result inferred as Unit leaves it in
+    // Value Context (r21, r23, t5: valid; fail-before: row 10 at each yield beside its non-null row, and r23's `if` Diverges), while Unit
+    // written (t2) or fixed by the expected Type (t1) or the parameter (t3) discards it.
     [Theory]
     [InlineData("func f(a: i32)\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
     [InlineData("func f(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
@@ -223,6 +226,12 @@ public sealed partial class HirFormsTest
     [InlineData("func p12(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        ()\n", "if a > 0: () Completes", "FunctionFallthrough_Kd 2:5, UnlabeledYieldTarget_Kd 3:9")]
     [InlineData("func p4(a: i32)\n    label s: if a > 0\n        yield to s 1\n    else\n        ()\n", "if a > 0: null Completes", "TypeMismatch_Kd 3:20")]
     [InlineData("func p5(a: i32)\n    label s: if a > 0\n        yield to s ()\n    else\n        ()\n", "if a > 0: () Completes", "")]
+    [InlineData("func r21(c: bool)\n    let g = func [c] () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "")]
+    [InlineData("func r23(c: bool)\n    let g = func [c] () => if c => yield () else => yield ()\n    g()\n", "if c => yield (): () Completes", "")]
+    [InlineData("func t5(c: bool)\n    let g = func [c] () => match c\n        true => yield ()\n        false => ()\n    g()\n", "match c: () Completes", "")]
+    [InlineData("func t1(c: bool)\n    let g: () -> () = func [c] () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:46")]
+    [InlineData("func t2(c: bool)\n    let g = func [c] () -> () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:42")]
+    [InlineData("func run(f: () -> ()) => f()\nfunc t3(c: bool) => run(func [c] () => if c => yield () else => ())\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:48")]
     public void AnInvalidTransferSuppliesNoSource(string source, string constructs, string records)
     {
         var c = MinimalEmissionTest.Analyze(source);
