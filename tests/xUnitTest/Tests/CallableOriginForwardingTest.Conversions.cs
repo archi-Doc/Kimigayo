@@ -194,6 +194,10 @@ public partial class CallableOriginForwardingTest
 
     private const string WellFormedOverS = "the 1st parameter's result's well-formedness requires s outlives static, which is not proven";
 
+    private const string K6 = "func k6(q: ref/i32, y: string) -> i32\n    origin q outlives static\n    return 0\n\n";
+
+    private const string TwoHost = "func host(s: ref/i32, p: ref/i32) -> i32\n";
+
     private const string InputOverS = "the 1st parameter requires s outlives static, which is not proven";
 
     private const string PremiseHost = "func host(s: ref/i32, t: ref/i32) -> i32\n";
@@ -561,9 +565,11 @@ public partial class CallableOriginForwardingTest
     // anonymous function, also without a clause (v8: `(ref/i32 during q) -> i32` at a free `s`) and through a join of Items (vj); dev
     // crashed (InternalInvariant_Kd) on v_fi_ok, gv_fi_ok, mv_fi_ok, v3_ok and vcl2_ok. A written header keeps only its own annotation
     // record (v_static_nonid, as pk_static_nonid). An erasure is decided once, under the use's premises (r04_cvprem: the caller's clause
-    // admits a Closure value; dev crashed). The invalid twins keep their records, now over `s`; k's clause record at `s` beside a failed
-    // part is unit 2's (rule W). A part that fails before the solve leaves the waiting parts their declared parameter, so their own
-    // records stay (vd, va); of two acquisitions the call records the evidence part's, as its named twin does (r17).
+    // admits a Closure value; dev crashed). The invalid twins keep their records, now over `s`, and beside a failed fit k's clause
+    // record at `s` too. Rule W (unit 2): a failed or misfitting part is a wildcard, so the solve, the other fits and the clauses are
+    // judged (w04, w12, w17), an anonymous body's record stays (vd, vd3), and an erasure over a q whose only evidence failed keeps its
+    // dependent record, over the call's region (vfb); of two acquisitions the call records the evidence part's, as its named twin does
+    // (r17).
     [Theory]
     [InlineData("v_ok", ClauseK + StaticHost + "    let g = k\n    return g(s, func [] (x) => 5)\n", "", null)]
     [InlineData("v_fi_ok", ClauseK + Hf + StaticHost + "    let g = k\n    return g(s, hf)\n", "", null)]
@@ -581,10 +587,10 @@ public partial class CallableOriginForwardingTest
     [InlineData("r04_cvprem_ok", PlainK + PremiseHost + "    origin s outlives t\n" + PremiseClosure, "", null)]
     [InlineData("r04_cvprem_bad", PlainK + PremiseHost + PremiseClosure, "UnprovenOriginContract_Kd c", "the 1st parameter requires s outlives t, which is not proven")]
     [InlineData("v_static_nonid", ClauseK + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let g = k\n    return g(s, func [] (x: () -> Option<T during t>) -> i32 => 5)\n", "UnprovenOriginRelation_Kd Option<T during t>", null)]
-    [InlineData("vc_closure", NestedClauseK + "    let g = k\n    return g(s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5", WellFormedOverS)]
-    [InlineData("gv_bad", GenericK + NestedHost + "    let g = kk<i32>\n    return g(s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5", WellFormedOverS)]
-    [InlineData("mv_bad", MethodK + "func host(h: ref/H, s: ref/i32) -> i32\n    let g = H.m\n    return g(h, s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5", WellFormedOverS)]
-    [InlineData("v_fi", ClauseK + Hf + NestedHost + "    let g = k\n    return g(s, hf)\n", "UnprovenOriginContract_Kd hf", null)]
+    [InlineData("vc_closure", NestedClauseK + "    let g = k\n    return g(s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5; UnprovenOriginRelation_Kd s", WellFormedOverS)]
+    [InlineData("gv_bad", GenericK + NestedHost + "    let g = kk<i32>\n    return g(s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5; UnprovenOriginRelation_Kd s", WellFormedOverS)]
+    [InlineData("mv_bad", MethodK + "func host(h: ref/H, s: ref/i32) -> i32\n    let g = H.m\n    return g(h, s, func [] (x) => 5)\n", "UnprovenOriginContract_Kd func [] (x) => 5; UnprovenOriginRelation_Kd s", WellFormedOverS)]
+    [InlineData("v_fi", ClauseK + Hf + NestedHost + "    let g = k\n    return g(s, hf)\n", "UnprovenOriginContract_Kd hf; UnprovenOriginRelation_Kd s", null)]
     [InlineData("v3_bad", PlainK + NestedHost + "    let g = k3\n    return g(s, h3)\n", "UnprovenOriginContract_Kd h3", InputOverS)]
     [InlineData("v8d_bad", PlainK + NestedHost + "    let g = k3\n    return g(s, func [] (x: ref/i32 during static) -> i32 => 5)\n", "UnprovenOriginContract_Kd func [] (x: ref/i32 during static) -> i32 => 5", InputOverS)]
     [InlineData("vcl_bad", PlainK + NestedHost + "    let c = func [] (x: ref/i32 during static) -> i32 => 5\n    let g = k3\n    return g(s, c)\n", "UnprovenOriginContract_Kd c", InputOverS)]
@@ -592,6 +598,11 @@ public partial class CallableOriginForwardingTest
     [InlineData("va_bad", ClosurePlace + "    return g(c, undefinedName)\n", "TransferRequired_Kd c; UnresolvedBinding_Kd undefinedName", null)]
     [InlineData("va2_bad", ClosurePlace + "    return g(c, s)\n", "TransferRequired_Kd c", null)]
     [InlineData("r17_two_acq_bad", TwoAcquisitions, "TransferRequired_Kd values", null)]
+    [InlineData("w04_cl", K6 + NestedHost + "    let g = k6\n    return g(s, undefinedName)\n", "UnprovenOriginRelation_Kd s; UnresolvedBinding_Kd undefinedName", null)]
+    [InlineData("w12_fit", "func k9(q: ref/i32, f: (ref/i32) -> i32, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\nfunc hf2(x: ref/i32 during static) -> i32 => 5\n\n" + TwoHost + "    let g = k9\n    return g(s, hf2, p)\n", "UnprovenOriginContract_Kd hf2; UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s", null)]
+    [InlineData("w17_case", "func k10(q: ref/i32, o: Option<i32>, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\n" + TwoHost + "    let g = k10\n    return g(s, .Some(undefinedName), p)\n", "UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s; UnresolvedBinding_Kd undefinedName", null)]
+    [InlineData("vd3_bad", "func kd(f: (i32) -> i32, q: ref/i32) -> i32 => 0\n\n" + NestedHost + "    let g = kd\n    return g(func [] (x) => undefinedName2, true)\n", "NoApplicableOverload_Kd g(func [] (x) => undefinedName2, true); UnresolvedBinding_Kd undefinedName2", null)]
+    [InlineData("vfb_bad", "func k5(f: (ref/i32 during q) -> i32, q: ref/i32) -> i32 => 0\nfunc h3(x: ref/i32 during static) -> i32 => 5\n\n" + NestedHost + "    let g = k5\n    return g(h3, undefinedName)\n", "UnprovenOriginContract_Kd h3; UnresolvedBinding_Kd undefinedName", "the 1st parameter requires the omitted Origin of Inference outlives static, which is not proven")]
     public void AValueCallCompletesItsWaitingPartsAtTheInstantiatedParameter(string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 

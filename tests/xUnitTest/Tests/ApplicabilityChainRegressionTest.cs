@@ -388,8 +388,8 @@ public class ApplicabilityChainRegressionTest
     // no candidate passes step 1 (the explicit Type arguments' count and kinds) and step 2 (argument matching, 10.1.1's `!` boundary
     // included). Every other outcome rests on the part, in either argument order (the rows after `pair<3, Undefined>(5)`); the records
     // lost so are PLAN G500's. Step 1 judges every kind before a failed Type argument rests (`pair<Undefined, 3>(5)`, no unprepared
-    // argument). A plain value call keeps its own matching until G494's unit 2 judges MapValueCallArguments up front, so
-    // `g(undefinedName, v: 1)` reports the name alone for now. Each row: Binding's errors.
+    // argument). A plain value call judges MapValueCallArguments before any part (PLAN G494 unit 2), so `g(undefinedName, v: 1)`
+    // reports its NoApplicable as `g(v: 1, undefinedName)` does. Each row: Binding's errors.
     [Theory]
     [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(undefinedName)\n", "NoApplicableOverload_Kd take(undefinedName); UnresolvedBinding_Kd undefinedName")]
     [InlineData("func take1(v: i32) -> () => ()\nfunc f() -> ()\n    take1(undefinedName, 2)\n", "NoApplicableOverload_Kd take1(undefinedName, 2); UnresolvedBinding_Kd undefinedName")]
@@ -419,7 +419,7 @@ public class ApplicabilityChainRegressionTest
     [InlineData("func both<F>(action: ref/F) -> i32\n    F is Callable<(i32, i32) -> i32>\n    F is Callable<(i64, i64) -> i32>\n    return action(true, undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("func both<F>(action: ref/F) -> i32\n    F is Callable<(i32, i32) -> i32>\n    F is Callable<(i64, i64) -> i32>\n    return action(undefinedName, true)\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc f() -> ()\n    take(true, undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
-    [InlineData("func f(g: (i32, i32) -> ()) -> ()\n    g(undefinedName, v: 1)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func f(g: (i32, i32) -> ()) -> ()\n    g(undefinedName, v: 1)\n", "NoApplicableOverload_Kd g(undefinedName, v: 1); UnresolvedBinding_Kd undefinedName")]
     public void ACallBesideAFailedPartReportsWhatReadsNoArgumentType(string source, string errors)
     {
         var c = CompilationTestHelper.ParseSuccess(source);

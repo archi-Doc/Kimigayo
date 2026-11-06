@@ -455,8 +455,9 @@ public sealed partial class Binding
 
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
     // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values. A waiting part,
-    // which has no actual yet, is no evidence (SPEC 10.5.1).
-    private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
+    // which has no actual yet, and a failed one (rule W, DECISIONS BU-79) are no evidence (SPEC 10.5.1). A selection's solve judges no
+    // Origin relation and always holds (SPEC 15.6.1; SolveOriginInference with `select`).
+    private void SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
     {
         var inference = this.BeginOriginInference(use, binder);
         for (var i = 0; i < actuals.Length; i++)
@@ -470,18 +471,14 @@ public sealed partial class Binding
         }
 
         var function = binder as FunctionKoto;
-        if (!(function is not null
+        _ = function is not null
             ? this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true)
-            : this.SolveOriginInference(inference, origins, inputs, use, select: true)))
-        {
-            return false;
-        }
+            : this.SolveOriginInference(inference, origins, inputs, use, select: true);
 
         // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
         // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
         // their supplying arguments, never as applicability.
         this.OpenUnsolvedOrigins(use, origins.AsSpan(0, function?.Origins.Count ?? 0), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
-        return true;
     }
 
     // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution

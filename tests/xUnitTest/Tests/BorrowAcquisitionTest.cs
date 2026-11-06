@@ -181,7 +181,9 @@ public class BorrowAcquisitionTest
     // the relation alone, one without a relation problem the acquisition alone. A failed callee (a Consuming call's missing `c@move`, a
     // payload callee through a reference) stops the call, so its own record rests on no argument. A named function or method call is no
     // value call: a bare Place's Copy proof is its candidate's applicability (SPEC 10.1 step 5), so the relations judged after selection
-    // rest on it. Each row: the published records in order; an accepted program has none.
+    // rest on it. Rule W (DECISIONS BU-79; PLAN G421 (ii), G494 unit 2): a failed or misfitting part, before or after the others, one
+    // or two, at a Function-typed parameter or a Closure value, is a wildcard: every other part is still fitted and its relation
+    // recorded (ab15 `g(p, undefinedName)`). Each row: the published records in order; an accepted program has none.
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
     [InlineData("func f(x: ref/(uniq/i32 during a) during b, y: ref/i32 during c, g: (uniq/i32 during c) -> ()) -> ()\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
@@ -201,6 +203,11 @@ public class BorrowAcquisitionTest
     [InlineData("func take<s/T>(v: s/T, w: ref/i32 during static) -> ()\n    s is ref or uniq\n    return\nfunc f<s/T>(x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    take(x@follow, p)\n", "TransferRequired_Kd x@follow")]
     [InlineData("struct H\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func take<s/T>(self: ref/Self, v: s/T, w: ref/i32 during static) -> ()\n        s is ref or uniq\n        return\nfunc f<s/T>(h: ref/H, x: ref/(s/T during a) during b, p: ref/i32) -> ()\n    s is ref or uniq\n    h.take(x@follow, p)\n", "TransferRequired_Kd x@follow")]
     [InlineData("func take(v: string, w: ref/i32 during static) -> () => ()\nfunc f(x: string, p: ref/i32) -> ()\n    take(x, p)\n", "TransferRequired_Kd x")]
+    [InlineData("func f(x: string, p: ref/i32, g: (ref/i32 during static, string) -> ()) -> ()\n    g(p, undefinedName)\n", "UnprovenOriginRelation_Kd p; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("func f(p: ref/i32, g: (string, ref/i32 during static) -> ()) -> ()\n    g(undefinedName, p)\n", "UnresolvedBinding_Kd undefinedName; UnprovenOriginRelation_Kd p")]
+    [InlineData("func f(p: ref/i32, g: (string, ref/i32 during static, string) -> ()) -> ()\n    g(undefinedName, p, 1 + true)\n", "UnresolvedBinding_Kd undefinedName; UnprovenOriginRelation_Kd p; NonNumericOperand_Kd 1 + true")]
+    [InlineData("func f(g: (string, string) -> ()) -> ()\n    g(undefinedName, 5)\n", "UnresolvedBinding_Kd undefinedName; TypeMismatch_Kd 5")]
+    [InlineData("func f(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32 during static, y: string) -> i32 => 5\n    return c(p, undefinedName)\n", "UnprovenOriginRelation_Kd p; UnresolvedBinding_Kd undefinedName")]
     public void AValueCallsAcquisitionAndRelationsAreEachRecorded(string body, string records)
     {
         var source = body + "public func main() => ()\n";
