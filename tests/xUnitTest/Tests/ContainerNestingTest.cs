@@ -101,6 +101,16 @@ public class ContainerNestingTest
         Assert.Equal(name, issue.Node.ToString());
     }
 
+    // SPEC 23.1.2, 9.1, 9.4.1 (PLAN G250 (4)): the qualifier of an inaccessible member is bound in its container role, so its own
+    // failure, an arity mismatch independent of the access, is reported beside the member's.
+    [Fact]
+    public void AQualifierOfAnInaccessibleMemberReportsItsOwnFailure()
+    {
+        var c = CompilationTestHelper.Parse("struct T<U>\n    group G\n        public struct Box\n            public init() => ()\nfunc f()\n    let b = T<i32, bool>.G.Box.init()\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(["InaccessibleBinding_Kd T<i32, bool>.G", "InvalidTypeFormation_Kd T<i32, bool>"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public void UnusedOuterArgumentsRemainPartOfIdentity()
     {
