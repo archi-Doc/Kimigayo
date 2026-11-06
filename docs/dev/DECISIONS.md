@@ -6597,7 +6597,7 @@ resumed by R4-M86 (2026-10-20).
   role (inference and matching, open Origins, premises, regions, effects, construction premises), and the old analysis never sees a raw
   Origin (Q-O3 is moot). Identity: `BoundType.SameExceptOrigins` (every part of the layer but `Origin` and Origin arguments,
   `RawOrigin` compared exactly: no identity treats it as open, omitted or inferred) is shared by `SameCompleteType`,
-  `SameModuloOpenOrigins` and `SameExceptOmittedOrigins`. `ArchitectureRulesTest` pins the self-rebuilds and the raw role's reads and
+  `SameExceptOmittedOrigins` and `SameExceptRawOrigins`. `ArchitectureRulesTest` pins the self-rebuilds and the raw role's reads and
   writes by site. Rejected: A′ (the same field and a borrow view): a gate and the rewriter it guards read different meanings (a
   body-local region escapes through `ResolveLocalResultOrigins`). G160-1 (C1b) appends §0's vocabulary (`Holder`, `Shared`, `Unstated`)
   and the owner's decisions. C1b (unit bu20; the owner's Q-O1, Q-O2, Q-O6 of design-final §0, Q-O4 and Q-O5 as R4-M105 (OQ-R1 (a),
