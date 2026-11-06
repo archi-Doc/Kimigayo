@@ -176,8 +176,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // call prepared for the earlier parameters as shared references p_i: ref/P_i in slot order (PreparedInput), which its names read
     // through (Bound), and gives the parameter's value. A parameter has no syntax node of its own: it, a template's p_i included, is located
     // at its written Type node, the one a fact about the slot names (DECISIONS R4-M90 D6, BU-48), and a function's result at its written
-    // result Type; a Closure's environment, a constructor's or destructor's self, an accessor's arguments, a default template's _0 (the
-    // parameter's value) and a result without a written Type are located at their declaration.
+    // result Type (TyCtxt.SignatureSite); a Closure's environment, a constructor's or destructor's self, an accessor's arguments, a
+    // default template's _0 (the parameter's value) and a result without a written Type are located at their declaration.
     private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType result, Koto value)
     {
         var template = key.Kind == MirBodyKind.DefaultTemplate;
@@ -194,10 +194,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
         PairBinder.Collect(declaration, body.Binders);
         var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
         var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType((FunctionKoto)declaration) : null;
-        var written = declaration as FunctionKoto;
         this.entry = this.Info(declaration, local: true);
         body.AddLocal(self is null
-            ? new(result, MirLocalKind.Return, !template && written?.ReturnType is { } type ? this.Info(type, local: true) : this.entry)
+            ? new(result, MirLocalKind.Return, template ? this.entry : this.Info(TyCtxt.SignatureSite(declaration, -1), local: true))
             : new(self, MirLocalKind.Return, this.entry, Role: MirLocalRole.Receiver));
         if (self is not null)
         {
@@ -222,7 +221,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.locals[parameter] = this.Argument(
                 compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
                 parameter.Name,
-                written!.Parameters[i].Type,
+                TyCtxt.SignatureSite(declaration, i),
                 parameters,
                 MirLocalRole.PreparedInput);
         }
@@ -251,7 +250,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
             var parameter = CallPlan.Parameter(function, slot)!;
-            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, written?.Parameters[slot].Type ?? declaration, parameters);
+            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, TyCtxt.SignatureSite(declaration, slot), parameters);
         }
 
         this.current = body.AddBlock();
