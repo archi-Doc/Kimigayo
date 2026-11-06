@@ -170,6 +170,7 @@ internal static class MirDescriptors
         IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Capacity => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
+        // No producer until R8-A1c (destroyValues<T>); its row gets the destruction meaning A4 needs with that producer.
         IntrinsicId.DestroyValues => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),
