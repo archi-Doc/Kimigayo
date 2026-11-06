@@ -145,12 +145,13 @@ public sealed partial class Binding
         return null;
     }
 
-    // A lookup publishes the qualifier it selected. A qualifier whose binder recorded a failure stays failed, as Complete keeps it, so
+    // A lookup publishes the qualifier it selected. Its Resolved, without a Type, stands only where no binder has decided the node: a
+    // qualifier its binder failed, directly or by resting on a part, keeps that outcome (BindType replaces the lookup's Resolved), so
     // its record is reported and a consumer rests on it (SPEC 23.1.2; PLAN G481).
     private static void PublishQualifier(Koto qualifier, BindingSymbol symbol)
     {
         qualifier.BoundSymbol = symbol;
-        if (qualifier.BindingState != BindingState.Invalid)
+        if (qualifier.BindingState == BindingState.Unvisited)
         {
             qualifier.BindingState = BindingState.Resolved;
         }

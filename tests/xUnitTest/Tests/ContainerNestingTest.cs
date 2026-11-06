@@ -116,13 +116,17 @@ public class ContainerNestingTest
     }
 
     // SPEC 23.1.2, 9.1, 9.7, 9.7.1, 6.1 (PLAN G481 (1), (3)): a qualifier's own failure is reported at the qualifier whatever form reads
-    // it, and stays failed: a struct qualifier's wrong arity or omitted outer arguments (a call, a Type position, a `::` path), and a
-    // group qualifier's written arguments, since a group has no own parameters. The consumer rests on it. The valid twins bind.
+    // it, and stays failed: a struct qualifier's wrong arity or omitted outer arguments (a call, a Type position, a `::` path, also
+    // a middle segment), a qualifier resting on its failed argument, and a group qualifier's written arguments, since a group has no
+    // own parameters. The consumer rests on it. The valid twins bind.
     [Theory]
     [InlineData(false, "func f()\n    let b = T<i32, bool>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
     [InlineData(false, "func f()\n    let b = T.G.Box.init()\n", "InvalidTypeFormation_Kd T")]
     [InlineData(false, "func f(b: T<i32, bool>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
     [InlineData(false, "func f(b: ::T<i32, bool>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData(false, "struct Outer\n    public struct T<U>\n        public group G\n            public struct Box\nfunc f(b: ::Outer.T.G.Box) => ()\n", "InvalidTypeFormation_Kd Outer.T")]
+    [InlineData(false, "func f()\n    let b = T<Missing>.G.Box.init()\n", "UnresolvedBinding_Kd Missing")]
+    [InlineData(false, "group H\n    struct Hidden\nfunc f()\n    let b = T<H.Hidden>.G.Box.init()\n", "InaccessibleBinding_Kd H.Hidden")]
     [InlineData(false, "func f()\n    let b = T<i32>.G.Box.init()\n", "")]
     [InlineData(true, "func f()\n    let b = T<i32>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32>")]
     [InlineData(true, "func f(b: T<i32>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32>")]
@@ -136,6 +140,19 @@ public class ContainerNestingTest
         var c = CompilationTestHelper.Parse(declaration + "    public group G\n        public struct Box\n            public init() => ()\n" + use);
         Assert.Equal(records.Length == 0, c.Bind().IsComplete);
         Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.6, 6.1 (PLAN G481 (3)): a group qualifier that failed selects no member, as a failed struct qualifier does; the scope lookup
+    // is the root container's and a Kotonoha reference's, never a fallback for a failed group.
+    [Theory]
+    [InlineData("T<i32>.value", "value")]
+    [InlineData("T<i32>.one()", "one")]
+    public void AFailedGroupQualifierSelectsNoMember(string use, string member)
+    {
+        var c = CompilationTestHelper.Parse("group T\n    public let value: i32 = 1\n    public func one() -> i32 => 1\nfunc f() -> i32 => " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        var name = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().Single(x => x.IdentifierName == member && x.Parent is MemberAccessKoto);
+        Assert.Null(name.SymbolOf());
     }
 
     // SPEC 9.4.1 (PLAN G250 (4)): a value, a Function Item or a Case selected through an inaccessible Container reports the access at
