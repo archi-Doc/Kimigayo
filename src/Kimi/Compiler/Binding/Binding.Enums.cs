@@ -25,7 +25,9 @@ public sealed class BoundEnumCase
     public ReadOnlySpan<Koto> Payload => ((SyntaxFormKoto)((SyntaxFormKoto)this.Symbol.Declaration).Operands[1]).Operands;
 }
 
-/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate.</summary>
+/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate. A resting construction's plan (a
+/// payload failed, PLAN G418 (2)) holds only its completed payloads and is judged only by the pass-end formation and acquisitions
+/// (CompleteEnumAcquisitions); no consumer reads it, since <see cref="Binding.TryGetEnumConstruction"/> returns a resolved use's plan.</summary>
 public sealed class BoundEnumConstruction
 {
     private BoundArgumentOperation[] operations = [];
@@ -61,7 +63,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundEnumConstruction> enumConstructions = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Gets this pass's construction plan; failed/replaced uses never expose old plans.</summary>
+    /// <summary>Gets this pass's construction plan; failed, resting and replaced uses never expose a plan (the Resolved gate).</summary>
     /// <param name="use">The construction expression.</param>
     /// <param name="construction">The committed plan, or null if unavailable.</param>
     /// <returns>Whether a valid construction was selected in the latest pass.</returns>
@@ -670,7 +672,13 @@ public sealed partial class Binding
 
                 var type = this.RewriteOrigins(construction.Type, declaration);
                 construction.Set(construction.Case, type, operations.AsSpan(0, source.Length));
-                use.BoundType = type;
+
+                // A resting construction forms no result (DECISIONS BU-96 amended; whether it publishes one is PLAN G495's), so only a
+                // published result Type is rewritten.
+                if (use.BoundType is not null)
+                {
+                    use.BoundType = type;
+                }
             }
             finally
             {
