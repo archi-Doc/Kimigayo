@@ -154,11 +154,13 @@ public class KeyedIndexingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
-    // SPEC 4.7, 4.8.2, 15.1.3: a position other than an integer literal is no static Move Path, like a runtime isize;
-    // a dynamic position may select a moved element; and an Array read result keeps the receiver shared-borrowed.
+    // SPEC 4.7, 4.8.2, 15.1.3: a position other than an integer literal is no static Move Path, like a runtime isize, also for a Copy
+    // element (15.1.5, 13.5.3: `@move` transfers even a Copy value); a dynamic position may select a moved element; and an Array read
+    // result keeps the receiver shared-borrowed.
     [Theory]
     [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[^1]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
     [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet i: isize = 2\nlet taken = names[i]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
+    [InlineData("var c: [2 of i32] = [1, 2]\nlet i: isize = 1\nlet x = c[i]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
     [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[0]@move\nConsole.writeLine(names[^1])", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("var array: Array<i32> = [1, 2]\nlet first = array.tryGet(0)\narray.append(3)\nlet again = first", DiagnosticCode.CallActivationConflict_Kd)]
     [InlineData("var array: Array<i32> = [1, 2]\nlet part = array.trySlice(..1)\narray.append(3)\nlet again = part", DiagnosticCode.CallActivationConflict_Kd)]
