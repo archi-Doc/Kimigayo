@@ -510,7 +510,8 @@ public sealed class MirAnalysisTest
 
     // R4-M71 (G125, the 1c design review's r05): a Field initializer is built into each constructor, so its conflict is one problem per
     // constructor body with that body's views: S's two constructors have one view each, G's two enumerate two and nine cases. One problem
-    // with the bodies' views ORed (0x1FF for G) loses which constructor's case a bit names.
+    // with the bodies' views ORed (0x1FF for G) loses which constructor's case a bit names. Every problem's views are bits of its body's
+    // views (MirProblem): A3's falling failure body in g, which depends on no case, has g's two (MirCases.Every).
     [Fact]
     public void AFieldInitializersProblemIsEachConstructors()
     {
@@ -536,6 +537,9 @@ public sealed class MirAnalysisTest
                     self.t = t
                 public init(t: s/T, n: i32)
                     self.t = t@move
+            func g<s/T>(v: s/T, flag: bool)
+                s is ref or uniq
+                require flag else => ()
 
             """);
         Assert.Empty(c.Binding.Issues);
@@ -543,6 +547,7 @@ public sealed class MirAnalysisTest
         var problems = program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).ToArray();
         Assert.Equal(
             [
+                "RequireFallthrough_Kd () in func g<s/T>(v: s/T, flag: bool): 3",
                 "ComparisonLoanConflict_Kd a = 2 in public init(k: i32) => self.k = k: 1",
                 "ComparisonLoanConflict_Kd a = 2 in public init(k: i32, extra: i32) => self.k = k + extra: 1",
                 "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T): 3", "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T, n: i32): 511",
@@ -843,8 +848,8 @@ public sealed class MirAnalysisTest
         Assert.Equal(8, report.All.Length);
     }
 
-    // V16, DECISIONS R4-M7a: N falling requires in sequence and N nested are N problems each, every one in every view, and the MIR and the
-    // cold build's allocation, A3's included, grow linearly with N.
+    // V16, DECISIONS R4-M7a: N falling requires in sequence and N nested are N problems each, every one in every view (1: its body's one,
+    // MirCases.Every), and the MIR and the cold build's allocation, A3's included, grow linearly with N.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RequireEndsScaleLinearly()
@@ -860,7 +865,7 @@ public sealed class MirAnalysisTest
             var (c, program) = (compilations[i], programs[i]);
             work[i] = program.Bodies.ToArray().Sum(static x => x.Blocks.Length + x.Statements.Length);
             var problems = program.Problems.All.ToArray();
-            Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, ulong.MaxValue), (x.Code, x.Views)));
+            Assert.All(problems, static x => Assert.Equal((DiagnosticCode.RequireFallthrough_Kd, 1UL), (x.Code, x.Views)));
             Assert.Equal([sizes[i], sizes[i]], new[] { "sequence", "nest" }.Select(name => problems.Count(x => Function(c.SyntaxOf(x.Subject)) == name)));
         }
 

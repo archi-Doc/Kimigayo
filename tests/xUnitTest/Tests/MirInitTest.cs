@@ -170,10 +170,10 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: an explicit Move of a preceding parameter or of its owned
-    // contents in the template (a fixed array's element or an Array's, SPEC 15.1.5), parenthesized or not, is DefaultArgumentMove_Kd, and an
-    // inspection of it is valid. Each is the template's check: the calls' inline copies, in a caller of two views, add none. A bare one is
-    // Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter holds (StaticMovePathRequired_Kd before R6-check H1)
-    // Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
+    // contents in the template (R4-M69's: a fixed array's element or an Array's, whose element also offers no Take, SPEC 15.1.5),
+    // parenthesized or not, is DefaultArgumentMove_Kd, and an inspection of it is valid. Each is the template's check: the calls' inline
+    // copies, in a caller of two views, add none. A bare one is Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter
+    // holds (StaticMovePathRequired_Kd before R6-check H1) Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
     [Fact]
     public void ADefaultCannotMoveItsPreparedSlot()
     {

@@ -62,7 +62,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             return true;
         }
 
-        var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
+        var all = MirCases.Every(body);
         var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6), out var words);
         if (state is null)
         {
