@@ -134,15 +134,20 @@ public sealed partial class Binding
         var writerType = actual is { Semantics: not SemanticsKind.Owner, Components.Count: 1 } ? actual.Components[0] : actual;
         if (ReferenceEquals(actual, BoundType.Never))
         {
-            // SPEC 14.10.3, 15.3.4 (PLAN G410): a Never operand has no value, so its writer's Origin arguments are static, which every
-            // relation proves and a meet drops; the declaration's own atoms are universal in Utf8Writer only, not in this body.
-            // Interned from rented scratch, as SelfType forms a declaration's Type, so a warm rebind allocates nothing.
+            // SPEC 3.8, 10.8, 15.3.6, 22.10.4 (PLAN G410): a Never operand fits `uniq/Utf8Writer` and supplies no Origin, so each Origin
+            // argument of its writer is a region of this call (CallRegion), never static; the declaration's own atoms are universal
+            // in Utf8Writer only, not in this body. Interned from rented scratch, as SelfType forms a declaration's Type, so a warm
+            // rebind allocates nothing.
             var declared = this.Library.GetSymbol(KimiDeclarationId.Utf8Writer)!;
             var count = declared.Schema!.Origins.Count;
-            var statics = this.originScratch.Rent(count);
-            statics.AsSpan(0, count).Fill(BoundOrigin.Static);
-            writerType = this.types.Rebuild(declared.Type!, [], null, statics.AsSpan(0, count));
-            this.originScratch.Return(statics, clearArray: true);
+            var regions = this.originScratch.Rent(count);
+            for (var i = 0; i < count; i++)
+            {
+                regions[i] = this.CallRegion(syntax, i);
+            }
+
+            writerType = this.types.Rebuild(declared.Type!, [], null, regions.AsSpan(0, count));
+            this.originScratch.Return(regions, clearArray: true);
         }
 
         if (writerType?.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer)

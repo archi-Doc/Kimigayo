@@ -9464,7 +9464,9 @@ resumed by R4-M86 (2026-10-20).
     omitted default, which is no evidence, is a region of its call like an Origin parameter. `OpenUnsolvedOrigins` opens both: the
     parameters keyed up from `UnsolvedKey`, the inputs down (`UnsolvedKey - 1 - i`), all below `UnsolvedKey / 2`, so `IsCallRegion`
     and the view's `EnclosingCallRegion` read them alike. Before, the result kept the callee's Input atom: `UnprovenConstraint_Kd`
-    at a named call, `Unsupported_Kd` at a value call.
+    at a named call, `Unsupported_Kd` at a value call. A Never `$tryWrite` writer's Origin arguments are likewise its call's regions
+    (`CallRegion`, read by `BindTryWrite` and `OpenUnsolvedOrigins`; SPEC 22.10.4 acquires it as `uniq/Utf8Writer`, and 15.3.6
+    never replaces such an Origin by static). This supersedes 5881e0a62's static Origin arguments, chosen before call regions existed.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and

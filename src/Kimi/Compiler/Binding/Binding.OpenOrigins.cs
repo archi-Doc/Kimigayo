@@ -198,21 +198,25 @@ public sealed partial class Binding
     // parameter's premise included, is a local region of the call, solved with the body's other local regions by its uses; the
     // premises the call's judgment visits over it are that region's bounds (a result-only `s` of `constant() -> ref/i32 during s`, one
     // only a default names, the Origins only a join's or an aggregate's `.None` leaves name). It needs no annotation and is never
-    // replaced by static. It is the call's open region, keyed apart from argument evidence by UnsolvedKey: the Origin parameters count
-    // up from it and the input Origins (an elided parameter Origin a Never argument leaves without one, SPEC 10.8; PLAN G410) down, so
-    // IsCallRegion holds for both.
+    // replaced by static. It is the call's open region (CallRegion); the input Origins are opened too (an elided parameter Origin a
+    // Never argument leaves without one, SPEC 10.8; PLAN G410).
     private void OpenUnsolvedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, BoundOrigin[] inputs)
     {
         for (var i = 0; i < function.Origins.Count; i++)
         {
-            origins[i] ??= this.OpenOrigin(call, UnsolvedKey + i);
+            origins[i] ??= this.CallRegion(call, i);
         }
 
         for (var i = 0; i < Math.Min(inputs.Length, InputOriginCount(function)); i++)
         {
-            inputs[i] ??= this.OpenOrigin(call, UnsolvedKey - 1 - i);
+            inputs[i] ??= this.CallRegion(call, -1 - i);
         }
     }
+
+    // SPEC 15.3.6, 15.6.4 step 1: the region of `call` for a callee Origin no evidence supplies: Origin parameter `index` (from 0) or
+    // input Origin `-1 - index`, or a Never `$tryWrite` writer's Origin argument `index` (BindTryWrite). Keyed apart from argument
+    // evidence by UnsolvedKey, parameters up and inputs down, all below UnsolvedKey / 2, so IsCallRegion holds for every one.
+    private BoundOrigin CallRegion(Koto call, int index) => this.OpenOrigin(call, UnsolvedKey + index);
 
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)
     {
