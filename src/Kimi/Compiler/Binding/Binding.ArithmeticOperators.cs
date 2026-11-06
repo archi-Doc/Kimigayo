@@ -100,7 +100,7 @@ public sealed partial class Binding
                 var rejected = binary.ArithmeticStorage ??= new();
                 rejected.Candidates.Clear();
                 rejected.Sources.Clear();
-                this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, rightCore, leftCore, ArithmeticContract(operation, true), "A right provider requires a built-in numeric left operand"));
+                this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, rightCore, leftCore, ArithmeticContract(operation, true), ArithmeticSelectionCause.NonNumericLeft));
                 return true;
             }
 
@@ -260,7 +260,7 @@ public sealed partial class Binding
 
         if (pending || count != 1)
         {
-            this.FailExplained(ref this.arithmeticSelectionFailures, use, BindingFailure.ArithmeticSelection, new(plan, self, counterpart, id, pending ? "A structurally fitting conditional conformance remains unproven" : count == 0 ? "No proven conformance fits the counterpart structure" : "Multiple proven conformances fit the counterpart structure"));
+            this.FailExplained(ref this.arithmeticSelectionFailures, use, BindingFailure.ArithmeticSelection, new(plan, self, counterpart, id, pending ? ArithmeticSelectionCause.Unproven : count == 0 ? ArithmeticSelectionCause.NoFit : ArithmeticSelectionCause.Ambiguous));
             return null;
         }
 
