@@ -144,6 +144,22 @@ public class ClosureReceiverClassificationTest
         Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference view exclusively", error.Note);
     }
 
+    private const string ExclusiveCallNote = "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because a call of the callee may change its environment, or use it or what it reaches with exclusive access";
+
+    // SPEC 7.7.3, 8.10: a call's Note holds for every cause of its receiver (7.7.3's Exclusive row also names a use with exclusive
+    // access): a body that only reads through an exclusive borrow of a capture, and a generic callee, whose receiver is its declared
+    // Callable receiver (uniq or owner, 7.7.3's last paragraph) with no body known.
+    [Theory]
+    [InlineData("public func main() -> ()\n    var n = 7\n    let f = func [var n] () -> i32\n        let s = n@uniq\n        return s@follow\n    let v = f()\n", ExclusiveCallNote)]
+    [InlineData("func callIt<F>(f: F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\npublic func main() -> ()\n    let v = 0\n", ExclusiveCallNote)]
+    [InlineData("func callIt<F>(f: ref/F) -> i32\n    F is Callable<owner, () -> i32>\n    return f()\npublic func main() -> ()\n    let v = 0\n", "The call is Consuming (SPEC 7.7.3): it may move values out of the callee's environment, which a reference cannot supply, since a callable value is no read Type (SPEC 3.5.3, 7.3)")]
+    public void ACallNoteHoldsForEveryCauseOfItsReceiver(string source, string note)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal(note, error.Note);
+    }
+
     // SPEC 3.5.1, 10.2.2, 7.7.3 (PLAN G232): a captured exclusive reference, `uniq/T` or `objuniq/T`, at a fixed expected Type that it fits is
     // Reborrowed exclusively, as at a bare acquisition position, so the call is Exclusive and a `let` Closure's call invalid; the
     // Reborrow is contained in the call's receiver, which `during r` does not prove. Each row: the records.
@@ -295,7 +311,9 @@ public class ClosureReceiverClassificationTest
     // `(take(value), missing)` keep the mark and a `let` Closure's call stays Exclusive, and a dependent call `pair(missing, value)`
     // decides only a bare acquisition position, which its argument is not; a discarded use has no consumer whose failure explains it,
     // so a failed sibling arm leaves the mark (BU's re-check 3, N1); an assignment's failed target fixes its source's Type and explains
-    // it (the concrete twin is Shared). Each row: the records under `let h`, then under `var h`.
+    // it (the concrete twin is Shared); a later use of the Case value that takes it explains nothing: after `.Some(value)`, the bare
+    // `_ = o` is its own TransferRequired_Kd in the uniq case (SPEC 3.5.1; DECISIONS BU-84). Each row: the records under `let h`, then
+    // under `var h`.
     [Theory]
     [InlineData("        value\n", "InvalidAssignment_Kd h", "")]
     [InlineData("        (value)\n", "InvalidAssignment_Kd h", "")]
@@ -306,6 +324,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        match c\n            true => value\n            false => missing\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
+    [InlineData("        let o: Option<s/T> = .Some(value)\n        _ = o\n", "TransferRequired_Kd o; InvalidAssignment_Kd h", "TransferRequired_Kd o")]
     [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
     [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
     [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
@@ -425,7 +444,7 @@ public class ClosureReceiverClassificationTest
 
     // SPEC 3.5 (2c-2 re-check R2, R3): an enum Case's payload is a listed input, so `.Some(value)` of a captured pair layer Reborrows in
     // the uniq case: the capture is marked and a `let` Closure's call is Exclusive (SPEC 7.7.3), which its `let` slot cannot lend
-    // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; PLAN G252), as outside a
+    // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; DECISIONS BU-45), as outside a
     // Closure, so it has no TransferRequired_Kd; Binding's records.
     [Theory]
     [InlineData("let", "InvalidAssignment_Kd h")]
@@ -519,6 +538,6 @@ public class ClosureReceiverClassificationTest
 
         var error = Assert.Single(errors);
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent", error.Note);
+        Assert.Equal(ExclusiveCallNote, error.Note);
     }
 }

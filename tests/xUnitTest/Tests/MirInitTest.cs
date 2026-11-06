@@ -15,7 +15,7 @@ namespace XunitTest;
 /// line of its subject and its views; and the move paths a body forms, through <see cref="MirMoveData"/> itself.</summary>
 public sealed class MirInitTest(ITestOutputHelper output)
 {
-    private const string Resource = "struct Resource\n    var name: string\nfunc make() -> Resource => Resource.init(name: \"r\")\n" +
+    private const string Resource = "struct Resource\n    public var name: string = \"r\"\nfunc make() -> Resource => Resource.init()\n" +
         "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
 
     private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
@@ -30,23 +30,26 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(["UninitializedPlace_Kd use(number) 1"], Problems(Branches + "    use(number)\n"));
     }
 
-    // SPEC 15.1.1, 15.1.2: a Move leaves its Place Moved until a reinitialization; a use where it may have been moved is MovedPlace. A
-    // Field written into a moved value does not construct it again: the write and a whole use after it are both MovedPlace.
+    // SPEC 15.1.1, 15.1.2, 15.1.4: a Move leaves its Place Moved until a reinitialization, also along a loop's back edge; a use where it
+    // may have been moved is MovedPlace. A Field written into a moved value does not construct it again: the write and a whole use after
+    // it are both MovedPlace. The fixture and the write bind (SPEC 6.3.6: the implicit constructor; the Field is public).
     [Fact]
     public void AMovedPlaceIsUsableAgainOnlyAfterReinitialization()
     {
-        Assert.Empty(Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x = make()\n    consume(x@move)\n"));
+        Assert.Empty(Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x = make()\n    consume(x@move)\n" +
+            "func g(c: bool)\n    var x = make()\n    while c\n        consume(x@move)\n        x = make()\n"));
         Assert.Equal(["MovedPlace_Kd x 1"], Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    inspect(x)\n"));
+        Assert.Equal(["MovedPlace_Kd x 1"], Problems(Resource + "func f(c: bool)\n    var x = make()\n    while c\n        consume(x@move)\n"));
         Assert.Equal(
             ["MovedPlace_Kd x 1"],
             Problems(Resource + "func f(flag: bool)\n    var x = make()\n    if flag\n        consume(x@move)\n    inspect(x)\n"));
-        Assert.Equal(
-            ["MovedPlace_Kd x.name = \"n\" 1", "MovedPlace_Kd x 1"],
-            Problems(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x.name = \"n\"\n    inspect(x)\n"));
+        var written = MirBuildTest.Compile(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    x.name = \"n\"\n    inspect(x)\n");
+        Assert.Empty(written.Binding.Issues);
+        Assert.Equal(["MovedPlace_Kd x.name = \"n\" 1", "MovedPlace_Kd x 1"], Problems(written));
     }
 
-    // SPEC 15.1.1: a let binding is initialized once per binding lifetime: a loop body's let starts a lifetime per iteration, and neither
-    // a Move nor a destruction resets the first initialization.
+    // SPEC 15.1.1: a let binding is initialized once per binding lifetime: a loop body's let starts a lifetime per iteration, one outside
+    // the loop does not, and neither a Move nor a destruction resets the first initialization.
     [Fact]
     public void ALetIsInitializedOncePerBindingLifetime()
     {
@@ -54,6 +57,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(
             ["ReassignedLet_Kd resource = make() 1"],
             Problems(Resource + "func f()\n    let resource: Resource\n    resource = make()\n    consume(resource@move)\n    resource = make()\n"));
+        Assert.Equal(["ReassignedLet_Kd s = make() 1"], Problems(Resource + "func f(c: bool)\n    let s: Resource\n    while c\n        s = make()\n"));
     }
 
     // SPEC 15.1.2, 15.1.3: a Partial Move leaves the value incomplete for whole-value uses until the missing path is reinitialized.
@@ -166,20 +170,24 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: an explicit Move of a preceding parameter or of its owned
-    // contents in the template, parenthesized or not, is DefaultArgumentMove_Kd. Each is the template's check: the calls' inline copies, in a
-    // caller of two views, add none. A bare one is Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter holds
-    // (StaticMovePathRequired_Kd before R6-check H1) Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
+    // contents in the template (R4-M69's: a fixed array's element or an Array's, whose element also offers no Take, SPEC 15.1.5),
+    // parenthesized or not, is DefaultArgumentMove_Kd, and an inspection of it is valid. Each is the template's check: the calls' inline
+    // copies, in a caller of two views, add none. A bare one is Binding's DefaultArgumentMove_Kd, and a bare one past a borrow the parameter
+    // holds (StaticMovePathRequired_Kd before R6-check H1) Binding's TransferRequired_Kd (SPEC 3.5, 7.2.3; TransferJudgmentTest).
     [Fact]
     public void ADefaultCannotMoveItsPreparedSlot()
     {
         var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = (x)@move) => ()\n" +
-            "func part(p: (string, i32), y: string = p.0@move) => ()\n" +
-            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n");
+            "func part(p: (string, i32), y: string = p.0@move) => ()\nfunc elem(a: [2 of string], y: string = a[0]@move) => ()\n" +
+            "func dyn(a: Array<string>, y: string = a[0]@move) => ()\nfunc peek(a: [2 of string], y: string = Text.toString(a[0])) => ()\n" +
+            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n    elem([\"d\", \"e\"])\n" +
+            "    dyn([\"f\"])\n    peek([\"g\", \"h\"])\n");
         Assert.Empty(c.Binding.Issues);
         Assert.Equal(
             [
                 "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd (x) 1",
-                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd a[0] 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd a[0] 1",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
@@ -271,7 +279,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     // delivers nothing at its template's Return, an index whose value only the checks reach leaves its compiler temporary unwritten (not a
     // Place of the program), a value moved before a return is MovedPlace after it, and a value whose initializer or assignment diverged is
     // UninitializedPlace where only the checks read it (plan Appendix B C3): the Never value is not placed, nor is the old value dropped
-    // (DECISIONS R4-M62); a call whose argument diverged moves its other arguments for the checks (SPEC 14.10.3).
+    // (DECISIONS R4-M62); a call whose argument diverged moves its other arguments for the checks (SPEC 14.10.3). A loop head only the
+    // checks reach joins the return's continuation with its back edge, keeping what holds on both, so a Move in the loop is MovedPlace
+    // unless the loop reinitializes it; a back edge from code only the checks reach adds nothing to a head a runtime path reaches.
     [Fact]
     public void CheckOnlyCodeKeepsItsOwnState()
     {
@@ -286,6 +296,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Problems(Box + "func afterReturn(box: Box) -> i32\n    consume(box@move)\n    return 1\n    consume(box@move)\n    return 2\n" +
                 "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc assigned() -> i32\n    var y: i32\n    y = stop()\n    return y\n" +
                 "func take(box: Box, n: i32) => ()\nfunc continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
+        Assert.Equal(["MovedPlace_Kd x 1"], Problems(Resource + "func g(c: bool)\n    var x = make()\n    return\n    while c\n        consume(x@move)\n"));
+        Assert.Empty(Problems(Resource + "func g(c: bool)\n    var x = make()\n    return\n    while c\n        consume(x@move)\n        x = make()\n" +
+            "func f(c: bool)\n    var x = make()\n    while c\n        inspect(x)\n        return\n        consume(x@move)\n"));
     }
 
     // SPEC 17.6.3 (PD22): a verification's records read the temps its comparison's operands were read into once, initialized and not yet

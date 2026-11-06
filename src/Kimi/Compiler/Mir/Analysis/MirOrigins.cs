@@ -96,7 +96,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
             return;
         }
 
-        (this.key, this.allViews) = (body.Key.Body, ulong.MaxValue >> (64 - (int)views));
+        (this.key, this.allViews) = (body.Key.Body, MirCases.Every(body));
         this.slice = types.OriginRows(this.key);
         this.CollectRefs();
         this.rowWords = (this.slice.Rows.Count + 63) >> 6;

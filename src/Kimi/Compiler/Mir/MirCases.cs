@@ -35,6 +35,13 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The number of views, saturated at the largest count.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
 
+    /// <summary>Gets every view of a body, the one form of "every view" of its problems and verdicts (<see cref="MirProblem"/>'s views):
+    /// bits 0 to <see cref="Count"/> less one. The shift is defined: <see cref="MirValidator"/> bounds the count by
+    /// <see cref="PairBinder.CaseBound"/> (64), and the count is at least 1, a product from 1 of non-empty admitted sets.</summary>
+    /// <param name="body">The validated body.</param>
+    /// <returns>The views, bit i for view i.</returns>
+    internal static ulong Every(MirBody body) => ulong.MaxValue >> (64 - (int)Count(body));
+
     /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.Layer).</summary>
     /// <param name="body">The body.</param>
     /// <param name="type">The Type.</param>
@@ -128,8 +135,7 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The views, bit i for view i.</returns>
     internal ulong Views(MirBody callee, Subst? subst)
     {
-        var count = Count(callee);
-        var views = ulong.MaxValue >> (64 - (int)count);
+        var (count, views) = (Count(callee), Every(callee));
         var weight = 1L; // A digit's weight in a view's number: the last binder advances fastest.
         for (var b = callee.Binders.Count - 1; b >= 0 && subst is not null; b--)
         {

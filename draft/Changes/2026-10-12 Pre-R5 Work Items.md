@@ -1,6 +1,12 @@
 # Pre-R5 Work Items
 
-Date: 2026-10-12. Status: adopted by the owner on 2026-10-12 (decisions in §1 and §2; the rest as recommended). Work list for the interval between the R4 exit and the R5 start of the [compiler reduction plan](<2026-10-10 Compiler Size Reduction and Single MIR Plan.md>) ("the plan"); no item is started. No SPEC change. Items that can wait until the plan completes are in [Post-Reduction Work Items](<2026-10-12 Post-Reduction Work Items.md>) ("the companion"), whose Appendix A records the disposition of every R1 inventory item.
+Status (2026-11-06): **closed, 取り込み済み** ([INTEGRATED](../INTEGRATED.md), 2026-11-06), moved from `Proposals/` on the owner's instruction
+(verbatim 「2026-10-12 Pre-R5 Work Items.md を、Changesに移動してください。」). §2 was superseded and met by DECISIONS R5-M2 (R5 exited,
+R5-M148). §3's R1 was met by R5's E9 and R5-M158, and R2 is rejected by A5 (`ComparisonLoanConflict_Kd`). §4 was met by G87 (362a84deb).
+§5's D1 and D2 are done. D3, the backup of the Git-ignored records, has no record, and this closure leaves it undone. Nothing below this
+paragraph changed except the two links to proposals that stay in `Proposals/`; those links follow the move.
+
+Date: 2026-10-12. Status: adopted by the owner on 2026-10-12 (decisions in §1 and §2; the rest as recommended). Work list for the interval between the R4 exit and the R5 start of the [compiler reduction plan](<../Proposals/2026-10-10 Compiler Size Reduction and Single MIR Plan.md>) ("the plan"); no item is started. No SPEC change. Items that can wait until the plan completes are in [Post-Reduction Work Items](<../Proposals/2026-10-12 Post-Reduction Work Items.md>) ("the companion"), whose Appendix A records the disposition of every R1 inventory item.
 
 Base: `fcb190f4` (`dev`, R4 U1). `file:line` refers to that commit.
 

@@ -390,7 +390,10 @@ public sealed partial class Binding
 
             if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || ReachedThroughShared(source)))
             {
-                return false;
+                // SPEC 3.5.1: a stored uniq reached through a shared path has no Reborrow, so its bare acquisition needs the Move a bare
+                // Place never makes (TransferRequired, DECISIONS BU-45), deferred as every bare acquisition's; a written one is its own.
+                return actual.Semantics == SemanticsKind.Uniq && !explicitBorrow && !receiver &&
+                    this.RequireAcquisition(source, actual, pattern, BindingFailure.TransferRequired, @object: false, fixedExpectation, deferAcquisition);
             }
 
             referent = actual.Components[0];
@@ -483,7 +486,9 @@ public sealed partial class Binding
         {
             if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))
             {
-                return false;
+                // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
+                return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&
+                    this.RequireAcquisition(source, actual, pattern, BindingFailure.TransferRequired, @object: true, fixedExpectation, deferAcquisition);
             }
 
             if (actual.Semantics == SemanticsKind.ObjRef)

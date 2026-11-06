@@ -160,9 +160,9 @@ public partial class Compilation
         }
     }
 
-    // The case text of a merged problem (design 3.3; DECISIONS BU-82): Binding.CaseFact over each member's body's binders and its views
-    // masked by MirCases.Count first, since some producers write every view as ulong.MaxValue (Q-BU-2); given only when every member gives
-    // the same text, and a NoBody member gives none. The first member's named binders are left in caseBinders.
+    // The case text of a merged problem (design 3.3; DECISIONS BU-82): Binding.CaseFact over each member's body's binders and its views,
+    // which are bits of that body's views (MirProblem); given only when every member gives the same text, and a NoBody member gives none.
+    // The first member's named binders are left in caseBinders.
     private string? CaseFact(Mir.MirProgram program, int merged, out bool single)
     {
         (single, string? found) = (false, null);
@@ -175,10 +175,7 @@ public partial class Compilation
                 return null;
             }
 
-            var body = program.Bodies[member.Body];
-            var count = Mir.MirCases.Count(body);
-            var mask = count >= 64 ? ulong.MaxValue : (1UL << (int)count) - 1;
-            var text = Binding.CaseFact(body.Binders, member.Views & mask, i == 0 ? this.caseBinders : this.memberBinders, out var one);
+            var text = Binding.CaseFact(program.Bodies[member.Body].Binders, member.Views, i == 0 ? this.caseBinders : this.memberBinders, out var one);
             if (i == 0)
             {
                 (found, single) = (text, one);
