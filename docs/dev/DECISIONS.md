@@ -9803,6 +9803,21 @@ resumed by R4-M86 (2026-10-20).
     show it: r27n, r27 and r29 were accepted, though invalid. The binder condition of 22d1216a0 (the cap judges only an Origin the
     walked callee binds; O-23 (b)): it rejected c10 and c11, valid by 5.2.1's letter.
 
+- **BU-116 A Closure whose result retains its receiver is not erased** (2026-11-07; PLAN G516, O-28, BU #56 by Middle's unit
+  r4-oi-o28; Major, no design review required (RI30 B-1)) SPEC 7.7.4, 15.6.4, 5.7 Calls. The owner's O-28 (a), verbatim 「O-28は、(a)：規則 A の保持も「呼び出し元への依存」と数える、で決定します」:
+  rule A's retention of a Closure's call receiver (R4-M131, BU-40) is a dependence of its result contract on the receiver, so 7.7.4
+  does not erase the Closure. No SPEC edit.
+  - Owner: `Binding.ErasesToFunction`, after selection, once the Shared receiver, the signature and the Owned environment hold. Its
+    one source is the concrete call's retention, `TyCtxt.Retains` over `ClosureDefinitionSignature` (the record A5 reads):
+    `ResultDependsOnReceiver` holds where the result retains input 0, the receiver (`TyCtxt.HasReceiverInput`), by `Value`. A
+    Function Item has no receiver; Content (a captured reference's external Origin) is no dependence; a result naming the receiver
+    atom still fails the signature first.
+  - Record: the erasure part `Dependence`, the consumer's `TypeMismatch_Kd` with its own Note, as for the receiver part; a
+    retention past its limits is the located `Unsupported_Kd` at the value. No code, `BindingFailure`, requirement or IR form.
+  - Not covered: 7.7.4 names only the result, so a raw layer without an Origin that the Closure writes through a parameter still
+    erases, though its concrete call retains the receiver there (T29/I30 probe w05); a SPEC question for the owner.
+  - Rejected: a second reading of rule A's trigger (a walk for an unstated raw result layer) beside `Binding.Retention`.
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
