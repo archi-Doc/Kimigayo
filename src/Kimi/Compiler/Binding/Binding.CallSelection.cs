@@ -21,7 +21,8 @@ public sealed partial class Binding
     }
 
     // The scratch sizes a candidate set needs. Origins are solved when the caller or the enclosing Type can carry them, or when a
-    // candidate declares one, returns one or takes one.
+    // candidate declares one, returns one or takes one. Receiver: the group has a receiver shape (SPEC 7.3.2), some candidate taking a
+    // receiver (ReceiverIndex), so a value-qualified call acquires its Receiver Expression by the Name before selection.
     private static CandidateShape MeasureCandidates(CallCandidates candidates, bool solveOrigins)
     {
         var shape = new CandidateShape { SolveOrigins = solveOrigins };
@@ -30,6 +31,7 @@ public sealed partial class Binding
             if (candidate.Declaration is FunctionKoto function)
             {
                 shape.Count++;
+                shape.Receiver |= candidate.ReceiverIndex >= 0;
                 shape.Parameters = Math.Max(shape.Parameters, function.Parameters.Count);
                 shape.Generics = Math.Max(shape.Generics, CallSlotCount(function));
                 shape.Origins = Math.Max(shape.Origins, function.Origins.Count);
@@ -223,6 +225,7 @@ public sealed partial class Binding
         internal int Origins;
         internal int InputOrigins;
         internal bool SolveOrigins;
+        internal bool Receiver;
     }
 
     // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. The saved

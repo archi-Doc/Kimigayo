@@ -126,6 +126,10 @@ public sealed partial class Binding
             _ => null,
         } : null;
 
+    // A special receiver whose row refuses its whole use and which carries that record, BindCall's for a method call's Receiver
+    // Expression (SPEC 6.3.4): the failed input that the call's adaptations and verdict read without judging it again (rule W).
+    private static bool RefusedReceiver(Koto? node) => Receiver(node) is { Whole: false } && node!.BindingFailure != BindingFailure.None;
+
     // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
     private static ReceiverAuthority? ReceiverOfPart(Koto place)
         => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(ElementAccess.OwnedPathRoot(part)) : null;

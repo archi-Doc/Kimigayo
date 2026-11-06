@@ -20,6 +20,9 @@ public class InheritedStorageTest
         "struct Buffer\n    public var n: i32 = 0\n    public init() => ()\nstruct Holder {a}\n    var buffer: Buffer\n    public var view: ref/Buffer during a\n" +
         "    public init(other: ref/Buffer during a)\n        self.buffer = Buffer.init()\n        self.view = other\n";
 
+    // A constructor of S whose body continues once its Field is placed.
+    private const string Placed = "struct S\n    var a: i32\n    public init()\n        self.a = 1\n";
+
     [Fact]
     public void InheritedStandardStorageKeepsItsDeclaringLayer()
     {
@@ -54,15 +57,11 @@ public class InheritedStorageTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
-    // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls,
-    // method calls (whatever the receiver form, before or after placement; PLAN G454) and a Non-Copy Move, each one Language
-    // record at the access. Since the MIR decides acceptance (R6-check H5), a rejected read while a Field is uninitialized also
-    // has A1's `mir` record at the access (PLAN G105): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
+    // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
+    // a Non-Copy Move, each one Language record at the access. Since the MIR decides acceptance (R6-check H5), a rejected read
+    // while a Field is uninitialized also has A1's `mir` record at the access (PLAN G105): published directly until A6's 2g-1
+    // (DECISIONS R5-M184; H3b T51, class 4).
     [Theory]
-    [InlineData("struct S\n    var a: i32\n    public init()\n        self.a = 1\n        let h = self.peek()\n    func peek(self: ref/Self) -> i32 => self.a\n", "self.peek()")]
-    [InlineData("struct S\n    var a: i32\n    public init()\n        self.a = 1\n        self.bump()\n    func bump(self: uniq/Self) => self.a += 1\n", "self.bump()")]
-    [InlineData("struct S\n    Self is Copy\n    var a: i32\n    public init()\n        self.a = 1\n        let h = self.get()\n    func get(self) -> i32 => self.a\n", "self.get()")]
-    [InlineData("struct S\n    var a: i32\n    public init()\n        _ = self.peek()\n        self.a = 1\n    func peek(self: ref/Self) -> i32 => 1\n", "self.peek()", nameof(DiagnosticCode.UninitializedPlace_Kd))]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x", nameof(DiagnosticCode.UninitializedPlace_Kd))]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32 = 0\n    public init()\n        self.x = 3\n", "self.x")]
     [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "self.b", nameof(DiagnosticCode.UninitializedPlace_Kd))]
@@ -77,6 +76,32 @@ public class InheritedStorageTest
         var start = source.LastIndexOf(at, StringComparison.Ordinal);
         (string, int, int)[] expected = [(nameof(DiagnosticCode.InvalidAssignment_Kd), start, at.Length), .. mir.Select(code => (code, start, at.Length))];
         Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
+    }
+
+    // SPEC 6.3.4, 7.3.2-7.3.3: a call whose group has a receiver shape acquires the construction receiver, before or after placement and
+    // whatever the receiver form: one InvalidAssignment_Kd at the call's own `self` (an empty snippet), the call resting on it. The call's
+    // independent failures keep their records (SPEC 23.1.2): a failed argument, a mismatched one, a failed Type argument, a waiting
+    // anonymous function, an object-borrow receiver's fit. A Type function named through `self` takes no receiver and keeps the general
+    // rules' record; before placement A1's record stays (PLAN G105). Each record is a code and the snippet it spans, after the call.
+    [Theory]
+    [InlineData(Placed + "        let h = self.peek()\n    func peek(self: ref/Self) -> i32 => self.a\n", "self.peek()", "InvalidAssignment_Kd|")]
+    [InlineData(Placed + "        self.bump()\n    func bump(self: uniq/Self) => self.a += 1\n", "self.bump()", "InvalidAssignment_Kd|")]
+    [InlineData("struct S\n    Self is Copy\n    var a: i32\n    public init()\n        self.a = 1\n        let h = self.get()\n    func get(self: Self) -> i32 => self.a\n", "self.get()", "InvalidAssignment_Kd|")]
+    [InlineData(Placed + "        self.consume()\n    func consume(self: Self) => ()\n    drop => ()\n", "self.consume()", "InvalidAssignment_Kd|")]
+    [InlineData("struct S\n    var a: i32\n    public init()\n        _ = self.peek()\n        self.a = 1\n    func peek(self: ref/Self) -> i32 => 1\n", "self.peek()", "InvalidAssignment_Kd|", "UninitializedPlace_Kd|self.peek()")]
+    [InlineData(Placed + "        let h = self.peek(missing)\n    func peek(self: ref/Self, x: i32) -> i32 => x\n", "self.peek(missing)", "InvalidAssignment_Kd|", "UnresolvedBinding_Kd|missing")]
+    [InlineData(Placed + "        let h = self.peek(true)\n    func peek(self: ref/Self, x: i32) -> i32 => x\n", "self.peek(true)", "InvalidAssignment_Kd|", "NoApplicableOverload_Kd|self.peek(true)")]
+    [InlineData(Placed + "        let h = self.pick<Missing>(1)\n    func pick<T>(self: ref/Self, x: i32) -> i32 => x\n", "self.pick<Missing>(1)", "InvalidAssignment_Kd|", "UnresolvedBinding_Kd|Missing")]
+    [InlineData(Placed + "        let h = self.apply(func (x) => x + missing)\n    func apply(self: ref/Self, f: (i32) -> i32) -> i32 => f(self.a)\n", "self.apply(func (x) => x + missing)", "InvalidAssignment_Kd|", "UnresolvedBinding_Kd|missing")]
+    [InlineData("open " + Placed + "        let h = self.g()\n    public virtual func g(self: objref/Self) -> i32 => self.a\n", "self.g()", "InvalidAssignment_Kd|", "NoApplicableOverload_Kd|self.g()")]
+    [InlineData(Placed + "        let h = self.seed(1)\n    func seed(x: i32) -> i32 => x + 1\n", "self.seed(1)", "NoApplicableOverload_Kd|self.seed(1)")]
+    public void AMethodCallOnTheConstructionReceiverIsRecordedAtItsReceiver(string declarations, string call, params string[] records)
+    {
+        var source = declarations + "public func main() => ()\n";
+        var at = source.IndexOf(call, StringComparison.Ordinal);
+        var expected = records.Select(static record => record.Split('|')).Select(parts => parts[1].Length == 0 ? (parts[0], at, 4) :
+            (parts[0], source.IndexOf(parts[1], at, StringComparison.Ordinal), parts[1].Length));
+        Assert.Equal(expected.Order(), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)).Order());
     }
 
     // SPEC 6.3.4, 7.3.3: in a constructor, a method call on an initialized own Field (a shared Receiver Expression) and a Type function
