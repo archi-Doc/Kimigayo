@@ -34,7 +34,7 @@ A compiler may reuse results of earlier work only when the outcome (acceptance, 
 
 ## A.4. Implementation limits
 
-Implementation limits and their Resource diagnostics follow [§21.3.2](../21-layout-runtime-and-code-generation.md#2132-limits). Deep or large input never exhausts the host stack; reaching a depth or memory limit is a Resource diagnostic ([§21.3.2](../21-layout-runtime-and-code-generation.md#2132-limits)), never a Language error or acceptance. This implementation analyzes at most 64 Semantics cases per definition ([§8.15](../../spec/08-generics-constraints-and-contracts.md#815-generic-body-checking)).
+Implementation limits and their Resource diagnostics follow [§21.3.2](../21-layout-runtime-and-code-generation.md#2132-limits). Deep or large input never exhausts the host stack; reaching a depth or memory limit is a Resource diagnostic ([§21.3.2](../21-layout-runtime-and-code-generation.md#2132-limits)), never a Language error or acceptance. This implementation analyzes at most 64 Semantics cases per definition ([§8.15](../../spec/08-generics-constraints-and-contracts.md#815-generic-body-checking)). Syntax nesting is at most 1,024: each body, statement, operand and Type argument adds a level.
 
 ## A.5. Optimization and build configurations
 
