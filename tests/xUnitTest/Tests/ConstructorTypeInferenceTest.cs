@@ -160,6 +160,8 @@ public class ConstructorTypeInferenceTest
     // direct match, and otherwise (a Never or waiting argument, or none) it is a region of the call, which its uses bound
     // (NoApplicableOverload_Kd before). Rows: Never, `do => return`, `.None` with a method, `.Some(v@ref)`, a Phantom Origin with a method,
     // two slots, a generic structure with explicit and inferred T, and the expected-only slot at a `let`, at results and at an invariant slot.
+    // The last row's candidate with the unfixed slot now applies and wins by fewer defaults (10.4 step 4), so `v` is not held by `h`
+    // (ComparisonLoanConflict_Kd before, from the storing candidate).
     [Theory]
     [InlineData(Held + "func f() -> i32\n    let h = H.init($abort(\"x\"))\n    return 0\n")]
     [InlineData(Held + "func f() -> i32\n    let h = H.init(do => return 7)\n    return 0\n")]
@@ -173,6 +175,7 @@ public class ConstructorTypeInferenceTest
     [InlineData(Optional + "func g(q: ref/i32) -> H2 during q => H2.init(.Some(q))\n")]
     [InlineData(Phantom + "func g(q: ref/i32) -> P during q => P.init()\n")]
     [InlineData(Invariant + "func g(p: ref/i32) -> U during p => U.init(.None)\n")]
+    [InlineData("struct HS {a}\n    public let r: Option<ref/i32 during a>\n    public init(x: ref/i32 during a, y: i32 = 0) => self.r = .Some(x)\n    public func has(self: ref/Self) -> bool\n        return match self.r\n            .Some(_) => true\n            .None => false\n    public init(x: ref/i32) => self.r = .None\nfunc f() -> bool\n    var v: i32 = 1\n    let h = HS.init(v@ref)\n    v = 2\n    return h.has()\n")]
     public void AnOwnOriginSlotNoArgumentFixesKeepsTheCandidateApplicable(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
@@ -189,6 +192,9 @@ public class ConstructorTypeInferenceTest
     [InlineData("struct G<T> {a}\n    public let r: ref/T during a\n    public init(x: ref/T during a) => self.r = x\nfunc f() -> i32\n    let g = G.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
     [InlineData(Optional + "func f() -> bool\n    var v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    v = 2\n    return h.has()\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
     [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    return H2.init(.Some(v@ref))\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    // A pre-existing record shape (PLAN G<K-F1>): by SPEC 15.6.5 the conflict at `let v` rests on the Refuted relation (rule W), as
+    // for the qualified `Option.Some` twin, which gives two UnsatisfiedOriginRelation_Kd; a function's waiting argument gives this row's
+    // pair on dev (`mk(o: Option<ref/i32 during s>)`).
     [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     [InlineData(Optional + "func g(p: ref/i32) -> H2 during p\n    let v: i32 = 1\n    let h: H2 during p = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     [InlineData(Invariant + "func g(p: ref/i32) -> U during p\n    let v: i32 = 1\n    var w = v@ref\n    return U.init(.Some(w@uniq))\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
