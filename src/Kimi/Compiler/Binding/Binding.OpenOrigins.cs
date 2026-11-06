@@ -199,15 +199,16 @@ public sealed partial class Binding
     // premises the call's judgment visits over it are that region's bounds (a result-only `s` of `constant() -> ref/i32 during s`, one
     // only a default names, the Origins only a join's or an aggregate's `.None` leaves name). It needs no annotation and is never
     // replaced by static. It is the call's open region (CallRegion); the input Origins are opened too (an elided parameter Origin a
-    // Never argument leaves without one, SPEC 10.8; PLAN G410).
-    private void OpenUnsolvedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, BoundOrigin[] inputs)
+    // Never argument leaves without one, SPEC 10.8; PLAN G410). `origins` and `inputs` are the callee binder's slots, a Function
+    // Type's none and its per-call inputs.
+    private void OpenUnsolvedOrigins(Koto call, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
     {
-        for (var i = 0; i < function.Origins.Count; i++)
+        for (var i = 0; i < origins.Length; i++)
         {
             origins[i] ??= this.CallRegion(call, i);
         }
 
-        for (var i = 0; i < Math.Min(inputs.Length, InputOriginCount(function)); i++)
+        for (var i = 0; i < inputs.Length; i++)
         {
             inputs[i] ??= this.CallRegion(call, -1 - i);
         }

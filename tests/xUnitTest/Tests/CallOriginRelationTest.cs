@@ -405,9 +405,20 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // SPEC 3.8, 10.8, 15.3.6, 15.6.4 steps 1 and 3 (PLAN G410): a Never argument fits its parameter and supplies no Origin, so the input
     // Origin its parameter elides, which the result names, has no candidate and is a region of the call, as a named Origin is: valid
     // after `$abort`, a transfer and a value call (UnprovenConstraint_Kd at the named calls, Unsupported_Kd at the value call before),
-    // and so are the twins with a real argument. The invalid twin, whose real argument still bounds the result, is
-    // TheResultRelationIsJudgedAtItsDestination's pick2 row.
+    // and so are the twins with a real argument. So are an omitted Never default (SPEC 7.2.3: no evidence), an aggregate input
+    // (`s.source`), a Contract requirement, a Closure, and value calls through a Function Type, a Callable bound and an erased value,
+    // whose binder's per-call inputs are its call's regions too (Unsupported_Kd before). The invalid twin, whose real argument still
+    // bounds the result, is TheResultRelationIsJudgedAtItsDestination's pick2 row.
     [Theory]
+    [InlineData("func g(x: ref/i32 = $abort(\"d\")) -> ref/i32 during x => x\nfunc f() -> i32\n    let r = g()\n    return r@follow\n")]
+    [InlineData("func fs(s: Slice<i32>) -> Slice<i32> during s.source => s\nfunc f() -> i32\n    let r = fs($abort(\"x\"))\n    return 0\n")]
+    [InlineData("contract Getter\n    func get(self: ref/Self, x: ref/i32) -> ref/i32 during x\nfunc use<T>(t: ref/T) -> i32\n    T is Getter\n    let r = t.get($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func f() -> i32\n    let c = func [] (x: ref/i32) -> ref/i32 during x => x\n    let r = c($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func h(g: (ref/i32) -> ref/i32) -> i32\n    let r = g($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func h(g: (ref/i32) -> ref/i32) -> i32\n    let v: i32 = 1\n    let r = g(v)\n    return r@follow\n")]
+    [InlineData("func app<F>(f: ref/F) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let r = f($abort(\"x\"))\n    return 0\n")]
+    [InlineData("func app<F>(f: ref/F) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let v: i32 = 1\n    let r = f(v)\n    return r@follow\n")]
+    [InlineData(Identity + "func f() -> i32\n    let g: (ref/i32) -> ref/i32 = id\n    let r = g($abort(\"x\"))\n    return 0\n")]
     [InlineData(Identity + "func f() -> i32\n    let r = id($abort(\"x\"))\n    return 0\n")]
     [InlineData(Identity + "func f() -> i32\n    let r = id(do => return 7)\n    return 0\n")]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a => a\nfunc f() -> i32\n    let v: i32 = 1\n    let r = pick($abort(\"x\"), v)\n    return 0\n")]
@@ -419,6 +430,16 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     {
         var check = DiagnosticCorpus.Check(body + Main);
         Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 7.2.3 (PLAN G410): a default is checked at its declaration and is no evidence, so an omitted one leaves its input a region of
+    // the call, and the call has no failure of its own: the declaration's record stands alone (dev added a dependent
+    // UnprovenConstraint_Kd at `g(v)`; nothing independent is lost).
+    [Fact]
+    public void AnOmittedDefaultFailsOnlyAtItsDeclaration()
+    {
+        var source = "func g(a: ref/i32, x: ref/i32 = a) -> ref/i32 during x => x\nfunc f() -> i32\n    let v: i32 = 1\n    let r = g(v)\n    return r@follow\n" + Main;
+        Assert.Equal([(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "a")], DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))));
     }
 
     [Trait("Purpose", "Allocation")]

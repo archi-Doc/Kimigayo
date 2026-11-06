@@ -504,7 +504,8 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            this.OpenUnsolvedOrigins(call, function, origins, inputs); // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
+            // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
+            this.OpenUnsolvedOrigins(call, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
 
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
@@ -544,17 +545,11 @@ public sealed partial class Binding
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
             // still checked against an expected result (SPEC 10.3).
             var openResult = result is null && resultPattern is not null && MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots);
-            if ((resultPattern is not null && result is null && !waitingCallables && !openResult) || (result is not null && this.HasUnsubstitutedOrigin(result, function)))
+            if (resultPattern is not null && result is null && !waitingCallables && !openResult)
             {
-                // Result-only Origin inference needs the later call-site solver. Never retain a
-                // requirement's abstract binder as though it were this call's concrete Origin.
-                // DECISIONS BU-86: only a result without a Type rests on the environment judgment; an unsubstituted Origin on none.
-                return result switch
-                {
-                    null when solution.IsComplete() => CandidateApplicability.Inapplicable,
-                    null => this.PendingOnEnvironment(environment),
-                    _ => CandidateApplicability.Pending,
-                };
+                // A result Type names no Origin of the callee: OpenUnsolvedOrigins filled every Origin and input slot (SPEC 15.3.6; PLAN
+                // G410). DECISIONS BU-86: only a result without a Type rests on the environment judgment.
+                return solution.IsComplete() ? CandidateApplicability.Inapplicable : this.PendingOnEnvironment(environment);
             }
 
             if (expected is not null && result is not null && !this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&
