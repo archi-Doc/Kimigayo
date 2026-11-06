@@ -237,6 +237,9 @@ public sealed partial class Binding
     /// </summary>
     private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool fixedExpectation = false, bool recordPair = true, bool deferAcquisition = false)
     {
+        // Rule W (DECISIONS BU-79): a Receiver Expression whose whole use its special receiver's row refuses carries BindCall's record,
+        // so its lending and bare acquisition are not judged again; its Types are formed as for a lent Place (SPEC 7.3.2).
+        var judged = !(receiver && RefusedReceiver(source));
         if (receiver && this.adaptations.TryGetValue(source, out var preparedReceiver) && preparedReceiver.Kind == ExpectedAdaptationKind.ReferenceRead)
         {
             actual = preparedReceiver.Type; // Member selection already prepared the reference reached through the stored layers.
@@ -303,7 +306,7 @@ public sealed partial class Binding
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!fixedExpectation && !this.AcquiresBare(source, actual, actual, pattern, deferAcquisition))
+            else if (judged && !fixedExpectation && !this.AcquiresBare(source, actual, actual, pattern, deferAcquisition))
             {
                 return false; // The candidate that needs the Copy is inapplicable.
             }
@@ -416,7 +419,7 @@ public sealed partial class Binding
             // SPEC 13.5.6: an explicit borrow of a slot storing a pair application borrows that slot like a stored value. A written
             // Borrow is lent as Binding lends it, an implicit one (a receiver's too) as SPEC does (BorrowablePlace).
             var exclusive = target == SemanticsKind.Uniq;
-            if (explicitBorrow && !receiver ? this.BorrowablePlace(source, scope, exclusive) : this.LendsPlace(source, scope, exclusive, out _))
+            if (explicitBorrow && !receiver ? this.BorrowablePlace(source, scope, exclusive) : !judged || this.LendsPlace(source, scope, exclusive, out _))
             {
                 // SPEC 15.1.5 lending rule: an owned Place is lent exclusively by @uniq at every position other
                 // than a Receiver Expression, whatever its access path; a receiver is acquired implicitly (SPEC 7.3).

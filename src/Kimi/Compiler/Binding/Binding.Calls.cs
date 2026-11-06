@@ -126,6 +126,20 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
+        var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
+        var imports = this.importCandidates?.GetValueOrDefault(callee);
+        var candidates = new CallCandidates(group, requirementGroup, imports);
+        var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
+        var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
+
+        // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
+        // receiver's row without Whole never permits (BindReference rejects its other uses). The record is at the receiver, and the
+        // call's own judgments continue: its adaptations and verdict read the failed receiver (RefusedReceiver).
+        if (shape.Receiver && this.CallReceiver(callee) is { } callReceiver && Receiver(callReceiver) is { Whole: false })
+        {
+            this.Fail(callReceiver, BindingFailure.InvalidAssignment);
+        }
+
         if (unknownArgument)
         {
             return Complete(call, null);
@@ -133,17 +147,12 @@ public sealed partial class Binding
 
         callee.BoundSymbol = group;
         callee.BindingState = BindingState.Resolved;
-        var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
-        var imports = this.importCandidates?.GetValueOrDefault(callee);
         if (imports is { Count: > 1 } && this.CheckGatheredParameterShapes(callee, imports, aliasStage: true))
         {
             // SPEC 7.4, 9.5.1: a function group gathered at the alias stage from several declaration sources is checked at the use.
             return Complete(call, null);
         }
 
-        var candidates = new CallCandidates(group, requirementGroup, imports);
-        var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
-        var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
         var candidateCount = shape.Count;
         var maxParameters = shape.Parameters;
         var maxGenerics = shape.Generics;
@@ -519,6 +528,12 @@ public sealed partial class Binding
             if (this.ExecutedTarget(winner, self) is not { } executed)
             {
                 return this.Fail(call, BindingFailure.Internal); // SPEC 22.1: the catalog links every linked constructor.
+            }
+
+            if (RefusedReceiver(this.CallReceiver(callee)))
+            {
+                // Rule W (DECISIONS BU-79): the call's own verdict over its refused receiver rests on that record; it is never published.
+                return this.CompleteDependent(call, this.CallReceiver(callee)!);
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;

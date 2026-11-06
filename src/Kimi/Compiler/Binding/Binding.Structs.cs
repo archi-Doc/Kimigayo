@@ -107,11 +107,13 @@ public sealed partial class Binding
     // (DECISIONS BU-15); null for a node or symbol naming no such receiver. Every special receiver writes its own initialized Fields
     // (Writable), no part of it gives up a Non-Copy value (CompleteTransfer) and no capture entry takes it (Binding.Closures).
     // Parts: the authority its path gives every part (PathAuthority). Whole: whether a use of the whole receiver is judged by the
-    // general rules under Parts (BindReference), a borrow of the whole receiver then being the helper borrow (HelperOrigin), which no
-    // Closure captures (JudgeHelperCaptures). LendsFields: whether its writable Fields are lent exclusively (BorrowablePlace);
-    // where SPEC lends them but Binding does not, the exclusive borrow is a located Unsupported_Kd (AccessFailure).
-    // - Construction (6.3.4): an owner's path; the whole receiver is never named. Its Fields are not lent exclusively until PLAN
-    //   G166 models the Loans A5 lacks (6.3.4's "Field borrows end before completion"); LendsFields then goes.
+    // general rules under Parts (BindReference; a method call's Receiver Expression, BindCall), a borrow of the whole receiver then
+    // being the helper borrow (HelperOrigin), which no Closure captures (JudgeHelperCaptures). LendsFields: whether its writable Fields
+    // are lent exclusively (BorrowablePlace); where SPEC lends them but Binding does not, the exclusive borrow is a located
+    // Unsupported_Kd (AccessFailure).
+    // - Construction (6.3.4): an owner's path; the whole receiver is never named or acquired by a method call. Its Fields are not
+    //   lent exclusively until PLAN G166 models the Loans A5 lacks (6.3.4's "Field borrows end before completion"); LendsFields
+    //   then goes.
     // - Destruction (16.3.1): access equivalent to uniq/Self, so no part offers Take, a Copy one included; of the whole receiver only a
     //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment), the helper borrow.
     private static ReceiverAuthority? Receiver(Koto? node) => Receiver((node as IdentifierNameKoto)?.BoundSymbol);
@@ -123,6 +125,10 @@ public sealed partial class Binding
             { IsDestructor: true } => new(SemanticsKind.Uniq, Whole: true, LendsFields: true),
             _ => null,
         } : null;
+
+    // A special receiver whose row refuses its whole use and which carries that record, BindCall's for a method call's Receiver
+    // Expression (SPEC 6.3.4): the failed input that the call's adaptations and verdict read without judging it again (rule W).
+    private static bool RefusedReceiver(Koto? node) => Receiver(node) is { Whole: false } && node!.BindingFailure != BindingFailure.None;
 
     // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
     private static ReceiverAuthority? ReceiverOfPart(Koto place)
