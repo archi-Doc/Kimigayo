@@ -9705,8 +9705,9 @@ resumed by R4-M86 (2026-10-20).
   - No code, requirement, `BindingFailure`, IR form or Evidence kind is added. Rejected: EffectBound's shape (the same text formed in
     the adapter as a Text Reason), which keeps the free text and its elision; separate adapter files without a contract of their own.
   - (amended G478, R4 #23) The arithmetic selection and eligibility checks close their causes the same way (`ArithmeticSelectionCause`
-    4, `ArithmeticConformanceCause` 3). A per-call Origin's Reason, which carries the argument and the slot, is a fact formed in the
-    adapter, like `PerCallSlotFact`'s (U1). `ArchitectureRulesTest`'s "String explanations in Binding failure facts" keeps the one left.
+    4, `ArithmeticConformanceCause` 3). The check records `PerCallOriginFact` (the argument and the slot) and the adapter forms its
+    Reason, like `PerCallSlotFact`'s (U1). `ArchitectureRulesTest`'s "String explanations in Binding failure facts" keeps the one
+    left, `UnboundSlotFact.Note` (PLAN G499).
 
 - **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; Major
   without a design review, F's GO; review REVISE B-1, fix round 1; re-check 1 REVISE B-3, fix round 2; re-check 2 B-4, the owner's
