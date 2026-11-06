@@ -2187,7 +2187,7 @@ CloseParameters:
         }
 
         var start = reader.CurrentTokenRange.Start;
-        var temporary = DeclarationContainerKoto.CreateStandalone(reader.CodeContext, declarationContext.TokenKind, default, reader.CurrentTokenRange, string.Empty);
+        var temporary = declarationContext.CreateDetached(reader.CodeContext, reader.CurrentTokenRange);
         temporary.Parse(ref reader);
         var items = new List<Koto>();
         items.AddRange(temporary.TypeConstraints);
