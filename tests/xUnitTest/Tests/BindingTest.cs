@@ -65,7 +65,6 @@ public class BindingTest
     [InlineData("func f(x: i32) => x\nfunc f(y: i32) -> i64 => 1", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<T>(x: T) => x\nfunc f<U>(x: U) => x", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f() -> i32 => 1\nfunc g()\n    let f = 1\n    f()", DiagnosticCode.NotCallable_Kd)]
-    [InlineData("group Values\n    var a = b\n    var b = a", DiagnosticCode.CyclicBinding_Kd)]
     [InlineData("func f() => return 1", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("let x: i8 = 128", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x: f32 = 1e100", DiagnosticCode.InvalidNumericLiteral_Kd)]
@@ -97,6 +96,7 @@ public class BindingTest
     // so binding again gives the same records.
     [Theory]
     [InlineData("group Values\n    var a = b\n    var b = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
+    [InlineData("group Values\n    var a = Values.b\n    var b = a", "CyclicBinding_Kd var a = Values.b|PrerequisiteUnavailable_Kd var b = a")]
     [InlineData("group Values\n    var a = b\n    var b = c\n    var c = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = c|PrerequisiteUnavailable_Kd var c = a")]
     [InlineData("group Values\n    var a = b\n    var b = a\n    var c = a + 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a|PrerequisiteUnavailable_Kd var c = a + 1")]
     [InlineData("group Values\n    var a = b\n    var b = a\n    var c: i32 = 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
@@ -123,6 +123,25 @@ public class BindingTest
         Assert.Equal([DiagnosticCode.CyclicBinding_Kd], compilation.Binding.Issues.Select(static x => x.Code));
         var c = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.NameKoto.IdentifierName == "c");
         Assert.Equal("i32", c.TypeOf()!.Name);
+    }
+
+    // DECISIONS BU-105, SPEC 11.6: no query state crosses a pass, so annotating the declaration that carries a cycle's record binds the
+    // corrected program in the next pass.
+    [Fact]
+    public void AnEditThatAnnotatesACycleBindsTheCorrectedProgram()
+    {
+        const string Cycle = "group Values\n    var a = b\n    var b = a";
+        var compilation = CompilationTestHelper.ParseSuccess(Cycle);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Contains(compilation.Binding.Issues, static x => x.Code == DiagnosticCode.CyclicBinding_Kd);
+        var donor = Named(CompilationTestHelper.ParseSuccess(Cycle.Replace("var a = b", "var a: i32 = b", StringComparison.Ordinal)), "a");
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers), Named(compilation, "a"), donor));
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal("i32", Named(compilation, "b").TypeOf()!.Name);
+
+        static PropertyKoto Named(Compilation c, string name)
+            => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == name);
     }
 
     // DECISIONS BU-105: the declaration query state is inline on the symbol and stamped by the pass, so a warm Bind of Property headers
