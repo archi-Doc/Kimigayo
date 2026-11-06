@@ -456,8 +456,8 @@ public sealed partial class MirOriginsTest
         Assert.True(work[2] - work[1] <= (3 * (work[1] - work[0])) + 64, $"work {string.Join(", ", work)}");
     }
 
-    // MeetNode's rule (2a0-D D15; PLAN G434): a non-Fixed meet at the shorter end gets its operands' edges once per class, so on fixed-roots,
-    // a class of N + 1 rows into one meet of N + 1 Origins, the stratum's work over the program's bodies stays within V16's
+    // V16 "F4" (2a0-D §6.4) under MeetNode's rule (D15): a non-Fixed meet at the shorter end gets its operands' edges once per class, so on
+    // fixed-roots, a class of N + 1 rows into one meet of N + 1 Origins, the stratum's work over the program's bodies stays within
     // c·(N_o + E_o·⌈Fin/64⌉) (the factor 3 of TheRefutedWorkScalesWithTheChain; quadratic before), without an Origin problem.
     [Fact]
     public void AShorterMeetsOperandEdgesFormOncePerClass()
