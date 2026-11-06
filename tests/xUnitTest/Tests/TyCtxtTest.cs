@@ -281,6 +281,18 @@ public sealed class TyCtxtTest
         Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
     }
 
+    // SPEC 15.3.1, 15.3.6 (PLAN G457): a call's instance maps each of the callee's Type and Origin slots once, so a Type argument naming the
+    // callee's own Origin in its own body keeps the caller's (it became the callee's image `j` before).
+    [Fact]
+    public void ACallsInstanceMapsEachSlotOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("func f<T>(t: T, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k)\n    let p: (ref/i32 during k, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\npublic func main() => ()\n");
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var declared = nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "p").TypeKoto!.TypeOf();
+        var call = nodes.OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.Same(declared, c.Binding.InstantiateStorageType(call.Target.Type!, call));
+    }
+
     // SPEC 6.1.3, 8.1.3, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
     // substitutions that differ only in Self close it twice. No source call gives a body with a closure a Self (a Contract declares no default
     // implementation, SPEC 8.6.1), so the test synthesizes the two calls.

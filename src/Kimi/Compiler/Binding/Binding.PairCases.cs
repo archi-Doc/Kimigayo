@@ -314,40 +314,6 @@ public sealed partial class Binding
             ? IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static
             : null;
 
-    /// <summary>Binds every <c>o</c> of <paramref name="binder"/>'s pairs in an Origin, alone or as a meet operand, through the Type
-    /// arguments (SPEC 8.1.1, 8.1.2), keeping the instance when none occurs.</summary>
-    /// <param name="origin">The Origin.</param>
-    /// <param name="binder">The declaration whose Type arguments are given.</param>
-    /// <param name="arguments">The Type arguments by slot.</param>
-    /// <returns>The substituted Origin.</returns>
-    private BoundOrigin SubstitutePairOrigins(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments)
-    {
-        if (origin.Kind != OriginKind.Intersection)
-        {
-            return this.PairOuterImage(origin, binder, arguments) ?? origin;
-        }
-
-        // A meet's operands are atoms; it is rebuilt only when one of them is bound.
-        var bound = false;
-        for (var i = 0; i < origin.Operands.Count && !bound; i++)
-        {
-            bound = this.PairOuterImage(origin.Operands[i], binder, arguments) is not null;
-        }
-
-        if (!bound)
-        {
-            return origin;
-        }
-
-        var result = BoundOrigin.Static;
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            result = this.Meet(result, this.PairOuterImage(origin.Operands[i], binder, arguments) ?? origin.Operands[i]);
-        }
-
-        return result;
-    }
-
     // BareAcquire's rows under a case assignment, the cases of the enclosing pair layers whose owner case stores this Type (SPEC 8.15.2).
     private HirAcquire BareAcquire(BoundType type, Koto node, ReadOnlySpan<PairCase> assignment, out ConstraintProof proof, out SemanticsMask reborrow)
     {

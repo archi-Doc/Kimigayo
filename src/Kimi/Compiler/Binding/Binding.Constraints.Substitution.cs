@@ -34,13 +34,13 @@ public sealed partial class Binding
             return constraint;
         }
 
-        var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths, origins);
-        var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths, origins);
+        var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths, binder, origins);
+        var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths, binder, origins);
         var contract = constraint.Contract;
         if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract))
         {
             // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own.
-            var substituted = this.SubstituteType(reference, binder, arguments, lengths, origins);
+            var substituted = this.SubstituteType(reference, binder, arguments, lengths, binder, origins);
             subject = substituted is null && incomplete ? null : subject;
             contract = substituted is null ? contract : this.BoundContractReference(substituted);
         }
