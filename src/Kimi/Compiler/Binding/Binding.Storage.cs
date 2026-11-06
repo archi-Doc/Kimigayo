@@ -571,8 +571,7 @@ public sealed partial class Binding
     private BoundType? StoredType(BoundType field, BoundType owner)
     {
         Span<BoundOrigin> single = [BoundOrigin.Static];
-        var binder = owner.Symbol!.Declaration;
-        return this.SubstituteType(field, binder, (BoundType[])owner.Components, default, binder, OccurrenceOrigins(owner, single));
+        return this.SubstituteType(field, owner.Symbol!.Declaration, (BoundType[])owner.Components, default, OccurrenceOrigins(owner, single));
     }
 
     // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages): each atom becomes its SlotImage, a meet

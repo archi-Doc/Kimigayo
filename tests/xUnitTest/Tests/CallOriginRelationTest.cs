@@ -64,6 +64,14 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     private const string OwnBodyConstructor = "struct Box<T>\n    public let v: T\n    public init(v: T, y: ref/i32 during k, z: ref/i32 during j)\n        self.v = v@move\n";
 
+    // An elided input `y` named by the Type argument (its per-call image), and a projection normalized after the Origins are mapped.
+    private const string OwnBodyInput = "func h<T>(t: T, y: ref/i32, z: ref/i32 during j) -> (T, ref/i32 during j)\n";
+
+    private const string OwnBodyProjection = "contract Source\n    associate Item\nstruct Cursor {at}\n    Self is Source\n    associate Item is ref/i32 during at\n" +
+        "    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n" +
+        "func f<T>(t: T, i: T.(Source).Item, y: ref/i32 during k, z: ref/i32 during j) -> (T.(Source).Item, ref/i32 during k)\n    T is Source\n" +
+        "    let c: Cursor during k = Cursor.init(y)\n";
+
     // A default copying an input's referent, stored by the callee (G277 (1)'s k1).
     private const string Copying = "func put3(slot: uniq/(ref/i32 during a), v: ref/(ref/i32 during b) during c, w: ref/i32 during b = v@follow)\n" +
         "    origin b outlives a\n    slot@follow = w\n";
@@ -203,6 +211,9 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("enum Holder {at}\n    Some(ref/i32 during at)\n    Empty\n    public func remake(self: ref/Self, v: ref/i32) -> Holder during at => .Some(v)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "v", "requires v outlives self.at, which is not proven", null)]
     [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = f<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
     [InlineData(OwnBodyConstructor + "        let b: Box<ref/i32 during j> = Box<ref/i32 during k>.init(y, z, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let b: Box<ref/i32 during j> = Box<ref/i32 during k>.init(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyCall + "    let p: (ref/i32 during j, ref/i32 during j) = f(y, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = f(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyMethod + "        let p: (ref/i32 during j, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)\n        return (u@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)", "requires k outlives j, which is not proven", null)]
+    [InlineData(OwnBodyInput + "    let p: (ref/i32 during j, ref/i32 during j) = h<ref/i32 during y>(y, z, z)\n    return (t@move, z)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (ref/i32 during j, ref/i32 during j) = h<ref/i32 during y>(y, z, z)", "requires y outlives j, which is not proven", null)]
     public void TheResultRelationIsJudgedAtItsDestination(string body, string code, string text, string label, string? origin, string? twin = null)
     {
         var source = body + Main;
@@ -459,7 +470,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // valid as from another function (UnprovenConstraint_Kd at the call before G410, InternalInvariant_Kd at the erasure, TypeMismatch_Kd
     // at the generic erasure, Unsupported_Kd at the value call and the getter's read before). The invalid twins, and a Case construction
     // in its enum's own method, are TheResultRelationIsJudgedAtItsDestination's rows. A Type
-    // argument naming the callee's own Origin is mapped once, with the callee's Origins (PLAN G457: two UnprovenOriginRelation_Kd before).
+    // argument naming the callee's own Origin or input is mapped once, with the callee's Origins and inputs, and normalized after them (PLAN
+    // G457: two or three UnprovenOriginRelation_Kd before).
     [Theory]
     [InlineData(OwnBodyCall + "    let p: (i32, ref/i32 during j) = f<i32>(1, z, z)\n    return (t@move, y)\n")]
     [InlineData(OwnBodyValue + "    let e: (ref/i32 during j, ref/i32 during j) -> ref/i32 during j = h\n    return y\n")]
@@ -470,6 +482,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(OwnBodyCall + "    let p: (ref/i32 during k, ref/i32 during j) = f(y, z, z)\n    return (t@move, y)\n")]
     [InlineData(OwnBodyMethod + "        let p: (ref/i32 during k, ref/i32 during j) = self.m<ref/i32 during k>(y, z, z)\n        return (u@move, y)\n")]
     [InlineData(OwnBodyConstructor + "        let b: Box<ref/i32 during k> = Box<ref/i32 during k>.init(y, z, z)\n")]
+    [InlineData(OwnBodyInput + "    let p: (ref/i32 during y, ref/i32 during j) = h<ref/i32 during y>(y, z, z)\n    return (t@move, z)\n")]
+    [InlineData(OwnBodyProjection + "    let p: (ref/i32 during k, ref/i32 during j) = f<Cursor during k>(c@move, y, z, z)\n    return (i@move, y)\n")]
     public void ACallableUsedInItsOwnBodyIsJudgedAsFromAnotherBody(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);

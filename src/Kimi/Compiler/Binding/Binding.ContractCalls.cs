@@ -219,7 +219,7 @@ public sealed partial class Binding
         // PLAN G457: the callee's Type slots and its Origins and inputs in one pass, so a Type argument naming the callee's own Origin (a call
         // in its own body) keeps the caller's; then normalized in the caller's terms.
         var result = this.SubstituteType(
-            type, CallSlotOwner(binder), arguments, lengths, binder, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
+            type, CallSlotOwner(binder), arguments, lengths, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))), binder);
         return result is null ? null : this.ContractType(result, scope, self);
     }
 

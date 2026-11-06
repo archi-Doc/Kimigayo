@@ -175,25 +175,25 @@ public sealed partial class Binding
         return whole;
     }
 
-    // A Type with its binder's slots, lengths and pair Origins and, given `originBinder`'s images, its declared Origin slots and per-call atoms
-    // substituted in one pass, so an argument's own Origins are never mapped again (PLAN G425, G457). `originBinder` owns the Origins:
-    // `binder` itself, or a constructor whose Type slots its structure owns (CallSlotOwner) or an accessor's binder (OriginBinder); null
-    // maps no Origin slot. One outermost call is one query of the substitution table, its binder, arguments, lengths and images fixed, so a
-    // part shared within the Type is substituted once (DECISIONS BU-19).
+    // A Type with its binder's slots, lengths and pair Origins and the images of its Origin binder's declared slots and per-call atoms
+    // substituted in one pass, so an argument's own Origins are never mapped again (PLAN G425, G457). The Origin binder is `binder`, or a
+    // constructor whose Type slots its structure owns (CallSlotOwner) or an accessor's binder (OriginBinder). One outermost call is one query
+    // of the substitution table, its binder, arguments, lengths and images fixed, so a part shared within the Type is substituted once
+    // (DECISIONS BU-19).
     private BoundType? SubstituteType(
         BoundType type,
         Koto binder,
         ReadOnlySpan<BoundType?> arguments,
         ReadOnlySpan<BoundLength?> lengths = default,
-        Koto? originBinder = null,
         ReadOnlySpan<BoundOrigin> origins = default,
-        PerCallImages images = default)
-        => this.SubstitutePart(type, binder, arguments, lengths, originBinder, origins, images, this.substitutedParts.Begin(this.storageVersion));
+        PerCallImages images = default,
+        Koto? originBinder = null)
+        => this.SubstitutePart(type, binder, arguments, lengths, originBinder ?? binder, origins, images, this.substitutedParts.Begin(this.storageVersion));
 
-    // An Origin of a declaration-terms Type under a substitution, each atom mapped once: its SlotImage under `originBinder`'s images, else a
-    // pair's `o` through its Type argument (PairOuterImage); a meet is rebuilt from its operands' images only when one of them changes.
+    // An Origin of a declaration-terms Type under a substitution, each atom mapped once: its SlotImage under the Origin binder's images, else
+    // a pair's `o` through its Type argument (PairOuterImage); a meet is rebuilt from its operands' images only when one of them changes.
     private BoundOrigin SubstituteSlotOrigin(
-        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto? originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images)
+        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images)
     {
         if (origin.Kind != OriginKind.Intersection)
         {
@@ -220,14 +220,15 @@ public sealed partial class Binding
         return result;
     }
 
+    // Without images no atom has a SlotImage, so the common substitution of Type slots alone reads the pair arm only.
     private BoundOrigin? AtomImage(
-        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto? originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images)
-        => (originBinder is null ? null : this.SlotImage(origin, originBinder, origins, images, default)) ?? this.PairOuterImage(origin, binder, arguments);
+        BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images)
+        => (origins.IsEmpty && images.IsEmpty ? null : this.SlotImage(origin, originBinder, origins, images, default)) ?? this.PairOuterImage(origin, binder, arguments);
 
     // A part of a substitution query. Without length arguments a part with neither an abstract part nor an Origin is its own image: every
     // arm that changes a part substitutes a slot of an abstract kind, a length or an Origin.
     private BoundType? SubstitutePart(
-        BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto? originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, uint query)
+        BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, uint query)
     {
         if (lengths.IsEmpty && !type.HasAbstractPart && !type.CarriesAnyOrigin)
         {
@@ -249,7 +250,7 @@ public sealed partial class Binding
     }
 
     private BoundType? SubstituteTypeCore(
-        BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto? originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, uint query)
+        BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, uint query)
     {
         var slot = type.Symbol is { } parameter ? ContainerSlot(binder, parameter) : -1;
         if (type.Kind == BoundTypeKind.SemanticsAdaptation && slot >= 0 && slot < arguments.Length && arguments[slot] is { } selection)

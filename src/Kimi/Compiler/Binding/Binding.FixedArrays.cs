@@ -79,7 +79,7 @@ public sealed partial class Binding
 
         try
         {
-            return this.SubstituteType(result, witness, types.AsSpan(0, count), lengths.AsSpan(0, count), witness, (BoundOrigin[])projection.OriginArguments);
+            return this.SubstituteType(result, witness, types.AsSpan(0, count), lengths.AsSpan(0, count), (BoundOrigin[])projection.OriginArguments);
         }
         finally
         {
