@@ -54,6 +54,18 @@ public sealed partial class Binding
         => node is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement, TypeKoto: { } header } property &&
             ReferenceEquals(header, previous) && property.BoundSymbol?.Property is not null ? property.GetAccessor(PropertyAccessorKind.Get) : null;
 
+    // The signature whose premises a request at `node` has: the innermost function (an anonymous one included), Function Type or
+    // accessor at or above it; null at the top level.
+    private static Koto? PremiseSignature(Koto? node)
+    {
+        while (node is not null and not (FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto))
+        {
+            node = node.Parent;
+        }
+
+        return node;
+    }
+
     // SPEC 15.3.6 (PLAN G74): whether the premises visible at `use` entail `longer outlives shorter`, both resolved at the use.
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
@@ -168,8 +180,8 @@ public sealed partial class Binding
     // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
     // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or
     // requirement Property's header being its getter's result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
-    // Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5), including Places
-    // that those Origins introduce, so the closure applies R5 at every expression it reaches.
+    // Then every borrowed complete local Place of the use's own body among the graph's expressions adds its stored Origins (R5),
+    // including Places that those Origins introduce, so the closure applies R5 at every expression it reaches.
     private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
     {
         Koto? previous = null;
@@ -227,14 +239,22 @@ public sealed partial class Binding
             this.AddRequiredPremises(environment, outer.Required);
         }
 
+        // R5, SPEC 15.6.1, 15.6.5: the well-formedness of a borrow of a complete local Place, the body's obligation, which its finite
+        // Origin proves without premises. So it serves only a request of the body that declares the local, never its own declaration;
+        // a nested signature's request (a nested or anonymous function's, a Function Type's, a comparison's) has only its own premises
+        // (SPEC 15.2.2, 15.3.4; PLAN G491).
+        if (environment.Comparison.Expected is not null || environment.Comparison.Outer is not null)
+        {
+            return;
+        }
+
         var closure = environment.Closure;
+        var body = PremiseSignature(environment.Use);
         for (var node = 0; node < closure.NodeCount; node++)
         {
-            // R5: a borrow of a complete local Place is usable only while every stored dependency is valid; ownership verifies
-            // that availability at each use. It is a premise of borrowing the Place, never of the annotation being checked.
             if (closure.Origin(node) is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
                 this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
-                !IsWithin(environment.Use, variable))
+                !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body))
             {
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }

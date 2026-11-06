@@ -29,7 +29,7 @@ internal enum OriginPremiseRule : byte
     /// <summary>R4: associated formation and requirement relations.</summary>
     Associated,
 
-    /// <summary>R5: the stored Origins of a borrowed complete local Place outlive that Place.</summary>
+    /// <summary>R5: the stored Origins of a borrowed complete local Place outlive that Place, in the body that declares the local.</summary>
     LocalPlace,
 }
 
