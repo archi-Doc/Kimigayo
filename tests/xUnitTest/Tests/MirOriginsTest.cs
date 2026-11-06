@@ -4,6 +4,7 @@ using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -453,6 +454,29 @@ public sealed partial class MirOriginsTest
         }
 
         Assert.True(work[2] - work[1] <= (3 * (work[1] - work[0])) + 64, $"work {string.Join(", ", work)}");
+    }
+
+    // MeetNode's rule (2a0-D D15; PLAN G434): a non-Fixed meet at the shorter end gets its operands' edges once per class, so on fixed-roots,
+    // a class of N + 1 rows into one meet of N + 1 Origins, the stratum's work over the program's bodies stays within V16's
+    // c·(N_o + E_o·⌈Fin/64⌉) (the factor 3 of TheRefutedWorkScalesWithTheChain; quadratic before), without an Origin problem.
+    [Fact]
+    public void AShorterMeetsOperandEdgesFormOncePerClass()
+    {
+        long[] work = [.. new[] { 32, 64, 128 }.Select(static n =>
+        {
+            var c = MirBuildTest.Compile(VerificationWorkloads.CallableRegions("fixed-roots", n));
+            var origins = new MirOrigins(c.Types, new MirCases(c.Types));
+            var total = 0L;
+            foreach (var body in c.BuildMir().Bodies.ToArray())
+            {
+                origins.Judge(body, MirCases.Count(body), new MirReport());
+                total += origins.Work;
+            }
+
+            Assert.Empty(Origins(c));
+            return total;
+        })];
+        Assert.True(MirBorrowsTest.Grows(work, 3), $"work {string.Join(", ", work)}");
     }
 
     // V16 "F4 containment" (SPEC 15.6.3): a Reborrow through N exclusive layers and then M shared ones is contained in each exclusive layer

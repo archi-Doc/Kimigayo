@@ -53,12 +53,14 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void EachAxisScalesWithinItsBound(string axis, double factor)
         => WorkScales(output, Sizes(axis), factor);
 
-    // V16: the cold analysis's allocation on each axis at N = 16, 32, 64 grows linearly. fixed-roots and fixed-joins have no row: their
-    // cold growth lies outside A5's linear bytes, an open issue (PLAN) until its stage is attributed.
+    // V16: the cold analysis's allocation on each axis at N = 16, 32, 64 grows linearly; fixed-roots since a shorter meet's operand edges
+    // form once per class (MirOrigins.Relate). fixed-joins has no row: its cold growth lies outside A5's linear bytes, an open issue (PLAN)
+    // until its stage is attributed.
     [Theory]
     [InlineData("results")]
     [InlineData("regions")]
     [InlineData("fixed-calls")]
+    [InlineData("fixed-roots")]
     [Trait("Purpose", "Allocation")]
     public void TheColdAnalysisScalesLinearly(string axis)
         => ColdAnalysisScales(output, Sizes(axis));
