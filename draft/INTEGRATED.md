@@ -1279,6 +1279,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   the numbering and the project documents; the Full and Owner classes end, so §5.5's units run as Major units with one prototype-first
   candidate unless the owner instructs otherwise, and RP7 and RP21 end; RQ10's owner preview of SPEC text ends (SPEC and IMPL get an
   independent review). The plan stays 一部取り込み (open), nothing frozen.
+- Revision 6 (2026-11-07, plan §14, DECISIONS Q15): RP11's and §3.2's window rules move to WORKFLOW "Windows" with the owner's size
+  (at most five record- or acceptance-moving units, one acceptance mover per area, eight in all); the plan stays 一部取り込み (open),
+  nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 

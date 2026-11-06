@@ -342,6 +342,20 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: keeping Full for shared representations (the mandatory design review and the owner's per-unit instruction cover
     it); reviewing every document (only AGENTS, SPEC and IMPL bind every session's work).
 
+- **Q15 Window size; the window rules move to WORKFLOW** (2026-11-07, owner; [WORKFLOW](WORKFLOW.md) "Windows"; supersedes the
+  board's window-size rule of 2026-11-06 18:39 (R5 on M's proposal); R7-M2's window rules move to WORKFLOW).
+  - The owner (verbatim): 「「記録や受理が動くユニットは、1つの window に3つまでというルール」について ルールの根拠の文書と、上限緩和の
+    可能性について検討してください。」, 「今回の変更は、WORKFLOW.mdに記載した方が良いと思いますが、いかがか？」, then 「進める」 to the
+    Coordinator's recommendation.
+  - Rule, as WORKFLOW states: at most five units that move records or acceptance, at most one acceptance mover per area;
+    documentation-only, test-only and behavior-preserving units up to eight in all; R7-M2's entry, file, failure and push rules
+    unchanged, and a failure that names no unit splits the window in halves.
+  - Reason: the heavy set's time (25-45 minutes in W-37 to W-45) does not depend on the unit count, and one unit in about 25 failed
+    (W-41 run 1), since every unit passes its own checks against the shared base first; a larger window lowers the cost per unit and
+    still holds one heavy-run slot. One acceptance mover per area keeps an interaction attributable without a bisect.
+  - Rejected: no cap (two acceptance movers in one area can interact where neither unit's own run did); keeping three (the same
+    failure rate at a higher cost per unit); rules on the board only (a new session does not see them).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -15171,7 +15185,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     from this entry (R7-M2, R7-M3).
 - **R7-M2 The arrangement: three sessions by component, windows and the board** (owner, 2026-11-03, RQ1 and RQ7; plan §3 and §9;
   supersedes the session names of R4-M119 and R5-M113, whose caps stand, and the hold record of R5-M7, R5-M148 and R5-M167, whose
-  protocol stands; amends R5-M182's window assignment from the window after the flip group's)
+  protocol stands; amends R5-M182's window assignment from the window after the flip group's; its window rules now in WORKFLOW
+  "Windows", Q15; the window runner the Coordinator, R7-M4)
   - The front session (Syntax and Binding: `Compiler/Lexing/**`, `Parsing/**`, `Helper/**`, `src/Kimi/Misc/**`, `Binding/**` but the
     library index files, the root helpers `Compiler/*.cs`, `Checking/**`, `Lsp/**`, `src/Kimi/Diagnostics/**`) runs R7 and R6-check's
     Binding side; the middle session (`Compiler/Mir/**`, the HIR columns' builder readers, `tests/mir`, `Compiler/Documentation/**`)
