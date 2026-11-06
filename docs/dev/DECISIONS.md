@@ -9565,6 +9565,19 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a route per consumer (69a9ee98c's payload disjunct; literal elements would need another); leaving the erasure pending
     for the bodies pass (a Closure is bound once, so it is never judged again); a leaf rule for Tuples of leaves (a narrow subset).
 
+- **BU-111 Virtual declaration and base call failures record closed causes** (2026-11-06; PLAN G89 follow-up, unit bu176; Major,
+  G89-2's shape for the owner's G89 request) SPEC 6.4.1, 6.4.4, 23.1. `Binding.VirtualDeclarations` and `Binding.BaseCalls` kept
+  their explanation as the failure (`string` tables), published verbatim as a `condition:Text` Reason that the Label repeated; the
+  96-character `DiagnosticLimits.ValueLength` cut three of the sixteen in the middle.
+  - `VirtualDeclarationCause` closes the existing ten causes in check order (`Combined`, `NotStructFunction`, `Unsafe`,
+    `OwnGenericParameters`, `Receiver`, `NoBody`, `NotOpen`, `Private`, `RedeclaredHeader`, `RedeclaredParameter`); `BaseCallCause`
+    the existing six (`NotCall`, `NoReceiver`, `NoBase`, `OutsideBody`, `NoSelfCapture`, `NotInstanceFunction`). No payload: span and
+    related location stay the ones published before. Checks, their order and acceptance do not change.
+  - `Binding.Diagnostics.VirtualOverrides`, the SPEC 6.4 adapter, publishes `cause:Enumeration` and moves the earlier sentences verbatim
+    into the Note. Catalog: both codes `Evidence="cause:Enumeration"` without a Label, as `MissingOverrideTarget_Kd`.
+  - No code, requirement, `BindingFailure`, IR form or Evidence kind is added. Rejected: EffectBound's shape (the same text formed in
+    the adapter as a Text Reason), which keeps the free text and its elision; separate adapter files without a contract of their own.
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

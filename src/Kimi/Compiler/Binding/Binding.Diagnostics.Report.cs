@@ -321,11 +321,11 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
         {
-            virtualFunction.Report(requirement, issue.Code, span: virtualFunction.DispatchModifierSpan, evidence: [this.virtualDeclarationFailures![virtualFunction]], related: [("declaration", virtualFunction, "the virtual or override declaration")]);
+            this.ReportVirtualDeclarationFailure(virtualFunction, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
-            baseReference.Report(requirement, issue.Code, evidence: [this.baseCallFailures![baseReference]]);
+            this.ReportBaseCallFailure(baseReference, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
         {
