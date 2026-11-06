@@ -529,6 +529,46 @@ public sealed partial class MirBuildTest
         Assert.Contains(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
     }
 
+    // SPEC 15.1.6, 14.8, 23.1.2 (DECISIONS R4-M179): a match binding whose Copy proof is Error is Failed with no record of its own and takes
+    // a derived value, while its match is built as over the Copy twin: an arm's independent MovedPlace_Kd stays, in either arm and either
+    // match of a nesting, and a use of the match's value adds none; an arm reading the binding by value fails at bind time and adds no
+    // MIR record. Fail-before: the match was built Opaque.
+    [Theory]
+    [InlineData("    let s: string = \"a\"\n    match o@move\n        .Some(let v) => pair(s@move, s@move)\n        .None => ()\n", "MovedPlace_Kd s")]
+    [InlineData("    let t: string = \"b\"\n    match o@move\n        .Some(let v) => ()\n        .None => pair(t@move, t@move)\n", "MovedPlace_Kd t")]
+    [InlineData("    let s: string = \"a\"\n    match o@move\n        .Some(let v) => match n\n            .Some(let k) => pair(s@move, s@move)\n            .None => ()\n        .None => ()\n", "MovedPlace_Kd s")]
+    [InlineData("    let s: string = \"a\"\n    match n\n        .Some(let k) => match o@move\n            .Some(let v) => pair(s@move, s@move)\n            .None => ()\n        .None => ()\n", "MovedPlace_Kd s")]
+    [InlineData("    match o@move\n        .Some(let v) => take(v, v)\n        .None => ()\n", "")]
+    [InlineData("    let r: i32 = match o@move\n        .Some(let v) => 1\n        .None => 2\n    use(r)\n", "")]
+    public void AMatchBindingWhoseCopyProofIsErrorIsDerived(string body, string expected)
+    {
+        foreach (var (type, field) in new[] { ("Bad", "s: string = \"\""), ("Good", "n: i32 = 0") })
+        {
+            var c = Compile($"struct {type}\n    Self is Copy\n    public var {field}\n    public init() => ()\nfunc pair(a: string, b: string) => ()\n" +
+                $"func take(a: {type}, b: {type}) => ()\nfunc use(r: i32) => ()\nfunc g(o: Option<{type}>, n: Option<i32>)\n{body}public func main() => ()\n");
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Equal(
+                expected.Length == 0 ? [] : [expected],
+                program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+            var g = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "g");
+            var statements = g.Statements.ToArray();
+            var v = Array.FindIndex(g.Locals.ToArray(), static x => x.Name == "v");
+            if (v < 0)
+            {
+                // `take(v, v)` over Bad fails its arm at bind time (Binding's dependent TransferRequired_Kd), so that match is an Error
+                // node, replaced (PLAN G121).
+                Assert.Equal("Bad", type);
+                Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.TransferRequired_Kd);
+                continue;
+            }
+
+            var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(v));
+            var source = g.Operands[write.Rvalue.Start].Place;
+            Assert.Equal(type == "Bad", statements.Any(x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root)));
+        }
+    }
+
     // SPEC 23.1.2 (PLAN G122): a char literal the lexer could not read is published Error, so its value is the derived Opaque of a node
     // the lexer rejected, with no record; a published Literal is built as its constant.
     [Fact]

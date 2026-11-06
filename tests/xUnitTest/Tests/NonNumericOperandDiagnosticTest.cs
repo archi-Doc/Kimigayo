@@ -164,6 +164,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [Theory]
     [InlineData("let n: i32 = 1\nlet v = n + \"a\"", "expected i32, found string")]
     [InlineData("let n: i32 = 1\nlet v = n + 1.0", "expected i32, found floating-point literal")]
+    [InlineData("func f(p: ref/raw/i32, n: isize) => n + p\npublic func main() => ()", "expected isize, found ref/raw/i32")]
     public void AKnownNumericOperandKeepsTheFailedFit(string source, string label)
     {
         var error = Assert.Single(Errors(Analyze(source)));

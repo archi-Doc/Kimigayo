@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 // Value fits (SPEC 3.8, 10.2, 15.6.1; DECISIONS BU-4): whether a value of Type `actual` fits a position of Type `expected`.
 // - Responsibility: the entries a value position calls: FitsType and FitsTypeAt (a value at an expected Type, at a use whose premises and
-//   Origins the fit reads), FitsStructurally(At) (the structural part of a fit, SPEC 15.6.1) and CheckTypeUse, the use-site fit whose
+//   Origins the fit reads), FitsStructurallyAt (the structural part of a fit, SPEC 15.6.1) and CheckTypeUse, the use-site fit whose
 //   differing Origin positions, once the structure holds, become obligations that ownership judges and reports at the value
 //   (AddOriginFit). Never fitting (SPEC 3.8) is decided here, at the root:
 //   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
@@ -34,11 +34,6 @@ public sealed partial class Binding
         return fits;
     }
 
-    // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
-    // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
-    internal static bool FitsStructurally(BoundType actual, BoundType expected)
-        => NeverFits(actual) || new RelationWalk(null, null, OriginPart.Structural).Fits(actual, expected);
-
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         this.comparisonFacts.Clear();
@@ -48,6 +43,8 @@ public sealed partial class Binding
         return fits;
     }
 
+    // SPEC 15.6.1: the structural part of a fit at the use, with all Origin bindings treated as equal; only its failure is a Type
+    // mismatch. The Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
 

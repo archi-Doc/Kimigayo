@@ -309,7 +309,9 @@ public sealed partial class Binding
         return true;
     }
 
-    // Independent argument evidence is prepared once for named and constraint-based calls.
+    // Independent argument evidence is prepared once for named and constraint-based calls. False when a part failed: the call then reports
+    // only the checks SPEC 10.1 makes before inference, which read no argument's Type (AnyArgumentsMatch; DECISIONS BU-79's G455
+    // amendment).
     private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
     {
         var valid = true;

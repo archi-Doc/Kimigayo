@@ -342,6 +342,34 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: keeping Full for shared representations (the mandatory design review and the owner's per-unit instruction cover
     it); reviewing every document (only AGENTS, SPEC and IMPL bind every session's work).
 
+- **Q15 Window size; the window rules move to WORKFLOW** (2026-11-07, owner; [WORKFLOW](WORKFLOW.md) "Windows"; supersedes the
+  board's window-size rule of 2026-11-06 18:39 (R5 on M's proposal); R7-M2's window rules move to WORKFLOW).
+  - The owner (verbatim): 「「記録や受理が動くユニットは、1つの window に3つまでというルール」について ルールの根拠の文書と、上限緩和の
+    可能性について検討してください。」, 「今回の変更は、WORKFLOW.mdに記載した方が良いと思いますが、いかがか？」, then 「進める」 to the
+    Coordinator's recommendation.
+  - Rule, as WORKFLOW states: at most five units that move records or acceptance, at most one acceptance mover per area;
+    documentation-only, test-only and behavior-preserving units up to eight in all; R7-M2's entry, file, failure and push rules
+    unchanged, and a failure that names no unit splits the window in halves.
+  - Reason: the heavy set's time (25-45 minutes in W-37 to W-45) does not depend on the unit count, and one unit in about 25 failed
+    (W-41 run 1), since every unit passes its own checks against the shared base first; a larger window lowers the cost per unit and
+    still holds one heavy-run slot. One acceptance mover per area keeps an interaction attributable without a bisect.
+  - Rejected: no cap (two acceptance movers in one area can interact where neither unit's own run did); keeping three (the same
+    failure rate at a higher cost per unit); rules on the board only (a new session does not see them).
+
+- **Q16 Native results are reused when their inputs did not change** (2026-11-07, owner; [VERIFICATION](VERIFICATION.md) "Shared
+  heavy runs and bases", WORKFLOW "Windows"; the Coordinator's unit T1).
+  - The owner (verbatim): 「1と2を進める」, to the Coordinator's proposal to reuse native results whose inputs did not change and to run
+    independent window steps in parallel.
+  - Rule: `test-scalars.ps1 -ReuseResults` reuses a fixture's passed result when its fixture key (the `.ll`, `.stdout`, `.stderr`,
+    `.exit` and `.observation` files) and the environment key (the four LLVM tools the worker runs, the backend archive, the kernel32
+    library, the six runner files, the allowed symbols and the deadline) match an entry verified within `-ReuseHours` (24); every
+    other fixture runs. `native-results.json`, written by every run, is the new base file; a window passes the base's file through
+    `verify.ps1 -NativeReuse` and seeds the next base with the merged file. Only passed entries are reused.
+  - Reason: W-45's native step took 1,670 of its 2,454 seconds, and eight of nine window transitions (r4w35 to r4w45) changed no
+    fixture; identical inputs give the identical outcome, and the daily re-execution bounds machine drift the keys do not see.
+  - Rejected: selecting native families by changed files (a Binding change reaches generated code without touching Backend files);
+    reusing by `.ll` hash alone (the oracle files, toolchain and runner change outcomes too); no re-execution period (drift).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -5660,6 +5688,38 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Task per hop (a 1.5 MB pool stack and an allocation per hop).
   - O-24: the owner (R4's dialog, 2026-11-06), verbatim 「O-24 は、bでお願いいたす」: the transfer is a named exception of 'Catch
     boundaries'.
+- **R4-M179 A binding's Error Copy proof leaves its match buildable (PLAN G471, G485)** (2026-11-06; R4, design D12: outside
+  R4-M88's owner reservation, since Binding resolved the match; class Major) SPEC 14.8.4, 15.1.6, 23.1.2. Supersedes BU-110's "and
+  its plan Invalid" and `AcquireBinding`'s Coverage write.
+  - Cause: `BoundMatch.Invalid` means a located failure at a Pattern position or a guard, and every other writer pairs with a `Fail`.
+    `AcquireBinding` also set it, with the Coverage `Invalid`, on an Error Copy proof, which was consistent while it failed the
+    binding; BU-110 (a7ed3e0b0) removed that located failure and kept both writes, so their reason no longer holds. `MirBuilder.Match`
+    then built the match Opaque, losing its arms' independent MIR records (G471), and the Coverage hid `NonExhaustiveMatch_Kd` and
+    the unreachable-arm Warnings (G485).
+  - Rule: an Error proof makes the binding Deferred (HIR Failed) only; its plan stays buildable and its coverage stays the Patterns'
+    (14.8.4). `MirBuilder.Bind` derives the Failed binding as a loop's (BU-110). A failed Pattern (`ValidatePatternType`'s late
+    recheck) keeps its Invalid plan and Opaque; a failed guard or arm leaves an Error node (G121, R4-M88).
+  - Records (23.1.2, Q13): additions only, on programs the declaration's failure rejects: the arms' MIR records,
+    `NonExhaustiveMatch_Kd` and `UnreachablePattern_Kd`. No acceptance moves.
+  - Rejected: an `Acquisition`-aware test in `MirBuilder.Match` (a second copy of the rule); a new plan flag (a mode); waiting for
+    G121 (a resolved match is not its case).
+
+- **R4-M180 An erased substitution binds no Origin (PLAN G157 (30))** (2026-11-07; the owner, R5's dialog, verbatim 「(A)で決定します。」;
+  supersedes R5-M39's clause on a substitution's and a closure context's Origins and Inputs) SPEC 8.13.3. `TyCtxt.Erase(Subst)`, and
+  the closure context inside `TyCtxt.Erase(BoundType)`, intern empty Origins and Inputs; Target, Self, the declaring Type, Types
+  (erased) and lengths are kept, and a Type's Origin arguments still become static. The reason R5-M39's clause no longer holds: it
+  took a substitution's Origin count for the instance's, but the count is the path's (a call's selected function's own, a witness's,
+  a requirement Item context's inputs only, Compose's inner one's; `SubstOfItem`, `Synthesized`, `Identity` and `HeldContext` none),
+  so one instance reached by a call and by an Item, a VTable or a base call had two keys, two items and two closure bodies, while
+  SPEC 8.13.3's selection key excludes Origins. Now an instance has one item, one closure body and one adapter, glue and Limit key,
+  and Closure Types differing only in their context's counts erase alike. The held-closure representative an erased context gives
+  (BU-60) keeps its declared Origins unsubstituted, the shape an Item's representative already has; the collector reads no Origin of
+  it (BU-60's exception, which R5 consented to). No proof runs on an erased value.
+  - `Binding.Retention` (Rows.cs:285-288, Sources.cs:264-288) and A3 (`MirBorrows.Calls.cs:251-282`, `Reach.cs:364`) compare such
+    Closure Types equal, as SPEC 3.3.1/8.13.3 make them one Type; the unit's gate (the oracle, the A5 and retention classes) showed
+    no verdict or record move: 0 record differences on the 1,764-program oracle, and the A5, scaling and retention classes
+    pass.
+  - Rejected: (B), normalizing every constructor's counts to the binder's (ten sites, keeping a count no key reader reads).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6582,7 +6642,7 @@ resumed by R4-M86 (2026-10-20).
   role (inference and matching, open Origins, premises, regions, effects, construction premises), and the old analysis never sees a raw
   Origin (Q-O3 is moot). Identity: `BoundType.SameExceptOrigins` (every part of the layer but `Origin` and Origin arguments,
   `RawOrigin` compared exactly: no identity treats it as open, omitted or inferred) is shared by `SameCompleteType`,
-  `SameModuloOpenOrigins` and `SameExceptOmittedOrigins`. `ArchitectureRulesTest` pins the self-rebuilds and the raw role's reads and
+  `SameExceptOmittedOrigins` and `SameExceptRawOrigins`. `ArchitectureRulesTest` pins the self-rebuilds and the raw role's reads and
   writes by site. Rejected: A′ (the same field and a borrow view): a gate and the rewriter it guards read different meanings (a
   body-local region escapes through `ResolveLocalResultOrigins`). G160-1 (C1b) appends §0's vocabulary (`Holder`, `Shared`, `Unstated`)
   and the owner's decisions. C1b (unit bu20; the owner's Q-O1, Q-O2, Q-O6 of design-final §0, Q-O4 and Q-O5 as R4-M105 (OQ-R1 (a),
@@ -9008,13 +9068,31 @@ resumed by R4-M86 (2026-10-20).
     may report a dependent failure, and must not lose an independent one.
   - The rule (ArgumentKinds' contract): a failed part fits every candidate and is no evidence (U1.6d). Only a node's own verdict over
     a failed child is suppressed: a join's DecideRest, BU-78's sites 2-4, and CompleteJoinResults. Every other record of the call is
-    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records.
+    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records; beside an unbound failed argument,
+    only the checks SPEC 10.1 makes before inference (the G455 amendment below).
   - An unselected call's held join that its formation judged Conflict still writes its own record (ReportHeldConflicts, the part of
     BU-78's fix (a) that reports, not rests). Without it, an independent TypeMismatch_Kd would be lost (ACRT a1 and a3, f1).
   - Deleted: Binding.ArgumentKinds.FailedFits.cs (FailedFit, its scope, PublishFailedFit, PublishHeldFailures, RestingFailedPart,
     AmbiguityRestingPart, CertainMismatch); PublishJudged, RestJudged, RestOnVerdict, HasOwnCause and FailJudged; IsOwnLength.
   - The done-when (Q13): only an acceptance move, an InternalInvariant_Kd or Language error on a valid program, or a lost independent
     record blocks; dependent records added or removed are counted by class.
+  - Amended (G455, 2026-11-06; unit bu190): a named, method, constructor, requirement or constraint-based value call with an
+    unprepared argument (an unbound failed part; BindCallCore, SelectValueCall) runs only the checks SPEC 10.1 makes before inference,
+    which read no argument's Type, and reports their records: the group's acquisition-shape contracts (the 10.1 preamble, 7.4.4), the
+    explicit Type arguments' own records, and NoApplicableOverload_Kd when no candidate passes step 1 (the count and kinds of the
+    explicit Type arguments, `ExplicitTypeArgumentsFit`, which TryCandidateCore reads too) and step 2 (argument matching:
+    `MapCallArguments`; `MapValueCallArguments` for a constraint-based value call, which passes every argument positionally, 10.1.1).
+    That NoApplicable holds under every repair of the part. Every other outcome rests on the part, as before, in either argument order
+    at named and constraint-based value calls alike. FitArgument keeps its rule-W row for a part that kept its Type (U2.1 r2-3).
+    Records added, each independent: NoApplicableOverload_Kd (arity, a label, the `!` boundary, a default, an excess argument, the
+    explicit Type arguments' count or kind), UnprovenAcquisitionCorrelation_Kd (7.4.4's call contract) and an explicit Type argument's
+    own UnresolvedBinding_Kd. Step 1 judges every kind before a failed Type argument rests, so a call with no unprepared argument
+    reports a later kind misfit too (`pair<Undefined, 3>(5)`, as `pair<3, Undefined>(5)` already did). Not covered (PLAN G500): the checks after step 2 beside the part (another argument's or the result's
+    misfit, Ambiguous, UnboundTypeArgument, an arity misfit beside a failed explicit Type argument, the selected candidate's own
+    records), and a plain value call (BindValueCall), whose count and label checks are the base's other copy of 10.1.1's value-call
+    rule; G494's unit 2 replaces them with `MapValueCallArguments` judged up front. Rejected: judging every candidate with the part a
+    wildcard (option A): later checks read the missing evidence as a rejection (until PLAN G463, `ConstructorType`'s construction-target Origin), and an
+    Unsupported part's dependent UnboundTypeArgument_Kd is a Language error on a valid program (Milestone 41).
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
@@ -9364,6 +9442,16 @@ resumed by R4-M86 (2026-10-20).
     and `RequireInputPremises` judges no input that already failed. Open (PLAN G418): value calls and Case constructions; after the
     `CompleteWaiting` stop the candidate's re-check (`TryCandidate`) and its pending Constraint are not judged, nor are the receiver's
     object erasure and the per-call Origin stop.
+  - Amended (G418 (2), 2026-11-06; unit U-A, D11 Revision 1; Major): a Case construction is a call. A failed payload stops the payloads
+    after it (PLAN G262 F2), but not the judgments over the solution that `SolveConstruction` fixed, since completing a payload fills no
+    slot (SPEC 10.8). `BindEnumConstruction` judges the completed payloads' premises (`RequireInputPremises`, `JudgePositionRows`),
+    publishes them, judges the Type Constraints (`CheckConstraints`), and keeps the resting construction's plan with its completed
+    payloads, so `CompleteEnumAcquisitions` judges its formation (the Origin clauses) as every plan's; no consumer reads a resting
+    plan (`TryGetEnumConstruction`), and the pass-end Origin rewrite (`CompleteEnumOrigins`) changes only a published result Type.
+    The construction then rests and forms no result. A construction holding its own record (a payload's
+    Type mismatch or acquisition) judges neither, R7-E1's one record per node; the gate goes with R7-E1. Records (Q13): an
+    UnprovenConstraint_Kd or UnsatisfiedConstraint_Kd at the construction beside the payload's record, on invalid programs only; where
+    the expected Type fixes the Origin it restates the annotation's relation, as the no-failure twin does. No verdict moves.
 - **BU-98 A discarded value's Type is Binding's, published in its discard row** (2026-11-05; PLAN G233, unit bu140; R4's consent C-16
   for the builder lines under hold H-4; supersedes BU-27's Open discard sentence and R4-M145's Open (PLAN G233) paragraph) SPEC
   14.2.2, 14.2.4, 15.6.3, 10.2.
@@ -9701,8 +9789,10 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
     result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
 
-- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; PLAN G439, unit
-  bu174; Major; R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes BU-103's "`Match` builds an
+- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; its "and its plan Invalid" and
+  `AcquireBinding`'s Coverage write superseded by R4-M179; PLAN G439, unit bu174; Major;
+  R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes
+  BU-103's "`Match` builds an
   Invalid or Pending plan as Opaque, so `Bind` never takes a Failed binding; a For's plan holds none (its acquisitions are
   `Binding.Sequences`', PLAN's open item)": a loop's plan holds a Failed binding, and `Bind` takes it.
   - Cause: two copies of 15.1.6's rule. `Binding.Sequences` decided a for item's at bind time and took an Error Copy proof as
@@ -9757,6 +9847,24 @@ resumed by R4-M86 (2026-10-20).
     in the binder's body or passed as `Self` can bind a slot whose keepers are exclusive to that Origin, and that signature does not
     show it: r27n, r27 and r29 were accepted, though invalid. The binder condition of 22d1216a0 (the cap judges only an Origin the
     walked callee binds; O-23 (b)): it rejected c10 and c11, valid by 5.2.1's letter.
+
+- **BU-114 Raw-pointer forms take the operand's own Type** (2026-11-06; PLAN G157 (42), R4 #27, unit r4-oi-g157-42; Major; the
+  owner, R5's dialog, verbatim 「やめる方向で決定します。修正お願いします。」 answering 「(42) は、この規則をやめる方向でよいですか？」; an
+  explicitly requested SPEC revision of 13.3.4 and 3.4.3, not of SPECJ) SPEC 13.3.4, 3.4.3, 5.3, 3.5.3. 13.3.4 followed safe
+  value-reference layers before its table, so `q + n` for `q: ref/raw/i32` read as the raw route, against 3.5.3 (a referent of no read
+  Type is copied only through `@follow`) and 13.2's `@follow` for `*p`.
+  - Rule: the raw-pointer row and `p[n]` take the left operand's or receiver's own Type; `q@follow + n` is the one spelling. 13.4
+    (comparisons through layers) is unchanged.
+  - `Binding.OperatorApplicability`'s `OperatorApplicabilityOf`, the route owner, rejects `+` and `-` (and `+=`, `-=` through
+    `OperatorKind`) whose followed left terminal is a raw pointer reached through a layer, with the existing typed
+    `OperatorOperandFailure` (Operand = own Type, Terminal = followed `raw/T`): `OperatorNotDefined_Kd` at the operation, the location
+    of every operator-applicability record. It replaces `CompleteBinary`'s `TypeMismatch_Kd` at `n` (and `UnprovenOriginRelation_Kd`
+    for `p + q`), which judged the unfollowed Type after `n` was fitted under the followed one's `isize` expectation.
+  - `p[n]` keeps `NotIndexable_Kd` (index resolution owns it; `Binding.Elements` already tests the receiver's own Type).
+  - Acceptance does not change (every such form was already rejected); MIR and codegen do not change.
+  - Rejected: reading `q + n` as valid (the owner's decision); one code shared by the operator and index forms (a new code and
+    `BindingFailure` entry); an `@follow` repair (SPEC 23.3 has no such kind; it would hide the read's undecided legality);
+    `ArithmeticTerminal` stopping before a raw pointer (two rules for `q * 2`); reporting in `CompleteBinary` (after the wrong fit).
 
 - **BU-117 A shared-name qualifier that neither path completes is a located Unsupported until both paths are evaluated** (2026-11-07;
   PLAN G481 unit B, G488; Major; a temporary structure) SPEC 9.2, 9.6, 23.1.1; DIAGNOSTICS rule 3.
@@ -10648,6 +10756,8 @@ structure is recorded here by the unit that first implements it.
     will rely on, K10a).
   - Rejected: a separate `TyCtxt.Erasure.cs` (X8, X26); the null rule inside Type erasure for closure contexts (it would tie the
     structural memo to `Instantiates`); a second Origin sentinel (KD2).
+  - Amended by R4-M180 (PLAN G157 (30)): a substitution's and a closure context's Origins and Inputs erase to none, not to static; the
+    other clauses stand.
 - **R5-M40 Admission, the location rule and `Capability`** (2026-10-18; plan K4a, KD3, KD9, KD10, KD12, PD30; under R5-M18; its
   limit clause superseded by R5-M170) The instance collector (R5-M35) composes each site's substitution with its item's
   representative (`TyCtxt.Compose`) and admits generic callees, keyed by definition and `Erase` (R5-M39). The first composed
@@ -14940,6 +15050,12 @@ structure is recorded here by the unit that first implements it.
     guess rule's own first test (the same structural completion), so nested requires whose outer failure bodies cannot complete cost no
     walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay quadratic in the walk; the old check paid it
     only per falling require.
+  - Amended (G47, 2026-11-06; BU, Major, design review Revision 1 ACCEPT): a guess is what StructuralCompletion's guessed walk
+    reads and Binding did not establish, whatever the node's BindingState. It is asked only where the walk reads the node itself:
+    a block (its items; a guess only when the parser supplied it) and an evaluated node (its Never evidence; a guess when Binding
+    did not resolve it and published no Type). A composed form is judged by its parts. This narrows the domain `!= Resolved` that
+    held since 8bcc48526, so a written path through a rejected match, if or for keeps its fallthrough direct. Rejected: keying on
+    Invalid versus Unresolved (fd88f6625; one failure gets either state).
 - **R5-M187 H5's corpus difference member and generation's one gate (R6-check H5 Rec)** (2026-11-05, the H5 split plan's row Rec) Minor.
   - pair-cases.json: a row whose MIR verdicts differ from the SPEC's keeps the SPEC's verdicts in `Expected` and `Run` and states
     the MIR's per-case verdicts in a `Mir` member (`Expected` in the row's form and a `Note` naming its (e) row and the PLAN row that
@@ -15184,7 +15300,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     from this entry (R7-M2, R7-M3).
 - **R7-M2 The arrangement: three sessions by component, windows and the board** (owner, 2026-11-03, RQ1 and RQ7; plan §3 and §9;
   supersedes the session names of R4-M119 and R5-M113, whose caps stand, and the hold record of R5-M7, R5-M148 and R5-M167, whose
-  protocol stands; amends R5-M182's window assignment from the window after the flip group's)
+  protocol stands; amends R5-M182's window assignment from the window after the flip group's; its window rules now in WORKFLOW
+  "Windows", Q15; the window runner the Coordinator, R7-M4)
   - The front session (Syntax and Binding: `Compiler/Lexing/**`, `Parsing/**`, `Helper/**`, `src/Kimi/Misc/**`, `Binding/**` but the
     library index files, the root helpers `Compiler/*.cs`, `Checking/**`, `Lsp/**`, `src/Kimi/Diagnostics/**`) runs R7 and R6-check's
     Binding side; the middle session (`Compiler/Mir/**`, the HIR columns' builder readers, `tests/mir`, `Compiler/Documentation/**`)

@@ -17,6 +17,7 @@ public class GenericFunctionReferenceTest
     private const string Show = "func show(value: i32) -> () => Console.writeLine(\"plain\")\nfunc show<T>(value: T) -> () => Console.writeLine(\"generic\")\n";
     private const string Invoke = "func invoke<F>(action: ref/F) -> ()\n    F is Callable<(i32) -> ()>\n    action(1)\n";
     private const string Apply = "func apply<F>(action: ref/F, value: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\n";
+    private const string ApplyOwned = "func applyOwned<T>(action: (T) -> T, value: T) -> T => action(value@move)\n";
     private const string FirstOf = "func firstOf<T>(a: T, b: ref/i32) -> T => a@move\n";
     private const string Pick = "func pick<T>(a: T, b: T) -> T => a@move\n";
     private const string ResultOnly = "func g<T>(a: ref/i32, b: ref/i32) -> T => $abort(\"never\")\n";
@@ -24,6 +25,19 @@ public class GenericFunctionReferenceTest
     private const string Counter = "struct Counter\n    var value: i32\n\n    public init(value: i32)\n        self.value = value\n\n    public func pick<T>(self, other: T) -> T => other@move\n";
     private const string Tagged = "func tagged<T>(a: T, s: string) -> T => a@move\n";
     private const string OwnedBox = "struct Box\n    var value: string\n\n    public init(value: string)\n        self.value = value@move\n\n    public func pick<T>(self: Self, other: T) -> T => other@move\n";
+
+    // PLAN G490: callables whose result is bound by k only, and a caller whose S gives the result p while every input is during q.
+    private const string Contract = "func f<T>(t: T, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k) => (t@move, y)\n";
+    private const string TwoSlots = "func f2<T, U>(t: T, u: U, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k) => (t@move, y)\n";
+
+    private const string ContractMethod = "struct M\n    public let n: i32\n    public init(n: i32) => self.n = n\n" +
+        "    public func m<T>(self: ref/Self, t: T, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k) => (t@move, y)\n";
+
+    private const string GenericOwner = "struct Holder<T>\n    public let v: T\n    public init(v: T) => self.v = v@move\n" +
+        "    public func m(self: ref/Self, y: ref/i32 during k, z: ref/i32 during j) -> ref/i32 during k => y\n";
+
+    private const string Unbound = "func unbound<T>(y: ref/i32 during k, z: ref/i32 during j) -> ref/i32 during k => y\n";
+    private const string Caller = "func g(a: ref/i32 during p, b: ref/i32 during q) -> i32\n    let e: ";
 
     [Theory]
     [InlineData("Erased", Identity + "let b: (i32) -> i32 = identity\nrequire b(2) == 2 else => $abort(\"erased\")", "")]
@@ -86,6 +100,31 @@ public class GenericFunctionReferenceTest
         Assert.True(error.Text is "identity" or "pair" or "keep", error.ToString() + " " + error.Text); // Located at the reference.
         Assert.DoesNotContain("per-call", error.Note, StringComparison.Ordinal);
         Assert.Contains("Type parameters are bound from the expected signature", error.Note, StringComparison.Ordinal); // Owned failures: ErasureOwnedDiagnosticTest.
+    }
+
+    // SPEC 3.8, 7.7.4, 10.8 (PLAN G511): an explicit Type argument is kept, so one that differs from the binding S gives, in a primitive
+    // only, also in a Tuple element, an Option payload, a referent or a parameter's Function Type, or of a method value, is a Type
+    // mismatch at the reference. At a per-call signature a different referent is this mismatch, not the per-call slot record that
+    // APerCallOriginLeavesTheReferenceSlotUnsolved's Explicit row gives. Its valid twins are ReferenceSlotCounterpartsAreAccepted's.
+    [Theory]
+    [InlineData(Identity + "let e: (i64) -> i64 = identity<i32>", "identity<i32>")]
+    [InlineData(Identity + "let e: (u32) -> u32 = identity<i32>", "identity<i32>")]
+    [InlineData(Identity + "let e: (Wrapping<i32>) -> Wrapping<i32> = identity<i32>", "identity<i32>")]
+    [InlineData(Identity + "let e: (string) -> string = identity<char>", "identity<char>")]
+    [InlineData(Identity + "let e: ((i64, i32)) -> (i64, i32) = identity<(i32, i32)>", "identity<(i32, i32)>")]
+    [InlineData(Identity + "let e: (i64?) -> i64? = identity<i32?>", "identity<i32?>")]
+    [InlineData(Identity + "let e: (ref/i64 during static) -> ref/i64 during static = identity<ref/i32>", "identity<ref/i32>")]
+    [InlineData(Identity + "let e: (ref/i64) -> ref/i64 = identity<ref/i32>", "identity<ref/i32>")]
+    [InlineData(Identity + "let e: ((i64) -> i64) -> (i64) -> i64 = identity<(i32) -> i32>", "identity<(i32) -> i32>")]
+    [InlineData(ApplyOwned + "let e: ((i64) -> i64, i64) -> i64 = applyOwned<i32>", "applyOwned<i32>")]
+    [InlineData(Counter + "let e: (ref/Counter, i64) -> i64 = Counter.pick<i32>", "Counter.pick<i32>")]
+    public void AWrittenArgumentThatTheSignatureDoesNotGiveIsATypeMismatch(string source, string reference)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), reference), (error.Code, error.Text));
     }
 
     // SPEC 10.6, 15.3.6: a slot that only a per-call Origin of the fixed expected call signature would satisfy is one
@@ -180,6 +219,11 @@ public class GenericFunctionReferenceTest
     [InlineData(Identity + "func outer(x: ref/i32) -> i32\n    let h: (ref/i32) -> ref/i32 during x = identity\n    return 0", "identity", "its parameters and result bind Type parameter 'T' to Types that differ only in their Origins")]
     [InlineData(Identity + "let f: (ref/i32) -> ref/i32 = identity<ref/i32 during static>", "identity<ref/i32 during static>", "the written Type arguments and the signature give Type parameter 'T' Types that differ only in their Origins")]
     [InlineData(FirstOf + "let f: (ref/i32, ref/i64) -> ref/i32 = firstOf", "firstOf", "no binding of them fits its structure")]
+
+    // A slot no position binds is no substituted signature, whether or not its contract would fit (InternalInvariant_Kd and
+    // UnprovenOriginContract_Kd before PLAN G490).
+    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during q = unbound\n    return 0", "unbound", "the signature does not bind Type parameter 'T'")]
+    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during p = unbound\n    return 0", "unbound", "the signature does not bind Type parameter 'T'")]
     public void ReferenceSlotFailuresNameTheirCause(string source, string reference, string cause)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -189,6 +233,30 @@ public class GenericFunctionReferenceTest
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal(reference, error.Text);
         Assert.StartsWith("The generic function's Type parameters are bound from the expected signature without adaptations; " + cause, error.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 10.5.3, 10.7, 15.6.1 (PLAN G490): a lone candidate's record reads the signature its trial substituted, its Item over the bound
+    // arguments (the written ones where given) and its container, so a reference whose slots bind and whose structure fits but whose Origin
+    // contract fails is UnprovenOriginContract_Kd at the reference, as a nongeneric one is (TypeMismatch_Kd against the declaration's
+    // uninstantiated signature before); a structural failure stays a Type mismatch.
+    [Theory]
+    [InlineData(Contract + Caller + "(i32, ref/i32 during q, ref/i32 during q) -> (i32, ref/i32 during p) = f<i32>\n    return 0", "f<i32>", "the result requires q outlives p, which is not proven")]
+    [InlineData(Contract + Caller + "(i32, ref/i32 during q, ref/i32 during q) -> (i32, ref/i32 during p) = f\n    return 0", "f", "the result requires q outlives p, which is not proven")]
+    [InlineData(TwoSlots + Caller + "(i32, i64, ref/i32 during q, ref/i32 during q) -> (i32, ref/i32 during p) = f2<i32, i64>\n    return 0", "f2<i32, i64>", "the result requires q outlives p, which is not proven")]
+    [InlineData(ContractMethod + Caller + "(ref/M, i32, ref/i32 during q, ref/i32 during q) -> (i32, ref/i32 during p) = M.m<i32>\n    return 0", "M.m<i32>", "the result requires q outlives p, which is not proven")]
+    [InlineData(GenericOwner + Caller + "(ref/Holder<i32>, ref/i32 during q, ref/i32 during q) -> ref/i32 during p = Holder<i32>.m\n    return 0", "Holder<i32>.m", "the result requires q outlives p, which is not proven")]
+    [InlineData(Contract + Caller + "(i32, ref/i32 during q) -> (i32, ref/i32 during q) = f<i32>\n    return 0", "f<i32>", "expected (i32, ref/i32) -> (i32, ref/i32), found (T, ref/i32, ref/i32) -> (T, ref/i32)", nameof(DiagnosticCode.TypeMismatch_Kd))]
+
+    // A trial that ends before its slots bind (a written argument count that differs) leaves no substituted signature, also where the
+    // signature does not mention the slot and its contract would fit (InternalInvariant_Kd before).
+    [InlineData(Unbound + Caller + "(ref/i32 during q, ref/i32 during q) -> ref/i32 during q = unbound<i32, i64>\n    return 0", "unbound<i32, i64>", "expected (ref/i32, ref/i32) -> ref/i32, found (ref/i32, ref/i32) -> ref/i32", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    public void AReferenceRecordReadsItsSubstitutedSignature(string source, string reference, string label, string code = nameof(DiagnosticCode.UnprovenOriginContract_Kd))
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal((code, reference, label), (error.Code, error.Text, error.Label));
     }
 
     // SPEC 10.5, 15.6.5: an input Origin of a function enclosing the reference is fixed in its body, so a slot may hold it; at a common
@@ -244,6 +312,15 @@ public class GenericFunctionReferenceTest
     [InlineData("func keep<T>(f: T) -> T => f@move\nlet m: ((ref/i32) -> ref/i32) -> (ref/i32) -> ref/i32 = keep")]
     [InlineData(ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)")]
     [InlineData(ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(func (a, b) => g(a, b), x@ref, x@ref)")]
+    [InlineData(Identity + "let e: (i64) -> i64 = identity<i64>")]
+    [InlineData(Identity + "let e: (Wrapping<i32>) -> Wrapping<i32> = identity<Wrapping<i32>>")]
+    [InlineData(Identity + "let e: (char) -> char = identity<char>")]
+    [InlineData(Identity + "let e: ((i64, i32)) -> (i64, i32) = identity<(i64, i32)>")]
+    [InlineData(Identity + "let e: (i64?) -> i64? = identity<i64?>")]
+    [InlineData(Identity + "let e: (ref/i64 during static) -> ref/i64 during static = identity<ref/i64>")]
+    [InlineData(Identity + "let e: ((i64) -> i64) -> (i64) -> i64 = identity<(i64) -> i64>")]
+    [InlineData(ApplyOwned + "let e: ((i64) -> i64, i64) -> i64 = applyOwned<i64>")]
+    [InlineData(Counter + "let e: (ref/Counter, i64) -> i64 = Counter.pick<i64>")]
     public void ReferenceSlotCounterpartsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

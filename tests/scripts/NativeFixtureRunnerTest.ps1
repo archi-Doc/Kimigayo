@@ -33,7 +33,7 @@ function New-Fixture([string] $directory, [string] $name, [string] $source = $ir
     }
 }
 function Invoke-Case(
-    [string] $name, [string] $selection, [int] $parallel, [bool] $expected, [int] $count, [int] $deadline
+    [string] $name, [string] $selection, [int] $parallel, [bool] $expected, [int] $count, [int] $deadline, [hashtable] $reuse = @{}
 ) {
     $fixtures = Split-Path -Path $selection -Parent
     $pattern = Split-Path -Path $selection -Leaf
@@ -42,7 +42,7 @@ function Invoke-Case(
     try {
         & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $fixtures -FixturePattern $pattern `
             -OutputDirectory (Join-Path $work $name) -LogDirectory $logs -Parallel $parallel `
-            -ExecutionDeadlineMilliseconds $deadline *> (Join-Path $evidence "$name.log")
+            -ExecutionDeadlineMilliseconds $deadline @reuse *> (Join-Path $evidence "$name.log")
     }
     catch { $caught = $true; $_ | Out-String | Add-Content (Join-Path $evidence "$name.log") }
     if ($caught -eq $expected) { throw "Unexpected runner outcome: $name" }
@@ -65,6 +65,61 @@ $null = Invoke-Case 'broad-pattern' (Join-Path $valid '*') 4 -expected $true -co
 if (@($serial | Where-Object { $_.status -cne 'passed' }).Count -or @($parallel | Where-Object { $_.status -cne 'passed' }).Count) {
     throw 'Valid fixtures failed.'
 }
+# A passed result is reused only while its environment key, fixture key and -ReuseHours freshness all hold.
+$reuseFixtures = Join-Path $work 'reuse'
+New-Fixture $reuseFixtures 'one'
+New-Fixture $reuseFixtures 'two'
+function Read-NativeResults([string] $name) { Get-Content (Join-Path $evidence "$name/native-results.json") -Raw | ConvertFrom-Json -DateKind String }
+function Assert-Reuse([string] $name, [object[]] $records, [string[]] $reused) {
+    foreach ($record in $records) {
+        $isReused = $record.fixture -cin $reused
+        if ([bool]$record.reused -ne $isReused -or ($isReused -and $record.tools.Count + $record.executions.Count -ne 0) -or
+            (-not $isReused -and $record.tools.Count -eq 0)) { throw "Unexpected reuse of $($record.fixture): $name" }
+    }
+    $split = "$($records.Count - $reused.Count) fixtures run, $($reused.Count) reused"
+    if (@($records | Where-Object status -CNE 'passed').Count -eq 0 -and
+        -not (Select-String -LiteralPath (Join-Path $evidence "$name.log") -SimpleMatch "Passed $(2 * $records.Count) native scalar executions (O0/O2); $split")) {
+        throw "Missing reuse split: $name"
+    }
+}
+$first = Invoke-Case 'reuse-first' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000
+$stored = Read-NativeResults 'reuse-first'
+if ($stored.environmentKey -cnotmatch '^[0-9a-f]{64}$' -or $stored.fixtures.Count -ne 2 -or
+    @($stored.fixtures | Where-Object { $_.key -cnotmatch '^[0-9a-f]{64}$' -or $_.status -cne 'passed' -or -not (Test-Path -LiteralPath $_.log) -or
+        ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($_.verifiedAt)).TotalMinutes -gt 10 }).Count) {
+    throw 'The first run did not record keyed, verified results.'
+}
+Assert-Reuse 'reuse-first' $first @()
+$firstResults = Join-Path $evidence 'reuse-first/native-results.json'
+$records = Invoke-Case 'reuse-all' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse @{ ReuseResults = $firstResults }
+Assert-Reuse 'reuse-all' $records @('one.ll', 'two.ll')
+foreach ($entry in (Read-NativeResults 'reuse-all').fixtures) {
+    $origin = $stored.fixtures | Where-Object fixture -CEQ $entry.fixture
+    if ($entry.verifiedAt -cne $origin.verifiedAt -or $entry.log -cne $origin.log -or $entry.key -cne $origin.key) { throw 'A reused entry lost its verification.' }
+}
+# A changed sidecar re-runs only its fixture; the failure is recorded and never reused afterwards.
+[IO.File]::WriteAllText((Join-Path $reuseFixtures 'two.stdout'), 'wrong', $utf8)
+$records = Invoke-Case 'reuse-changed' (Join-Path $reuseFixtures '*.ll') 2 -expected $false -count 2 -deadline 30000 -reuse @{ ReuseResults = $firstResults }
+Assert-Reuse 'reuse-changed' $records @('one.ll')
+if (($records | Where-Object fixture -CEQ 'two.ll').status -cne 'failed' -or
+    ((Read-NativeResults 'reuse-changed').fixtures | Where-Object fixture -CEQ 'two.ll').status -cne 'failed') { throw 'A changed fixture was not re-run.' }
+$records = Invoke-Case 'reuse-failed' (Join-Path $reuseFixtures '*.ll') 2 -expected $false -count 2 -deadline 30000 `
+    -reuse @{ ReuseResults = (Join-Path $evidence 'reuse-changed/native-results.json') }
+Assert-Reuse 'reuse-failed' $records @('one.ll')
+# An entry older than -ReuseHours re-runs; a longer window reuses it.
+[IO.File]::WriteAllText((Join-Path $reuseFixtures 'two.stdout'), "日`n", $utf8)
+$expired = Read-NativeResults 'reuse-first'
+($expired.fixtures | Where-Object fixture -CEQ 'one.ll').verifiedAt = [DateTimeOffset]::UtcNow.AddHours(-25).ToString('o')
+$expiredResults = Join-Path $work 'expired-results.json'
+$expired | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $expiredResults
+$records = Invoke-Case 'reuse-expired' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse @{ ReuseResults = $expiredResults }
+Assert-Reuse 'reuse-expired' $records @('two.ll')
+$records = Invoke-Case 'reuse-hours' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 `
+    -reuse @{ ReuseResults = $expiredResults; ReuseHours = 26 }
+Assert-Reuse 'reuse-hours' $records @('one.ll', 'two.ll')
+# Another environment (here the deadline) re-runs everything.
+$records = Invoke-Case 'reuse-environment' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 29999 -reuse @{ ReuseResults = $firstResults }
+Assert-Reuse 'reuse-environment' $records @()
 $mixed = Join-Path $work 'mixed'
 New-Fixture $mixed 'valid'
 New-Fixture $mixed 'bad-output' -stdout 'wrong'
@@ -274,5 +329,5 @@ try { & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $empty -FixtureP
 catch { $caught = $true; $_ | Out-String | Add-Content (Join-Path $evidence 'empty.log') }
 if (-not $caught) { throw 'An empty selection must fail.' }
 $results | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $evidence 'summary.json')
-Write-Output ("PASS native runner: serial/parallel UTF-8, exits, mixed failures, CPU observation, " +
+Write-Output ("PASS native runner: serial/parallel UTF-8, exits, mixed failures, result reuse, CPU observation, " +
     "delayed/insufficient execution, broad patterns and sidecar-only rejection; $evidence")
