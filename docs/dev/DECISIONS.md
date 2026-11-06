@@ -5660,6 +5660,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Task per hop (a 1.5 MB pool stack and an allocation per hop).
   - O-24: the owner (R4's dialog, 2026-11-06), verbatim 「O-24 は、bでお願いいたす」: the transfer is a named exception of 'Catch
     boundaries'.
+- **R4-M179 A binding's Error Copy proof leaves its match buildable (PLAN G471, G485)** (2026-11-06; R4, design D12: outside
+  R4-M88's owner reservation, since Binding resolved the match; class Major) SPEC 14.8.4, 15.1.6, 23.1.2. Supersedes BU-110's "and
+  its plan Invalid" and `AcquireBinding`'s Coverage write.
+  - Cause: `BoundMatch.Invalid` means a located failure at a Pattern position or a guard, and every other writer pairs with a `Fail`.
+    `AcquireBinding` also set it, with the Coverage `Invalid`, on an Error Copy proof, which was consistent while it failed the
+    binding; BU-110 (a7ed3e0b0) removed that located failure and kept both writes, so their reason no longer holds. `MirBuilder.Match`
+    then built the match Opaque, losing its arms' independent MIR records (G471), and the Coverage hid `NonExhaustiveMatch_Kd` and
+    the unreachable-arm Warnings (G485).
+  - Rule: an Error proof makes the binding Deferred (HIR Failed) only; its plan stays buildable and its coverage stays the Patterns'
+    (14.8.4). `MirBuilder.Bind` derives the Failed binding as a loop's (BU-110). A failed Pattern (`ValidatePatternType`'s late
+    recheck) keeps its Invalid plan and Opaque; a failed guard or arm leaves an Error node (G121, R4-M88).
+  - Records (23.1.2, Q13): additions only, on programs the declaration's failure rejects: the arms' MIR records,
+    `NonExhaustiveMatch_Kd` and `UnreachablePattern_Kd`. No acceptance moves.
+  - Rejected: an `Acquisition`-aware test in `MirBuilder.Match` (a second copy of the rule); a new plan flag (a mode); waiting for
+    G121 (a resolved match is not its case).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9701,8 +9716,10 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
     result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
 
-- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; PLAN G439, unit
-  bu174; Major; R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes BU-103's "`Match` builds an
+- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; its "and its plan Invalid" and
+  `AcquireBinding`'s Coverage write superseded by R4-M179; PLAN G439, unit bu174; Major;
+  R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes
+  BU-103's "`Match` builds an
   Invalid or Pending plan as Opaque, so `Bind` never takes a Failed binding; a For's plan holds none (its acquisitions are
   `Binding.Sequences`', PLAN's open item)": a loop's plan holds a Failed binding, and `Bind` takes it.
   - Cause: two copies of 15.1.6's rule. `Binding.Sequences` decided a for item's at bind time and took an Error Copy proof as

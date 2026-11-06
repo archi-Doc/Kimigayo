@@ -76,6 +76,30 @@ public class PatternBindingTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
     }
 
+    // SPEC 14.8.4, 15.1.6, 23.1.2 (DECISIONS R4-M179): coverage is proved from the Patterns, never from an acquisition, so a binding whose
+    // Copy proof is Error leaves its match's coverage, its NonExhaustiveMatch_Kd, a failed guard's record and an unreachable arm's Warning
+    // as over the Copy twin, beside the declaration's failure. Fail-before: the binding made the coverage Invalid.
+    [Theory]
+    [InlineData(".Some(let v) => ()\n    .None => ()", MatchCoverageState.Exhaustive, "", "")]
+    [InlineData(".Some(let v) => ()", MatchCoverageState.NonExhaustive, "NonExhaustiveMatch_Kd", "")]
+    [InlineData(".Some(let v) if 1 => ()\n    .None => ()", MatchCoverageState.NonExhaustive, "NonExhaustiveMatch_Kd TypeMismatch_Kd", "")]
+    [InlineData(".Some(let v) => ()\n    _ => ()\n    .None => ()", MatchCoverageState.Exhaustive, "", ".None 1")]
+    public void ABindingWhoseCopyProofIsErrorKeepsItsMatchCoverage(string arms, MatchCoverageState state, string codes, string warnings)
+    {
+        var good = Facts("Good", "n: i32 = 0");
+        Assert.Equal((state, codes, warnings), (good.Coverage.State, good.Codes, good.Warnings));
+        Assert.Equal(good, Facts("Bad", "s: string = \"\""));
+
+        (MatchCoverage Coverage, string Codes, string Warnings) Facts(string type, string field)
+        {
+            var c = Parse($"struct {type}\n    Self is Copy\n    public var {field}\n    public init() => ()\nfunc f(o: Option<{type}>) => match o@move\n    {arms}");
+            c.Bind();
+            var issues = c.Binding.Issues.Select(static x => $"{x.Code}").Order(StringComparer.Ordinal).ToList();
+            Assert.Equal(type == "Bad", issues.Remove(nameof(DiagnosticCode.UnsatisfiedConstraint_Kd)));
+            return (Plan(c).Coverage, string.Join(" ", issues), string.Join(" ", c.Binding.PatternWarnings.Select(static x => $"{x.Pattern} {x.CoveringArm}")));
+        }
+    }
+
     [Theory]
     [InlineData("func f(x: ref/i32 during static) => match x\n    0 => ()\n    _ => ()", 1)]
     [InlineData("func f(x: Option<ref/i32 during static>) => match x\n    .Some(0) => ()\n    _ => ()", 1)]
