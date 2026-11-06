@@ -158,6 +158,23 @@ public class BorrowAcquisitionTest
         Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
+    // SPEC 10.1 step 5, 23.1.2 (PLAN G453): a construction of an Origin-carrying structure is a named call, so a bare Place without its
+    // spelling (`x@follow` through `ref`, an owned `q` at `uniq/i32`) is its acquisition record only when it is the candidate's one
+    // obstacle, as at a plain function; beside a mismatching `true` the selection fails. Each row: Binding's errors.
+    [Theory]
+    [InlineData("func f(x: ref/(uniq/i32 during a) during b) -> ()\n    let h = Holder3.init(x@follow, true)\n", "NoApplicableOverload_Kd Holder3.init(x@follow, true)")]
+    [InlineData("func f(x: ref/(uniq/i32 during a) during b) -> ()\n    let h = Holder3.init(x@follow, 1)\n", "TransferRequired_Kd x@follow")]
+    [InlineData("func f() -> ()\n    var q: i32 = 1\n    let h = Holder3.init(q, true)\n", "NoApplicableOverload_Kd Holder3.init(q, true)")]
+    [InlineData("func f() -> ()\n    var q: i32 = 1\n    let h = Holder3.init(q, 1)\n", "ExclusiveBorrowRequired_Kd q")]
+    [InlineData("func f() -> ()\n    var q: i32 = 1\n    let h = Holder3.init(q@uniq, 1)\n", "")]
+    public void AConstructionsAcquisitionIsRecordedOnlyAsItsOneObstacle(string body, string errors)
+    {
+        var source = "struct Holder3 {a}\n    public let v: uniq/i32 during a\n    public init(v: uniq/i32 during a, flag: i32) => self.v = v@move\n" + body;
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+    }
+
     // SPEC 3.8, 10, 23.1.2 (PLAN G421, DECISIONS BU-96): a value call selects no callee, so an argument's failed acquisition (a bare Place
     // without `@move` or `@uniq`, in some or every Semantics case) stops none of its other judgments: each argument's Origin relation,
     // A5's record, stays beside the acquisition record, before or after it, and the program stays rejected; a twin with the spelling has
