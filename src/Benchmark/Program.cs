@@ -2,13 +2,25 @@
 
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
+using Kimi.Compiler;
 
 namespace Benchmark;
 
 public class Program
 {
+    // Every measurement runs on a compiler thread (DECISIONS R4-M177), so the per-thread counters read the compiler's own thread.
     public static void Main(string[] args)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            CompilerThread.Run(args, static args =>
+            {
+                Main(args);
+                return default(ValueTuple);
+            });
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--associated-inference")
         {
             AssociatedInferenceMeasurements.Run();
