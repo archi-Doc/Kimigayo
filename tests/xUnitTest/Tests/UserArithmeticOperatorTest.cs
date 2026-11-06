@@ -29,6 +29,38 @@ public class UserArithmeticOperatorTest
         }
     }
 
+    // PLAN G506: a probed operand that bound to nothing and waits for no position or call makes its operator rest at once, so a prefix
+    // chain over a failed operand binds each operand once and records only the failure. Fail-before: unary minus bound such an operand
+    // again under its expected Type, 2^n binds (dev took about 20 s at 26 operators); `+` and `not` take no probe.
+    [Theory]
+    [InlineData("- ")]
+    [InlineData("+ ")]
+    [InlineData("not ")]
+    public void APrefixChainOverAFailedOperandBindsEachOperandOnce(string op)
+    {
+        var source = $"func f(c: i32) -> i32\n    return {string.Concat(Enumerable.Repeat(op, 40))}missing\npublic func main() => ()";
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, Assert.Single(compilation.Binding.Issues).Code);
+    }
+
+    // PLAN G506 (SPEC 12.3, 13.3.4): a unary operand takes the expected Type only when it is literal-only; any other operand is typed
+    // once, on its own, and the record is the operand's. Fail-before: dev bound `-make()` and `+make()` under `i64` and accepted them.
+    [Theory]
+    [InlineData("func make<T>() -> T => $abort(\"x\")\nfunc f() -> i64\n    return -make()", "make()")]
+    [InlineData("func make<T>() -> T => $abort(\"x\")\nfunc f() -> i64\n    return +make()", "make()")]
+    [InlineData("enum E\n    A\nfunc f() -> E\n    return -.A", ".A")]
+    [InlineData("func f() -> Wrapping<u8>\n    return -(1)", null)]
+    public void AUnaryOperandTakesTheExpectedTypeOnlyWhenLiteralOnly(string declarations, string? failed)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(declarations + "\npublic func main() => ()");
+        Assert.Equal(failed is null, compilation.Bind().IsComplete);
+        if (failed is not null)
+        {
+            Assert.Equal(failed, Assert.Single(compilation.Binding.Issues).Node.ToString());
+        }
+    }
+
     [Theory]
     [InlineData("bool")]
     [InlineData("()")]
