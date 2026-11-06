@@ -9431,7 +9431,8 @@ resumed by R4-M86 (2026-10-20).
   - Records (Q13): A5's Origin relations at value calls return beside the acquisition record, and a later argument's own located
     limit (a static root's Borrow, `Unsupported_Kd`) beside it; no verdict moves
     (`BorrowAcquisitionTest.AValueCallsAcquisitionAndRelationsAreEachRecorded`). Open in PLAN: a call keeps one acquisition record (a
-    second failing argument), a failed callee stops its arguments' judgments, and a failed part binding stops the other arguments' fits.
+    second failing argument) and a failed callee stops its arguments' judgments; a failed part binding no longer stops the other
+    arguments' fits (the G494 unit 2 amendment below).
   - Supersedes BU-45's G421 line.
   - Amended (G418, 2026-11-06; unit bu167 with its review fix round; Major, the planning session's GO without a design review): at a
     named call, a part that fails after selection stops neither the call's clauses nor its other inputs' judgments. `CompleteWaiting`
@@ -9452,6 +9453,13 @@ resumed by R4-M86 (2026-10-20).
     Type mismatch or acquisition) judges neither, R7-E1's one record per node; the gate goes with R7-E1. Records (Q13): an
     UnprovenConstraint_Kd or UnsatisfiedConstraint_Kd at the construction beside the payload's record, on invalid programs only; where
     the expected Type fixes the Origin it restates the annotation's relation, as the no-failure twin does. No verdict moves.
+  - Amended (G494 unit 2, 2026-11-07; unit bu209; Major; F's GO without a design review): rule W (BU-79) at every value-call stop.
+    A part the call cannot take (a failed preparation or completion, a failed waiting part, a structural misfit, a failed fit) takes
+    no operation and is no evidence; the solve, the other parts' completion and fits, the input premises and `JudgeCallClauses`
+    still run, and the call rests (on its first failed fit, `CompleteDependent`) and forms no result. A structural misfit stays the
+    call's NoApplicableOverload_Kd. The count and labels are matched first by G455's `MapValueCallArguments` (SPEC 10.1.1), so
+    their record, like a failed callee's, rests on no part. A5's input moves on rejected programs: their other parts' relations are
+    published. Other owners with the same stop: the named call's `unknownArgument` (G455, G500) and payloads (G262's F2).
 - **BU-98 A discarded value's Type is Binding's, published in its discard row** (2026-11-05; PLAN G233, unit bu140; R4's consent C-16
   for the builder lines under hold H-4; supersedes BU-27's Open discard sentence and R4-M145's Open (PLAN G233) paragraph) SPEC
   14.2.2, 14.2.4, 15.6.3, 10.2.
@@ -9928,6 +9936,18 @@ resumed by R4-M86 (2026-10-20).
     part's, as the named call does (r17).
   - Rejected: completing the waiting parts on their own after a stop (loses vd_bad's record); a premise-free signature fit before the
     erasure (`ErasureSignatureFits`: under the caller's `origin s outlives t` it disagreed with the erasure, r04_cvprem_ok's crash).
+  - Amended (G494 unit 2, 2026-11-07; unit bu209): the temporary structure is removed with the stops it served (BU-96's G494 unit 2
+    amendment): the solve runs over every taken part, so each waiting part is completed at its instantiated parameter. The "or the
+    solve fails" case never ran: `SolveValueCallOrigins` solves with `select`, which always holds (SPEC 15.6.1), so it returns
+    nothing now and the NoApplicable with its `rejectedCandidates` row after it is deleted. The dependent record at vfb_bad and
+    r23_fb_cl_bad stays, over the call's region for `q` ("the omitted Origin of Inference outlives static") instead of the callee's
+    `q`. Reason: removing it would need the erasure to know that q's only evidence failed, a dependence analysis beyond the failed
+    input, which BU-79 and AGENTS Diagnostics reject. The same mechanism adds one such record where the base had none: p03,
+    `g(undefinedName, func [] (x: ref/i32 during static) -> i32 => 5)`, gains UnprovenOriginContract_Kd over the call's region
+    beside the name's record (G494 unit 2's review N-1; DECISIONS Q13). Dependent UnprovenOriginRelation_Kd records are also added
+    in the body of a waiting Closure after the failed part (the Middle's C-86 review, a01, a07, a11): the body is now completed at
+    its instantiated parameter, so it reaches A1-A5 and reports there, beside independent records such as CallReservationConflict_Kd
+    (a08i) and MovedPlace_Kd (a10i).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
