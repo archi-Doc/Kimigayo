@@ -153,9 +153,10 @@ public class ErasureAfterSelectionTest
     // SPEC 7.7.4, 15.6.4, 5.7 (the owner's O-28 (a), DECISIONS BU-116): a concrete Closure whose result has a raw layer without an
     // Origin, also as a Tuple element (e04) or an Option payload (e06), retains its call receiver by rule A, so its result contract
     // depends on the receiver and it is not erased: at an initialization (t09; e02, the result the fixed expected signature gives; e03,
-    // with no capture), a call argument (e01) or a return (e05), the Type mismatch whose Note names the dependence. A result stating an
-    // Origin (w01, w06), a Function Item (w02), a result with no raw layer (w03) and a raw layer the call writes through a parameter,
-    // which 7.7.4 does not name (w05), still convert.
+    // with no capture; e07, a Copy capture and a parameter), a call argument (e01; e08, a waiting Closure at a pair's instantiated
+    // `raw/i32`) or a return (e05), the Type mismatch whose Note names the dependence. A result stating an Origin (w01, w06), a Function
+    // Item (w02), a result with no raw layer (w03) and a raw layer the call writes through a parameter, which 7.7.4 does not name (w05),
+    // still convert.
     [Theory]
     [InlineData("t09", "func f(p: raw/i32) -> raw/i32\n    let g: () -> raw/i32 = func () -> raw/i32 => p\n    return g()\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
     [InlineData("e01", "func run(g: () -> raw/i32) -> i32 => 0\nfunc f(p: raw/i32) -> i32\n    return run(func () -> raw/i32 => p)\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
@@ -164,6 +165,8 @@ public class ErasureAfterSelectionTest
     [InlineData("e04", "func f(p: raw/i32) -> i32\n    let g: () -> (i32, raw/i32) = func () -> (i32, raw/i32) => (1, p)\n    return g().0\n", "TypeMismatch_Kd func () -> (i32, raw/i32) => (1, p)")]
     [InlineData("e05", "func mk(p: raw/i32) -> (() -> raw/i32)\n    return func () -> raw/i32 => p\n", "TypeMismatch_Kd func () -> raw/i32 => p")]
     [InlineData("e06", "func f(p: raw/i32) -> raw/i32?\n    let g: () -> raw/i32? = func () -> raw/i32? => .Some(p)\n    return g()\n", "TypeMismatch_Kd func () -> raw/i32? => .Some(p)")]
+    [InlineData("e07", "func f(address: usize) -> raw/u8\n    let concrete = func [address] (offset: isize) -> raw/u8 => address@raw/u8\n    let erased: (isize) -> raw/u8 = concrete\n    return erased(0)\n", "TypeMismatch_Kd concrete")]
+    [InlineData("e08", "func call<s/T>(v: s/T, f: (s/T) -> s/T) -> s/T => f(v@move)\nfunc g(x: ref/i32, p: raw/i32 during x) -> raw/i32 => call(p, func (w) => w)\n", "TypeMismatch_Kd func (w) => w")]
     [InlineData("w01", "func f() -> raw/i32 during static\n    let g: () -> raw/i32 during static = func () -> raw/i32 during static => null\n    return g()\n", "")]
     [InlineData("w02", "func h(q: raw/i32) -> raw/i32 => q\nfunc f(p: raw/i32) -> raw/i32\n    let g: (raw/i32) -> raw/i32 = h\n    return g(p)\n", "")]
     [InlineData("w03", "func f(n: i32) -> i32\n    let g: () -> i32 = func () -> i32 => n\n    return g()\n", "")]
