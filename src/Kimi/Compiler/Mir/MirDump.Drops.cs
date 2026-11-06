@@ -61,7 +61,7 @@ internal static partial class MirDump
     // The views of a group or point where they are not all the body's: " in v0, v2".
     private static StringBuilder Views(StringBuilder text, MirBody body, ulong views)
     {
-        var bits = views == ulong.MaxValue >> (64 - (int)MirCases.Count(body)) ? 0UL : views;
+        var bits = views == MirCases.Every(body) ? 0UL : views;
         for (var separator = " in "; bits != 0; bits &= bits - 1, separator = ", ")
         {
             text.Append(separator).Append('v').Append(BitOperations.TrailingZeroCount(bits));

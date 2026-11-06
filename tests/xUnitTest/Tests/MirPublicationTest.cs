@@ -198,11 +198,11 @@ public sealed class MirPublicationTest
         static bool IsSource(DiagnosticValue value) => value.Name == "source";
     }
 
-    // Design 3.3 (BU-82, Q-BU-2): the case text is Binding.CaseFact's over each member's views masked by MirCases.Count, so a producer's
-    // every view (ulong.MaxValue) is every case, which names none; it is given only when every member gives the same text, and a NoBody
-    // member gives none.
+    // Design 3.3 (BU-82): the case text is Binding.CaseFact's over each member's views, bits of its body's views (MirProblem), so every view
+    // (MirCases.Every) is every case, which names none; it is given only when every member gives the same text, and a NoBody member gives
+    // none.
     [Fact]
-    public void TheCaseTextIsTheMembersMaskedViews()
+    public void TheCaseTextIsTheMembersViews()
     {
         const string Source = "func f<s/T>(value: s/T, x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    let local = v\n" +
             "    v@follow = x\n    _ = local@follow\npublic func main() -> ()\n    var n: i32 = 1\n    f(n, 9)\n";
@@ -211,7 +211,7 @@ public sealed class MirPublicationTest
         var bodies = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).ToArray();
         var (f, main) = (bodies.Single(static x => x.Binders.Count > 0).Ordinal, bodies.First(static x => x.Binders.Count == 0).Ordinal);
         var start = program.Problems.Merged.Length;
-        Add("var v = value@move", (f, ulong.MaxValue));
+        Add("var v = value@move", (f, MirCases.Every(program.Bodies[f])));
         Add("let local = v", (f, 0b10));
         Add("_ = local@follow", (f, 0b10), (main, 0b01));
         Add("f(n, 9)", (f, 0b10), (MirProblem.NoBody, 0b01));
