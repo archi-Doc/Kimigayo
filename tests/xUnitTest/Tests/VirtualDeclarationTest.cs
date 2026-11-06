@@ -64,7 +64,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     [InlineData("open struct Base\n    virtual override func read(self: objref/Self) => ()", "combined")]
     [InlineData("struct Derived\n    public override func read(self: objref/Self) => ()", "inherits")]
     [InlineData("struct Derived\n    override func read(self: objref/Self, n: i32 = 1) => ()", "defaults")]
-    [InlineData("struct Derived\n    override func read(self: objref/Self, ! n: i32) => ()", "inherits")]
+    [InlineData("struct Derived\n    override func read(self: objref/Self ! n: i32) => ()", "inherits")]
     public void InvalidHeadersExplainTheRuleAtTheModifier(string source, string fact)
     {
         var c = MinimalEmissionTest.Analyze(source + "\n()");

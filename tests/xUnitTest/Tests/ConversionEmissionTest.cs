@@ -186,7 +186,7 @@ public class ConversionEmissionTest
     [Theory]
     [InlineData("func helper() -> i32 => 1\n", "")]
     [InlineData("", "\nfunc helper() -> i32 => 1")]
-    [InlineData("struct Holder\n    var value: i32\n    var doubled: i32\n        get => 2\n", "")]
+    [InlineData("struct Holder\n    var value: i32\n    var doubled: i32\n        get() -> i32 => 2\n", "")]
     public void NoncompletingOperandEvidenceDoesNotDependOnDeclarationOrder(string before, string after)
     {
         // A named expression body or accessor checked before the conversion once fixed the structural completion's Never

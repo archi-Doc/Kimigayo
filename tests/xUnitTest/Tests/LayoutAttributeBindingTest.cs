@@ -86,7 +86,7 @@ public partial class LayoutAttributeBindingTest
     // CLayoutUses.cs), which Layout judges.
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S")]
-    [InlineData("#Layout(\"C\")\nstruct S\n    static var count: i32")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    group Shared\n        var count: i32 = 0")]
     [InlineData("#Layout(\"C\")\nopen struct S\n    var n: i32")]
     [InlineData("open struct B\n    var n: i32\n#Layout(\"C\")\nstruct S: B\n    var m: i32")]
     [InlineData("#Layout(\"C\")\nstruct S\n    var n: i32\n    var empty: ()")]
@@ -139,7 +139,7 @@ public partial class LayoutAttributeBindingTest
         => AssertUses(form, source, records);
 
     [Theory]
-    [InlineData("#Layout(\"C\")\nstruct S\n    static var count: i32\n    var n: i32")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    group Shared\n        var count: i32 = 0\n    var n: i32")]
     [InlineData("#Layout(\"C\")\nstruct S<T>\n    var n: i32\n    var value: T")]
     public void CLayoutFormationAllowsStaticAndDependentFields(string source)
     {
@@ -254,7 +254,7 @@ public partial class LayoutAttributeBindingTest
     [InlineData("struct S\n    var a: i32", false, false)]
     [InlineData("#Layout(\"C\")\nopen struct S\n    var a: i32", false, true)]
     [InlineData("open struct B\n    var n: i32\n#Layout(\"C\")\nstruct S: B\n    var a: i32", false, true)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    static var a: i32", false, true)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    group Shared\n        var a: i32 = 0", false, true)]
     [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct S", false, false)]
     [InlineData("#Layout(\"C\")\n#Layout(\"C\")\nstruct S", false, false)]
     public void CLayoutFactMarksValidatedCLayoutStructs(string source, bool expected, bool unavailable)
