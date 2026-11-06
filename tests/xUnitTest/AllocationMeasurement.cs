@@ -100,11 +100,7 @@ internal static class AllocationMeasurement
                 failure = exception;
             }
         };
-        Thread thread;
-        using (ExecutionContext.SuppressFlow())
-        {
-            thread = CompilerThread.Create(measure);
-        }
+        var thread = CompilerThread.Create(measure);
 
         // The bound only stops a hung measurement. A parallel Debug run can take several times longer than an isolated one, so
         // it is generous, for each window; the zero-byte assertions at the call sites are unchanged.
@@ -166,7 +162,9 @@ internal static class AllocationMeasurement
     // The allocation of a warm hop (CompilerThread.Run), on its caller and on its worker, which no window on a compiler thread takes:
     // Run refuses such a caller. From the calling thread, not a compiler thread: the standard warm-up of hops, the step that retires
     // the allocation contexts, then MeasuredOperations hops on one worker, each reading that worker's counter. The result is the
-    // caller's allocation over the hops and the worker's between its first and last reading; no repeated or retried window.
+    // caller's allocation over the hops and the worker's between its first and last reading; no repeated or retried window. It needs
+    // an isolated collection (AllocationIsolationCollection): another test's hop could take the worker between two hops, and the
+    // measurement then fails ("two workers").
     internal static (long Caller, long Worker) MeasureHops()
     {
         for (var i = 0; i < WarmupOperations; i++)

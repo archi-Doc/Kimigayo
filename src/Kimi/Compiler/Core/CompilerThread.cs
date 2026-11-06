@@ -8,7 +8,8 @@
 // worker; workers are background threads started without a context, and a job runs under its caller's captured context, else
 // under the worker's own start context, so nothing a job sets stays on its worker; a job's references are cleared before its worker
 // is pooled; across the hop, the caller's `when` filters run after the work's `finally` blocks (inline, before them), and no filter
-// reads such state. Must not probe the stack, time out, cancel or retry; no second runner or thread maker; the transfer catch
+// reads such state; a caller does not re-enter Run on its thread while it waits, which its one cached job per instantiation needs
+// (no Kimi host uses an STA or a pumping wait). Must not probe the stack, time out, cancel or retry; no second runner or thread maker; the transfer catch
 // handles nothing and rethrows every exception (ARCH "Catch boundaries"); no site off R4-M178's list. A site begins
 // `if (!CompilerThread.IsCurrent) { return CompilerThread.Run((this, a), static s => s.Item1.Entry(s.Item2)); }`.
 

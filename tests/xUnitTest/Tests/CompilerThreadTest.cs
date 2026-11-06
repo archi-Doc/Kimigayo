@@ -116,7 +116,9 @@ public class CompilerThreadTest
         var met = new bool[2];
         var callers = Enumerable.Range(0, 2).Select(i => new Thread(() =>
         {
-            (workers[i], met[i]) = CompilerThread.Run(both, static barrier => (Environment.CurrentManagedThreadId, barrier.SignalAndWait(TimeSpan.FromSeconds(60))));
+            (workers[i], met[i]) = CompilerThread.Run(
+                both,
+                static barrier => (Environment.CurrentManagedThreadId, barrier.SignalAndWait(TimeSpan.FromSeconds(60))));
         })).ToArray();
         foreach (var caller in callers)
         {

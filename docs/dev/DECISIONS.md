@@ -5605,7 +5605,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `new MirBuilder(c).Build()`, `InstanceCollector.Run`, `HoverBuilder.Create`, `ConstructMir` from CompilerPipelineBenchmark, also in
     BDN's child process, and ParseBenchmark), on fixed inputs below the 1.5 MB depths; a deep row enters through a site.
   - Measurement on compiler threads: `AllocationMeasurement.Measure` makes its thread with `Create`; `MeasureOnce`, `MeasureSeries`
-    and Benchmark's `Main` begin with the site pattern, so measured work stays on the measuring thread. MeasureOnce's row asserts a
+    and Benchmark's `Main` begin with the site pattern, so measured work stays on the measuring thread. `MeasureHops`, the tests' new
+    window (ArchitectureRulesTest's sites in AllocationMeasurement), measures a hop from a plain thread and assumes an isolated
+    collection. MeasureOnce's row asserts a
     compiler thread instead of the calling thread, an expectation change O-20 requires. BDN's memory column reads
     `GC.GetTotalAllocatedBytes`, which counts the workers; BDN timings across U1 compare only with both sides on U1, or with the hop
     cost stated.

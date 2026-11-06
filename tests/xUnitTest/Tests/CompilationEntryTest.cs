@@ -252,9 +252,10 @@ public sealed class CompilationEntryTest
     }
 
     // DECISIONS R4-M178 (PLAN G444): each public phase entry is a site that runs its walk on a compiler thread, so a valid program
-    // nested deeper than a 1.5 MB stack holds, within U2's syntax depth 1,024, is accepted and generated from the test's thread. Each
-    // Fact reaches the other entries through their own sites, so it isolates its site; dev overflowed at about the depth its comment
-    // names (Release; PLAN G444's triage).
+    // nested deeper than a 1.5 MB stack holds, within U2's syntax depth 1,024, is accepted and generated from the test's thread. By
+    // PLAN G444's triage, each Fact's depth exceeds what its own site's walk held on 1.5 MB (about the depth its comment names,
+    // Release), so it needs its own site; without any site each overflowed (U1-b's fail-first runs; in a Debug host the CheckBound and
+    // BuildMir Facts overflow first in the parser).
     [Fact]
     public void AddSourceParsesOnACompilerThread() // `if` 300; the parser overflowed from about 200.
         => AcceptsAndGenerates(Source(NestedIfs(300)));
