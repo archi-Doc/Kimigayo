@@ -226,8 +226,7 @@ public sealed partial class Binding
                 this.SelectTypeCandidate(QualifiedTypeMember(members.Types.GetValueOrDefault(rightName)), scope, syntax, core, arity) is { } target)
             {
                 var right = member.Right;
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
+                PublishQualifier(member.Left, qualifier);
                 right.BoundSymbol = target;
                 right.BindingState = BindingState.Resolved;
                 return target;
@@ -281,8 +280,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            member.Left.BoundSymbol = qualifier;
-            member.Left.BindingState = BindingState.Resolved;
+            PublishQualifier(member.Left, qualifier);
             member.Right.BoundSymbol = target;
             member.Right.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
             member.BoundSymbol = target;
@@ -613,7 +611,7 @@ public sealed partial class Binding
             return this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType);
         }
 
-        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
+        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto)
         {
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }

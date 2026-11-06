@@ -171,9 +171,13 @@ public sealed partial class Binding
                     return null;
                 }
             }
-            else if (qualifier.Declaration is GroupKoto { IsRoot: false } &&
-                this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } groupType)
+            else if (qualifier.Declaration is GroupKoto { IsRoot: false })
             {
+                if (this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is not { } groupType)
+                {
+                    return null;
+                }
+
                 if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
                 {
                     this.Fail(member.Left, BindingFailure.InvalidOrigin);
@@ -260,8 +264,7 @@ public sealed partial class Binding
             this.memberSelections[member] = typeMember is not null ? typeSelection : valueSelection;
             if (typeMember is not null)
             {
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
+                PublishQualifier(member.Left, qualifier!);
             }
 
             member.BoundSymbol = selected;

@@ -115,6 +115,29 @@ public class ContainerNestingTest
         Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
+    // SPEC 23.1.2, 9.1, 9.7, 9.7.1, 6.1 (PLAN G481 (1), (3)): a qualifier's own failure is reported at the qualifier whatever form reads
+    // it, and stays failed: a struct qualifier's wrong arity or omitted outer arguments (a call, a Type position, a `::` path), and a
+    // group qualifier's written arguments, since a group has no own parameters. The consumer rests on it. The valid twins bind.
+    [Theory]
+    [InlineData(false, "func f()\n    let b = T<i32, bool>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData(false, "func f()\n    let b = T.G.Box.init()\n", "InvalidTypeFormation_Kd T")]
+    [InlineData(false, "func f(b: T<i32, bool>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData(false, "func f(b: ::T<i32, bool>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData(false, "func f()\n    let b = T<i32>.G.Box.init()\n", "")]
+    [InlineData(true, "func f()\n    let b = T<i32>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f(b: T<i32>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f(b: ::T<i32>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f() -> i32 => T<i32>.value\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f() -> i32 => T<i32>.one()\n", "InvalidTypeFormation_Kd T<i32>")]
+    [InlineData(true, "func f()\n    let b = T.G.Box.init()\n", "")]
+    public void AQualifierReportsItsOwnFailure(bool group, string use, string records)
+    {
+        var declaration = group ? "group T\n    public let value: i32 = 1\n    public func one() -> i32 => 1\n" : "struct T<U>\n";
+        var c = CompilationTestHelper.Parse(declaration + "    public group G\n        public struct Box\n            public init() => ()\n" + use);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
     // SPEC 9.4.1 (PLAN G250 (4)): a value, a Function Item or a Case selected through an inaccessible Container reports the access at
     // that Container, as a call through it does, and its struct qualifier is bound as its Type.
     [Theory]
