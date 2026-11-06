@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -10,7 +11,17 @@ public sealed partial class Binding
     private Dictionary<Koto, ArithmeticSelectionFailure>? arithmeticSelectionFailures;
     private Dictionary<Koto, ArithmeticDirectionFailure>? arithmeticDirectionFailures;
 
-    private readonly record struct ArithmeticSelectionFailure(BoundArithmetic Plan, BoundType Self, BoundType? Counterpart, KimiDeclarationId Id, string Condition);
+    // SPEC 13.3.4: why the fixed provider route selects no unique requirement, in check order; the adapter explains each (DECISIONS
+    // BU-111).
+    private enum ArithmeticSelectionCause : byte
+    {
+        NonNumericLeft,
+        Unproven,
+        NoFit,
+        Ambiguous,
+    }
+
+    private readonly record struct ArithmeticSelectionFailure(BoundArithmetic Plan, BoundType Self, BoundType? Counterpart, KimiDeclarationId Id, ArithmeticSelectionCause Cause);
 
     private readonly record struct ArithmeticDirectionFailure(BoundType Left, BoundType Right, KimiDeclarationId Id, BindingSymbol Ordinary, BindingSymbol Reverse, Koto OrdinaryUse, Koto ReverseUse);
 
@@ -44,6 +55,20 @@ public sealed partial class Binding
             => ReferenceEquals(node.BoundSymbol, contract) ? node
             : node is BinaryKoto { Akind: KotoKind.And } conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
+    }
+
+    // SPEC 13.3.3: an explicitly declared arithmetic conformance whose Self or counterpart is not eligible, at the conformance; the
+    // Contract declaration is related.
+    private static void ReportArithmeticConformance(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, ArithmeticConformanceFailure failure)
+    {
+        var note = failure.Cause switch
+        {
+            ArithmeticConformanceCause.NotUserProvider => "Self must be an ordinary outer-owner struct or enum, not a built-in or compiler-closed Type",
+            ArithmeticConformanceCause.LhsNotNumeric => "Every binding must give Lhs a built-in numeric Type",
+            ArithmeticConformanceCause.RhsNotOwner => "Every binding must give Rhs outer owner Semantics, excluding string",
+            _ => throw new UnreachableException(),
+        };
+        use.Report(requirement, code, DiagnosticTypeName(failure.Type), failure.Contract.Name, note: note, evidence: [failure.Cause], related: [("contract", failure.Contract.Declaration, "arithmetic Contract declaration")]);
     }
 
     private bool ValidateArithmeticDirections(BindingScope scope, ConstraintEnvironment environment)
@@ -92,6 +117,14 @@ public sealed partial class Binding
 
         var counterpartText = failure.Counterpart is { } counterpart ? DiagnosticTypeName(counterpart)
             : use is UnaryKoto ? "none (unary operation)" : "not independently typed";
-        use.Report(requirement, DiagnosticCode.ArithmeticSelection_Kd, ArithmeticOperatorText(ArithmeticContracts.Operator(failure.Id)), this.Library.GetSymbol(failure.Id)!.Name, evidence: [DiagnosticTypeName(failure.Self), counterpartText, failure.Condition], related: related);
+        var note = failure.Cause switch
+        {
+            ArithmeticSelectionCause.NonNumericLeft => "A right provider requires a built-in numeric left operand",
+            ArithmeticSelectionCause.Unproven => "A structurally fitting conditional conformance remains unproven",
+            ArithmeticSelectionCause.NoFit => "No proven conformance fits the counterpart structure",
+            ArithmeticSelectionCause.Ambiguous => "Multiple proven conformances fit the counterpart structure",
+            _ => throw new UnreachableException(),
+        };
+        use.Report(requirement, DiagnosticCode.ArithmeticSelection_Kd, ArithmeticOperatorText(ArithmeticContracts.Operator(failure.Id)), this.Library.GetSymbol(failure.Id)!.Name, note: note, evidence: [DiagnosticTypeName(failure.Self), counterpartText, failure.Cause], related: related);
     }
 }

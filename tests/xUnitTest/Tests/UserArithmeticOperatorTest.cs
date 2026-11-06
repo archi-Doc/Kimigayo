@@ -250,8 +250,10 @@ public class UserArithmeticOperatorTest
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ArithmeticSelection_Kd), error.Code);
         Assert.Equal("2.0 * value", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        Assert.Equal(new[] { "operator", "contract", "provider", "counterpart", "condition" }, error.Reason!.Select(static x => x.Name));
-        Assert.Equal("Multiple proven conformances fit the counterpart structure; provider: Value; counterpart: not independently typed", error.Label);
+        Assert.Equal(new[] { "operator", "contract", "provider", "counterpart", "cause" }, error.Reason!.Select(static x => x.Name));
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "Ambiguous"), error.Reason![4]);
+        Assert.Equal("provider: Value; counterpart: not independently typed", error.Label);
+        Assert.Equal("Multiple proven conformances fit the counterpart structure", error.Note);
         Assert.Equal(2, error.Related!.Length);
         Assert.All(error.Related!, static x => Assert.Equal("conformance", x.Role));
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -295,8 +297,9 @@ public class UserArithmeticOperatorTest
         const string Program = "struct View {source}\n    let value: ref/i32 during source\nfunc select<L>(left: ref/L, right: ref/(View during a), marker: ref/i32 during b) -> i32\n    L is Addable<View during a> and Addable<View during b>\n    return left + right\n()";
         var result = DiagnosticCorpus.Check(Program);
         var error = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ArithmeticSelection_Kd));
-        Assert.Equal("Multiple proven conformances fit the counterpart structure", error.Reason![4].Value);
-        Assert.Contains("provider: L; counterpart: View", error.Label, StringComparison.Ordinal);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "Ambiguous"), error.Reason![4]);
+        Assert.StartsWith("provider: L; counterpart: View", error.Label, StringComparison.Ordinal);
+        Assert.Equal("Multiple proven conformances fit the counterpart structure", error.Note);
         Assert.Equal(2, error.Related!.Length);
     }
 
@@ -306,8 +309,29 @@ public class UserArithmeticOperatorTest
         const string Program = "struct Box<T>\n    Self is Addable<i32>\n    Self is Addable<i64> when T is Copy\n    associate Addable<i32>.Output is i32\n    associate Addable<i64>.Output is i64\n    public func added(self: ref/Self, right: ref/i32) -> i32 => right\n    public func added(self: ref/Self, right: ref/i64) -> i64 => right\nfunc use<T>(value: ref/Box<T>) -> i32 => value + 1\n()";
         var result = DiagnosticCorpus.Check(Program);
         var error = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ArithmeticSelection_Kd));
-        Assert.Equal("A structurally fitting conditional conformance remains unproven; provider: Box<T>; counterpart: not independently typed", error.Label);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, "Unproven"), error.Reason![4]);
+        Assert.Equal("provider: Box<T>; counterpart: not independently typed", error.Label);
+        Assert.Equal("A structurally fitting conditional conformance remains unproven", error.Note);
         Assert.Equal(2, error.Related!.Length);
+    }
+
+    // SPEC 13.3.4: a right provider under a non-numeric left operand, and no fitting conformance on the ordinary route (a user
+    // provider's candidates, related) or without one (a Type parameter); each cause is explained by the Note alone (DECISIONS BU-111).
+    [Theory]
+    [InlineData(Declarations + "\nlet value = Value.init()\nlet result = true + value", "LeftAddable", "NonNumericLeft", "A right provider requires a built-in numeric left operand", "provider: Value; counterpart: bool", 0)]
+    [InlineData(Declarations + "\nlet value = Value.init()\nlet result = value + true", "Addable", "NoFit", "No proven conformance fits the counterpart structure", "provider: Value; counterpart: bool", 1)]
+    [InlineData("func add<T>(a: T, b: T) -> T => a + b\npublic func main() => ()", "Addable", "NoFit", "No proven conformance fits the counterpart structure", "provider: T; counterpart: T", 0)]
+    public void ASelectionFailureNamesItsCause(string source, string contract, string cause, string note, string label, int related)
+    {
+        var result = DiagnosticCorpus.Check(source);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ArithmeticSelection_Kd), error.Code);
+        Assert.Equal(new[] { "operator", "contract", "provider", "counterpart", "cause" }, error.Reason!.Select(static x => x.Name));
+        Assert.Equal(contract, error.Reason![1].Value);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), error.Reason[4]);
+        Assert.Equal(label, error.Label);
+        Assert.Equal(note, error.Note);
+        Assert.Equal(related, error.Related?.Length ?? 0);
     }
 
     [Theory]

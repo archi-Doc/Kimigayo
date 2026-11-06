@@ -344,7 +344,7 @@ public sealed partial class Binding
             ref this.arithmeticSelectionFailures,
             binary,
             BindingFailure.ArithmeticSelection,
-            new(rejected, left, right, ArithmeticContract(operation), "No proven conformance fits the counterpart structure"));
+            new(rejected, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit));
     }
 
     // SPEC 13.4, 10.2: a string operand behind several reference layers is read as one shared reference to the string;

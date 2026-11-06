@@ -2,13 +2,13 @@
 
 // Origin failure explanations (SPEC 5.7, 10.6, 15.2.3, 15.3.2, 15.4.3, 23.1): the parts of an Origin failure's record beyond the
 // typed facts its check records.
-// - Responsibility: the records of a per-call slot (ReportPerCallSlot), an undeclared storage Origin name
-//   (ReportUndeclaredStorageOrigin over Binding.Storage's StorageType, TypeNameSpan), an absent slot (RecordAbsentSlot,
-//   ReportAbsentSlot) and an invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote); an Origin relation
-//   record's end displays (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end (BorrowSource,
-//   LocalBorrow), which the records of Binding.Diagnostics.cs show and relate.
+// - Responsibility: the records of a per-call slot (ReportPerCallSlot), a per-call Origin (ReportPerCallOrigin), an undeclared
+//   storage Origin name (ReportUndeclaredStorageOrigin over Binding.Storage's StorageType, TypeNameSpan), an absent slot
+//   (RecordAbsentSlot, ReportAbsentSlot) and an invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote);
+//   an Origin relation record's end displays (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end
+//   (BorrowSource, LocalBorrow), which the records of Binding.Diagnostics.cs show and relate.
 // - Inputs: the failing node and the facts its check recorded (absentSlotProjections, invalidStaticOriginSlots, phantomRawOrigins,
-//   PerCallSlotFact), the result contexts, the bound syntax.
+//   PerCallSlotFact, PerCallOriginFact), the result contexts, the bound syntax.
 // - Outputs: the records with their Notes, evidence and related locations; the Borrow node.
 // - Invariants: a fact is recorded where its check fails (RecordAbsentSlot); everything else runs only while a failure's record is
 //   formed.
@@ -103,6 +103,14 @@ public sealed partial class Binding
         }
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // SPEC 15.3.6, 10.8: a selected call whose slot only the argument's own per-call Origin would satisfy, at the call. The Reason names
+    // the argument and the slot, and the argument is related.
+    private static void ReportPerCallOrigin(Koto call, PerCallOriginFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var slot = fact.Slot < 0 ? "the Type argument" : fact.Selected.GenericArguments[fact.Slot].Identifier;
+        call.Report(requirement, code, evidence: [$"only a per-call Origin of {fact.Argument} would satisfy {slot}"], related: [("argument", fact.Argument, null)]);
     }
 
     // The first Borrow in a value whose Origin supplies `supplier`, which the record names and relates (BorrowSource).

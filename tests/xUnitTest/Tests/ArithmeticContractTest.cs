@@ -43,6 +43,9 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         require value.value == 40 else => $abort("shared")
         """;
 
+    private const string LhsNote = "Every binding must give Lhs a built-in numeric Type";
+    private const string RhsNote = "Every binding must give Rhs outer owner Semantics, excluding string";
+
     [Fact]
     public void RecognizedDeclarationsHaveOneOutputAndSharedRequirement()
     {
@@ -62,14 +65,17 @@ public class ArithmeticContractTest(ITestOutputHelper output)
     public void GenericCallsPreserveOrdinaryLeftAndUnaryWitnesses()
         => ScalarEmissionTest.EmitFixture("ArithmeticContractExplicitCalls", Source, string.Empty);
 
+    // SPEC 13.3.3: the eligibility condition is a closed cause, explained by the Note alone (DECISIONS BU-111, amended by G478). No
+    // source reaches NotUserProvider: every struct or enum Self has outer owner Semantics, and the library's Wrapping and Loan declare no
+    // arithmetic conformance.
     [Theory]
-    [InlineData("Addable<ref/i32 during a>", "ref", "Rhs")]
-    [InlineData("Addable<raw/i32>", "raw/i32", "Rhs")]
-    [InlineData("Addable<string>", "string", "Rhs")]
-    [InlineData("LeftAddable<bool>", "bool", "Lhs")]
-    [InlineData("LeftAddable<char>", "char", "Lhs")]
-    [InlineData("LeftAddable<()>", "()", "Lhs")]
-    public void IneligibleCounterpartsAreLanguageErrorsAtTheConformance(string contract, string type, string side)
+    [InlineData("Addable<ref/i32 during a>", "ref", "RhsNotOwner", RhsNote)]
+    [InlineData("Addable<raw/i32>", "raw/i32", "RhsNotOwner", RhsNote)]
+    [InlineData("Addable<string>", "string", "RhsNotOwner", RhsNote)]
+    [InlineData("LeftAddable<bool>", "bool", "LhsNotNumeric", LhsNote)]
+    [InlineData("LeftAddable<char>", "char", "LhsNotNumeric", LhsNote)]
+    [InlineData("LeftAddable<()>", "()", "LhsNotNumeric", LhsNote)]
+    public void IneligibleCounterpartsAreLanguageErrorsAtTheConformance(string contract, string type, string cause, string note)
     {
         var source = "struct Bad {a}\n    Self is " + contract + "\n    associate Output is i32\n()";
         var result = DiagnosticCorpus.Check(source);
@@ -78,10 +84,10 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         Assert.False(result.Accepted);
         Assert.Equal(DiagnosticCategory.Language, error.Category);
         Assert.Contains(type, error.Message, StringComparison.Ordinal);
-        Assert.Equal(new[] { "type", "contract", "condition" }, error.Reason!.Select(static x => x.Name));
-        Assert.Contains(side, error.Reason![2].Value, StringComparison.Ordinal);
-        Assert.False(error.Reason[2].Elided);
-        Assert.Equal(error.Reason[2].Value, error.Label);
+        Assert.Equal(new[] { "type", "contract", "cause" }, error.Reason!.Select(static x => x.Name));
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), error.Reason![2]);
+        Assert.Null(error.Label);
+        Assert.Equal(note, error.Note);
         Assert.Equal("Self is " + contract, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal("contract", Assert.Single(error.Related!).Role);
         Assert.DoesNotContain(result.Diagnostics, static x => x.Category == DiagnosticCategory.Unsupported);
