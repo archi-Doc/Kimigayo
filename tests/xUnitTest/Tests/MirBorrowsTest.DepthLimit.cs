@@ -138,20 +138,25 @@ public sealed partial class MirBorrowsTest
 
     // IMPL 21.3.2, SPEC 23.1.1 (R4-M153's rule W read through R4-M154's ways, `MirBorrows.Changes`): W leaves out the step past a holder
     // whose guard is Deep, and the call records the depth limit exactly where that step would change what W writes. It would where it
-    // reaches a holder W reaches only at its first step (first: the argument names g and the deep h, and h holds g.1@ref), one W reaches
-    // past a holder by another Place's Type (otherPlace: t holds r.0@uniq and the deep d, and d holds r.1@ref, of Type i32), or E where W
+    // reaches a holder W reaches only at its first step (first: the argument names g and the deep h, and h holds g.1@uniq), one W reaches
+    // past a holder by another Place's Type (otherPlace: t holds r.0@uniq and the deep d, and d holds r.1@uniq, of Type i32), or E where W
     // does not reach it (escaped: d holds a parameter). A step that changes nothing decides nothing: each holder it reaches is reached past
     // at the same Place Type (samePlace: r.1 of Type ref/i32 as r.0), or E is reached by either way, past t (escapedReached: t holds a
-    // parameter too) or at the first step (escapedFirst: the argument holds it). The write after the call conflicts where a holder the
-    // store reached is read after it (Bad), with the record beside it; at depth 10 no guard is Deep. The rows read the call's and the
-    // write's records (the holders' own drop-tier and borrow records are other rules').
+    // parameter too) or at the first step (escapedFirst: the argument holds it). A shared Loan names no holder the step writes (SPEC 15.6.4
+    // item 1, DECISIONS R4-M177): first and otherPlace holding g.1@ref and r.1@ref (Ref) record no limit. The write after the call conflicts
+    // where a holder the store reached is read after it (Bad), with the record beside it; at depth 10 no guard is Deep. The rows read the
+    // call's and the write's records (the holders' own drop-tier and borrow records are other rules').
     [Theory]
     [InlineData("first", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd")]
     [InlineData("firstBad", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("first", 10, "")]
+    [InlineData("firstRef", 40, "")]
+    [InlineData("firstRefBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("otherPlace", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd")]
     [InlineData("otherPlaceBad", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("otherPlace", 10, "")]
+    [InlineData("otherPlaceRef", 40, "")]
+    [InlineData("otherPlaceRefBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("samePlace", 40, "")]
     [InlineData("samePlaceBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("samePlace", 10, "")]
@@ -162,13 +167,15 @@ public sealed partial class MirBorrowsTest
     public void ADeepHoldersStepRecordsTheLimitWhereItWouldChangeWhatWWrites(string form, int depth, string expected)
     {
         var bad = form.EndsWith("Bad", StringComparison.Ordinal);
-        var source = (bad ? form[..^3] : form) switch
+        var name = bad ? form[..^3] : form;
+        var loan = name.EndsWith("Ref", StringComparison.Ordinal) ? "ref" : "uniq"; // The deep holder's Loan in first and otherPlace.
+        var source = (loan == "ref" ? name[..^3] : name) switch
         {
             "first" => "func st(t: (uniq/(ref/i32 during a) during b, uniq/(ref/i32 during a) during e), v: ref/i32 during a) => ()\n" +
                 $"func f() -> ()\n    var value = 42\n    var x = 1\n    let rx = x@ref\n    var g = (rx, 5)\n" +
-                $"    var h = (rx, g.1@ref, {Nested("0", depth)})\n    st((g.0@uniq, h.0@uniq), value@ref)\n" + Tail("g"),
-            "otherPlace" => Placed("i32", "5"),
-            "samePlace" => Placed("ref/i32 during a", "y@ref"),
+                $"    var h = (rx, g.1@{loan}, {Nested("0", depth)})\n    st((g.0@uniq, h.0@uniq), value@ref)\n" + Tail("g"),
+            "otherPlace" => Placed("i32", "5", loan),
+            "samePlace" => Placed("ref/i32 during a", "y@ref", "ref"),
             "escaped" => Escaped(borrowed: true, "    var x = 1\n    var r = (x@ref, 5)\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq)\n"),
             "escapedReached" => Escaped(borrowed: true, "    var t = (q, d@uniq)\n    st(t@uniq)\n"),
             "escapedFirst" => Escaped(borrowed: false, "    st((q, d@uniq))\n"),
@@ -182,10 +189,10 @@ public sealed partial class MirBorrowsTest
 
         string Tail(string read) => bad ? $"    value = 99\n    inspect({read}@ref)\n" : $"    inspect({read}@ref)\n    value = 99\n";
 
-        string Placed(string slot, string held)
-            => $"func st(t: uniq/((uniq/(ref/i32 during a) during b, uniq/((ref/({slot}) during g, {NestedType(depth)})) during c)) during e, " +
+        string Placed(string slot, string held, string mode)
+            => $"func st(t: uniq/((uniq/(ref/i32 during a) during b, uniq/(({mode}/({slot}) during g, {NestedType(depth)})) during c)) during e, " +
                 $"v: ref/i32 during a) => ()\nfunc f() -> ()\n    var value = 42\n    var x = 1\n    var y = 2\n    var r = (x@ref, {held})\n" +
-                $"    var d = (r.1@ref, {Nested("0", depth)})\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq, value@ref)\n" + Tail("r");
+                $"    var d = (r.1@{mode}, {Nested("0", depth)})\n    var t = (r.0@uniq, d@uniq)\n    st(t@uniq, value@ref)\n" + Tail("r");
 
         // A store through t (borrowed: an exclusive reference to the Tuple, else the Tuple of exclusive references itself).
         string Escaped(bool borrowed, string body)

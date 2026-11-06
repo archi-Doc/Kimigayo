@@ -1716,7 +1716,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptance). The root flags only select the accesses checked.
   - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
     so R4 asks that H3, the first publisher, does it, and hands it to H0 through AR-4 (the step-2 plan's X-3 list).
-- **R4-M73** (2026-10-19; owner, PLAN G148, R4-M76; P13's interim by the owner, below; A3 §12 E16) A Call's store row reaches every
+- **R4-M73** (2026-10-19; superseded in part by R4-M177; owner, PLAN G148, R4-M76; P13's interim by the owner, below; A3 §12 E16) A Call's store row reaches every
   holder its
   argument reaches: ret(i, κ) joins every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no
   exclusion. It supersedes R4-M63's store target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a
@@ -5582,6 +5582,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
     misname a defer's record, and a rename adds no vocabulary entry, so it needs no owner approval; the owner is told at landing.
   - Rejected: one chain followed by a selector (it would join different continuations); `TargetBody` holding a block body's temp
     itself (a second copy of Operand's guards, Value's hold and Result's input wrapper).
+- **R4-M177 Rule W writes no holder that only a shared Loan names, at every step (PLAN G474)** (2026-11-06; R4, the planning
+  session, D8's option (b); class Major) SPEC 15.6.4 item 1, 5.2.1 condition 3, 5.7.
+  - Rule (`MirBorrows.Reach`): a call's store writes the holders that direct Loans not shared and addresses name, never one that only
+    a shared Loan names, at every step of W: the first (`Referents`, its own loop: E where the set carries Φ_E or no direct Loan at
+    all, a shared one counting, so a set of shared Loans alone writes nothing), past a holder whose guard is Through as past a Named
+    one (`Write`; Through keeps Φ_E, Named Φ_W), and the Deep step's comparison (`Changes`). `Refs` (refs(S)) is unchanged for its
+    other readers. No representation, vocabulary or SPEC change; two-phase Loans and addresses are unaffected.
+  - Supersedes in part R4-M73 and A3 E16 as R4-M147 and R4-M154 read them (W's first, past and Deep steps named holders by direct
+    Loans in any mode), and extends R4-M170's named-step filter to Through and to the first and Deep steps. The reason that no longer
+    holds: the guard's Through covering every Loan of σ(h). The owner-approved SPEC revision of R4-M170 (2026-11-04, 「SPEC 改訂を行います」)
+    states in 15.6.4 item 1 that a call writes "never a holder that only a shared Loan names", and 5.2.1 condition 3 gives no write
+    authority through a shared Loan; R4-M73's "with no exclusion" (2026-10-19) predates that text.
+  - Out of scope: reads past a shared layer (G419's read-only Loan variant).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

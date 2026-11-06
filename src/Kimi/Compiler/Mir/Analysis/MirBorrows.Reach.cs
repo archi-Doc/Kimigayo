@@ -9,7 +9,8 @@ namespace Kimi.Compiler.Mir;
 // (W, whose first step alone is Referents), and the guard's per-local MirWrites (MirTypes.HoldsLoans); its chain (SPEC 15.6.4's "what any
 // chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it, each holder read once per closure.
 // A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
-// reached through a shared layer is read-only; DECISIONS R4-M170).
+// reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
+// (SPEC 15.6.4 item 1, 5.2.1 condition 3; DECISIONS R4-M177).
 // On the state a location's plan reads, a set's content and chain are each read once (E13 (5)), however many operands and retention rows
 // read them; whether a local is a holder, and its MirWrites, are walked once per distinct case Type and program version (the holding memo,
 // DECISIONS R4-M140). Must not form a value or a Loan (MirBorrows.Values).
@@ -265,44 +266,52 @@ internal sealed partial class MirBorrows
         return known.Holds;
     }
 
-    // W's first step (A3 E14): refs(S) into the targets, each holder once, at a new W walk; their count. A referent store's whole reach
-    // (MirBorrows.Calls).
-    private int Referents(int set)
+    // W's first step (A3 E14) into the targets, each holder once, at a new W walk: the holders S's direct Loans not shared and addresses
+    // name, and E where S carries Φ_E or no direct Loan at all, a shared one counting (SPEC 15.6.4 item 1: never a holder that only a
+    // shared Loan names; DECISIONS R4-M177). A referent store's whole reach (MirBorrows.Calls).
+    private void Referents(int set)
     {
-        this.Refs(set);
         MirDataflow.Grow(ref this.writing, this.holderCount);
         MirDataflow.Grow(ref this.writingKind, this.holderCount);
         MirDataflow.Grow(ref this.writingVia, this.holderCount);
         MirDataflow.Grow(ref this.writingPlace, this.holderCount);
         this.walks++;
-        var count = 0;
-        for (var i = 0; i < this.targets.Count; i++)
+        this.targets.Clear();
+        var (direct, escaped) = (false, false);
+        this.Work += this.sets.Count(set);
+        foreach (var element in this.sets.Elements(set))
         {
-            if (this.targets[i] is var target && this.writing[target] != this.walks)
+            escaped |= element == Escaped;
+            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
             {
-                (this.writing[target], this.writingKind[target], this.writingVia[target]) = (this.walks, MirWrites.None, ViaRoot);
-                this.writingPlace[target] = default;
-                this.targets[count++] = target;
+                direct = true;
+                if (loan is { Named: >= 0, Mode: not MirRefKind.Shared })
+                {
+                    this.Written(loan.Named, MirWrites.None, ViaRoot, null);
+                }
             }
         }
 
-        this.targets.RemoveRange(count, this.targets.Count - count);
-        return count;
+        if (escaped || !direct)
+        {
+            this.Written(Escaped, MirWrites.None, ViaRoot, null);
+        }
     }
 
-    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147, R4-M170) into the targets, the holders a call's store through S writes: past
-    // refs(S), which Referents put there first, from each holder h ≠ E of W whose Type passes the guard (MirWrites.Through), the holder each
-    // direct Loan or address of σ(h) names, in any mode, and E where σ(h) carries Φ_E; from one whose guard is Named (an abstract part,
-    // SPEC 15.6.4's provenance list), the holder each direct Loan not shared or address names and E where σ(h) carries Φ_W (the named
-    // step, its Shared set read at the lower level, which Through's covers). The two facts that leave the store undecided, which the call's
-    // location records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves undecided (MirWrites.Limit, R4-M147),
-    // and whether, at W's fixed point, the step from a holder whose guard is Deep would change what W writes (Changes, R4-M153; that step
-    // is left out, and a Deep holder whose step changes nothing decides nothing). Every store path (a Call's rows, its untied stores
-    // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent store,
-    // which takes refs(S) alone, its row's destruction composed at the call (Referents; MirBorrows.Destructions; DECISIONS R4-M150).
+    // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147, R4-M170, R4-M177) into the targets, the holders a call's store through S writes,
+    // never one that only a shared Loan names (SPEC 15.6.4 item 1): past its first step, which Referents put there first, from each
+    // holder h ≠ E of W whose Type passes the guard (MirWrites.Through), the holder each direct Loan not shared or address of σ(h) names,
+    // and E where σ(h) carries Φ_E; from one whose guard is Named (an abstract part, SPEC 15.6.4's provenance list), those holders and E
+    // where σ(h) carries Φ_W (the named step, its Shared set read at the lower level, which Through's covers). The two facts that leave
+    // the store undecided, which the call's location records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves
+    // undecided (MirWrites.Limit, R4-M147), and whether, at W's fixed point, the step from a holder whose guard is Deep would change what
+    // W writes (Changes, R4-M153; that step is left out, and a Deep holder whose step changes nothing decides nothing). Every store path (a
+    // Call's rows, its untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6
+    // to 4.9 operation's referent store, which takes W's first step alone, its row's destruction composed at the call (Referents;
+    // MirBorrows.Destructions; DECISIONS R4-M150).
     private (bool Limit, bool Deep) Writes(ulong[] state, int set)
     {
-        this.Write(set, ViaRoot, MirWrites.Through); // The kinds of refs(S)'s holders, which Referents put in the targets.
+        this.Write(set, ViaRoot, MirWrites.Through); // The kinds of the first step's holders, which Referents put in the targets.
         var limited = false;
         this.Step(); // Written is idempotent, so a Shared id stepped from again writes nothing more.
         for (var i = 0; i < this.targets.Count; i++)
@@ -332,14 +341,15 @@ internal sealed partial class MirBorrows
 
     // Whether W's step from a set past a holder whose guard is Deep, which W leaves out (Writes), would change what the store writes, by
     // Written's ways (R4-M153, R4-M154): reach a holder W does not, one W reaches only at its first step, or one past a holder by another
-    // Place's Type; E, which takes Reached.All by either way, only where W does not reach it.
+    // Place's Type; E, which takes Reached.All by either way, only where W does not reach it. A shared Loan names no holder the step
+    // writes (R4-M177).
     private bool Changes(int set)
     {
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
-            if (element == Escaped ? this.writing[Escaped] != this.walks :
-                element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 } loan && this.Changes(loan))
+            if (element == Escaped ? this.writing[Escaped] != this.walks : element >= this.loanBase &&
+                this.loans[element - this.loanBase] is { Direct: true, Named: >= 0, Mode: not MirRefKind.Shared } loan && this.Changes(loan))
             {
                 return true;
             }
@@ -354,10 +364,9 @@ internal sealed partial class MirBorrows
             (this.writingPlace[loan.Named] is (var known, false) && !ReferenceEquals(known, this.PlaceType(loan)))));
 
     // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast) by the holder's guard (`past`, Through at the
-    // first step): E where it carries Φ_E, and the holder each direct Loan or address names; past Named, E where it carries Φ_W, and the
-    // holder each direct Loan not shared or address names. A value that may refer to storage the body does not own carries Φ_E and Φ_W
-    // where it is formed (an untied result or store, a raw pointer formed untracked, an integer's pointer, a parameter and E's own content
-    // at entry), so a set naming nothing writes nothing.
+    // first step): the holder each direct Loan not shared or address names (R4-M177), and E where it carries Φ_E, past Named Φ_W. A value
+    // that may refer to storage the body does not own carries Φ_E and Φ_W where it is formed (an untied result or store, a raw pointer
+    // formed untracked, an integer's pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
     private void Write(int set, byte via, MirWrites past)
     {
         var named = past == MirWrites.Named;
@@ -368,8 +377,8 @@ internal sealed partial class MirBorrows
             {
                 this.Written(Escaped, MirWrites.None, via, null);
             }
-            else if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 } loan &&
-                (!named || loan.Mode != MirRefKind.Shared))
+            else if (element >= this.loanBase &&
+                this.loans[element - this.loanBase] is { Direct: true, Named: >= 0, Mode: not MirRefKind.Shared } loan)
             {
                 var place = via == ViaPast && loan.Named != Escaped ? this.PlaceType(loan) : null;
                 this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root], via, place); // A static's names E.
