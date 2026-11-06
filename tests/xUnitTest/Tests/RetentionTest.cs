@@ -75,6 +75,9 @@ public sealed partial class RetentionTest
         "    public func put(self: uniq/Self, value: ref/T during source) => self.data = value\n" +
         "    public func item(self: uniq/Self) -> ref/T during self.source => self.data\n";
 
+    // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
+    private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
+
     // A slot kept by an exclusive Loan Field (design review A-B3: a raw parameter during `v.source` may store what the Dictionary admits).
     private const string KeptView = "struct View<K, V> {source}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during source>\n" +
         "    public init(d: uniq/Dictionary<K, V> during source) => self.loan = Loan.init(d)\n";
@@ -627,6 +630,8 @@ public sealed partial class RetentionTest
     // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3). An Option or a Holder holding a `uniq` borrow by
     // value stores what a read through it carries into that borrow's referent (`1 Content store 1`, DECISIONS BU-49), and only that
     // into the storage the raw layer addresses, whose `ref/i32` members cannot hold its value (`1 Content` at store 2; DECISIONS R4-M154).
+    // A layer a Type argument supplies (`Wrap<raw/… during b>`) is judged by the same signature (DECISIONS BU-108): with `b` a `ref` input
+    // the call writes nothing past it (`reached {}`), with a `uniq` one its referent.
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "result {0 Value Chain, 1 Value Chain}, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "result {0 Value Chain, 1 Value Chain}, untied")]
@@ -652,6 +657,12 @@ public sealed partial class RetentionTest
         PairAnnotationBindingTest.HolderRefUniq + "func f(r: ref/(ref/i32 during q), h: Holder<ref/(ref/i32 during q) during r> during o, " +
         "p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => ()",
         "")]
+    [InlineData(
+        Wrap + "func f(b: ref/(ref/i32 during q), w: uniq/Wrap<raw/(ref/i32 during q) during b>, v: ref/i32 during q) => ()",
+        "store 1: own {0 Value, 1 Content, 2 Content}, reached {}")]
+    [InlineData(
+        Wrap + "func f(b: uniq/(ref/i32 during q), w: uniq/Wrap<raw/(ref/i32 during q) during b>, v: ref/i32 during q) => ()",
+        "store 0: own {0 Content, 1 Content, 2 Value}, reached {}, store 1: own {0 Value, 1 Content, 2 Content}, reached {0 Content, 1 Content, 2 Value}")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 

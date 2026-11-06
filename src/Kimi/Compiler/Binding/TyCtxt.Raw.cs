@@ -68,10 +68,11 @@ internal sealed partial class TyCtxt
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,
     // then the inline positions (a Tuple's component, a fixed array's element). Shared when the declaration states the layer with a slot
-    // whose Loan requirement is `ref`, else the kind of its Origin under the instance's substitution, `self` the holding value's own step;
+    // whose Loan requirement is `ref`, else the step of its Origin under the instance's substitution judged where it is bound (an input's
+    // or a signature's named Origin by that signature, DECISIONS BU-108; any other by its kind), `self` the holding value's own step;
     // A5 never reads an instance's FieldType or CaseTypes for a raw Origin (they state none) nor substitutes one itself. Cost: one read of
     // the instance's kept part (StoredParts), allocating nothing when warm. Total over what Binding accepts: an Unbound slot argument gives
-    // Unstated, an erased instance answers with its erased arguments, and a layer a Type argument supplies has the kind of the Origin it
+    // Unstated, an erased instance answers with its erased arguments, and a layer a Type argument supplies has the step of the Origin it
     // states on the instance it is read on (a pair slot's argument states none, PairBinding, so it reads Unstated; Unstated when a
     // declaration above states it, RawStated), never the cap: through AdtDef's parts, which state no raw Origin, Unstated; through
     // StoredParts, the holder's (DECISIONS BU-41). A path that ends at no raw layer is a broken contract.
