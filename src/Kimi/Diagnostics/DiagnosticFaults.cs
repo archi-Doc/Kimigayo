@@ -9,7 +9,7 @@ namespace Kimi.Diagnostics;
 internal static class DiagnosticFaults
 {
     /// <summary>The message before the fault description; the catalog template is this text followed by <c>{0}</c>.</summary>
-    internal const string MessagePrefix = "The compiler failed internally while checking: ";
+    internal const string MessagePrefix = "The compiler failed internally: ";
 
     /// <summary>Describes a fault kind in the message.</summary>
     /// <param name="fault">The fault.</param>
@@ -20,7 +20,7 @@ internal static class DiagnosticFaults
         DiagnosticFault.UnknownCode => "a diagnostic named an unknown code",
         DiagnosticFault.InvalidLocation => "a diagnostic named an invalid location",
         DiagnosticFault.InvalidArgument => "a diagnostic did not match its definition",
-        DiagnosticFault.Exception => "an exception ended the analysis",
+        DiagnosticFault.Exception => "an exception ended the compilation",
         DiagnosticFault.ConflictingProblem => "one problem was reported with different facts",
         DiagnosticFault.UndefinedOrder => "two problems have no defined order",
         DiagnosticFault.UnexplainedRejection => "a rejection has no explaining error",

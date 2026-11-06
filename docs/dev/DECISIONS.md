@@ -14027,7 +14027,7 @@ structure is recorded here by the unit that first implements it.
     note, at the project file), as `BuildTarget` renders the front end's, under one filter (`Project.Faults`). `Publish` keeps its own
     mapping off such exceptions with the local `generating` (`BuildTarget`'s `completed` precedent), cleared before the writer's
     `Dispose`, so a flush failure stays the output's; a flush failure while a generation exception unwinds replaces it and is the fault.
-    `CheckFaulted_Kd`'s fixed text stays.
+    `CheckFaulted_Kd`'s fixed text stays (amended by G344: one phase-neutral text; the check-only wording was false for generation).
   - Supersedes R5-M165's mapping of "code generation's argument, data and support exceptions" to `InternalInvariant_Kd`. The premise of
     G9b's review 1 B1 that no longer holds: that code generation throws argument, data and support exceptions. Rejected: one record for
     every non-I/O exception as `InternalInvariant_Kd` (rule 9: a thrown failure ends its result as Faulted with exactly one
