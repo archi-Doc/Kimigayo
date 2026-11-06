@@ -178,6 +178,8 @@ public sealed partial class DiagnosticOwnerTest
         var kept = DiagnosticFaults.Create(DiagnosticFault.Exception, new string('x', 1000), "App.kimiproj", owner.Finalize());
         // Whole-input records at the same source follow code order, including an appended analysis fault.
         Assert.Equal(["CheckFaulted_Kd", "ProjectPreparationFailed_Kd"], kept.Diagnostics.Select(static x => x.Code));
+        // One phase-neutral text for every phase's fault, generation included (PLAN G344, DECISIONS R5-M169).
+        Assert.Equal("The compiler failed internally: an exception ended the compilation", kept.Diagnostics[0].Message);
         Assert.Single(kept.Sources);
         Assert.All(kept.Diagnostics, static x => Assert.Equal(0, x.Source));
         Assert.True(kept.Diagnostics[0].Note!.Length <= DiagnosticLimits.NoteLength);

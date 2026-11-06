@@ -829,7 +829,7 @@
 
   + Name="CheckFaulted_Kd"
     Category="Internal"
-    Message="The compiler failed internally while checking: {0}"
+    Message="The compiler failed internally: {0}"
     Arguments="fault:Enumeration"
 
   + Name="PositionAlwaysFails_Kd"
