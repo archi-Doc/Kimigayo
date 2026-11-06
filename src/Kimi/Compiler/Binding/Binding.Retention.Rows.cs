@@ -161,7 +161,7 @@ public sealed partial class Binding
         }
 
         this.BeginStorages();
-        this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true));
+        this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true) with { Signature = this.SignatureResult });
         this.Storages(environment, links, kept);
         var resultKinds = this.retentionKinds[ResultStorage];
         var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);
@@ -171,7 +171,7 @@ public sealed partial class Binding
         {
             Array.Clear(kept);
             this.BeginStorages();
-            this.RootWalk(environment, inputs[output]);
+            this.RootWalk(environment, inputs[output], this.SignatureInput(output));
             var held = this.Hold(output, CollectionsMarshal.AsSpan(this.storageHolds), inputs, kept, (key, callee, premises), ref transfer);
             this.Storages(environment, links, kept);
             if (this.Written(output, held) is { } written)

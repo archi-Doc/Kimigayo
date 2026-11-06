@@ -48,6 +48,22 @@ public partial class TypeDagScalingTest
         Assert.Equal(form == "enum" ? "g f" : "g f, k h, copies cp", string.Join(", ", calls));
     }
 
+    // DECISIONS BU-113: a generic callee's declared input is the chain over its own Type parameter, `fg<T>(d: uniq/D1<T>, …)`, so the
+    // retention walks pair every instantiated part of D1<i32> with its declared part of D1<T>, a Tuple DAG of 2^39 leaves on each side;
+    // each (part, declared part) pair is walked once, and the contract finishes.
+    [Theory]
+    [InlineData("tuple", 40)]
+    [InlineData("raw", 40)]
+    public void ADeclaredDagIsPairedOncePerPart(string form, int size)
+    {
+        var root = form == "raw" ? "raw/i32" : "i32";
+        var c = MirBuildTest.Compile(InstanceChain(form, size) + $"func fg<T>(d: uniq/D1<T>, p: raw/i32) => ()\nfunc gg(d: uniq/D1<{root}>) => fg(d, null)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var gg = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gg");
+        var call = KotoTree.Walk(gg).OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gg.SymbolOf()));
+    }
+
     // SPEC 8.2: a projection chain over a Type parameter, `Dup<…Dup<T>.Item…>.Item`, normalizes to a Tuple DAG of T in a generic body: each
     // level's specification is rewritten in a nested query (ContractType's guard), each distinct part once (DECISIONS BU-64). `rd` reads
     // `h.x` through `ref/` as a Copy (`T is Copy`): a bare non-Copy read is SPEC 3.5's error, and a borrowed referent offers no Take (15.1.5).
