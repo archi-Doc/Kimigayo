@@ -402,26 +402,7 @@ public sealed partial class Binding
                     this.BindNode(container.ConstraintNodes[i], scope);
                 }
 
-                for (var i = 0; i < container.Members.Count; i++)
-                {
-                    this.BindNode(container.Members[i], scope);
-                }
-
-                for (var i = 0; i < container.NestedContainers.Count; i++)
-                {
-                    this.BindNode(container.NestedContainers[i], scope);
-                }
-
-                if (container.IsRoot && container.Kotonoha.GeneratedFunction is { } generated)
-                {
-                    this.BindNode(generated, scope);
-                }
-
-                if (container is StructKoto { ImplicitConstructor: { } constructor })
-                {
-                    this.BindNode(constructor, scope);
-                }
-
+                this.BindContainedDeclarations(container, scope);
                 if (LengthSlot(container) is { } slot)
                 {
                     this.AddPrerequisite(node, slot); // A slot the parser reported as misplaced explains the failure.
