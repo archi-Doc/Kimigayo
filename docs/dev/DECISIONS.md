@@ -9468,10 +9468,10 @@ resumed by R4-M86 (2026-10-20).
     Contract requirements, value calls of a Function Item or Closure, and through a Function Type, a Callable bound or an erased
     value (`SolveValueCallOrigins`' both branches; a Function Type has per-call inputs only). Not covered: a constructed Type's own
     slots (PLAN G463). As a consequence an enclosing call's input region is Fixed in a Closure's body, so a failing chain there is
-    the nested-body limit (b_enc_bad, PLAN G410: pending the owner's ruling). A Never `$tryWrite` writer's Origin arguments are
-    likewise its call's regions (`CallRegion`, read by `BindTryWrite` and `OpenUnsolvedOrigins`; SPEC 22.10.4 acquires it as
-    `uniq/Utf8Writer`, and 15.3.6 never replaces such an Origin by static). This supersedes 5881e0a62's static Origin arguments,
-    chosen before call regions existed.
+    the nested-body limit (b_enc_bad, PLAN G450; the owner, 2026-11-06: 「(i) に含めて認める」). A Never `$tryWrite` writer's
+    Origin arguments are likewise its call's regions (`CallRegion`, read by `BindTryWrite` and `OpenUnsolvedOrigins`; SPEC 22.10.4
+    acquires it as `uniq/Utf8Writer`, and 15.3.6 never replaces such an Origin by static). This supersedes 5881e0a62's static
+    Origin arguments, chosen before call regions existed.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and

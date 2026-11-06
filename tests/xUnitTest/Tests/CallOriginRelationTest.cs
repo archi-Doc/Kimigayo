@@ -433,7 +433,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     }
 
     // SPEC 7.2.3 (PLAN G410): a default is checked at its declaration and is no evidence, so an omitted one leaves its input a region of
-    // the call, and the call has no failure of its own: the declaration's record stands alone (dev added a dependent
+    // the call, and the call has no failure of its own: the declaration's record stands alone (dev added a spurious
     // UnprovenConstraint_Kd at `g(v)`; nothing independent is lost).
     [Fact]
     public void AnOmittedDefaultFailsOnlyAtItsDeclaration()

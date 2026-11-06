@@ -49,8 +49,8 @@ public partial class OriginRelationDiagnosticTest
     // the enclosing body's rows decide, so each is the located Unsupported_Kd at the chain's site; hole6_ok and hole9_ok are valid, the
     // owner's (i).
     // b_enc_bad (invalid: the Closure's `7@ref` must outlive y, SPEC 15.6.5) reaches it since PLAN G410 made y's elided input a region of
-    // `mk`'s call, after a Never argument: dev's UnsatisfiedOriginRelation_Kd at 5:43 became the limit there, pending the owner's
-    // ruling (C-51 N1's class).
+    // `mk`'s call, after a Never argument: dev's UnsatisfiedOriginRelation_Kd at 5:43 became the limit there, which the owner accepted
+    // as part of (i) (「(i) に含めて認める」, 2026-11-06; PLAN G450).
     [Theory]
     [InlineData("hole6_ok", "func mk(p: Option<ref/(ref/i32 during a) during b>, u: Option<ref/(ref/i32 during e) during a>, w: Option<ref/(ref/i32 during d) during b>, y: ref/i32 during b, z: ref/i32 during e, x: ref/i32 during (a and d), f: (ref/i32 during a, bool) -> i32) -> i32 => 0\nfunc k(c: bool, s: ref/i32 during static) -> i32\n    let short = 2\n    return mk(if c => .None else => .None, if c => .None else => .None, if c => .None else => .None, s, s, s, func [s] (v, c2) => mk(if c2 => .None else => .None, if c2 => .None else => .None, if c2 => .None else => .None, s, s, v, func [] (v2, c3) => 0))\n", "Unsupported@4:230")]
     [InlineData("hole9_ok", "func mk(p: Option<ref/(ref/i32 during a) during b>, u: Option<ref/(ref/i32 during e) during a>, w: Option<ref/(ref/i32 during d) during b>, y: ref/i32 during b, z: ref/i32 during e, x: ref/i32 during (a and d), g: (ref/i32 during b) -> i32, f: (ref/i32 during a, bool) -> i32) -> i32 => 0\nfunc k(c: bool, s: ref/i32 during static) -> i32\n    let short = 2\n    let sr = short@ref\n    return mk(if c => .None else => .None, if c => .None else => .None, if c => .None else => .None, s, s, s, func [] (t: ref/i32) => 0, func [s] (v, c2) => mk(if c2 => .None else => .None, if c2 => .None else => .None, if c2 => .None else => .None, s, s, v, func [] (t: ref/i32 during static) => 0, func [] (v2, c3) => 0))\n", "Unsupported@5:257")]
