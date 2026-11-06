@@ -93,8 +93,9 @@ public class RequireRecoveryDiagnosticTest
     // A failure body written in source falls through whether or not else was written, whatever else failed on the line, and
     // even when it is itself a recovered form: the recovery guessed its combination, not its completion. Through a form Binding
     // rejected, written syntax keeps its completion (PLAN G47): a match's arm that completes, whatever arm the match lacks (SPEC
-    // 14.8.4), and an if without else whose condition is not bool.
+    // 14.8.4) or whichever other arm failed, and an if without else whose condition is not bool.
     [Theory]
+    [InlineData("require a == 1 else\n    match a == 2\n        true => ()\n        false => k()\nfunc k(x: i32) -> Never => $abort(\"x\")", "match a == 2\n        true => ()\n        false => k()", new[] { nameof(DiagnosticCode.RequireFallthrough_Kd), nameof(DiagnosticCode.NoApplicableOverload_Kd) })]
     [InlineData("require a == 1 else\n    match a == 2\n        true => ()", "match a == 2\n        true => ()", new[] { nameof(DiagnosticCode.RequireFallthrough_Kd), nameof(DiagnosticCode.NonExhaustiveMatch_Kd) })]
     [InlineData("require a == 1 else\n    match a == 2\n        true => ()\n        false => $abort(\"x\")", "match a == 2\n        true => ()\n        false => $abort(\"x\")", new[] { nameof(DiagnosticCode.RequireFallthrough_Kd) })]
     [InlineData("require a == 1 else\n    if a => $abort(\"x\")", "if a => $abort(\"x\")", new[] { nameof(DiagnosticCode.RequireFallthrough_Kd), nameof(DiagnosticCode.TypeMismatch_Kd) })]

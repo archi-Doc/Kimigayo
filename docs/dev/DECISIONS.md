@@ -14713,6 +14713,12 @@ structure is recorded here by the unit that first implements it.
     guess rule's own first test (the same structural completion), so nested requires whose outer failure bodies cannot complete cost no
     walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay quadratic in the walk; the old check paid it
     only per falling require.
+  - Amended (G47, 2026-11-06; BU, Major, design review Revision 1 ACCEPT): a guess is what StructuralCompletion's guessed walk
+    reads and Binding did not establish, whatever the node's BindingState. It is asked only where the walk reads the node itself:
+    a block (its items; a guess only when the parser supplied it) and an evaluated node (its Never evidence; a guess when Binding
+    did not resolve it and published no Type). A composed form is judged by its parts. This narrows the domain `!= Resolved` that
+    held since 8bcc48526, so a written path through a rejected match, if or for keeps its fallthrough direct. Rejected: keying on
+    Invalid versus Unresolved (fd88f6625; one failure gets either state).
 - **R5-M187 H5's corpus difference member and generation's one gate (R6-check H5 Rec)** (2026-11-05, the H5 split plan's row Rec) Minor.
   - pair-cases.json: a row whose MIR verdicts differ from the SPEC's keeps the SPEC's verdicts in `Expected` and `Run` and states
     the MIR's per-case verdicts in a `Mir` member (`Expected` in the row's form and a `Note` naming its (e) row and the PLAN row that

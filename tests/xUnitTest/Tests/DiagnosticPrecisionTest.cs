@@ -125,13 +125,20 @@ public class DiagnosticPrecisionTest
     // derived from it (Binding.GuessedCompletion), so the failure alone is published.
     [InlineData("func f(flag: bool) -> i32\n    if flag\n        if missing => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UnresolvedBinding_Kd")]
     [InlineData("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\npublic func main() => ()", "UnresolvedBinding_Kd")]
-    // A match Binding rejected only for its coverage (SPEC 14.8.4) completes through its written arms, so a fallthrough an arm reaches
-    // is direct beside NonExhaustiveMatch_Kd, as with every arm written; with no arm completing, only the coverage error is published,
-    // in a function body and in a require failure body (PLAN G47).
+    // A form Binding rejected completes through its parts (PLAN G47): a match lacking an arm (SPEC 14.8.4) or with a failed arm, and a
+    // for over a non-iterable, reach the end through written syntax, so the fallthrough is direct beside their error, as with every
+    // arm written; with no arm completing, only the coverage error is published, in a function body and in a require failure body.
+    // A call Binding rejected without a Type has no Never evidence: its callee `(i32) -> Never` might not complete, so the fallthrough
+    // past it is derived and the call's error alone is published, also past an unvisited part (`k<i32>`).
     [InlineData("func f(b: bool) -> i32\n    match b\n        true => ()\npublic func main() => ()", "FunctionFallthrough_Kd,NonExhaustiveMatch_Kd")]
     [InlineData("func f(b: bool) -> i32\n    match b\n        true => ()\n        false => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
     [InlineData("func f(b: bool) -> i32\n    match b\n        true => return 1\npublic func main() => ()", "NonExhaustiveMatch_Kd")]
     [InlineData("func f(ok: bool, b: bool)\n    require ok else\n        match b\n            true => return\npublic func main() => ()", "NonExhaustiveMatch_Kd")]
+    [InlineData("func f(b: bool) -> i32\n    match b\n        true => ()\n        false => k()\nfunc k(x: i32) -> Never => $abort(\"x\")\npublic func main() => ()", "FunctionFallthrough_Kd,NoApplicableOverload_Kd")]
+    [InlineData("func f(b: i32) -> i32\n    for x in b => ()\npublic func main() => ()", "FunctionFallthrough_Kd,UnsatisfiedConstraint_Kd")]
+    [InlineData("func f(k: (i32) -> Never) -> i32\n    k()\npublic func main() => ()", "NoApplicableOverload_Kd")]
+    [InlineData("func f(k: (i32) -> Never) -> i32\n    k<i32>(1)\npublic func main() => ()", "NoApplicableOverload_Kd")]
+    [InlineData("func g(ok: bool, k: (i32) -> Never)\n    require ok else\n        k()\npublic func main() => ()", "NoApplicableOverload_Kd")]
     // A rejected acquisition states its overlap once; a later use of the rejected Loan meets the same holder again, while an
     // independent access to the root during that holder's Loan is still its own problem.
     [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
