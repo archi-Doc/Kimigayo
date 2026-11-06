@@ -213,19 +213,20 @@ internal sealed partial class InstanceCollector
     private int Descriptor(int item, SourceRef subject, BoundType payload)
         => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), payload, null);
 
-    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (TyCtxt.Adaptation from its source token's
-    // Type to its target, the rule MirCases.Adapt reads under the item's view) creates an object targets its payload's descriptor, as every
-    // creation does; any other operation none.
+    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (MirCases.Operation between its source
+    // token's Type, MirCases.AdaptSource, and its target, each closed in the instance, as MirCases.Adapt reads them under a view) creates
+    // an object targets its payload's descriptor, as every creation does; any other operation none.
     private int Adaptation(int item, SourceRef subject, MirBody body, in MirRvalue adapt)
     {
-        var token = body.Operands[adapt.Start + 1];
-        if (this.In(item, subject, body.Consts[token.Arg].Type) is not { } source || this.In(item, subject, adapt.Type!) is not { } target)
+        if (this.In(item, subject, MirCases.AdaptSource(body, adapt)) is not { } source ||
+            this.In(item, subject, adapt.Type!) is not { } target)
         {
             return -1;
         }
 
-        var operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
-        return operation == ConversionBinding.ObjectCreation ? this.Descriptor(item, subject, target.Components[0]) : -1;
+        return MirCases.Operation(source, target, adapt) == ConversionBinding.ObjectCreation
+            ? this.Descriptor(item, subject, target.Components[0])
+            : -1;
     }
 
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
