@@ -211,9 +211,9 @@ public sealed partial class Binding
             return;
         }
 
-        if (ClassifyPart(part) == PartKind.Typed && part.BindingState == BindingState.Unvisited)
+        // Unprepared, as a waiting Case's payload is: bound on its own; a nested call that defers under the probe is completed below.
+        if (ClassifyPart(part) == PartKind.Typed && part.BindingState == BindingState.Unvisited && this.BindIndependentArgument(part, scope) is not null)
         {
-            this.BindIndependentArgument(part, scope); // Unprepared, as a waiting Case's payload is: bound on its own.
             return;
         }
 
