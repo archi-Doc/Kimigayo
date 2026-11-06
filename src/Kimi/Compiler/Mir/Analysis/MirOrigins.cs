@@ -1,11 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A5's Origin stratum (SPEC 15.6.1, 15.6.3, 15.6.5; 2a0-D §6, D13-D20; DECISIONS R4-M94, R4-M113, R4-M114, R4-M118), per body and per
-// class of its views: the graph of the body's rows (the C1-F4 view) with its Refs' containment edges, the Refuted and Unknown chains
-// through it and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view leaves
-// unclassed; and, for the Loan stratum's rule W, each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs, R4-M132).
+// class of its views: the graph of the body's rows (the C1-F4 view) with its Refs' containment edges and the meet law's edges (SPEC
+// 15.3.6: a non-Fixed meet at a shorter end outlives the canonical meet of each choice of one bound per operand, at its in-edge's site
+// and row, at the cost of its operands' walks plus its choices, in Work and the arena; MirOrigins.Meets.cs, BU-104), the Refuted and
+// Unknown chains through it and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view
+// leaves unclassed or at a failing chain with an enclosing body's call region (the nested-body limit); and, for the Loan stratum's rule W,
+// each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs, R4-M132).
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
-//   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, an atom's part), keyed by MirDefKey.Body, its
+//   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, MeetAtom, an atom's part and whether it is an
+//   enclosing body's call region), keyed by MirDefKey.Body, its
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its layer units with rows
 //   (TyCtxt.OriginLayers), beside the program's constructor bodies; the view throws at a broken contract (DECISIONS BU-102).
 // - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd
@@ -15,7 +19,8 @@
 //   source); UnprovenOriginRelation_Kd (Ownership.UnprovenOrigin) where the oracle does not derive a chain or edge between fixed Origins,
 //   at its last edge's site with Reason (fixed source, fixed target, false), or (Longer, Shorter, true) for an Equality row failing both
 //   ways, and the fact Relation; Unsupported_Kd (Ownership.Unsupported) at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19),
-//   whatever Binding's completeness (DECISIONS R4-M113), while a Dependent node, an end a Binding failure left Unbound or an unclassified
+//   whatever Binding's completeness (DECISIONS R4-M113), and in place of either record above at a failing chain with an end the view marks
+//   an enclosing body's call region (the nested-body limit), while a Dependent node, an end a Binding failure left Unbound or an unclassified
 //   Closure's pending atom (R4-M126 §2.5 (c)), is never a source or a judged target, so only a chain through it is judged, between its
 //   ends (SPEC 23.1.2, R4-M118); OwnershipStorageLimit_Kd once at a body whose arena MirDataflow.Within refuses, through
 //   MirDataflow.StorageLimit with its arguments (G213), which the stratum then skips (D20); and, which Findings adds once per program

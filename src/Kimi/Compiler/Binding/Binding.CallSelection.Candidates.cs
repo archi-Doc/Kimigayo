@@ -504,6 +504,8 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
+            this.OpenUnsolvedOrigins(call, function, origins); // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
+
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
             this.UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
@@ -537,15 +539,6 @@ public sealed partial class Binding
             if (result is not null && !this.ProveTypeLengths(result, scope.Function))
             {
                 return CandidateApplicability.Inapplicable;
-            }
-
-            if (result is not null && (this.HasUnsubstitutedOrigin(result, function) || !defaults.IsEmpty) &&
-                this.OpenResultOnlyOrigins(call, function, origins, defaults))
-            {
-                // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
-                // ref/i32 during s` initializing an unannotated local, or one only a default names, is a local region of the call, never
-                // a pending candidate.
-                result = solution.Type(resultPattern!);
             }
 
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
@@ -657,26 +650,33 @@ public sealed partial class Binding
 
         solution.Contribute(mapping);
         this.CollectPositionPremises(ref solution);
-        if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+        try
         {
-            solution.OriginInference = this.BeginOriginInference(call, function);
-        }
-
-        if (solution.OriginInference is not { } inference)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (defaults.Contains(i) && function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
-                this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
+            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
             {
-                this.DiscoverPremiseOrigins(solution, inference, instantiated);
-                this.CollectInputPremises(pattern, instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
+                solution.OriginInference = this.BeginOriginInference(call, function);
             }
-        }
 
-        return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
+            if (solution.OriginInference is not { } inference)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (defaults.Contains(i) && function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
+                    this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
+                {
+                    this.DiscoverPremiseOrigins(solution, inference, instantiated);
+                    this.CollectInputPremises(pattern, instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
+                }
+            }
+
+            return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
+        }
+        finally
+        {
+            this.ReturnSlotSet(solution.EvidenceNamed);
+        }
     }
 }

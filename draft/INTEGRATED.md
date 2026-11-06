@@ -1278,7 +1278,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 
 ## 2026-11-03 — G216 (a) position rows
 
-- [G216 (a) Position Rows](Proposals/2026-11-03%20G216%20%28a%29%20Position%20Rows.md): 一部取り込み (open). The owner approved the design
+- [G216 (a) Position Rows](Changes/2026-11-03%20G216%20%28a%29%20Position%20Rows.md): 一部取り込み (open). The owner approved the design
   and its two SPEC readings in the G216 planning session (verbatim 「推奨の内容でOKです。」), fixed the policy (「その方針で確定します。」:
   start after the flip group's sweep, this session leads the design and U0, R4 reviews, DECISIONS under BU numbers, U0 before H5) and
   chose its placement (「設計書はdraft/Proposalsに保存してください。健全性優先の計画でお願いします。」: option A, the R7 plan's revision 2,
@@ -1320,7 +1320,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 9 (2026-11-05, the owner, verbatim 「G216 (a) を締めくくる で決定します」, after U6's two design reviews did not converge under
   Q11): the lane closes after U3 lands; U6 is not implemented (rule 5's array case is an open PLAN row for the join formation's
   owner); the proposal moves to `draft/Changes` as 取り込み済み when U3 has landed and the closing records are written. No other text
-  changed; the proposal stays 一部取り込み (open) until then, nothing frozen.
+  changed; the proposal stays 一部取り込み (open) until then, nothing frozen. (Superseded: closed as 取り込み済み on 2026-11-06, below.)
 
 ## 2026-11-03 — Published Copy verdicts plan (R6-check Q8-3b)
 
@@ -1353,3 +1353,17 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   `Obsolete/2026-10-12 AGENTS Restructuring and Workflow Document.md`, `Proposals/2026-10-12 Pre-R5 Work Items.md`,
   `Proposals/2026-10-12 Post-Reduction Work Items.md` (P34_REMAINING's R3, now in PLAN's U7 row), `Sketches/R5 Step 0/C-design-2.md`,
   `C-package.md`, `deep-dives/q2-codegen-shape.md` and `Sketches/R6-gen/G8-design.md`, and the older entries above, are unchanged and read at that commit or at the new path.
+
+## 2026-11-06 — G216 (a) position rows closed
+
+- `Changes/2026-11-03 G216 (a) Position Rows.md`: 取り込み済み (closed 2026-11-06, revision 10). The file moved from `Proposals/`
+  with a closing status paragraph added and its R7 plan link following the move; the whole file is now frozen. Dispositions: U0
+  (the oracle and its rows, `claude/g216a-u0` revision 17, never on dev), U1 (W-15, 37a0c05a6), U2 (W-20, 9324178a0) and U3a
+  (W-30, 5029f7941) implemented; U3b closed without a unit (the owner, verbatim 「U3b なしで閉じる」: M's ruling C-52 by SPEC alone
+  makes its target forms valid under 10.8 and 15.3.5, and the bare forms' false rejection is PLAN G452); U4 dropped (revision 7);
+  U5 closed (revision 6); U6 not implemented (revision 9; rule 5's array case is PLAN G443). No section is integrated into SPEC or
+  IMPL: §3's two readings stay readings of the current text, and two SPEC observations are reported to the owner without a change:
+  10.5.1 (reading 2: a control-flow argument supplies child positions by structure, whether or not the join waited) and 10.8
+  (C-52: Solving names invariant and covariant bindings only, and does not say what a call-signature match at a parameter position
+  contributes beyond its structure when covariant bindings exist). The old path in the R7 R8 R9 plan's I3 row and in DECISIONS
+  (Binding units, 2026-10-18) reads this one. Closure implies no support beyond STATUS.

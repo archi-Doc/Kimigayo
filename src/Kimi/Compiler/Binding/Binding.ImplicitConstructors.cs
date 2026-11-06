@@ -75,6 +75,7 @@ public sealed partial class Binding
         var inputs = this.originScratch.Rent(shape.InputOrigins);
         var evaluated = this.candidateScratch.Rent(shape.Count);
         var operations = this.argumentOperationScratch.Rent(shape.Count);
+        var childSlices = this.indexScratch.Rent(shape.Count * 2); // R3: each candidate's (empty) slice; the call has no argument.
         try
         {
             var evaluation = new CallEvaluation
@@ -91,6 +92,7 @@ public sealed partial class Binding
                 Inputs = inputs,
                 Evaluated = evaluated,
                 Operations = operations,
+                ChildSlices = childSlices,
                 OperationStride = 1,
                 AllTypes = [],
                 AllLengths = [],
@@ -133,6 +135,7 @@ public sealed partial class Binding
             this.activeRequirementContract = requirementContract;
             (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
             this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.indexScratch.Return(childSlices);
             this.candidateScratch.Return(evaluated, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
