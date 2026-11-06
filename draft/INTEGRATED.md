@@ -1367,3 +1367,17 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   (C-52: Solving names invariant and covariant bindings only, and does not say what a call-signature match at a parameter position
   contributes beyond its structure when covariant bindings exist). The old path in the R7 R8 R9 plan's I3 row and in DECISIONS
   (Binding units, 2026-10-18) reads this one. Closure implies no support beyond STATUS.
+
+## 2026-11-06 — Proposals: two deleted, four reviewed
+
+- Deleted on the owner's instruction (R5's dialog, verbatim 「以下を削除してください：」):
+  - `Proposals/2026-10-12 PLAN Size Budget and Issue Register.md` (accepted 2026-10-12, never applied);
+  - `Proposals/2026-10-02 Semantic Tokens.md` (undecided).
+
+  Their text is in git history at f69d55e12. The links and mentions to them in `Obsolete/2026-10-12 AGENTS Restructuring and Workflow Document.md`, `Obsolete/2026-10-03 Async Tasks.md`, `Proposals/2026-10-07 LSP Completion and Implementation Plan.md`, `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Plan.md` and the 2026-10-12 entry above are unchanged and read at that commit. Neither was integrated into SPEC or IMPL.
+- Reviewed for completion on the owner's instruction (「以下を精査して、完了していたらChangesに移動、未完了だったら完了していない作業をここに表示してください」): `Proposals/2026-10-18 A5 Step 2 Implementation Plan.md`, `Proposals/2026-10-16 Complete Polonius A5 Plan.md`, `Proposals/2026-10-12 Pre-R5 Work Items.md` and `Proposals/2026-10-12 Post-Reduction Work Items.md`. None is complete, so all four stay in `Proposals/`, unchanged:
+  - the two A5 plans' remaining units are PLAN G396's (R4's exit under R4-M165);
+  - Pre-R5's D3 has no record of its backup;
+  - Post-Reduction has 13 of its 18 items still open on dev.
+
+  The review records are in `artifacts/handoff/2026-11-05-r5/proposals-review/`. Its probe of R1g-1 found a constructor's `self.helper()` accepted: PLAN G454.
