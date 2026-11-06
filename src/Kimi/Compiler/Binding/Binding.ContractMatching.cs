@@ -522,7 +522,14 @@ public sealed partial class Binding
 
     private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (requirement.BindingState == BindingState.Invalid || implementation.BindingState == BindingState.Invalid || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
+        // SPEC 23.1.2: a function whose own check failed has no contract to compare, so the conformance's failure rests on it (DECISIONS G52-1).
+        if ((requirement.BindingState == BindingState.Invalid ? requirement : implementation.BindingState == BindingState.Invalid ? implementation : null) is { } failed)
+        {
+            this.AddPrerequisite(conformance.Use, failed);
+            return ConstraintProof.Error;
+        }
+
+        if (((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
             return ConstraintProof.Error;
         }
