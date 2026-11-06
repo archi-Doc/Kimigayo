@@ -392,6 +392,9 @@ public sealed partial class Binding
         {
             // SPEC 6.1, 9.7: a group has no own parameters, so written arguments meet the one arity check of written arguments.
             var result = UnwrapTypeSyntax(syntax) is GenericsKoto generic ? this.BindConstructedType(generic, symbol, scope, context) : this.BindContainerReference(syntax, symbol, scope, context, []);
+
+            // The qualifier names its group, as BindType names a struct qualifier, so no consumer takes the group's Type as a value.
+            syntax.BoundSymbol = symbol;
             return result is null ? null : Complete(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
         }
 
