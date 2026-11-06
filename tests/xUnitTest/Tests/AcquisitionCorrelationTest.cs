@@ -7,7 +7,15 @@ namespace XunitTest;
 
 public class AcquisitionCorrelationTest
 {
-    private const string Crossed = "struct C<T>\n    public init(value: (T, i32), code: i32) => ()\n    public init(value: ref/(i64, T), name: string) => ()\nlet x: (i64, i32) = (1, 2)\n";
+    private const string Tuple = "struct C<T>\n    public init(value: (T, i32), code: i32) => ()\n    public init(value: ref/(i64, T), name: string) => ()\n";
+    private const string Crossed = Tuple + "let x: (i64, i32) = (1, 2)\n";
+    private const string Body = "func k() -> ()\n";
+    private const string Wrappers = "struct Tag<T>\n    public init() => ()\nstruct Box<T>\n    public init() => ()\n";
+    private const string Pairs = "struct P<A, B>\n    public init() => ()\nstruct C<T>\n    public init(value: P<T, i32>, code: i32) => ()\n    public init(value: ref/P<i64, T>, name: string) => ()\n";
+    private const string Methods = "struct S\n    public init() => ()\n    public func m<U>(self: ref/Self, value: (U, i32), code: i32) => ()\n    public func m<U>(self: ref/Self, value: ref/(i64, U), name: string) => ()\n";
+    private const string Waiting = "struct Item<T>\n    public init(value: T, code: i32, f: (T) -> ()) => ()\n    public init(value: T, name: string, f: () -> ()) => ()\n";
+    private const string Signatures = "func h<T, F>(value: T, code: i32, action: F) -> ()\n    F is Callable<(T) -> ()>\n    return\nfunc h<T, F>(value: T, name: string, action: F) -> ()\n";
+    private const string Applied = "    return\nfunc g(v: i32) -> () => ()\n" + Body + "    let n: i32 = 42\n    h(n, 0, g)";
 
     [Theory]
     [InlineData("let c = C.init(x, 0)")]
@@ -49,6 +57,55 @@ public class AcquisitionCorrelationTest
         var source = "struct Tag<T>\n    public init() => ()\n" + group + "let witness = Tag<ref/i32>.init()\n" + (constructor ? "let item = Item.init" : "pick") + "(42, witness)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnprovenAcquisitionCorrelation);
+    }
+
+    // SPEC 7.4.4: an equal Type that a typed argument gives along another structural path, or through an extra source, is no
+    // correlation evidence: a Tuple element, a struct's Type argument, an Option payload, a generic structure, a method's and a
+    // function's own slot, an expected result beside the argument, a ModeOnly pair's witness, a function reference, an anonymous
+    // header's written Type (SPEC 10.5.4) and a call signature (G512).
+    [Theory]
+    [InlineData(Tuple + Body + "    let x: (i32, i32) = (1, 2)\n    let c = C.init(x, 0)")]
+    [InlineData(Pairs + Body + "    let c = C.init(P<i32, i32>.init(), 0)")]
+    [InlineData("struct C<T>\n    public init(value: (T, Option<i32>), code: i32) => ()\n    public init(value: ref/(i64, Option<T>), name: string) => ()\n" + Body + "    let o: Option<i32> = .Some(2)\n    let x: (i32, Option<i32>) = (1, o)\n    let c = C.init(x, 0)")]
+    [InlineData(Wrappers + "struct C<T>\n    public init(value: Box<(T, i32)>, code: i32) => ()\n    public init(value: ref/Box<(i64, T)>, name: string) => ()\n" + Body + "    let c = C.init(Box<(i32, i32)>.init(), 0)")]
+    [InlineData(Methods + Body + "    let s = S.init()\n    let x: (i32, i32) = (1, 2)\n    s.m(x, 0)")]
+    [InlineData("func f<U>(value: (U, i32), code: i32) => ()\nfunc f<U>(value: ref/(i64, U), name: string) => ()\n" + Body + "    let x: (i32, i32) = (1, 2)\n    f(x, 0)")]
+    [InlineData(Tuple + Body + "    let x: (i32, i32) = (1, 2)\n    let c: C<i32> = C.init(x, 0)")]
+    [InlineData(Wrappers + "struct Item<T>\n    public init(value: T, code: i32, witness: Tag<T>) => ()\n    public init(value: T, name: string, witness: Tag<Box<T>>) => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, Tag<i32>.init())")]
+    [InlineData(Waiting + "func g(v: i32) -> () => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, g)")]
+    [InlineData("struct Item<T>\n    public init(value: T, code: i32, f: (T) -> ()) => ()\n    public init(value: T, name: string, f: (i64) -> ()) => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, func [] (v: i32) => ())")]
+    [InlineData(Signatures + "    F is Callable<((T, i32)) -> ()>\n" + Applied)]
+    public void EvidenceAlongAnotherPathIsNoCorrelation(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.UnprovenAcquisitionCorrelation);
+    }
+
+    // SPEC 10.5.1: a waiting part, whole or as a Tuple element, is never evidence, so a parameter that only it reaches does not
+    // break the correlation, for a Literal or a typed source alike.
+    [Theory]
+    [InlineData(Waiting + Body + "    let item = Item.init(42, 0, func [] (v) => ())")]
+    [InlineData(Waiting + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, func [] (v) => ())")]
+    [InlineData("struct Item<T>\n    public init(value: T, code: i32, w: (i32, (T) -> ())) => ()\n    public init(value: T, name: string, w: (i32, () -> ())) => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, (1, func [] (v) => ()))")]
+    public void WaitingPartsGiveNoEvidence(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 7.4.4, 10.8: the same witness or call-signature path, an expected result that fills nothing an argument binds, and a
+    // fixed explicit binding establish the contract.
+    [Theory]
+    [InlineData(Wrappers + "struct Item<T>\n    public init(value: T, code: i32, witness: Tag<T>) => ()\n    public init(value: T, name: string, witness: Tag<T>) => ()\n" + Body + "    let n: i32 = 42\n    let item = Item.init(n, 0, Tag<i32>.init())")]
+    [InlineData(Signatures + "    F is Callable<(T) -> ()>\n" + Applied)]
+    [InlineData("func f<T>(value: T, code: i32) -> (T, i32) => (value@move, 0)\nfunc f<T>(value: T, name: string) -> (i64, T) => (0, value@move)\n" + Body + "    let n: i32 = 42\n    let r: (i32, i32) = f(n, 0)")]
+    [InlineData("func f<T>(value: T, code: i32) -> (T, i32) => (value@move, 0)\nfunc f<T>(value: T, name: string) -> (T, i32) => (value@move, 0)\n" + Body + "    let n: i32 = 42\n    let r: (i32, i32) = f(n, 0)")]
+    [InlineData(Methods + Body + "    let s = S.init()\n    let x: (i32, i32) = (1, 2)\n    s.m<i32>(x, 0)")]
+    [InlineData(Pairs + Body + "    let c = C<i32>.init(P<i32, i32>.init(), 0)")]
+    public void TheSameEvidenceOrAFixedBindingEstablishesTheContract(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
     [Fact]

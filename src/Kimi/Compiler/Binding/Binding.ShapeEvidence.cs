@@ -29,22 +29,89 @@ public sealed partial class Binding
         return true;
     }
 
-    // The source node is common by argument index. Every occurrence must have the same structural
-    // path and extraction rule; an extra candidate-specific witness prevents common-symbol reuse.
-    private bool CommonUnresolvedEvidence(InvocationKoto call, FunctionKoto left, FunctionKoto right, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap)
+    // SPEC 7.4.4: whether both candidates take the same evidence for the slot from the call's arguments, by argument index. Each
+    // part gives it by its kind (SPEC 10.5.1): a waiting part, an anonymous function included, only the callable slot it stands at,
+    // and an anonymous function also the parts its header writes (SPEC 10.5.4); a Tuple or array literal element by element; any
+    // other part its parameter Type's occurrences and, at a callable slot, its call signature's. Every occurrence must have the same structural path and extraction rule; an extra candidate-specific source fails.
+    // `occurs`: some argument gives the slot evidence in both candidates.
+    private bool SameArgumentEvidence(InvocationKoto call, FunctionKoto left, FunctionKoto right, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap, out bool occurs)
     {
         var found = false;
+        occurs = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var a = leftMap[i] < 0 ? null : left.Parameters[leftMap[i]].Type.BoundType;
             var b = rightMap[i] < 0 ? null : right.Parameters[rightMap[i]].Type.BoundType;
-            if (!Paths(a, b))
+            if (!Part(call.ArgumentNodes[i], a, b))
             {
                 return false;
             }
         }
 
-        return found;
+        occurs = found;
+        return true;
+
+        bool Part(Koto part, BoundType? a, BoundType? b)
+        {
+            var core = KotoHelper.UnwrapParentheses(part);
+            var literal = core as FunctionKoto;
+            if (literal is { IsAnonymous: true } || this.IsWaiting(core))
+            {
+                // A waiting part binds only the callable slot it stands at (SPEC 10.5.4, DECISIONS BU-2).
+                if (!Paths(CallableSlot(a, left), CallableSlot(b, right)))
+                {
+                    return false;
+                }
+
+                if (literal is not { IsAnonymous: true })
+                {
+                    return true;
+                }
+
+                var sa = a is null ? null : this.ExpectedCallSignature(left, a);
+                var sb = b is null ? null : this.ExpectedCallSignature(right, b);
+                for (var p = 0; p < literal.Parameters.Count; p++)
+                {
+                    if (literal.Parameters[p].Type.BoundType is not null && !Paths(Header(sa, p), Header(sb, p)))
+                    {
+                        return false;
+                    }
+                }
+
+                return literal.ReturnType?.BoundType is null || Paths(Header(sa, -1), Header(sb, -1));
+            }
+
+            if (CallableParts(core) is { Count: > 0 } elements)
+            {
+                // A borrowed literal's elements are read below the reference layer both candidates share.
+                var (ea, eb) = a is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var ra] } &&
+                    b is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var rb] } ? (ra, rb) : (a, b);
+                if (ChildPattern(core, 0, ea) is not null && ChildPattern(core, 0, eb) is not null)
+                {
+                    for (var e = 0; e < elements.Count; e++)
+                    {
+                        if (!Part(elements[e], ChildPattern(core, e, ea), ChildPattern(core, e, eb)))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+            }
+
+            return Paths(a, b) && Paths(Signature(a, left), Signature(b, right));
+        }
+
+        BoundType? Signature(BoundType? pattern, FunctionKoto function)
+            => CallableSlot(pattern, function) is { } slotted ? this.ExpectedCallSignature(function, slotted) : null;
+
+        static BoundType? CallableSlot(BoundType? pattern, FunctionKoto function)
+            => pattern is not null && CallableSlotType(pattern, CallSlotOwner(function)) is not null ? pattern : null;
+
+        static BoundType? Header(BoundType? signature, int index)
+            => signature is { Kind: BoundTypeKind.Function, Components: [var parameters, var returns] }
+                ? (index < 0 ? returns : index < parameters.Components.Count ? parameters.Components[index] : null) : null;
 
         bool Paths(BoundType? a, BoundType? b)
         {
@@ -108,6 +175,8 @@ public sealed partial class Binding
 
     // This phase reads the whole resolved group. Applicability, defaults and literal defaults
     // supply no evidence; a failure at another source position does not discard a binding here.
+    // A slot fixed in neither candidate needs the same argument evidence (SameArgumentEvidence)
+    // before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
     private bool CheckCallShapeContracts(InvocationKoto call, GenericsKoto? generic, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
     {
         var needed = false;
@@ -132,7 +201,7 @@ public sealed partial class Binding
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
         var bindings = this.typeScratch.Rent(slotStride);
-        var fixedSlots = this.flagScratch.Rent(slotStride);
+        var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try
         {
@@ -149,7 +218,7 @@ public sealed partial class Binding
                 var count = CallSlotCount(function);
                 var declaring = function.IsConstructor && call.Method is MemberAccessKoto member ? member.Left.BoundType : candidates[c].DeclaringType;
                 this.InitializeCallSlots(call, function, declaring, bindings);
-                fixedSlots.AsSpan(0, slotStride).Clear();
+                fixedSlots.AsSpan(c * slotStride, slotStride).Clear();
                 for (var g = 0; g < count; g++)
                 {
                     if (!function.IsConstructor && generic is not null && g < generic.TypeArguments.Count)
@@ -157,7 +226,7 @@ public sealed partial class Binding
                         bindings[g] = generic.TypeArguments[g].BoundType;
                     }
 
-                    fixedSlots[g] = bindings[g] is not null;
+                    fixedSlots[(c * slotStride) + g] = bindings[g] is not null;
                     if (bindings[g] is { } fixedType)
                     {
                         modes[(c * slotStride) + g] = (int)this.ShapeOf(fixedType, function, true).Modes;
@@ -250,7 +319,7 @@ public sealed partial class Binding
                     if (pattern.Kind == BoundTypeKind.Parameter && pattern.Symbol is { } parameter && ContainerSlot(owner, parameter) is var slot && slot >= 0 && slot < count)
                     {
                         var at = (c * slotStride) + slot;
-                        if (fixedSlots[slot] || (fillOnly && modes[at] != 0))
+                        if (fixedSlots[at] || (fillOnly && modes[at] != 0))
                         {
                             return;
                         }
@@ -317,9 +386,11 @@ public sealed partial class Binding
                         var b = (c * slotStride) + slot;
                         var ma = (AcquisitionModes)(modes[a] & 7);
                         var mb = (AcquisitionModes)(modes[b] & 7);
-                        if ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
+                        var occurs = false;
+                        if (((fixedSlots[a] && fixedSlots[b]) || this.SameArgumentEvidence(call, contract.Pair.Left, function, slot, allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count), allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count), out occurs)) &&
+                            ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
                             (types[a] is { } ta && types[b] is { } tb && SameShapeBinding(ta, tb)) ||
-                            (modes[a] == 0 && modes[b] == 0 && this.CommonUnresolvedEvidence(call, contract.Pair.Left, function, slot, allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count), allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count))))
+                            (modes[a] == 0 && modes[b] == 0 && occurs)))
                         {
                             continue;
                         }
