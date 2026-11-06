@@ -138,6 +138,41 @@ public class ContainerNestingTest
         Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
+    // SPEC 9.7.1, 23.1.2 (PLAN G481 (2)): a missing member's qualifier is bound in its container role, as an inaccessible member's, so
+    // its own failure is reported beside the missing Name. Only a group or a struct declares nested Containers (SPEC 6.1, 6.5.1), so an
+    // enum or a Contract qualifier of a missing member gets no container record.
+    [Theory]
+    [InlineData("struct T<U>\n    public init() => ()\nfunc f()\n    let b = T<i32, bool>.Nope.init()\n", "InvalidTypeFormation_Kd T<i32, bool>|UnresolvedBinding_Kd T<i32, bool>.Nope.init")]
+    [InlineData("struct T<U>\n    public init() => ()\nfunc f()\n    let b = T<i32, bool>.Nope.Box.init()\n", "InvalidTypeFormation_Kd T<i32, bool>|UnresolvedBinding_Kd T<i32, bool>.Nope.Box.init")]
+    [InlineData("group T\n    public group G\n        public struct Box\nfunc f()\n    let b = T<i32>.G.Nope.init()\n", "InvalidTypeFormation_Kd T<i32>|UnresolvedBinding_Kd T<i32>.G.Nope.init")]
+    [InlineData("enum E<T>\n    A(T)\nfunc f()\n    let b = E.Nope.init()\n", "UnresolvedBinding_Kd E.Nope.init")]
+    [InlineData("contract C\n    func g(self) -> i32\nfunc f(b: C.Nope) => ()\n", "UnresolvedBinding_Kd C.Nope")]
+    public void AMissingMembersQualifierReportsItsOwnFailure(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.6 (PLAN G488): a qualifier naming both a Type and a parameter or local needs both namespaces' complete paths before either
+    // publishes (R7 N1), so its member access is one located Unsupported_Kd at the qualifier: never a group's Type taken as a value (it
+    // ended the check in Layout), nor a Language error from one path alone. The valid form without the Type binds.
+    [Theory]
+    [InlineData("struct T\n    public group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "T.G")]
+    [InlineData("struct T\n    public group G\n        public let n: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "T.G")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "T")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f() -> i32\n    let T = V.init()\n    return T.G.n\n", "T")]
+    [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "T")]
+    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "T")]
+    [InlineData("", "func f(T: V) -> i32 => T.G.n\n", "")]
+    public void AQualifierOfBothNamespacesIsUnsupported(string type, string use, string qualifier)
+    {
+        var c = CompilationTestHelper.Parse(type + "struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\n" + use);
+        Assert.Equal(qualifier.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(qualifier.Length == 0 ? string.Empty : "Unsupported_Kd " + qualifier, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        c.Analyze();
+    }
+
     // SPEC 9.4.1 (PLAN G250 (4)): a value, a Function Item or a Case selected through an inaccessible Container reports the access at
     // that Container, as a call through it does, and its struct qualifier is bound as its Type.
     [Theory]
