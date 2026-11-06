@@ -463,18 +463,19 @@ public sealed partial class Binding
             this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
         }
 
-        if (binder is FunctionKoto function)
+        var function = binder as FunctionKoto;
+        if (!(function is not null
+            ? this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true)
+            : this.SolveOriginInference(inference, origins, inputs, use, select: true)))
         {
-            if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true))
-            {
-                return false;
-            }
-
-            this.OpenUnsolvedOrigins(use, function, origins); // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
-            return true; // Selected-call clauses are judged at their supplying arguments, never as applicability.
+            return false;
         }
 
-        return this.SolveOriginInference(inference, origins, inputs, use, select: true);
+        // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
+        // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
+        // their supplying arguments, never as applicability.
+        this.OpenUnsolvedOrigins(use, origins.AsSpan(0, function?.Origins.Count ?? 0), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
+        return true;
     }
 
     // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution
