@@ -94,15 +94,16 @@ public class OwnedStoredReferenceTest
         {
             // Both preparations reserve the same stored referent: one overlap, at the later input's call (H5; H3b T44: at its `item.0`
             // before), relating the earlier reservation's Borrow and call and the later input's own reservation, as for a local
-            // (CallReservationTest.OverlappingExclusiveInputsConflictOnceAtTheCall; T49).
+            // (CallReservationTest.OverlappingExclusiveInputsConflictOnceAtTheCall), without the implicit acquisitions' Note (A6 has no
+            // acquisition fact, PLAN G433).
             CallReservationTest.AssertMirRecord(source, DiagnosticCode.CallReservationConflict_Kd, "poke(item.0)", "borrow 9:17 item.0 | loan 9:9 change3(item.0, poke(item.0)) | reservation 9:30 item.0");
         }
     }
 
     // A reserved stored reference is acquired exclusively: an overlapping input, a write or a Move during preparation conflicts with its
-    // reservation, and a live child with its activation (H5; H3b T46: activation conflicts at the overlap and the write before). The
-    // Move's record has no `reservation` related: the reservation it meets is the Loan, related as `borrow` (DIAGNOSTICS A6's
-    // `Reservation` is an activation's or a destruction's).
+    // reservation, and a live child with its activation (H5; H3b T46: activation conflicts at the overlap and the write before), each
+    // without the implicit acquisition's Note (A6 has no acquisition fact, PLAN G433). The Move's record has no `reservation` related:
+    // the reservation it meets is the Loan, related as `borrow` (DIAGNOSTICS A6's `Reservation` is an activation's or a destruction's).
     [Theory]
     [InlineData("twice(item.0, item.0)", DiagnosticCode.CallReservationConflict_Kd, "twice(item.0, item.0)", null, "borrow 10:15 item.0 | loan 10:1 twice(item.0, item.0) | reservation 10:7 item.0")]
     [InlineData("change3(item.0, poke(item.0))", DiagnosticCode.CallReservationConflict_Kd, "poke(item.0)", null, "borrow 10:9 item.0 | loan 10:1 change3(item.0, poke(item.0)) | reservation 10:22 item.0")]
