@@ -759,5 +759,11 @@
   { "Name": "specialization-virtual-modifier-in-struct", "Source": "open struct S\n    var a: i32 = 0\n    public func f<T>(self: ref/S, x: T) -> i32 => 0\n    public virtual specialize func f<i32>(self: ref/S, x: i32) -> i32 => 1\npublic func main() => ()\n", "Intended": "a member specialization's reported modifiers form no virtual declaration (PLAN G472, RI25 B-2)",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "SpecializationHeader", "At": "f<i32>(self: ref/S, x: i32) -> i32" } ] },
   { "Name": "specialization-in-struct", "Source": "open struct S\n    var a: i32 = 0\n    public func f<T>(self: ref/S, x: T) -> i32 => 0\n    specialize func f<i32>(self: ref/S, x: i32) -> i32 => 1\npublic func main() => ()\n", "Intended": "the valid twin: a member specialization without modifiers is accepted",
-    "Records": [] }
+    "Records": [] },
+  { "Name": "specialization-argument-boundary", "Source": "func f<T>(x: T, count: i32) -> i32 => 0\nspecialize func f<i32>(! x: i32, count: i32) -> i32 => 1\npublic func main() => ()\n", "Intended": "a specialization inherits the original's ! boundary and never writes one (SPEC 8.13.2); the parameter list's report is the only one, and the specialization's check does not judge the boundary again (PLAN G525)",
+    "Records": [ { "Code": "ArgumentBoundaryContext_Kd", "At": "! x", "Length": 1 } ] },
+  { "Name": "specialization-argument-boundary-in-struct", "Source": "struct S\n    var a: i32 = 0\n    public func f<T>(self: ref/S, x: T) -> i32 => 0\n    specialize func f<i32>(self: ref/S ! x: i32) -> i32 => 1\npublic func main() => ()\n", "Intended": "a member specialization's written boundary is the parameter list's record alone (PLAN G525)",
+    "Records": [ { "Code": "ArgumentBoundaryContext_Kd", "At": "! x", "Length": 1 } ] },
+  { "Name": "specialization-argument-boundary-default", "Source": "func f<T>(x: T, count: i32 = 1) -> i32 => 0\nspecialize func f<i32>(! x: i32, count: i32 = 1) -> i32 => 1\npublic func main() => ()\n", "Intended": "beside the reported boundary, the redeclared default is an independent failure the specialization's check still reports (SPEC 8.13.2, PLAN G525)",
+    "Records": [ { "Code": "IncompatibleContractImplementation_Kd", "At": "f<i32>(! x: i32, count: i32 = 1) -> i32 => 1" }, { "Code": "ArgumentBoundaryContext_Kd", "At": "! x", "Length": 1 } ] }
 ]
