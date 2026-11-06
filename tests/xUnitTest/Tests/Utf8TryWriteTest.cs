@@ -37,7 +37,7 @@ public class Utf8TryWriteTest
     [Theory]
     [InlineData("buffer.length")]
     [InlineData("bytes[0]")]
-    [InlineData("label read: do\n    _ = writer.status()\n    exit to read 1@i32")]
+    [InlineData("label read: do\n    _ = writer.status()\n    exit to read 1@i32\n")]
     public void RootBorrowIsActiveBeforeTheFirstEmbeddedExpression(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Setup + "_ = $tryWrite(writer@uniq, \"\\(" + expression + ")\")");

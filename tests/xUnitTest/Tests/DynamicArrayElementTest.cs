@@ -37,12 +37,12 @@ public class DynamicArrayElementTest
             "Hello.kimi:2:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Theory]
-    [InlineData("var values: Array<i32> = [42]\nlet n = values[(label work: do\n    values@uniq.clear()\n    exit to work 0)]")]
+    [InlineData("var values: Array<i32> = [42]\nlet n = values[(label work: do\n    values@uniq.clear()\n    exit to work 0\n)]")]
     [InlineData("var values: Array<i32> = [42]\nlet borrow = values@ref\nvalues@uniq.clear()\nlet n = borrow[0]")]
     [InlineData("let values: Array<i32> = [42]\nlet moved = values@move\nlet n = values[0]")]
     [InlineData("let values: Array<string> = [\"owned\"]\nlet taken = values[0]@move")]
     [InlineData("let values: Array<i32> = [42]\nlet taken = values[0]@move")]
-    [InlineData("var values: Array<i32> = [42]\nlet borrow = values@uniq\nlet n = borrow[(label work: do\n    borrow@uniq.clear()\n    exit to work 0)]")]
+    [InlineData("var values: Array<i32> = [42]\nlet borrow = values@uniq\nlet n = borrow[(label work: do\n    borrow@uniq.clear()\n    exit to work 0\n)]")]
     public void RejectsInvalidAccess(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

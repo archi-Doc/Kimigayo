@@ -171,8 +171,9 @@ public class ForeignEmissionTest
         Assert.Equal(codes.Length == 0, c.Generate(writer));
     }
 
+    // G435: the source stays syntax-invalid after G435-a, since `as` is reserved (SPEC F.3.1); G435-b decides this row.
     [Theory]
-    [InlineData("let p: raw/i32 = null\nlet a = unsafe => p as usize")]
+    [InlineData("let p: raw/i32 = null\nunsafe => _ = p as usize")]
     public void UnimplementedPointerOperationsDoNotGenerate(string body)
     {
         var c = MinimalEmissionTest.Analyze(body);
@@ -218,8 +219,8 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: raw/i32 = null\nlet a = unsafe => p@u64", true)]
-    [InlineData("let n: i32 = 1\nlet p = unsafe => n@raw/u8", true)]
+    [InlineData("let p: raw/i32 = null\nunsafe => _ = p@u64", true)]
+    [InlineData("let n: i32 = 1\nunsafe => _ = n@raw/u8", true)]
     [InlineData("let p: raw/i32 = null\nvar q: raw/u8 = null\nq = p@raw/u8", false)]
     [InlineData("let p: raw/i32 = null\nvar a: usize = 0\na = p@usize", false)]
     [InlineData("var a: usize = 4096\nvar p: raw/u8 = null\np = a@raw/u8", false)]
@@ -272,11 +273,11 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nunsafe => _ = p + n", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("var p: raw/i32 = null\nlet n: i32 = 1\nunsafe => p += n", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("var p: raw/i32 = null\nunsafe => p *= 2", DiagnosticCode.OperatorNotDefined_Kd)]
-    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p", DiagnosticCode.OperatorNotDefined_Kd)]
-    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet d = unsafe => p - q", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let p: raw/i32 = null\nunsafe => _ = 1 + p", DiagnosticCode.OperatorNotDefined_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nunsafe => _ = p - q", DiagnosticCode.TypeMismatch_Kd)]
     public void InvalidPointerArithmeticIsRejected(string body, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(body);

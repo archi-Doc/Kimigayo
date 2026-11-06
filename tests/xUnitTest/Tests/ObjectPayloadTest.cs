@@ -86,8 +86,8 @@ public class ObjectPayloadTest
     }
 
     [Theory]
-    [InlineData("func use() => ()\n    let o = boxed(Parser.init())")]
-    [InlineData("func use(p: Parser) => ()\n    let o = Kimi.Intrinsics.makeObj(p@move)")]
+    [InlineData("func use()\n    let o = boxed(Parser.init())")]
+    [InlineData("func use(p: Parser)\n    let o = Kimi.Intrinsics.makeObj(p@move)")]
     public void AnOptedOutTypeIsNeverAPayload(string source)
     {
         var c = CompilationTestHelper.Parse(Parser + "func boxed<T>(value: T) -> obj/T\n    T is ObjectPayload\n    return Kimi.Intrinsics.makeObj(value@move)\n" + source);
