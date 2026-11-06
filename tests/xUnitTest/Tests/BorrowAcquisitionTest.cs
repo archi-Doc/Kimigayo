@@ -110,10 +110,12 @@ public class BorrowAcquisitionTest
 
     // SPEC 3.5.1, 8.14, 8.15.2 (PLAN G262, DECISIONS BU-45): a bare argument is acquired by its bare acquisition, so a pair layer without
     // a plan in some case (its exclusive case through a shared path, or an owner whose target is not proven Copy) is Binding's
-    // TransferRequired_Kd at the Place; the acquiring binder's own layers on the path are exclusive in that case, so an exclusive path, an
-    // own-binder path and a direct pair keep their plans. Each row: Binding's errors.
+    // TransferRequired_Kd at the Place, as a stored `uniq` reached through `ref` is (SPEC 3.5.1, PLAN G262); the acquiring binder's own
+    // layers on the path are exclusive in that case, so an exclusive path, an own-binder path and a direct pair keep their plans. Each
+    // row: Binding's errors.
     [Theory]
     [InlineData("s/T", "x: ref/(s/T during a) during b", "s is ref or uniq", "x@follow", "TransferRequired_Kd x@follow")]
+    [InlineData("s/T", "x: ref/(uniq/i32 during a) during b", "s is ref", "x@follow", "TransferRequired_Kd x@follow")]
     [InlineData("s/T, r/U", "x: r/(s/T during a) during b", "s is ref or uniq\n    r is ref or uniq", "x@follow", "TransferRequired_Kd x@follow")]
     [InlineData("s/T", "x: s/T", "s is owner or uniq", "x", "TransferRequired_Kd x")]
     [InlineData("s/T", "x: s/(s/T during a) during b", "s is ref or uniq", "x@follow", "")]
@@ -136,11 +138,13 @@ public class BorrowAcquisitionTest
         => Assert.Empty(DiagnosticCorpus.Check($"func f<s/T>({parameters})\n    s is ref or uniq\n    {use}\npublic func main() => ()\n").Diagnostics);
 
     // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
-    // through `ref` in the uniq case, an owned `q` at `uniq/i32`) whose Origin also misfits has both records, each twin one of them; a
-    // misfit only in Origins is the relation at the payload, a structural one the construction's mismatch with no acquisition record.
-    // A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: Binding's errors.
+    // through `ref` in the uniq case, a stored `uniq/i32` through `ref`, an owned `q` at `uniq/i32`) whose Origin also misfits has both
+    // records, each twin one of them; a misfit only in Origins is the relation at the payload, a structural one the construction's mismatch
+    // with no acquisition record. A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: Binding's errors.
     [Theory]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: ref/(uniq/i32 during a) during b, y: ref/i32 during c", "s is ref", "let o: Option<uniq/i32 during c> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: ref/(uniq/i32 during a) during b", "s is ref", "let o = Option<uniq/i32 during a>.Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
     [InlineData("x: ref/(s/T during a) during b", "s is ref", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o = Option<s/T during b>.Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q)\n    _ = o@move", "ExclusiveBorrowRequired_Kd q; UnsatisfiedOriginRelation_Kd q")]
@@ -163,6 +167,7 @@ public class BorrowAcquisitionTest
     // rest on it. Each row: the published records in order; an accepted program has none.
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, g: (s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("func f(x: ref/(uniq/i32 during a) during b, y: ref/i32 during c, g: (uniq/i32 during c) -> ()) -> ()\n    g(x@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (s/T, ref/i32 during static) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, p)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd p")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, p: ref/i32, g: (ref/i32 during static, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(p, x@follow)\n", "UnprovenOriginRelation_Kd p; TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
     [InlineData("func f<s/T>(x: ref/(s/T during a) during b, y: ref/(s/T during a) during b, g: (s/T, s/T) -> ()) -> ()\n    s is ref or uniq\n    g(x@follow, y@follow)\n", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow; UnprovenOriginRelation_Kd y@follow")]
@@ -201,9 +206,11 @@ public class BorrowAcquisitionTest
 
     // SPEC 3.5.1, 10.2.2 (PLAN G232): at a fixed expected Type that it fits, a bare Place storing an exclusive reference, `uniq/T` or
     // `objuniq/T`, Reborrows as at a bare acquisition position, contained in the layers reaching it (DECISIONS BU-27): the leak is the
-    // Origin relation's, the twin with the relation is accepted, at a `return` and an annotated `let`. Through a shared layer it has no
-    // Reborrow (TransferRequired_Kd), and a pair layer keeps its by-case plan. Each row: the records.
+    // Origin relation's, the twin with the relation is accepted, at a `return`, an annotated `let` and a payload. Through a shared layer it
+    // has no Reborrow (TransferRequired_Kd at the Place, SPEC 3.5.1), and a pair layer keeps its by-case plan. Each row: the records.
     [Theory]
+    [InlineData("func f(x: uniq/(uniq/i32 during a) during b) -> Option<uniq/i32 during a>\n    origin b outlives a\n    return .Some(x@follow)\n", "")]
+    [InlineData(View + "func f(h: ref/(H2 during a) during s) -> Option<objuniq/P during a>\n    origin s outlives a\n    return .Some(h.o)\n", "TransferRequired_Kd h.o")]
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> objuniq/P during a\n    origin s outlives a\n    return h.o\n", "")]
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> objuniq/P during a\n    return h.o\n", "UnprovenOriginRelation_Kd h.o")]
     [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> ()\n    origin s outlives a\n    let x: objuniq/P during a = h.o\n    x.x = 3\n", "")]
