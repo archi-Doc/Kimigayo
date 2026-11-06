@@ -137,8 +137,9 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the expression after =>, if this function is expression-bodied.</summary>
     public Koto? ExpressionBody { get; private set; }
 
-    /// <summary>Gets or sets a value indicating whether the body is missing because of a syntax Error; the checks of a body skip the function,
-    /// since that Error explains everything its body would have established (SPEC 23.1.2).</summary>
+    /// <summary>Gets or sets a value indicating whether a declaration's body is missing because of a syntax Error; the checks of a body skip
+    /// the function, since that Error explains everything its body would have established (SPEC 23.1.2). A function expression's missing
+    /// body is supplied instead (<see cref="Parse(ref TokenReader)"/>).</summary>
     internal bool MissingBody { get; set; }
 
     private List<string>? origins;
@@ -420,7 +421,10 @@ public sealed class FunctionKoto : DeclarationKoto
             return;
         }
 
-        if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        // A declaration whose body is missing is bodyless (MissingBody). A function expression is a value whose Closure is built with
+        // its body, so its indented body, present or missing, is a required body as every body-bearing expression's is: a token left
+        // on its header's line and a missing body follow ParseRequiredBlock, the latter a supplied, recorded recovery (DIAGNOSTICS §4.4).
+        if (!this.IsAnonymous && !reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             reader.Expect(SyntaxForm.Body);
             this.MissingBody = true;
@@ -428,7 +432,7 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         Parser.CheckIndentedBodyRegion(ref reader);
-        this.Body = Parser.ParseFunctionBlock(ref reader, this);
+        this.Body = Parser.ParseRequiredBlock(ref reader, true, this);
         this.Body.Parent = this;
         this.Span = SourceSpan.FromBounds(this.Span.Start, this.Body.Span.End);
     }
