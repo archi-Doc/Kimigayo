@@ -206,25 +206,21 @@ public sealed partial class Binding
             type = this.ContractType(type, scope, self);
         }
 
-        var result = this.SubstituteType(type, CallSlotOwner(binder), arguments, lengths);
-        if (result is not null)
+        for (var i = 0; i < InputCount(binder) && i < inputs.Length; i++)
         {
-            for (var i = 0; i < InputCount(binder) && i < inputs.Length; i++)
+            if (InputType(binder, i)?.BoundType?.Origin is { BorrowCondition: { } selector } &&
+                ContainerSlot(CallSlotOwner(binder), selector) is var slot && slot >= 0 && slot < arguments.Length &&
+                arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
             {
-                if (InputType(binder, i)?.BoundType?.Origin is { BorrowCondition: { } selector } &&
-                    ContainerSlot(CallSlotOwner(binder), selector) is var slot && slot >= 0 && slot < arguments.Length &&
-                    arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
-                {
-                    inputs[i] = BoundOrigin.Static;
-                }
+                inputs[i] = BoundOrigin.Static;
             }
-
-            result = this.ContractType(result, scope, self);
-            result = this.SubstituteStoredOrigins(
-                result, binder, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
         }
 
-        return result;
+        // PLAN G457: the callee's Type slots and its Origins and inputs in one pass, so a Type argument naming the callee's own Origin (a call
+        // in its own body) keeps the caller's; then normalized in the caller's terms.
+        var result = this.SubstituteType(
+            type, CallSlotOwner(binder), arguments, lengths, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))), binder);
+        return result is null ? null : this.ContractType(result, scope, self);
     }
 
     private sealed class RequirementGroup

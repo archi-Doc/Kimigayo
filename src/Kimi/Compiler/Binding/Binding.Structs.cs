@@ -86,15 +86,15 @@ public sealed partial class Binding
     internal BoundType? InstantiateStorageType(BoundType type, Subst subst)
         => this.StorageInstance(type, subst) is { } result && this.PrepareTypeStorage(result) != StorageOutcome.Limit ? result : null;
 
-    // A declared Type in the instance a substitution makes: its binder's slots, then its stored Origins substituted, normalized in the
-    // binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null where one of these
-    // steps does not complete. Its storage is not prepared.
+    // A declared Type in the instance a substitution makes: its binder's slots and stored Origins substituted in one pass (PLAN G457),
+    // normalized in the binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null
+    // where one of these steps does not complete. Its storage is not prepared.
     internal BoundType? StorageInstance(BoundType type, Subst subst)
     {
         var binder = subst.Binder;
         var originBinder = binder is FunctionKoto function ? function.OriginBinder : binder;
-        var result = this.MemberType(type, subst.Declaring) is { } member && this.SubstituteType(member, binder, subst.Types, subst.Lengths) is { } substituted
-            ? this.SubstituteStoredOrigins(substituted, originBinder, subst.Origins, subst.Inputs) : null;
+        var result = this.MemberType(type, subst.Declaring) is { } member
+            ? this.SubstituteType(member, binder, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, originBinder) : null;
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
