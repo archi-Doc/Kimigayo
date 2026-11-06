@@ -233,6 +233,9 @@ public sealed partial class InstanceCollectorTest
         "var cell = Cell.init(3)\ncell.value = 4\nlet box = Box<i32>.init(cell.value)\nvar watch = Kimi.Time.Stopwatch.init()\n" +
         "require host() == 3 and pick(box.value) == 4 and after() == 1 and f(2) == 1 else => $abort(\"collect\")\n";
 
+    // count<T> and the values its calls borrow.
+    private const string Count = "func count<T>(x: ref/T) -> i32 => 1\nlet v: i32 = 5\nlet w: i64 = 6\n";
+
     // The F3 reproducers' shapes (X40): the declarations, the nested function, its items now and the refused call (null: none).
     public static TheoryData<string, string, int, string?> NestedCases => new()
     {
@@ -382,6 +385,27 @@ public sealed partial class InstanceCollectorTest
             };
         }
     }
+
+    // The forms reaching one instance by a call and by an Item, a VTable or a base call: the program, the labels of its generic function
+    // instances and its Closure items.
+    public static TheoryData<string, string, string, int> ReachedTwiceCases => new()
+    {
+        { "item", Count + "let f = count<i32>\nlet k = count<i64>\nrequire count<i32>(v@ref) + f(v@ref) + count<i64>(w@ref) + k(w@ref) == 4 else => $abort(\"item\")\n", "Fn count [i32] | Fn count [i64]", 0 },
+        { "control", Count + "require count<i32>(v@ref) + count<i64>(w@ref) == 2 else => $abort(\"control\")\n", "Fn count [i32] | Fn count [i64]", 0 },
+        { "closure", TwoWays("let f = func [x] () -> i32 => 1\n    return f()"), "Fn make [i32]", 1 },
+        { "nested", TwoWays("let f = func [] () -> i32\n        let h = func [] () -> i32 => 1\n        return h()\n    return f()"), "Fn make [i32]", 2 },
+        {
+            "vtable",
+            "open struct Box<T>\n    T is Owned\n    public init() => ()\n    public virtual func size(self: objref/Self) -> i32 => 1\n" +
+                "struct Leaf<T> : Box<T>\n    T is Owned\n    public init() => ()\n    override func size(self: objref/Self) -> i32 => base.size() + 1\n" +
+                "let leaf = Leaf<i32>.init()@obj\nlet box = Box<i32>.init()@obj\nrequire leaf.size() + box.size() == 3 else => $abort(\"vtable\")\n",
+            "Fn init [Box<i32>] | Fn init [Leaf<i32>] | Fn size [Box<i32>] | Fn size [Leaf<i32>]", 0
+        },
+        {
+            "held", Program(GenericClosureIdentityTest.HeldContextRef) + "let o = outer<A>\nrequire o(y@ref) == 1 else => $abort(\"held\")\n",
+            "Fn init [Holder<closure () -> isize>] | Fn init [Holder<closure () -> isize>] | Fn outer [A] | Fn outer [B]", 4
+        },
+    };
 
     // K 4.4: every body of the root module whose definition does not instantiate, the top-level statements, the closure of a closed
     // function, both accessors of a closed struct and the default templates among them; generic bodies and library bodies only as the
@@ -535,6 +559,25 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn keep [ref/i32]", "Fn pick [bool]", "Fn pick [i32]"], set.Items[set.RootCount..].ToArray().Select(x => Label(program, x)).Order(StringComparer.Ordinal));
         var keep = Item(program, set, "Fn keep [ref/i32]");
         Assert.Equal([keep, keep], set.Targets(Item(program, set, "Fn host")).ToArray().Select(static x => x.Item).Where(x => x == keep));
+    }
+
+    // SPEC 8.13.3, DECISIONS R4-M<n> (PLAN G157 (30)): an erased substitution binds no Origin, so an instance reached by a call (whose
+    // substitution binds the callee's Origins) and by an Item, a VTable or a base call (whose substitutions bind none) is one item, with
+    // one item per Closure of it, nested and held ones (BU-60's held representative) included; count<i32> and count<i64> stay two.
+    // Fail-before: every form but the control was two items (two per Closure).
+    [Theory]
+    [MemberData(nameof(ReachedTwiceCases))]
+    public void AnInstanceReachedTwoWaysIsOneItem(string form, string source, string instances, int closures)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, form + ": " + MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var items = set.Items[set.RootCount..].ToArray().Where(x => x.BodyOrdinal >= 0 && program.Bodies[x.BodyOrdinal].Source.Module == 0).ToArray();
+        Assert.Equal(instances, string.Join(" | ", items.Where(static x => x.Key.Body.Def.Kind == MirBodyKind.Fn && x.Representative is not null)
+            .Select(x => Label(program, x)).Order(StringComparer.Ordinal)));
+        Assert.Equal(closures, items.Count(static x => x.Key.Body.Def.Kind == MirBodyKind.Closure));
     }
 
     // K 4.6: a recursion under one substitution reuses its item; one whose key grows stops when 16 items of its definition are on the chain,
@@ -2498,6 +2541,10 @@ public sealed partial class InstanceCollectorTest
         program.Findings.Add(new(MirViolation.Callee, body.Source));
         body.HasFinding = true;
     }
+
+    // make<T> with a body returning 1, called and called through its Item.
+    private static string TwoWays(string body)
+        => $"func make<T>(x: ref/T) -> i32\n    {body}\nlet v: i32 = 5\nlet g = make<i32>\nrequire make<i32>(v@ref) + g(v@ref) == 2 else => $abort(\"make\")\n";
 
     // A Type of `depth` nested wrappers around a leaf, as Box^3<i32> = Box<Box<Box<i32>>>.
     private static string Nest(string wrapper, int depth, string leaf)

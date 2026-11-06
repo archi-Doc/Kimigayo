@@ -1,17 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39, R5-M40, R5-M43, BU-60; R5 package F 4.11, K 4.1, X8, X26, X40): whether a
-// definition's body is checked once and generated per closed substitution (Instantiates), the null rule of instance keys, the declaration
-// whose instance the code at a scope holds, which a nested definition's instance holds and whose self a direct base call uses
+// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39, R5-M40, R5-M43, BU-60, R4-M<n>; R5 package F 4.11, K 4.1, X8, X26, X40):
+// whether a definition's body is checked once and generated per closed substitution (Instantiates), the null rule of instance keys, the
+// declaration whose instance the code at a scope holds, which a nested definition's instance holds and whose self a direct base call uses
 // (EnclosingDeclaration), whether a function's calls dispatch (Dispatches), and the Origin-erased form of a Type and a substitution (Erase),
 // the one identity of instance keys, descriptors, glue and layouts (SPEC 3.3.1, 8.13.3), with whether that form has an Origin position
 // (HasOriginPosition).
 // Input: a definition's BindingSymbol (a named or anonymous function, an accessor's executing function, a property) once the pass has bound
 // its schemas, or for EnclosingDeclaration a scope; for Erase, an interned Type or substitution. Output: whether a definition instantiates,
 // kept across passes with no edit and discarded at an edit (Binding.Invalidate); an interned erased value, memoized like the interning.
-// Erase: every Origin becomes static (a reference's or a Slice's, written or inferred, every Origin argument and every Origin binding of a
-// substitution or closure context) and a raw layer states none (DECISIONS BU-24), while Kind, Semantics, symbols, lengths, arities, Self and
-// the declaring Type are kept; idempotent; Types whose instances differ in Origins only erase to one value; it only interns, never
+// Erase: every Origin becomes static (a reference's or a Slice's, written or inferred, and every Origin argument), a substitution or closure
+// context binds no Origin (R4-M<n>) and a raw layer states none (DECISIONS BU-24), while Kind, Semantics, symbols, lengths, arities, Self
+// and the declaring Type are kept; idempotent; Types whose instances differ in Origins only erase to one value; it only interns, never
 // preparing storage or rewriting a value.
 // Invariants: true exactly when the definition or a declaration enclosing it on its scope chain has a Type, Semantics or length slot, even an
 // unused one (SPEC 6.1.3). A specialization declares no slot (SPEC 8.13.1), so one in a generic container, and every declaration nested in
@@ -19,7 +19,8 @@
 // Must not: decide by syntax what a declaration's schema publishes, write any state other than its memos and the interning, or prove
 // anything on an erased value (proofs read Origins; an instance's proofs run on its representative). One exception (DECISIONS BU-60): a
 // held closure's context holds its Type's instance erased (HeldContext), so a held closure item's representative carries an erased
-// declaring Type, of which no reader reads an Origin.
+// declaring Type, and a Closure reached through a held instance runs under its erased context (InstanceCollector.Callees); the collector
+// reads no Origin of either.
 
 using Kimi.Compiler.Parsing;
 
@@ -178,7 +179,7 @@ internal sealed partial class TyCtxt
             type.LengthArguments);
     }
 
-    // A substitution with its bindings erased: its Types, Self and declaring Type erased, every Origin static, lengths kept.
+    // A substitution with its bindings erased: its Types, Self and declaring Type erased, no Origin bound, lengths kept.
     private Subst EraseBindings(Subst subst)
     {
         if (!this.erasedSubsts.TryGetValue(subst, out var erased))
@@ -191,8 +192,7 @@ internal sealed partial class TyCtxt
 
             var self = subst.Self is { } conforming ? this.Erase(conforming) : null;
             var declaring = subst.Declaring is { } owner ? this.Erase(owner) : null;
-            var origins = this.Statics(subst.Origins.Length + subst.Inputs.Length);
-            erased = this.Intern(subst.Target, self, declaring, types, subst.Lengths, origins[..subst.Origins.Length], origins[subst.Origins.Length..]);
+            erased = this.Intern(subst.Target, self, declaring, types, subst.Lengths, [], []);
             this.erasedSubsts.Add(subst, erased);
             this.erasedSubsts.TryAdd(erased, erased);
         }
