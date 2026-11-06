@@ -98,7 +98,8 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     COMPILER_ARCHITECTURE "Adding a feature"); appending a separate rule list instead of replacing the affected rows.
   - Not reopened: decisions of landed units. Decisions of units not yet on `dev` are re-checked only where the
     coherence comparison would change the choice.
-- **Q5 No size caps; consistent, short and fast code; review weight** (2026-10-16, owner; AGENTS).
+- **Q5 No size caps; consistent, short and fast code; review weight** (2026-10-16, owner; AGENTS; its shared-representation
+  scope now triggers a Major change's design review, Q14).
   - Adopted: code size has no caps. Removed: the area token caps, stage ceilings, final target and LLVM-template line cap
     (plan §10.4 and §12.2, Q1's size budget, CR-A1's conversion, R4-M25), unit forecasts with their 20% overrun rule and
     R4-M30's 200-token Binding allowance. Each compiler commit still states its net size change per area, and stage exits
@@ -159,7 +160,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     parallel lanes and rulings on small single-responsibility files to ask the question review already asks); a larger
     count or a size floor (another proxy for the same test).
 - **Q10 Change workflow: classes, verdicts and bounded reviews** (2026-10-25, owner; [WORKFLOW](WORKFLOW.md), AGENTS
-  "Workflow").
+  "Workflow"; its classes superseded by Q14's Minor and Major).
   - Adopted: WORKFLOW owns design, review and completion, moved from AGENTS "Design before code", "Review weight" and
     "Independent review". Changes are Minor (local), Major, Full (formerly the full process) or Owner (Q6 (1)); a Major
     change gets a design review only for an open design issue, so Q5's one review otherwise stands. Verdicts are ACCEPT,
@@ -180,7 +181,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
 
 - **Q11 Full changes by shared acceptance tests and two candidates; a unit that does not converge goes to the owner**
   (2026-10-27, owner; [WORKFLOW](WORKFLOW.md) "Full changes", "Repeated reviews" and "Owner decisions"; amended by Q12 and
-  Q13).
+  Q13; its Full flow and candidate signals superseded by Q14).
   - Adopted (the owner, verbatim: 「そのように、WORKFLOW.mdを修正してください。いずれの場合も収束しない場合は、一時作業を停止して、
     オーナーに対応を質問するようにしてください。」, after 「G216 (a) の作り直しで試す」 and the owner's proposal of a design-first and
     an implementation-first lane): a Full change is a problem statement; shared acceptance tests written first by an author of
@@ -255,7 +256,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
     and CPU/kill/drain operational faults are not claimed reproduced.
 - **Q12 A one-hour working-time limit for design and implementation** (2026-10-30, owner; [WORKFLOW](WORKFLOW.md)
-  "Working-time limit", "Repeated reviews" and "Owner decisions").
+  "Working-time limit", "Repeated reviews" and "Owner decisions"; its approval amended by Q14).
   - The owner's draft (verbatim):
     「・設計作業や実装作業において、エージェントの実働時間が1時間を超えたら、作業を中断する。
     ・作業内容、課題、今後の予定を記録する。
@@ -312,6 +313,34 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     - revising SPEC 23.1.2 now, to define dependence by a check's inputs: rule W needs no SPEC change, and the revision
       stays an optional later SPEC unit;
     - keeping exact suppression, with an `Unsupported_Kd` at each new form: it keeps the open family.
+
+- **Q14 Two change classes, documents by the Coordinator, a lighter working-time approval** (2026-11-06, owner;
+  [WORKFLOW](WORKFLOW.md) "Sessions", "Documents", "Change classes", "Working-time limit" and "Repeated reviews"; AGENTS
+  Implementation Design and Documentation; supersedes Q11's Full flow; amends Q5, Q12 and plan R7 RQ10; arrangement R7-M4).
+  - The owner (verbatim): 「Full change、Owner changeの削除 MinorとMajorの2つにします。複数の設計案が必要な場合や、特殊対応が必要な
+    場合は、私が個別に指示を出します。」; 「AGENTS、SPECは非常に重要な文書なので、レビューが必須。他はレビュー不要。ただし、文書を
+    扱うのはCoordinator（後述）に限る。」; on the planning session's review: IMPL 「レビュー必須にする」, the stop rule 「そのように
+    修正してください」, SPEC text approval 「不要です」, the rest 「全て推奨の内容でOKです」.
+  - Rule, as WORKFLOW states:
+    - Classes Minor and Major. A Major change to a shared representation or across phases needs a design review (Q5's scope stays
+      as this trigger). Prototype first stays the default (RP13). Two candidates or another special flow only on the owner's
+      instruction for a unit.
+    - Only the Coordinator edits AGENTS, `docs/**` and `draft/**`, `docs/examples/**` excepted. Independent review for AGENTS, SPEC and
+      IMPL only; no separate owner approval of SPEC or IMPL text (RQ10's "text shown to the owner first" ends). A DECISIONS entry
+      is drafted by the implementer and landed by the Coordinator in the window that lands its unit.
+    - Working-time limit (stops counted over a unit and its split units): after a first stop the split units start at once
+      with a report (the owner may stop them); after a second, on the owner's GO; a third stop does not converge (Q12's "split twice"). Q12's counting stands.
+    - Non-convergence keeps two reviews sharing a cause and a third non-ACCEPT; Q11's candidate signals end with the flow.
+    - R4-M35's final A5 and A6 review line is removed: X-5 met it at R4's exit (R4-M165).
+  - Units in flight: a unit that PLAN or the R7 plan calls Full or Owner runs as Major with a design review; written candidates
+    stay evidence; the test-author units R7-I1, C1, P1 and R8-W2t stay Major units that write their tests first, followed by one
+    prototype-first candidate.
+  - Next: verification inputs exclude `docs/**` and `AGENTS.md` but `docs/spec/**` and `docs/examples/**` (the files tests read),
+    the Coordinator's first unit (`scripts/verification-inputs.ps1`, VERIFICATION), so that documents land outside windows.
+  - Reason: a Full unit took two implementers and a test author (Q11's cost) while Q12 and the owner escalation already bound a
+    looping unit; three sessions editing documents conflicted in windows and collided on numbers.
+  - Rejected: keeping Full for shared representations (the mandatory design review and the owner's per-unit instruction cover
+    it); reviewing every document (only AGENTS, SPEC and IMPL bind every session's work).
 
 ## Code rules (2026-10-12)
 
@@ -15210,3 +15239,18 @@ R8-M* and R9-M* by the stage of the recording unit.
   - RP21: a Full family's flow (problem statement, tests, candidates, choice, review) covers only its core, the shared representation
     and its first consumer, one hour per phase per candidate; the remaining parts are Owner-class units under the chosen design, one
     review each or one group review, never a second candidate (plan §5.0).
+- **R7-M4 The Coordinator session** (owner, 2026-11-06; amends R7-M2 and RQ1 for the windows and the documents; Q14; plan §14
+  row 5)
+  - The owner's arrangement (2026-11-06): the Front (P1–P5s), Middle (P6–P10) and Back (P11–P13) sessions design and implement;
+    the Coordinator lands units on dev, runs the windows, numbers PLAN and DECISIONS, keeps the project documents (Q14) and owns the
+    verification scripts and the benchmark infrastructure. The session that drafted the revision is the Coordinator (verbatim
+    「あなたをCoordinatorとして任命します」). Areas outside the phases are as WORKFLOW "Sessions" lists; `Core` is reviewed by the
+    Middle, as before.
+  - Windows: the Coordinator runs them once it has taken over the procedure (R4's and R5's handoffs and the board); until then the
+    current runner continues. R7-M2's window rules otherwise stand.
+  - Caps: the Coordinator has one implementer and one reviewer; a window still holds one of the three heavy-run slots. The board
+    marks the Coordinator's rows K (row ids unchanged); the Coordinator keeps the owner outbox and the document requests, handled
+    when a window opens or closes and every 30 minutes.
+  - Plan: RP7 and RP21 end (Q14); RQ6's units run one prototype-first candidate unless the owner instructs otherwise; R8-R1 and
+    R8-G1 are Major units under their approved design.
+  - Reason: the middle session ran the windows besides its defect stream, and three sessions edited the same documents.

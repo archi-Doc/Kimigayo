@@ -296,7 +296,9 @@ LengthUnary        := ("+" | "-") LengthUnary | IntegerLiteral | ConstantName
 NamedType          := NamedReference OriginApplication?
 NamedReference     := ContainerPath OriginBindingSet?
 ContainerPath      := "::"? TypeSegment PathSuffix*
-                    | BoundContainerQualifier PathSuffix+
+                    | PathQualifier PathSuffix+
+PathQualifier      := BoundContainerQualifier | UnitType | TupleType | FixedArrayType
+                    | "(" FunctionType ")"
 PlainContainerPath := "::"? TypeSegment ("." TypeSegment)*
 BoundContainerQualifier := "(" ContainerPath OriginBindingSet ")"
                          | "(" ContainerPath BorrowOrigin ")"
@@ -316,6 +318,7 @@ GenericParameter   := Name | Name "/" Name | "length" Name
 - `_` as an ArrayLength or ArrayElementType is valid only in an initialized local annotation ([§4.3.1](../04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)).
 - Where a borrow annotation attaches is defined in [§3.3.2](../03-types-and-values.md#332-nested-semantics-and-origin-annotations). A `ContainerPath` may name a Contract or associated Type in the positions that [§9.7.1](../09-names-signatures-and-access.md#971-bound-container-paths) and [§8.5](../08-generics-constraints-and-contracts.md#85-associated-types) allow; a named target may denote a runtime Contract View ([§8.12](../08-generics-constraints-and-contracts.md#812-runtime-contracts)).
 - A BoundContainerQualifier is a Type-side form only; it is unavailable in adaptation targets. Its BorrowOrigin form is the single-slot binding in a qualifier ([§15.3.1](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets)): `(S during y).Item` means `(S{v}).Item` with `origin v.s == y`. That form is valid only on the Type side, through a NamedReference, BaseClause, ContractReference, ContractSelector or TypeQualifier; in an expression, the BoundContainerQualifier of a ConstructionExpression or BoundContainerExpression, and one that begins a ConstructionExpression's PlainNamedType, takes only an OriginBindingSet, while a Type argument there is a Type.
+- A PathQualifier other than a BoundContainerQualifier is a Core without a path as the base of an associated-Type projection ([§8.5.2](../08-generics-constraints-and-contracts.md#852-projections)), as in `(i32, u8).(C).Item` and `[4 of u8].Element`; a Function Type base is grouped, as in `((i32) -> i32).(C).Item`. No other grouped Type is a PathQualifier, so `(S).Item`, `(S?).(C).Item` and `(ref/S).(C).Item` are invalid. It is a Type-side form: the ContainerPath of a PlainNamedType, of a NamedCoreType and of an expression's BoundContainerQualifier has no other PathQualifier as its head, and an adaptation target groups such a projection, as in `x@((i32, u8).(C).Item)` ([§F.9.4](#f94-adaptation-targets)).
 - OriginApplication, OriginBindingSet and BorrowOrigin are defined in [§F.8](#f8-origins).
 
 ```kimi
@@ -325,6 +328,7 @@ func first<T>(values: ref/Array<T>) -> ref/T during values
 let grid: [2 of [3 of i32]] = [2 of [3 of 0]]
 let check: (i32) -> bool = func (x: i32) => x > 0
 let maybe: ref/i32? = Option<ref/i32>.None
+let byte: [4 of u8].(Indexable<isize>).Element = 7   // u8: a fixed array is a projection base
 ```
 
 ## F.6. Declarations
@@ -405,7 +409,7 @@ AssociatedTypeSpecification := "associate" AssociatedTypeName OriginParameters?
 AssociatedTypeName   := Name | ContractSelector "." Name
 AssociatedTypeReference := TypeQualifier "." Name OriginApplication?
                          | TypeQualifier "." "(" ContractReference ")" "." Name OriginApplication?
-TypeQualifier        := ContainerPath
+TypeQualifier        := ContainerPath | PathQualifier
 ConditionalConformance := "Self" "is" ContractReference "when" ConformanceConditions
                           IndentedList<ConditionalImplementationItem>?
 ConformanceConditions := ConformanceCondition ("," ConformanceCondition)*
