@@ -149,7 +149,7 @@ public sealed partial class Binding
         };
     }
 
-    // Whether a result still names a per-call input or a universal Origin of `binder`: a test of its Origin summary's Nodes, which
+    // Whether a declared signature names a per-call input or a universal Origin of `binder`: a test of its Origin summary's Nodes, which
     // raw layers' Origins are not (Binding.OriginSummaries).
     private bool HasUnsubstitutedInput(BoundType type, Koto binder)
     {
@@ -647,7 +647,6 @@ public sealed partial class Binding
         in BoundArgumentOperation acquisition)
     {
         var result = signature.Components[1];
-        var inputBinder = ownBinder is not null && this.HasUnsubstitutedOrigin(result, ownBinder) ? ownBinder : null;
         var closure = ownBinder is FunctionKoto { IsAnonymous: true, ClosureDefinition: not null } binder ? binder : null;
         var atoms = closure is null ? CallAtoms.None : this.CallAtomsOf(result, closure, call);
         if ((atoms & CallAtoms.Foreign) != 0)
@@ -655,17 +654,15 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.Unsupported); // F1's located limit (DECISIONS R4-M152): the owner's (c').
         }
 
-        if (inputBinder is not null || atoms != CallAtoms.None)
+        if (ownBinder is null)
         {
-            var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, closure!, acquisition) : null;
-            var unbound = (atoms & CallAtoms.Result) != 0 ? this.OriginAtom(call, OriginKind.Unbound, 0) : null;
-            result = this.SubstituteStoredOrigins(result, ownBinder!, origins, new(inputs, image, unbound));
-            if (inputBinder is not null && this.HasUnsubstitutedInput(result, inputBinder))
-            {
-                return this.Fail(call, BindingFailure.Unsupported);
-            }
+            return result;
         }
 
-        return result;
+        var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, closure!, acquisition) : null;
+        var unbound = (atoms & CallAtoms.Result) != 0 ? this.OriginAtom(call, OriginKind.Unbound, 0) : null;
+        var images = new PerCallImages(inputs, image, unbound);
+        return this.LacksImage(result, ownBinder, origins, images)
+            ? this.Fail(call, BindingFailure.Unsupported) : this.SubstituteStoredOrigins(result, ownBinder, origins, images);
     }
 }

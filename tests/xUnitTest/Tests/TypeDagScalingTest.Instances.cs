@@ -15,7 +15,7 @@ public partial class TypeDagScalingTest
     // The chain through Tuples, fixed arrays and enum payloads, and with raw leaves: the declarations' inline layouts (their summaries,
     // DECISIONS BU-65, and CompleteProjections); a member path to the last instance and a generic callee at it (CheckTypeConstraints, ProveTypeLengths, the
     // callee's atom walk); a comparison of the Tuple tree (ComparisonProof), a Copy requirement on it (DependentType), a called closure
-    // capturing it (HasUnsubstitutedInput). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
+    // capturing it (LacksImage). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
     // candidates' and results' Origin tests (the Origin summary), the published result and a Closure with two captures, one of which names
     // the result's Origin.
     [Theory]
