@@ -9459,6 +9459,12 @@ resumed by R4-M86 (2026-10-20).
       body is G216 (b)'s.
     - Rejected: the seventh's regions, the ninth as a placeholder, the tenth's narrowing and the eleventh's Rule E. Each reasoned at
       the judgment about a callee Parameter atom the call had left in the caller.
+  - Amended (G410, 2026-11-06; SPEC 3.8, 10.8, 15.3.6, 15.6.4 step 1): a callee's Input Origin (one a parameter's layer elides, which
+    `during x` names) that 15.3.6 leaves without a candidate, as after a Never argument, which fits and supplies no Origin, or an
+    omitted default, which is no evidence, is a region of its call like an Origin parameter. `OpenUnsolvedOrigins` opens both: the
+    parameters keyed up from `UnsolvedKey`, the inputs down (`UnsolvedKey - 1 - i`), all below `UnsolvedKey / 2`, so `IsCallRegion`
+    and the view's `EnclosingCallRegion` read them alike. Before, the result kept the callee's Input atom: `UnprovenConstraint_Kd`
+    at a named call, `Unsupported_Kd` at a value call.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and

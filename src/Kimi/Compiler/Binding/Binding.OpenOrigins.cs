@@ -198,12 +198,19 @@ public sealed partial class Binding
     // parameter's premise included, is a local region of the call, solved with the body's other local regions by its uses; the
     // premises the call's judgment visits over it are that region's bounds (a result-only `s` of `constant() -> ref/i32 during s`, one
     // only a default names, the Origins only a join's or an aggregate's `.None` leaves name). It needs no annotation and is never
-    // replaced by static. It is the call's open region, keyed apart from argument evidence by UnsolvedKey.
-    private void OpenUnsolvedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins)
+    // replaced by static. It is the call's open region, keyed apart from argument evidence by UnsolvedKey: the Origin parameters count
+    // up from it and the input Origins (an elided parameter Origin a Never argument leaves without one, SPEC 10.8; PLAN G410) down, so
+    // IsCallRegion holds for both.
+    private void OpenUnsolvedOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins, BoundOrigin[] inputs)
     {
         for (var i = 0; i < function.Origins.Count; i++)
         {
             origins[i] ??= this.OpenOrigin(call, UnsolvedKey + i);
+        }
+
+        for (var i = 0; i < Math.Min(inputs.Length, InputOriginCount(function)); i++)
+        {
+            inputs[i] ??= this.OpenOrigin(call, UnsolvedKey - 1 - i);
         }
     }
 

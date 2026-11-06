@@ -504,7 +504,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            this.OpenUnsolvedOrigins(call, function, origins); // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
+            this.OpenUnsolvedOrigins(call, function, origins, inputs); // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
 
             // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
             // open position closed by a later literal default still keeps the candidate pending.
