@@ -28,6 +28,7 @@ public sealed partial class Binding
         Receiver,
         Shape,
         Owned,
+        Dependence, // The result contract depends on the receiver (ResultDependsOnReceiver).
         Condition,
     }
 
@@ -61,6 +62,12 @@ public sealed partial class Binding
             this.ErasureOf(closure, required) is not { } erasure)
         {
             return null;
+        }
+
+        if (erasure.Part == ErasurePart.Dependence)
+        {
+            return "This closure's result retains its call receiver, as a raw layer without an Origin in its result does; " +
+                "a common Function value's result cannot depend on its receiver";
         }
 
         return erasure.Receiver switch
