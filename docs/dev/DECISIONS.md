@@ -4640,7 +4640,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     it, with its witness by the one rule (the holder's next use in the location's chain, here its drop slot's; none past the chain, as the
     base's records at depth 10; superseded by R4-M57's amendment of 2026-11-04: the holder's declaration), beside the depth limit at
     the holder's declaration (`DroppedDeparture`). A location's departure is the one
-    a counted pass gives where one stands; a departure only the drop tier gives is recorded only where none does (revision 2).
+    a counted pass gives where one stands; a departure only the drop tier gives is recorded only where none does (revision 2). Amended
+    2026-11-06 (PLAN G272 N2): a real candidate, marker or departure is the decided answer and the drop tier's the Deep one; each site
+    records by their Join (`MirOutcome`; `Candidate.Outcome`).
   - Rule W and the referent store: `Writes` returns two facts: a Limit holder reached (R4-M147, unchanged) and a Deep holder whose step,
     at W's fixed point, would change what W writes (`Changes`: reach a holder W does not, or, by R4-M154's ways, one W reaches only at
     its first step or past a holder by another Place's Type; that step is left out, and a step that changes nothing decides nothing). At a
