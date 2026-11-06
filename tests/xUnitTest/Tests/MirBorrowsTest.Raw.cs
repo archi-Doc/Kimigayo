@@ -282,14 +282,15 @@ public sealed partial class MirBorrowsTest
     // past it and `y = 3` / `z = 5` err, as before (the review's r04, r05, r27n, r29). The cap judges a layer by its route (the owner's
     // O-23, 「aでお願いいたす」): a layer in a Closure's environment steps by its kind, so a captured layer stating an Origin the enclosing
     // signature also states by `uniq` lets the call store w's address into u's referent and `z = 5` errs (capturedBox, a supplied one,
-    // accepted on feaff9158; capturedRaw and capturedNested, accepted on dev); a layer written in a Closure's or nested function's own
-    // signature keeps the cap whatever binds its Origin, so closureParam and nestedParam are valid (they err on 22d1216a0).
+    // accepted on feaff9158; capturedRaw, capturedNested and nestedReceives, whose captured `p` the outer Closure writes, accepted on
+    // dev); a layer written in a Closure's or nested function's own signature keeps the cap whatever binds its Origin, so closureParam,
+    // nestedParam and paramOnly (a supplied one) are valid (they err on 22d1216a0, paramOnly also on dev).
     [Fact]
     public void ACallStoresPastASuppliedLayerByItsContractsInputs()
         => Assert.Equal(
             [
                 "uniqVia: y = 3", "uniqVia: inspect(t)", "bothVia: y = 3", "slotAlias: z = 5", "slotBoxAlias: z = 5", "capturedBox: z = 5",
-                "capturedRaw: z = 5", "capturedNested: z = 5",
+                "capturedRaw: z = 5", "capturedNested: z = 5", "nestedReceives: z = 5",
             ],
             Problems("""
                 struct Wrap<E>
@@ -412,6 +413,23 @@ public sealed partial class MirBorrowsTest
                     func passOn(q: ref/(raw/u8) during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8) => ()
                     var x = u@follow@raw
                     passOn(r, x@uniq, w@raw@raw/u8)
+                    z = 5
+                func nestedReceives(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let p = u@follow@raw
+                    var outer = func [p] (r2: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *p = null
+                        var inner = func (q: ref/(raw/u8) during a, pp: raw/(raw/u8) during a, v2: raw/u8) => ()
+                        inner(r2, p, v)
+                    outer(r, w@raw@raw/u8)
+                    z = 5
+                func paramOnly(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var other = Box2.init(u@follow@raw)
+                    var k = func (q: ref/(raw/u8) during a, h: uniq/Box2<raw/(raw/u8) during a>, v: raw/u8) => ()
+                    k(r, other@uniq, w@raw@raw/u8)
                     z = 5
                 """));
 
