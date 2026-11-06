@@ -9706,7 +9706,8 @@ resumed by R4-M86 (2026-10-20).
     the adapter as a Text Reason), which keeps the free text and its elision; separate adapter files without a contract of their own.
   - (amended G478, R4 #23) The arithmetic selection and eligibility checks close their causes the same way (`ArithmeticSelectionCause`
     4, `ArithmeticConformanceCause` 3). The check records `PerCallOriginFact` (the argument and the slot) and the adapter forms its
-    Reason, like `PerCallSlotFact`'s (U1). `ArchitectureRulesTest`'s "String explanations in Binding failure facts" keeps the one
+    Reason, like `PerCallSlotFact`'s (U1). It is a fact with a payload (the argument and the slot), not a closed cause, so BU-111's
+    rejected EffectBound shape does not apply. `ArchitectureRulesTest`'s "String explanations in Binding failure facts" keeps the one
     left, `UnboundSlotFact.Note` (PLAN G499).
 
 - **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; Major
