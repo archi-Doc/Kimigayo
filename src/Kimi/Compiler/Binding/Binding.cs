@@ -68,6 +68,11 @@ public sealed partial class Binding
     /// <returns>The final semantic completeness summary.</returns>
     public BindingResult CheckBound()
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run(this, static s => s.CheckBound());
+        }
+
         if (this.Result.Mode != BindingMode.Final)
         {
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
@@ -84,6 +89,11 @@ public sealed partial class Binding
     /// <returns>The current pass summary.</returns>
     public BindingResult Bind(BindingMode mode)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run((this, mode), static s => s.Item1.Bind(s.mode));
+        }
+
         if (this.running)
         {
             throw new InvalidOperationException("Binding cannot be reentered.");

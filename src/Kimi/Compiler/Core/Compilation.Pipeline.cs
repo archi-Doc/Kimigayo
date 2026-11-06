@@ -90,7 +90,20 @@ public partial class Compilation
 
     /// <summary>Records the diagnostics of the latest <see cref="Analyze"/>: its rows, through Core's publisher (Compilation.Publication.cs;
     /// DECISIONS R5-M184, R5-M185).</summary>
-    public void ReportAnalysis() => this.PublishMirRecords();
+    public void ReportAnalysis()
+    {
+        if (!CompilerThread.IsCurrent)
+        {
+            CompilerThread.Run(this, static s =>
+            {
+                s.ReportAnalysis();
+                return default(ValueTuple);
+            });
+            return;
+        }
+
+        this.PublishMirRecords();
+    }
 
     /// <summary>Gets whether the latest <see cref="Analyze"/> judged a function's own body without a problem (R6-check H6, H0b §2.1;
     /// GR-1a): its MIR body exists, the analyses ran on it (no validator finding, <c>MirBody.HasFinding</c>, DECISIONS R5-M183), no
@@ -132,6 +145,11 @@ public partial class Compilation
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
     internal Mir.MirProgram BuildMir()
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run(this, static s => s.BuildMir());
+        }
+
         var program = (this.mirAnalysis ??= new(this.Types)).Run(this.ConstructMir(), this.SourceModules.Length);
         this.Collect(program);
         return program;
