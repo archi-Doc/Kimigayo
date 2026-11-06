@@ -5747,6 +5747,13 @@ resumed by R4-M86 (2026-10-20).
     bound again. No candidate is selected again; anonymous functions stay under PLAN R1e. Rejected: binding the part before selection
     (a node bound in a pass is not bound again, so its literal sources would keep their defaults, and binding a `match` twice reports
     its arms as covered).
+    - Amended (G421 (iii), 2026-11-06; unit bu161): a part is bound on its own in one way, with the consultation frame suspended
+      (`SuspendConsultation`, Binding.Diagnostics.Prerequisites; G417 (3)'s suspension for a demanded header, named there). The call
+      was decided before and reads no result of the part, so the part is not its prerequisite, and the call's own record (a value
+      call's failed callee, a payload callee's located `Unsupported_Kd`) is not derived from it. A Typed part that no preparation
+      reached is bound alike: the arguments after a value call's stop (its callee, explicit Type arguments, arity, a label, a failed
+      part) and the payloads after a construction's first failing one; such a part that defers as a nested call is completed as a
+      waiting nested call is. Before, they were never bound, and their own records were lost.
   - U5, Case construction on the walks (SPEC 6.5.2 item 2, 10.8.1, 10.5.1; design B section 5, D7, R1, R9, R11): the slots its
     qualifier and expected Type fix come first; a payload whose payload Type they settle is bound only at it, and every other
     payload is prepared as an argument is and is evidence by its kind through `SlotSolution.InferArgument`, which now serves a

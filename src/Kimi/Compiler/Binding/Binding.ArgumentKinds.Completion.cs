@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
 // CompleteValueCallPart completes a value call's part at its one candidate's parameter Type; CompleteUnselected binds on its own each
-// part of a call that completes none. The selection, its defaults and their re-check (SolveSelected, CheckDefaulted) stay in
-// Binding.ArgumentKinds.cs.
+// part of a call that completes none, outside its consultation. The selection, its defaults and their re-check (SolveSelected,
+// CheckDefaulted) stay in Binding.ArgumentKinds.cs.
 public sealed partial class Binding
 {
     // SPEC 10.5, 10.5.4: takes each argument first (TakeArgument, CallRelation.Taken), then completes the selected candidate's waiting
@@ -152,17 +152,32 @@ public sealed partial class Binding
         return this.ErasePart(part, typed, parameter) ? parameter : null;
     }
 
-    // SPEC 23.1.2, 10.1: a call that ends unresolved, with no selected candidate or one that failed before completing its arguments,
-    // binds each argument part still unbound on its own under the argument probe, so that the part's own problems are reported once
-    // and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that would wait
-    // stay unbound, and the parts of a Tuple or array literal, a contextual Case and a waiting nested call are completed alike. A
-    // control-flow part already bound in this pass is not bound again. Anonymous functions stay unbound (PLAN R1e); no candidate is selected
-    // again (SPEC 10.1); a deferred call is completed by its outer call.
+    // SPEC 23.1.2, 10.1 (DECISIONS U4b): a call that ends unresolved, with no selected candidate or one that failed before completing
+    // its arguments, binds each argument part still unbound on its own under the argument probe, so that the part's own problems are
+    // reported once and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that
+    // would wait stay unbound, and the parts of a Tuple or array literal, a contextual Case and a waiting nested call are completed
+    // alike, as is a Typed part no preparation reached (after a value call's or a construction's stop). The call was decided before and
+    // reads no result of these parts, so they are bound with its consultation suspended: none is its prerequisite, and its own record
+    // (a failed callee's) stays direct. A control-flow part already bound in this pass is not bound again. Anonymous functions stay
+    // unbound (PLAN R1e); no candidate is selected again (SPEC 10.1); a deferred call is completed by its outer call.
     private BoundType? CompleteUnselected(InvocationKoto call, BindingScope scope, BoundType? type)
     {
-        for (var i = 0; type is null && !this.IsWaitingPart(call) && i < call.ArgumentNodes.Count; i++)
+        if (type is not null || this.IsWaitingPart(call))
         {
-            this.CompleteUnselectedPart(call.ArgumentNodes[i], scope);
+            return type;
+        }
+
+        var consultation = this.SuspendConsultation();
+        try
+        {
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                this.CompleteUnselectedPart(call.ArgumentNodes[i], scope);
+            }
+        }
+        finally
+        {
+            this.ResumeConsultation(consultation);
         }
 
         return type;
@@ -196,6 +211,12 @@ public sealed partial class Binding
             return;
         }
 
+        // Unprepared, as a waiting Case's payload is: bound on its own; a nested call that defers under the probe is completed below.
+        if (ClassifyPart(part) == PartKind.Typed && part.BindingState == BindingState.Unvisited && this.BindIndependentArgument(part, scope) is not null)
+        {
+            return;
+        }
+
         var waitingCase = this.KindOf(node) == PartKind.Case;
         IReadOnlyList<Koto>? parts = node switch
         {
@@ -206,14 +227,7 @@ public sealed partial class Binding
         };
         for (var i = 0; parts is not null && i < parts.Count; i++)
         {
-            if (waitingCase && ClassifyPart(parts[i]) == PartKind.Typed && parts[i].BindingState == BindingState.Unvisited)
-            {
-                this.BindIndependentArgument(parts[i], scope); // A waiting Case's own payload, bound on its own.
-            }
-            else
-            {
-                this.CompleteUnselectedPart(parts[i], scope);
-            }
+            this.CompleteUnselectedPart(parts[i], scope);
         }
     }
 
