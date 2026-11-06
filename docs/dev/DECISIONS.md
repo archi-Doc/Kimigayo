@@ -9849,6 +9849,19 @@ resumed by R4-M86 (2026-10-20).
     `BindingFailure` entry); an `@follow` repair (SPEC 23.3 has no such kind; it would hide the read's undecided legality);
     `ArithmeticTerminal` stopping before a raw pointer (two rules for `q * 2`); reporting in `CompleteBinary` (after the wrong fit).
 
+- **BU-117 A shared-name qualifier that neither path completes is a located Unsupported until both paths are evaluated** (2026-11-07;
+  PLAN G481 unit B, G488; Major; a temporary structure) SPEC 9.2, 9.6, 23.1.1; DIAGNOSTICS rule 3.
+  - Rule: where a member access's qualifier names both a Type and a value and neither namespace's path finds the member, the
+    qualifier gets one located Unsupported_Kd and the member rests on it. The verdict needs both complete paths (9.6), but Member's
+    Type path publishes the shared qualifier, which the value path then reads (G488), so neither "missing" nor "ambiguous" can be
+    decided. A Language error there would be a conservative error on a valid form (AGENTS Diagnostics). The class includes invalid
+    programs (d03, d04, d11, s09).
+  - Kept: where both paths find the member, AmbiguousBinding_Kd stays. It is read from the same path, so it is wrong for the valid
+    d12, d13 and s12 (a known limit in G488). The owner's O-32 decides whether the found-both class takes the same Unsupported_Kd.
+  - A group qualifier names its group, so no value takes its Type, and the CheckFaulted_Kd crash is gone.
+  - Removal stage: R7 N1 (`ResolvePath` evaluates both paths before either publishes).
+  - Rejected: AmbiguousBinding_Kd or UnresolvedBinding_Kd for the found-neither class (a Language error on valid forms, d01).
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

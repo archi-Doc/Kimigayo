@@ -226,8 +226,7 @@ public sealed partial class Binding
                 this.SelectTypeCandidate(QualifiedTypeMember(members.Types.GetValueOrDefault(rightName)), scope, syntax, core, arity) is { } target)
             {
                 var right = member.Right;
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
+                PublishQualifier(member.Left, qualifier);
                 right.BoundSymbol = target;
                 right.BindingState = BindingState.Resolved;
                 return target;
@@ -281,12 +280,19 @@ public sealed partial class Binding
                 return null;
             }
 
-            member.Left.BoundSymbol = qualifier;
-            member.Left.BindingState = BindingState.Resolved;
+            PublishQualifier(member.Left, qualifier);
             member.Right.BoundSymbol = target;
             member.Right.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
-            member.BoundSymbol = target;
-            member.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
+            if (target is null)
+            {
+                member.BoundSymbol = null;
+                member.BindingState = BindingState.Unresolved;
+            }
+            else
+            {
+                PublishQualifier(member, target); // The outer level's qualifier in a longer `::` path (SPEC 9.7.1 step 1).
+            }
+
             return target;
         }
 
@@ -362,6 +368,11 @@ public sealed partial class Binding
             if (type is null)
             {
                 RestPendingOn(originDeclaration, syntax);
+                if (syntax.BindingState == BindingState.Resolved)
+                {
+                    syntax.BindingState = BindingState.Unresolved; // A lookup's Resolved (PublishQualifier) yields to its binder's outcome.
+                }
+
                 return null;
             }
 
@@ -613,7 +624,7 @@ public sealed partial class Binding
             return this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType);
         }
 
-        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
+        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto)
         {
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
