@@ -450,6 +450,13 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         "2.0 + p",
         null)]
     [InlineData(
+        "func f(u: ref/()) => 1 + u\npublic func main() => ()",
+        "NonNumericOperand_Kd",
+        "ref/()",
+        "+",
+        "1 + u",
+        null)]
+    [InlineData(
         "func f(p: ref/raw/i32, n: isize) => p + n\npublic func main() => ()",
         "OperatorNotDefined_Kd",
         "ref/raw/i32",

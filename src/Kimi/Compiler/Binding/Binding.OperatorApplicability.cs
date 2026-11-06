@@ -48,7 +48,7 @@ public sealed partial class Binding
     {
         var kind = OperatorKind(operation);
         var operand = left;
-        var rightCore = right;
+        BoundType? rightCore = null;
         var source = operation is BinaryKoto binarySource ? binarySource.Left : operation;
         Koto? fittedOperand = null;
         if (ReferenceEquals(left, BoundType.Never) && operation is BinaryKoto fitting &&
