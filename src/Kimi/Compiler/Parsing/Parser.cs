@@ -2560,11 +2560,14 @@ CloseParameters:
             return new CodeBlockKoto(ref reader, start, []);
         }
 
+        // The items of an indented body are regions of their own (SPEC F.4.1, F.4.4), whichever construct owns the body.
+        var region = reader.EnterRegion();
         var blockContext = reader.TakeContext();
         var items = default(TemporaryKotoList);
         var state = new ExecutableItemState(function, originOwner);
         var end = ParseExecutableBlockItems(ref reader, ref items, ref state);
         reader.RestoreContext(blockContext);
+        reader.RestoreRegion(region);
         return new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, end)),
@@ -3449,20 +3452,23 @@ CloseParameters:
         return supplied;
     }
 
+    /// <summary>Reports an indented body where its region requires a single-item body: inside a single-item body, every construct
+    /// with a Body in the same region, an anonymous function included, uses one (SPEC F.4.4). The body is still parsed.</summary>
+    /// <param name="reader">The token reader, where the construct's body starts.</param>
+    internal static void CheckIndentedBodyRegion(ref TokenReader reader)
+    {
+        if (reader.SingleBodyRegion)
+        {
+            reader.Expect(SyntaxForm.ArrowBody);
+        }
+    }
+
     internal static CodeBlockKoto ParseRequiredBody(ref TokenReader reader, bool ifBody = false)
     {
         if (reader.CurrentTokenKind != TokenKind.EqualsGreaterThan)
         {
-            if (reader.SingleBodyRegion)
-            {
-                reader.Expect(SyntaxForm.ArrowBody);
-            }
-
-            // The items of an indented body are regions of their own (SPEC F.4.1).
-            var region = reader.EnterRegion();
-            var block = ParseRequiredBlock(ref reader, true);
-            reader.RestoreRegion(region);
-            return block;
+            CheckIndentedBodyRegion(ref reader);
+            return ParseRequiredBlock(ref reader, true);
         }
 
         var expression = ParseSingleBodyItem(ref reader, ifBody);

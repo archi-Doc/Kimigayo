@@ -427,6 +427,7 @@ public sealed class FunctionKoto : DeclarationKoto
             return;
         }
 
+        Parser.CheckIndentedBodyRegion(ref reader);
         this.Body = Parser.ParseFunctionBlock(ref reader, this);
         this.Body.Parent = this;
         this.Span = SourceSpan.FromBounds(this.Span.Start, this.Body.Span.End);
