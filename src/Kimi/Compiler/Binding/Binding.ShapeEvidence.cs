@@ -32,8 +32,9 @@ public sealed partial class Binding
     // SPEC 7.4.4: whether both candidates take the same evidence for the slot from the call's arguments, by argument index. Each
     // part gives it by its kind (SPEC 10.5.1): a waiting part, an anonymous function included, only the callable slot it stands at,
     // and an anonymous function also the parts its header writes (SPEC 10.5.4); a Tuple or array literal element by element; any
-    // other part its parameter Type's occurrences and, at a callable slot, its call signature's. Every occurrence must have the same structural path and extraction rule; an extra candidate-specific source fails.
-    // `occurs`: some argument gives the slot evidence in both candidates.
+    // other part its parameter Type's occurrences and, at a callable slot, its call signature's. Every occurrence must have the same
+    // structural path and extraction rule; an extra candidate-specific source fails. `occurs`: some argument gives the slot evidence
+    // in both candidates.
     private bool SameArgumentEvidence(InvocationKoto call, FunctionKoto left, FunctionKoto right, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap, out bool occurs)
     {
         var found = false;
@@ -175,7 +176,7 @@ public sealed partial class Binding
 
     // This phase reads the whole resolved group. Applicability, defaults and literal defaults
     // supply no evidence; a failure at another source position does not discard a binding here.
-    // A slot fixed in neither candidate needs the same argument evidence (SameArgumentEvidence)
+    // A slot not fixed in both candidates needs the same argument evidence (SameArgumentEvidence)
     // before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
     private bool CheckCallShapeContracts(InvocationKoto call, GenericsKoto? generic, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
     {
