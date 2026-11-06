@@ -92,20 +92,21 @@ public class AccessorReceiverBindingTest
         Assert.Equal(c.Binding.Issues.Select(x => x.Code), restored.Binding.Issues.Select(x => x.Code));
     }
 
+    // A receiver on a static accessor is a syntax error (SPEC 11.3), so the replaced accessor is an instance one.
     [Fact]
-    public void ReplacingAStaticAccessorClearsAndRestoresItsReceiverFailure()
+    public void ReplacingAnAccessorClearsAndRestoresItsReceiverFailure()
     {
-        var c = MinimalEmissionTest.Analyze("group Api\n    computed item: i32\n        get(self: i32) -> i32 => 1");
+        var c = MinimalEmissionTest.Analyze("struct Api\n    computed item: i32\n        get(self: i32) -> i32 => 1");
         Assert.False(c.Binding.Result.IsComplete);
         var property = Property(c);
         var original = property.GetAccessor(PropertyAccessorKind.Get)!;
-        var valid = MinimalEmissionTest.Analyze("group Api\n    computed item: i32\n        get() -> i32 => 1");
+        var valid = MinimalEmissionTest.Analyze("struct Api\n    computed item: i32\n        get() -> i32 => 1");
         var replacement = Property(valid).GetAccessor(PropertyAccessorKind.Get)!;
         var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
         ParseTestHelper.Detach(replacement, new PropertyAccessorKoto(ref reader, default, default, PropertyAccessorKind.Get, null));
         Assert.True(KotoHelper.Replace(property, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Null(property.SymbolOf()!.Property!.Getter.Receiver);
+        Assert.Equal(SemanticsKind.Ref, property.SymbolOf()!.Property!.Getter.Receiver!.Semantics);
         Assert.True(property.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));
         Assert.False(c.Bind().IsComplete);

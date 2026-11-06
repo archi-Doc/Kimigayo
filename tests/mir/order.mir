@@ -212,22 +212,14 @@ fn captures @89
 closure @98
   _0: () return @98
   _1: ref/closure () -> () arg @98
-  _2: () temp @99
   bb0:
-      StorageLive(_2) @99
-    * _2 = const () @99
-      StorageDead(_2) @99
-      _0 = const () @99
+    * _0 = const () @99
       return @99
 closure @102
   _0: () return @102
   _1: ref/closure () -> () arg @102
-  _2: () temp @103
   bb0:
-      StorageLive(_2) @103
-    * _2 = const () @103
-      StorageDead(_2) @103
-      _0 = const () @103
+    * _0 = const () @103
       return @103
 fn pairs @104
   _0: () return @104

@@ -136,8 +136,10 @@ public class ArchitectureRulesTest
     // R6-check H14 (D7): Parsing reads the Koto semantic slots only in their declarations' bodies and on their write paths (a replaced
     // child's reset, the views and synthetic Kotos Binding builds), which R7 removes with the slots (DECISIONS R5-M9).
     [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
-    // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions.
+    // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions, and is read outside the component
+    // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
     [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
+    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=4;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, or MeasureOnce for one run that cannot
     // repeat, which retire the thread's allocation context first; a window that reads the thread's counter itself can be charged a
     // runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks (src/Benchmark) are not tests. A letter in brackets keeps

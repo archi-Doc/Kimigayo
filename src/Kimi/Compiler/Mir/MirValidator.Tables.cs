@@ -61,7 +61,9 @@ internal sealed partial class MirValidator
         {
             var locals = body.Locals;
             var arguments = true;
-            var constructor = body.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(body.Key.Decl); // Its _0 is the receiver (BU-48).
+            // The receiver (BU-48, amended by G283): a constructor's _0, and a destructor's self _1, the body MIR names by its Type's destructor.
+            var receiver = body.Key.Kind != MirBodyKind.Fn ? -1 : AdtDef.IsConstructor(body.Key.Decl) ? 0
+                : body.Key.Decl is { } decl && locals is [_, { Type: { } self }, ..] && ReferenceEquals(AdtDef.DestructorSymbol(self), decl) ? 1 : -1;
             for (var i = 0; i < locals.Length; i++)
             {
                 ref readonly var local = ref locals[i];
@@ -71,7 +73,7 @@ internal sealed partial class MirValidator
                 var placed = (local.Kind == MirLocalKind.Return) == (i == 0) && (local.Kind != MirLocalKind.Arg || arguments);
                 if (!typed || !placed || local.Kind > MirLocalKind.DropFlag ||
                     (local.Role == MirLocalRole.Result && (local.Kind != MirLocalKind.Temp || !ReferenceEquals(local.Type, locals[0].Type))) ||
-                    (local.Role == MirLocalRole.Receiver) != (i == 0 && constructor))
+                    (local.Role == MirLocalRole.Receiver) != (i == receiver))
                 {
                     this.Report(MirViolation.Local);
                 }

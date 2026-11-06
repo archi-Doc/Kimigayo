@@ -2,14 +2,15 @@
 
 // The published closure definition (C2; ClosureDef, plan 5.3; DECISIONS R4-M126, R4-M145).
 // - Responsibility: what a binding of an anonymous function publishes: each capture's source and environment binding (Storage), the
-//   environment Type, the signature, the evaluating body, and the call receiver facts (SPEC 7.7.3): the strongest requirement over
-//   every admitted case (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose acquisition by value
-//   Reborrows by case (BoundCapture.BareReborrows), the first Exclusive cause, and whether this binding has classified them
-//   (Classified).
-// - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, EvaluatingBody and the resets), Binding.Captures
-//   (Storage), Binding.ClosureReceivers (the receiver facts).
-// - Outputs: Receiver for acquisition and every receiver reader (value calls, candidate selection and Callable proofs, effects and
-//   the MIR builder); the cause for the write record; for a view of one admitted case, that case's
+//   environment Type, the signature, the evaluating body, whether the body infers the result (InfersResult), and the call receiver
+//   facts (SPEC 7.7.3): the strongest requirement over every admitted case (Receiver), the requirement every case has
+//   (CaseFreeReceiver), each capture whose acquisition by value Reborrows by case (BoundCapture.BareReborrows), the first Exclusive
+//   cause, and whether this binding has classified them (Classified).
+// - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, EvaluatingBody, InfersResult and the resets),
+//   Binding.Captures (Storage), Binding.ClosureReceivers (the receiver facts).
+// - Outputs: InfersResult for Binding's discard rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
+//   reader (value calls, candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a
+//   view of one admitted case, that case's
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
 //   case Type, else Shared.
 // - Access (DECISIONS R5-M63 (1), R4-M152, R5-M193; agreed with BU, the Binding owner): two accessors with two meanings, so each
@@ -66,6 +67,10 @@ public sealed class BoundClosure
 
     // The body that evaluates the literal and binds its header and captures (SPEC 15.3.4; Binding.ExecutableBodies.cs). MIR never reads it.
     internal ExecutableBody EvaluatingBody { get; set; }
+
+    // Whether this binding's body infers the result, neither a written result nor a fixed expectation having fixed it before the body
+    // (SPEC 10.5.4; DECISIONS BU-109). Written before the body is bound; MIR never reads it.
+    internal bool InfersResult { get; set; }
 
     internal List<BoundCapture> Storage { get; } = new();
 

@@ -97,7 +97,6 @@ public sealed partial class Binding
         string? target = null;
         var symbols = this.importSymbols;
         symbols.Clear();
-        this.importDeclarations.Clear();
         var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {

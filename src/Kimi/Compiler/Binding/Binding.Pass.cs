@@ -23,6 +23,7 @@ public sealed partial class Binding
         this.lints.Clear();
         this.callableSelectionFailures.Clear();
         this.callableSelectionParties.Clear();
+        this.importDeclarations.Clear();
         this.libraryImports.Clear();
         this.constraintDiagnosticCauses?.Clear();
         this.ResetPrerequisites();

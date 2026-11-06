@@ -206,7 +206,10 @@ public sealed partial class HirFormsTest
     // an enclosing join's at another source (r4's `2`) go. The operand's own records stay (TransferRequired_Kd at `yield xs`, as row 9
     // gives it), and so does the fallthrough the Dependent construct hid (FunctionFallthrough_Kd, SPEC 14.9.3's example). A valid labeled
     // yield to a discarded selection keeps its TypeMismatch_Kd (SPEC 14.7), and its Unit twin is valid. Fail-before: the first six rows'
-    // constructs were Unresolved or `()` and Completes, with a TypeMismatch_Kd at each operand that is not Unit.
+    // constructs were Unresolved or `()` and Completes, with a TypeMismatch_Kd at each operand that is not Unit. SPEC 10.5.4 (DECISIONS
+    // BU-109): an anonymous function's single-item body keeps the context fixed before it, so a result inferred as Unit leaves it in
+    // Value Context (r21, r23, t5: valid; fail-before: row 10 at each yield beside its non-null row, and r23's `if` Diverges), while Unit
+    // written (t2) or fixed by the expected Type (t1) or the parameter (t3) discards it.
     [Theory]
     [InlineData("func f(a: i32)\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
     [InlineData("func f(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        yield 2\n", "if a > 0: Never Diverges", "UnlabeledYieldTarget_Kd 3:9, UnlabeledYieldTarget_Kd 5:9")]
@@ -223,6 +226,12 @@ public sealed partial class HirFormsTest
     [InlineData("func p12(a: i32) -> i32\n    if a > 0\n        yield 1\n    else\n        ()\n", "if a > 0: () Completes", "FunctionFallthrough_Kd 2:5, UnlabeledYieldTarget_Kd 3:9")]
     [InlineData("func p4(a: i32)\n    label s: if a > 0\n        yield to s 1\n    else\n        ()\n", "if a > 0: null Completes", "TypeMismatch_Kd 3:20")]
     [InlineData("func p5(a: i32)\n    label s: if a > 0\n        yield to s ()\n    else\n        ()\n", "if a > 0: () Completes", "")]
+    [InlineData("func r21(c: bool)\n    let g = func [c] () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "")]
+    [InlineData("func r23(c: bool)\n    let g = func [c] () => if c => yield () else => yield ()\n    g()\n", "if c => yield (): () Completes", "")]
+    [InlineData("func t5(c: bool)\n    let g = func [c] () => match c\n        true => yield ()\n        false => ()\n    g()\n", "match c: () Completes", "")]
+    [InlineData("func t1(c: bool)\n    let g: () -> () = func [c] () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:46")]
+    [InlineData("func t2(c: bool)\n    let g = func [c] () -> () => if c => yield () else => ()\n    g()\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:42")]
+    [InlineData("func run(f: () -> ()) => f()\nfunc t3(c: bool) => run(func [c] () => if c => yield () else => ())\n", "if c => yield (): () Completes", "UnlabeledYieldTarget_Kd 2:48")]
     public void AnInvalidTransferSuppliesNoSource(string source, string constructs, string records)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -254,10 +263,11 @@ public sealed partial class HirFormsTest
         Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(receiver), HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-103): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param whose Move
-    // rests on an Error Copy proof, a typeless local and a group of a typeless alias, and a binding whose Copy proof is Error (Deferred); an
-    // Error node's folds to its derived value (Temporary, None; R4-M109), and a discarded one's plan row is Failed, its column unset (no
-    // consumer takes it). Fail-before: each was the column's default (Unset, None).
+    // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param
+    // whose Move rests on an Error Copy proof, a typeless local and a group of a typeless alias, and a binding whose Copy proof is Error
+    // (Deferred), a match arm's or a for loop's item, also a Tuple item's slot; an Error node's folds to its derived value (Temporary, None;
+    // R4-M109), and a discarded one's plan row is Failed, its column unset (no consumer takes it). Fail-before: each was the column's default
+    // (Unset, None), and a for item whose Copy proof is Error was (Move, None). A valid Copy item stays Copied and a Non-Copy one Moved.
     [Fact]
     public void AFailedAcquisitionIsPublishedFailed()
     {
@@ -265,7 +275,11 @@ public sealed partial class HirFormsTest
             "    associate Iterator.Item is Bad\n    public init() => ()\n    public func next(self: uniq/Self) -> Option<Bad> => .None\n" +
             "func a(b: Bad) -> Bad => b\nfunc f(t: (i32, i32)) -> i32 => t.5\nfunc k(c: bool) -> i32\n    let x = missing\n    let z = x\n" +
             "    let y: i32 = if c => 1 else => x\n    let w: i32 = if c => 1 else => (z)\n    return y + w\nfunc g() -> i32\n    let q = missing\n    q\n" +
-            "func m(it: uniq/Gen)\n    match it.next()\n        .Some(let v) => ()\n        .None => ()\n";
+            "func m(it: uniq/Gen)\n    match it.next()\n        .Some(let v) => ()\n        .None => ()\n" +
+            "func n(xs: Array<Bad>, ys: Array<(Bad, i32)>)\n    for e in xs@move\n        _ = 1\n    for (p, j) in ys@move\n        _ = j\n" +
+            "struct Good\n    Self is Copy\n    public var n: i32 = 0\n    public init() => ()\nstruct Owned\n    public var s: string = \"\"\n" +
+            "    public init() => ()\nfunc h(gs: Array<Good>, os: Array<Owned>)\n    for o in gs@move\n        _ = o\n    for u in os@move\n" +
+            "        _ = u@move\n";
         var c = MinimalEmissionTest.Analyze(Source);
         HirTables.Publish(c);
         var rows = Reachable(c.Kotonoha)
@@ -275,9 +289,12 @@ public sealed partial class HirFormsTest
         string[] expected =
         [
             "b Name Failed Unset", "t.5 Error Temporary Unset", "x Name Failed Unset", "(z) Group Failed Unset", "q Name Unset Failed",
-            "let v Syntax Failed Unset",
+            "let v Syntax Failed Unset", "e Syntax Failed Unset", "p Syntax Failed Unset",
         ];
         Assert.Equal(expected, rows);
+        var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
+            .Select(static x => $"{x} {HirTables.AdjustOf(x).Acquire}");
+        Assert.Equal(["j Copy", "o Copy", "u Move"], items);
     }
 
     // The 1-based line:column of an offset in a source.

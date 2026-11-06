@@ -42,20 +42,24 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
+    // DECISIONS BU-111: the Reason is the closed cause; its explanation is the Note.
     [Theory]
-    [InlineData("func f() => base", "base.name(arguments)")]
-    [InlineData("func f() => base.read()", "derived instance function")]
-    [InlineData("struct S\n    func f(self: objref/Self) => base.read()", "direct base")]
-    [InlineData(Base + "func f(self: objref/Self) => base.read", "base.name(arguments)")]
-    [InlineData(Base + "func f(self: objref/Self)\n        func local() => base.read()", "derived instance function")]
-    [InlineData(Base + "func f(self: objref/Self) => func() -> i32 => base.read()", "explicit self capture")]
-    public void InvalidBaseContextsExplainTheirCause(string source, string expected)
+    [InlineData("func f() => base", "NotCall", "base.name(arguments)")]
+    [InlineData("func f() => base.read()", "NoReceiver", "derived instance function")]
+    [InlineData("struct S\n    func f(self: objref/Self) => base.read()", "NoBase", "direct base")]
+    [InlineData(Base + "func f(self: objref/Self) => base.read", "NotCall", "base.name(arguments)")]
+    [InlineData(Base + "func f(self: objref/Self)\n        func local() => base.read()", "NoReceiver", "derived instance function")]
+    [InlineData(Base + "func f(self: objref/Self) => func() -> i32 => base.read()", "NoSelfCapture", "explicit self capture")]
+    public void InvalidBaseContextsExplainTheirCause(string source, string cause, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source + "\n()");
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "InvalidBaseCall_Kd");
         Assert.Equal("base", error.Text);
-        Assert.Contains(expected, error.Label!, StringComparison.Ordinal);
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == error.Code);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), Assert.Single(record.Reason!));
+        Assert.Null(record.Label);
+        Assert.Contains(expected, record.Note!, StringComparison.Ordinal);
     }
 
     [Theory]

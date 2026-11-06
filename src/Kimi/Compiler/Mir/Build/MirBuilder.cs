@@ -169,7 +169,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
     // A body: _0 of the result Type, the arguments with the receiver first (an owned one dropped when the body is left, SPEC 16.2.1), a
     // Closure's being its environment in the mode of its call (SPEC 7.7.3), the value into _0 with its temporaries, then Return where the
-    // value completes. A destructor's self is no owner: the body's end cleans up its layer's parts (FieldCleanup, SPEC 16.3.1-16.3.2). A
+    // value completes. A destructor's self (_1) is no owner but its destruction receiver (MirLocalRole.Receiver, SPEC 16.3.1): storage the
+    // destroyed value's creation made; the body's end cleans up its layer's parts (FieldCleanup, SPEC 16.3.2). A
     // constructor builds its object in _0, its self (MirLocalRole.Receiver), in the fresh storage its caller's construction expression
     // made (SPEC 6.3.2-6.3.4): the base constructor into the base subobject, this layer's Field initializers in declaration order, then the
     // body, whose Unit value is set aside (6.3.5). A default template's (plan 5.6.2), a generic body of its function, takes the slots its
@@ -232,7 +233,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
         else if (special is not null)
         {
-            var layer = this.body.AddLocal(new(special.Type ?? BoundType.Unit, MirLocalKind.Arg, this.Info(declaration, local: true), Name: special.Name));
+            var layer = this.body.AddLocal(
+                new(special.Type ?? BoundType.Unit, MirLocalKind.Arg, this.Info(declaration, local: true), Name: special.Name, Role: MirLocalRole.Receiver));
             this.Register(Cleanup.Fields, this.locals[special] = layer, null, parameters);
         }
         else if (key.Kind == MirBodyKind.Closure && BoundClosure.Of((FunctionKoto)declaration) is { EnvironmentType: { } environment } plan)

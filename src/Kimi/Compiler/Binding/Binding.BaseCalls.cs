@@ -7,14 +7,25 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, string>? baseCallFailures;
+    private Dictionary<Koto, BaseCallCause>? baseCallFailures;
+
+    // SPEC 6.4.4's use rules, in check order; the adapter explains each (DECISIONS BU-111).
+    private enum BaseCallCause : byte
+    {
+        NotCall,
+        NoReceiver,
+        NoBase,
+        OutsideBody,
+        NoSelfCapture,
+        NotInstanceFunction,
+    }
 
     private BoundType? BindBaseReference(BaseReferenceKoto reference, BindingScope scope)
     {
         reference.BasePath = null;
         if (reference.Parent is not MemberAccessKoto { Right: IdentifierNameKoto } member || !ReferenceEquals(member.Left, reference) || !IsCallee(member))
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base has no value; use base.name(arguments)");
+            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NotCall);
         }
 
         // SPEC 6.4.4: lexical self is the receiver of the function whose body holds the reference, an instance accessor's included (DECISIONS
@@ -22,23 +33,23 @@ public sealed partial class Binding
         if (this.types.EnclosingDeclaration(scope) is not
             { ReceiverIndex: >= 0, Declaration: FunctionKoto lexical, Scope.Owner: StructKoto { BoundSymbol: { } type } structure })
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base requires a derived instance function; named locals have no implicit self");
+            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoReceiver);
         }
 
         if (structure.Bases.Count == 0)
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "the lexical declaring struct has no direct base");
+            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoBase);
         }
 
         if (!(lexical.Body is { } body && IsWithin(reference, body)) && !(lexical.ExpressionBody is { } expression && IsWithin(reference, expression)))
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base is available in an instance body, not a parameter default or declaration header");
+            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.OutsideBody);
         }
 
         var receiver = this.BaseReceiver(scope.Function, lexical);
         if (receiver is null)
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base in an anonymous function requires an explicit self capture at each function boundary");
+            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoSelfCapture);
         }
 
         if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.SelfType(type)) is not { } baseType)
@@ -110,7 +121,7 @@ public sealed partial class Binding
         {
             if (selected.Kind != BindingSymbolKind.Function || selected.ReceiverIndex < 0)
             {
-                this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base.name(arguments) must name an instance function; use Type qualification for receiverless functions");
+                this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NotInstanceFunction);
                 return null;
             }
 

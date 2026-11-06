@@ -506,6 +506,29 @@ public sealed partial class MirBuildTest
         }
     }
 
+    // SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2 (DECISIONS BU-110): a for item is acquired by the match's rule, so one whose Copy proof is Error is
+    // published Failed with no record of its own (the declaration's is reported) and its local takes a value derived from that failure,
+    // while the loop and its body are built: the body's independent MovedPlace_Kd stays. Fail-before: the item was moved out of the
+    // Subject's payload.
+    [Fact]
+    public void AForItemWhoseCopyProofIsErrorIsDerived()
+    {
+        var c = Compile("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc g(xs: Array<Bad>)\n" +
+            "    for x in xs@move\n        let s: string = \"a\"\n        let t = s@move\n        let u = s@move\npublic func main() => ()\n");
+        Assert.Equal(["UnsatisfiedConstraint_Kd Self is Copy"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(
+            ["MovedPlace_Kd s"],
+            program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "g");
+        var statements = body.Statements.ToArray();
+        var item = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "x");
+        var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(item));
+        var source = body.Operands[write.Rvalue.Start].Place;
+        Assert.Contains(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
+    }
+
     // SPEC 23.1.2 (PLAN G122): a char literal the lexer could not read is published Error, so its value is the derived Opaque of a node
     // the lexer rejected, with no record; a published Literal is built as its constant.
     [Fact]

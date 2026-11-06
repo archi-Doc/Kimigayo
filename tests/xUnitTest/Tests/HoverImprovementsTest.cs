@@ -2,6 +2,7 @@
 
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -173,6 +174,35 @@ public sealed class HoverImprovementsTest
             Assert.NotNull(declaration.Info.Variable);
             Assert.Equal(declaration.Info.Variable, reference.Info.Variable);
         }
+    }
+
+    // SPEC 15.1.6, 3.5.2, 23.1.2 (DECISIONS BU-110): a for or match item whose Copy proof is Error writes no failure on its binding, which
+    // keeps its hover; an edit that makes the item Copy, then a rebind, binds it Copy with its hover and no failure left from the edited
+    // pass. Fail-before (792ee508d): the for loop's binding had no hover in either compilation and kept InvalidConstraint after the edit.
+    [Theory]
+    [InlineData("func g(xs: Array<Bad>)\n    for x in xs@move\n        let y = x@move\n", "x in")]
+    [InlineData("func g(o: Option<Bad>)\n    match o@move\n        .Some(let x) => take(x@move)\n        .None => ()\nfunc take(b: Bad) => ()\n", "x)")]
+    public void AnItemWhoseCopyProofIsErrorKeepsItsBindingAcrossAnEdit(string body, string binding)
+    {
+        var source = "struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\n" + body;
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.CollectHover = true;
+        c.Kotonoha.AddSource(new("main.kimi", source));
+        Assert.False(c.Bind().IsComplete);
+        Assert.NotNull(At(Hover(c), source.IndexOf(binding, StringComparison.Ordinal)).Info.Variable);
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().First();
+        var donor = ParseTestHelper.ParseSuccess(source.Replace("string = \"\"", "i32 = 0", StringComparison.Ordinal));
+        var replacement = KotoTree.Walk(donor.RootKoto).OfType<PropertyKoto>().First();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
+        Assert.True(KotoHelper.Replace(field.Parent!, field, replacement));
+        Assert.True(c.Bind().IsComplete);
+        HirTables.Publish(c);
+        var rows = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() is "x" or "let x" && HirTables.Op(x) == HirOp.Syntax)
+            .Select(static x => $"{HirTables.AdjustOf(x).Acquire} {HirTables.Failure(x)}");
+        Assert.Contains("Copy None", rows);
+        Assert.DoesNotContain(rows, static x => !x.EndsWith(" None", StringComparison.Ordinal));
+        Assert.NotNull(At(Hover(c), source.IndexOf(binding, StringComparison.Ordinal)).Info.Variable);
     }
 
     [Theory]
@@ -387,6 +417,8 @@ public sealed class HoverImprovementsTest
         Assert.Equal(accepted, result.IsComplete);
         return HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath("main.kimi")];
     }
+
+    private static HoverDocument Hover(Compilation compilation) => HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath("main.kimi")];
 
     private static HoverEntry At(HoverDocument document, int position)
     {

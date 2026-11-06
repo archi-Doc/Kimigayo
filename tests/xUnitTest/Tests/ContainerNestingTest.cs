@@ -183,7 +183,7 @@ public class ContainerNestingTest
         const int depth = 64;
         for (var i = 1; i <= depth; i++)
         {
-            source.Append(' ', i * 4).Append("public struct N").Append(i).Append(" {}\n");
+            source.Append(' ', i * 4).Append("public struct N").Append(i).Append('\n');
         }
 
         source.Append(' ', (depth + 1) * 4).Append("let value: T\nfunc use(value: Outer<i32>");

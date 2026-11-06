@@ -8,50 +8,65 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<FunctionKoto> virtualDeclarations = new();
-    private Dictionary<FunctionKoto, string>? virtualDeclarationFailures;
+    private Dictionary<FunctionKoto, VirtualDeclarationCause>? virtualDeclarationFailures;
 
-    private static string? VirtualDeclarationFailure(FunctionKoto function, BindingSymbol symbol)
+    // SPEC 6.4.1's eligibility and inherited-header rules, in check order; the adapter explains each (DECISIONS BU-111).
+    private enum VirtualDeclarationCause : byte
+    {
+        Combined,
+        NotStructFunction,
+        Unsafe,
+        OwnGenericParameters,
+        Receiver,
+        NoBody,
+        NotOpen,
+        Private,
+        RedeclaredHeader,
+        RedeclaredParameter,
+    }
+
+    private static VirtualDeclarationCause? VirtualDeclarationFailure(FunctionKoto function, BindingSymbol symbol)
     {
         if (function.IsVirtual && function.IsOverride)
         {
-            return "virtual and override cannot be combined";
+            return VirtualDeclarationCause.Combined;
         }
 
         if (symbol.Scope.Owner is not StructKoto structure || function.IsConstructor || function.IsDestructor || function.IsRequirement || function.IsAnonymous || function.IsSpecialization)
         {
-            return "virtual and override require a direct struct instance function";
+            return VirtualDeclarationCause.NotStructFunction;
         }
 
         if ((function.Modifier & ModifierKind.Unsafe) != 0)
         {
-            return "virtual and override functions must be safe";
+            return VirtualDeclarationCause.Unsafe;
         }
 
         if (function.GenericArguments.Count != 0)
         {
-            return "a virtual slot has no function-owned generic parameters; enclosing Type parameters remain allowed";
+            return VirtualDeclarationCause.OwnGenericParameters;
         }
 
         if (symbol.ReceiverIndex < 0 || ReceiverShape(symbol) is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq))
         {
-            return "the receiver must be objref/Self or objuniq/Self; bare self means ref/Self";
+            return VirtualDeclarationCause.Receiver;
         }
 
         if (function.Body is null && function.ExpressionBody is null && !function.MissingBody)
         {
-            return "a virtual or override function requires a body";
+            return VirtualDeclarationCause.NoBody;
         }
 
         if (function.IsVirtual)
         {
             if ((structure.Modifier & ModifierKind.Open) == 0)
             {
-                return "an original virtual slot requires an open struct";
+                return VirtualDeclarationCause.NotOpen;
             }
 
             if (function.Modifier.ExtractAccessibilityModifiers() is ModifierKind.NoModifier or ModifierKind.Private)
             {
-                return "an original virtual slot cannot be private; omitted accessibility is private";
+                return VirtualDeclarationCause.Private;
             }
         }
         else
@@ -59,7 +74,7 @@ public sealed partial class Binding
             if (function.Modifier != ModifierKind.Override || function.AttributeChain is not null || function.NameBoundaryIndex >= 0 ||
                 function.TypeConstraints.Count != 0)
             {
-                return "an override inherits access, attributes, the named-argument boundary and constraints; do not redeclare them";
+                return VirtualDeclarationCause.RedeclaredHeader;
             }
 
             for (var i = 0; i < function.Parameters.Count; i++)
@@ -67,7 +82,7 @@ public sealed partial class Binding
                 var parameter = function.Parameters[i];
                 if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
                 {
-                    return "an override inherits parameter defaults and attributes; do not redeclare them";
+                    return VirtualDeclarationCause.RedeclaredParameter;
                 }
             }
         }
@@ -97,10 +112,9 @@ public sealed partial class Binding
             }
 
             this.virtualDeclarations.Add(function);
-            var reason = VirtualDeclarationFailure(function, symbol);
-            if (reason is not null)
+            if (VirtualDeclarationFailure(function, symbol) is { } cause)
             {
-                (this.virtualDeclarationFailures ??= new(ReferenceEqualityComparer.Instance))[function] = reason;
+                (this.virtualDeclarationFailures ??= new(ReferenceEqualityComparer.Instance))[function] = cause;
                 this.Fail(function, BindingFailure.VirtualDeclaration);
             }
         }

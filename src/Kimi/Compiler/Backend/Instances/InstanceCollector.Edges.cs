@@ -118,7 +118,8 @@ internal sealed partial class InstanceCollector
     // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
     // (InstanceCollector.Witnesses.cs), a tuple operator's its comparison item (Compared); the body a Value callee's Closure or function
     // item runs; an intrinsic's target where its row names one (an erased writer's reserve witness, a staticEnsure's StaticInit, a
-    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue; an intrinsic's Type arguments uses where its row's
+    // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue, none for a part in a receiver's own storage (never
+    // past a Deref) without a layout (Received: no use; its body is checked only); an intrinsic's Type arguments uses where its row's
     // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
@@ -126,7 +127,8 @@ internal sealed partial class InstanceCollector
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            return this.Glue(item, subject, body.TypeOf(call.Place)!);
+            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed ||
+                (Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok) ? -1 : this.GlueOf(item, subject, closed);
         }
 
         if (callee.Kind == MirCalleeKind.Value)
