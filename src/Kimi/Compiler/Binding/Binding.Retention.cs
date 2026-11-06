@@ -78,7 +78,7 @@ public sealed partial class Binding
         ReadOnlySpan<ErasedSignature> bounds,
         BindingScope? premises)
     {
-        var use = callee.Accessor?.Binder ?? callee;
+        var use = callee.OriginBinder;
         var declaring = types?.Declaring;
         var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
         try
@@ -308,7 +308,7 @@ public sealed partial class Binding
         }
 
         this.AddResultPremises(environment, result);
-        if (callee is not null && this.originDeclarations.TryGetValue(callee.Accessor?.Binder ?? callee, out var declaration) && declaration.State == 3)
+        if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.State == 3)
         {
             foreach (var relation in declaration.Relations)
             {

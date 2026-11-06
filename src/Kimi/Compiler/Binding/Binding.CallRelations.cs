@@ -149,7 +149,7 @@ public sealed partial class Binding
 
     private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
-        var binder = selected.Accessor?.Binder ?? selected;
+        var binder = selected.OriginBinder;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
             foreach (var relation in declaration.Relations)
@@ -184,7 +184,7 @@ public sealed partial class Binding
             origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
         }
 
-        var binder = selected.Accessor?.Binder ?? selected;
+        var binder = selected.OriginBinder;
         var originCount = Math.Min(origins.Length, selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0);
         return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
     }
