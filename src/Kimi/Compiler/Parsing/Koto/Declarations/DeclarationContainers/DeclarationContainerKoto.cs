@@ -515,18 +515,17 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="reader">The token reader.</param>
     public abstract void Parse(ref TokenReader reader);
 
-    internal static DeclarationContainerKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
+    /// <summary>Creates a container of this kind outside the tree that parses members for this container and registers nothing in it.</summary>
+    /// <param name="codeContext">The code context.</param>
+    /// <param name="range">The container's source span.</param>
+    /// <returns>The detached container.</returns>
+    /// <remarks>It shares this container's generic parameters, so its members are parsed under this header, such as a member's
+    /// Constraint on the declaring Type's parameters (SPEC 7.5): excluded members (SPEC 19.4) and a conditional conformance's block (SPEC 8.8.1).</remarks>
+    internal DeclarationContainerKoto CreateDetached(CodeContext codeContext, SourceSpan range)
     {
-        DeclarationContainerKoto container = kind switch
-        {
-            TokenKind.Struct => new StructKoto(codeContext, state, range),
-            TokenKind.Enum => new EnumKoto(codeContext, state, range),
-            TokenKind.Contract => new ContractKoto(codeContext, state, range),
-            _ => new GroupKoto(codeContext, state, range),
-        };
-
-        container.Name = name;
-        return container;
+        var detached = CreateStandalone(codeContext, this.TokenKind, default, range, string.Empty);
+        detached.genericArguments = this.genericArguments;
+        return detached;
     }
 
     internal void WriteAsBlockItem(ref IndentedStringBuilder builder)
@@ -947,6 +946,20 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         current = next;
     }
 
+    private static DeclarationContainerKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
+    {
+        DeclarationContainerKoto container = kind switch
+        {
+            TokenKind.Struct => new StructKoto(codeContext, state, range),
+            TokenKind.Enum => new EnumKoto(codeContext, state, range),
+            TokenKind.Contract => new ContractKoto(codeContext, state, range),
+            _ => new GroupKoto(codeContext, state, range),
+        };
+
+        container.Name = name;
+        return container;
+    }
+
     // Whether a nested container other than the replaced one declares the replacement's name with another kind or the same arity.
     private bool DeclaresAgain(DeclarationContainerKoto replacement, Koto? original)
     {
@@ -1191,22 +1204,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="reader">The token reader.</param>
     /// <param name="state">The member state that keeps the detached container.</param>
     /// <returns>The container that receives the excluded declarations.</returns>
-    /// <remarks>The detached container shares this container's generic parameters, so excluded members are parsed under the same
-    /// header as selected ones, such as a member's Constraint on the declaring Type's parameters (SPEC 7.5, 19.4).</remarks>
     private DeclarationContainerKoto ExcludedOwner(ref TokenReader reader, ref MemberParseState state)
-    {
-        if (reader.InExcludedSyntax)
-        {
-            return this;
-        }
-
-        if (state.Detached is null)
-        {
-            var detached = CreateStandalone(reader.CodeContext, this.TokenKind, default, this.Span, string.Empty);
-            detached.genericArguments = this.genericArguments;
-            state.Detached = detached;
-        }
-
-        return state.Detached;
-    }
+        => reader.InExcludedSyntax ? this : state.Detached ??= this.CreateDetached(reader.CodeContext, this.Span);
 }
