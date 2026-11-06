@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
 using static XunitTest.ParseTestHelper;
@@ -49,39 +50,43 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         Assert.Equal(2, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Count(x => x.IsVirtual || x.IsOverride));
     }
 
+    // DECISIONS BU-111: the Reason is the closed cause; its explanation is the whole Note, never a bounded Reason value.
     [Theory]
-    [InlineData("virtual func read() => ()", "direct struct")]
-    [InlineData("group G\n    virtual func read() => ()", "direct struct")]
-    [InlineData("func outer()\n    virtual func read() => ()", "direct struct")]
-    [InlineData("struct Base\n    public virtual func read(self: objref/Self) => ()", "open struct")]
-    [InlineData("open struct Base\n    virtual func read(self: objref/Self) => ()", "private")]
-    [InlineData("open struct Base\n    private virtual func read(self: objref/Self) => ()", "private")]
-    [InlineData("open struct Base\n    public virtual func read(self) => ()", "objref/Self")]
-    [InlineData("open struct Base\n    public virtual func read() => ()", "objref/Self")]
-    [InlineData("open struct Base\n    public virtual unsafe func read(self: objref/Self) => ()", "safe")]
-    [InlineData("open struct Base\n    public unsafe virtual func read(self: objref/Self) => ()", "safe")]
-    [InlineData("open struct Base\n    public virtual func read<T>(self: objref/Self) => ()", "function-owned")]
-    [InlineData("open struct Base\n    virtual override func read(self: objref/Self) => ()", "combined")]
-    [InlineData("struct Derived\n    public override func read(self: objref/Self) => ()", "inherits")]
-    [InlineData("struct Derived\n    override func read(self: objref/Self, n: i32 = 1) => ()", "defaults")]
-    [InlineData("struct Derived\n    override func read(self: objref/Self ! n: i32) => ()", "inherits")]
-    public void InvalidHeadersExplainTheRuleAtTheModifier(string source, string fact)
+    [InlineData("virtual func read() => ()", "NotStructFunction", "direct struct")]
+    [InlineData("group G\n    virtual func read() => ()", "NotStructFunction", "direct struct")]
+    [InlineData("func outer()\n    virtual func read() => ()", "NotStructFunction", "direct struct")]
+    [InlineData("struct Base\n    public virtual func read(self: objref/Self) => ()", "NotOpen", "open struct")]
+    [InlineData("open struct Base\n    virtual func read(self: objref/Self) => ()", "Private", "private")]
+    [InlineData("open struct Base\n    private virtual func read(self: objref/Self) => ()", "Private", "private")]
+    [InlineData("open struct Base\n    public virtual func read(self) => ()", "Receiver", "objref/Self")]
+    [InlineData("open struct Base\n    public virtual func read() => ()", "Receiver", "objref/Self")]
+    [InlineData("open struct Base\n    public virtual unsafe func read(self: objref/Self) => ()", "Unsafe", "safe")]
+    [InlineData("open struct Base\n    public unsafe virtual func read(self: objref/Self) => ()", "Unsafe", "safe")]
+    [InlineData("open struct Base\n    public virtual func read<T>(self: objref/Self) => ()", "OwnGenericParameters", "enclosing Type parameters remain allowed")]
+    [InlineData("open struct Base\n    virtual override func read(self: objref/Self) => ()", "Combined", "combined")]
+    [InlineData("open struct Base\n    #LibraryImport(\"codec\", \"touch\")\n    public virtual func read(self: objref/Self) -> i32", "NoBody", "requires a body")]
+    [InlineData("struct Derived\n    public override func read(self: objref/Self) => ()", "RedeclaredHeader", "the named-argument boundary and constraints")]
+    [InlineData("struct Derived\n    override func read(self: objref/Self, n: i32 = 1) => ()", "RedeclaredParameter", "defaults")]
+    [InlineData("struct Derived\n    override func read(self: objref/Self ! n: i32) => ()", "RedeclaredHeader", "inherits")]
+    public void InvalidHeadersExplainTheRuleAtTheModifier(string source, string cause, string fact)
     {
         var c = MinimalEmissionTest.Analyze(source + "\n()");
         c.Binding.ReportDiagnostics();
-        var diagnostic = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "InvalidVirtualDeclaration_Kd");
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "InvalidVirtualDeclaration_Kd");
         var expected = source.IndexOf("virtual", StringComparison.Ordinal);
         if (expected < 0)
         {
             expected = source.IndexOf("override", StringComparison.Ordinal);
         }
 
-        Assert.Equal(expected, diagnostic.Span.Start);
-        Assert.Contains(fact, diagnostic.Label!, StringComparison.Ordinal);
-        Assert.DoesNotContain("effects", diagnostic.Label!, StringComparison.Ordinal); // An override's effect item is its own record (DECISIONS G223).
+        Assert.Equal(expected, record.Span!.Value.Start);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), Assert.Single(record.Reason!));
+        Assert.Null(record.Label);
+        Assert.Contains(fact, record.Note!, StringComparison.Ordinal);
+        Assert.DoesNotContain("effects", record.Note!, StringComparison.Ordinal); // An override's effect item is its own record (DECISIONS G223).
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.False(c.Generate(TextWriter.Null));
-        output.WriteLine(diagnostic.Explanation + "\n" + diagnostic.Label);
+        output.WriteLine(record.Message + "\n" + record.Note);
     }
 
     [Fact]

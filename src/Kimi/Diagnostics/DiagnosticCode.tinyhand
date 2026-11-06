@@ -997,8 +997,7 @@
   + Name="InvalidVirtualDeclaration_Kd"
     Category="Language"
     Message="This declaration cannot introduce or implement a virtual slot"
-    Evidence="condition:Text"
-    Label="{0}"
+    Evidence="cause:Enumeration"
 
   + Name="MissingOverrideTarget_Kd"
     Category="Language"
@@ -1030,5 +1029,4 @@
   + Name="InvalidBaseCall_Kd"
     Category="Language"
     Message="This use of base is not a direct base instance call"
-    Evidence="condition:Text"
-    Label="{0}"
+    Evidence="cause:Enumeration"
