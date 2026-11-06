@@ -117,6 +117,9 @@ public class ArchitectureRulesTest
     // DECISIONS BU-105 (R7-D1): BindingSymbol.Resolving is the variable binding's own Running flag until R7-D2 d4 makes the variable
     // binding a declaration query; the header's use of it went to Binding.DeclQuery. A property pattern reads it too.
     [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
+    // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
+    // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
+    [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);

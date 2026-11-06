@@ -210,9 +210,11 @@ public static partial class Parser
             end = returnType.Span.End;
         }
 
+        // A specialization header redeclares no modifier (SPEC 8.13.2). The parser reports each one it reads (SpecializationHeader
+        // below, StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again.
         var functionKoto = new FunctionKoto(
             ref reader,
-            context,
+            specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } : context,
             SourceSpan.FromBounds(methodToken.Span.Start, end),
             methodName,
             genericArguments,
@@ -2187,7 +2189,7 @@ CloseParameters:
         }
 
         var start = reader.CurrentTokenRange.Start;
-        var temporary = DeclarationContainerKoto.CreateStandalone(reader.CodeContext, declarationContext.TokenKind, default, reader.CurrentTokenRange, string.Empty);
+        var temporary = declarationContext.CreateDetached(reader.CodeContext, reader.CurrentTokenRange);
         temporary.Parse(ref reader);
         var items = new List<Koto>();
         items.AddRange(temporary.TypeConstraints);

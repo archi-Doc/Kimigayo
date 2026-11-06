@@ -645,8 +645,7 @@ public sealed partial class Binding
             return null;
         }
 
-        member.Left.BoundSymbol = qualifier;
-        member.Left.BindingState = BindingState.Resolved;
+        PublishQualifier(member.Left, qualifier);
         return members.Values.GetValueOrDefault(name);
     }
 }

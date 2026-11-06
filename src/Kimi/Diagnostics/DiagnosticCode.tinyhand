@@ -187,8 +187,8 @@
     Category="Proof"
     Message="Operator {0} cannot select a unique {1} requirement"
     Arguments="operator:Text,contract:Text"
-    Evidence="provider:Type,counterpart:Text,condition:Text"
-    Label="{4}; provider: {2}; counterpart: {3}"
+    Evidence="provider:Type,counterpart:Text,cause:Enumeration"
+    Label="provider: {2}; counterpart: {3}"
 
   + Name="ArithmeticDirection_Kd"
     Category="Language"
@@ -201,8 +201,7 @@
     Category="Language"
     Message="Type {0} does not establish the provider conditions of arithmetic Contract {1}"
     Arguments="type:Type,contract:Text"
-    Evidence="condition:Text"
-    Label="{2}"
+    Evidence="cause:Enumeration"
 
   + Name="NotObjectPayload_Kd"
     Category="Language"
@@ -780,6 +779,11 @@
   + Name="InterpolationNestingLimit_Kd"
     Category="Resource"
     Message="String interpolation nesting exceeds the limit of {0}"
+    Arguments="limit:Number"
+
+  + Name="NestingLimit_Kd"
+    Category="Resource"
+    Message="Syntax nesting exceeds the implementation limit of {0}"
     Arguments="limit:Number"
 
   + Name="ExpansionLimit_Kd"

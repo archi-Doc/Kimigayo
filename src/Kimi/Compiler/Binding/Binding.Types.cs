@@ -226,8 +226,7 @@ public sealed partial class Binding
                 this.SelectTypeCandidate(QualifiedTypeMember(members.Types.GetValueOrDefault(rightName)), scope, syntax, core, arity) is { } target)
             {
                 var right = member.Right;
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
+                PublishQualifier(member.Left, qualifier);
                 right.BoundSymbol = target;
                 right.BindingState = BindingState.Resolved;
                 return target;
@@ -281,12 +280,19 @@ public sealed partial class Binding
                 return null;
             }
 
-            member.Left.BoundSymbol = qualifier;
-            member.Left.BindingState = BindingState.Resolved;
+            PublishQualifier(member.Left, qualifier);
             member.Right.BoundSymbol = target;
             member.Right.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
-            member.BoundSymbol = target;
-            member.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
+            if (target is null)
+            {
+                member.BoundSymbol = null;
+                member.BindingState = BindingState.Unresolved;
+            }
+            else
+            {
+                PublishQualifier(member, target); // The outer level's qualifier in a longer `::` path (SPEC 9.7.1 step 1).
+            }
+
             return target;
         }
 
@@ -362,6 +368,11 @@ public sealed partial class Binding
             if (type is null)
             {
                 RestPendingOn(originDeclaration, syntax);
+                if (syntax.BindingState == BindingState.Resolved)
+                {
+                    syntax.BindingState = BindingState.Unresolved; // A lookup's Resolved (PublishQualifier) yields to its binder's outcome.
+                }
+
                 return null;
             }
 
@@ -607,20 +618,14 @@ public sealed partial class Binding
 
     private BoundType? BindConstructedType(GenericsKoto generic, BindingSymbol? definition, BindingScope scope, TypeBindingContext context)
     {
-        if (definition is null)
+        var container = definition?.Declaration as DeclarationContainerKoto;
+        if (definition is null || container is null or ContractKoto || generic.TypeArguments.Count != container.GenericParameterNodes.Count)
         {
-            // The generic's Name is what is missing; the application is not formed from it.
-            return this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType);
-        }
-
-        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
-        {
-            return this.Fail(generic, BindingFailure.InvalidTypeFormation);
-        }
-
-        if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
-        {
-            return this.FailExplained(ref this.arityFailures, generic, BindingFailure.InvalidTypeFormation, (definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count, false));
+            // A missing Name, a head that is no Type or a wrong arity forms no application (SPEC 9.5, 9.7), and each is its own record.
+            this.BindUnappliedArguments(generic, scope, context.Nested);
+            return definition is null ? this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType)
+                : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
+                : this.FailExplained(ref this.arityFailures, generic, BindingFailure.InvalidTypeFormation, (definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count, false));
         }
 
         generic.Identifier!.BoundSymbol = definition;
@@ -642,6 +647,21 @@ public sealed partial class Binding
         }
 
         return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
+    }
+
+    // SPEC 9.7, 23.1.2: explicit Type arguments resolve in the use-site context, whatever their head, so a head or arity that forms no
+    // application (a Type's or a Contract reference's) never hides their own failures; only a formed application interns them.
+    private void BindUnappliedArguments(GenericsKoto? written, BindingScope scope, TypeBindingContext context)
+    {
+        if (written is null)
+        {
+            return;
+        }
+
+        foreach (var argument in written.TypeArguments)
+        {
+            this.BindType(argument, scope, context);
+        }
     }
 
     private BoundType? BindTypeList(

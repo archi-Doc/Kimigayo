@@ -274,6 +274,7 @@ public class EnumBindingTest
     // which its waiting payloads depend; a waiting callable's own failure is its record (SPEC 10.5). An explicit Type argument that
     // differs from the expected Type's in structure or Semantics is the construction's Type mismatch; one that differs only in its
     // Origins is the result's Origin relation, and a payload against the kept argument is the payload's record (SPEC 6.5.2 item 2, 15.6.1).
+    // In an invariant position (under `uniq/`, or a `uniq/T` Field) the clause `a outlives c` does not prove the required `a == c`.
     [Theory]
     [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let x = P.Pair(1, [a, a])\n", nameof(DiagnosticCode.TypeMismatch_Kd), "P.Pair(1, [a, a])")]
     [InlineData("func f()\n    let x: Option<i64> = Option.Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option.Some(true)")]
@@ -298,6 +299,8 @@ public class EnumBindingTest
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i64 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<ref/i64 during a>.None")]
     [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.Some(x)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.None")]
+    [InlineData("func f(x: uniq/(ref/i32 during a) during u, y: ref/i32 during c) -> Option<uniq/(ref/i32 during c) during u>\n    origin a outlives c\n    return Option<uniq/(ref/i32 during a) during u>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<uniq/(ref/i32 during a) during u>.Some(x)")]
+    [InlineData("struct Slot<T> {w}\n    public let value: uniq/T during w\n\nfunc f(x: Slot<ref/i32 during a> during u, y: ref/i32 during c) -> Option<Slot<ref/i32 during c> during u>\n    origin a outlives c\n    return Option<Slot<ref/i32 during a> during u>.Some(x@move)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<Slot<ref/i32 during a> during u>.Some(x@move)")]
     public void ACaseConstructionReportsItsOwnFailure(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
