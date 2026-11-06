@@ -11,6 +11,13 @@ public sealed partial class Binding
     private static bool SameShapeBinding(BoundType a, BoundType b)
         => ReferenceEquals(a, b) || (IsSubtype(a, b) && IsSubtype(b, a));
 
+    // SPEC 10.8, 10.3: whether CollectTypes enters a pattern node against a Type, an argument's or the expected result's: the same head
+    // and arity; neither projections nor adaptations are inverted. SameArgumentEvidence's Reached follows the same rule.
+    private static bool CollectionEnters(BoundType pattern, BoundType actual)
+        => pattern.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) &&
+            pattern.Kind == actual.Kind && pattern.Symbol == actual.Symbol && pattern.Semantics == actual.Semantics &&
+            pattern.Components.Count == actual.Components.Count;
+
     private static bool MatchingConstructionExpectation(BoundType pattern, BoundType expected, int own)
     {
         if (pattern.Symbol != expected.Symbol || expected.Semantics != SemanticsKind.Owner || pattern.Components.Count != expected.Components.Count)
@@ -36,8 +43,8 @@ public sealed partial class Binding
     // `ref/` layer dropped (InferComposite); an anonymous function by the Types its header writes (SPEC 10.5.4); a waiting or failed
     // position (DECISIONS BU-78) none but the callable slot it stands at (DECISIONS BU-2). A single part's own Type decides the
     // rest, as in InferPosition, which reads it the same way. `expected` is the expected result only where its fill (CollectTypes,
-    // SPEC 10.8) reached the slot, and then the candidates' results are compared too. Every occurrence must have the same
-    // structural path and extraction rule; an extra candidate-specific source fails.
+    // SPEC 10.8) reached the slot, and then the occurrences that fill reaches in the candidates' results are compared too (Reached).
+    // Every occurrence must have the same structural path and extraction rule; an extra candidate-specific source fails.
     private bool? SameArgumentEvidence(
         InvocationKoto call, ShapePair pair, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap, BoundType? expected)
     {
@@ -56,7 +63,7 @@ public sealed partial class Binding
             }
         }
 
-        return expected is null || left.IsConstructor || Paths(left.BoundSymbol!.Type, right.BoundSymbol!.Type) ? hits > 0 : null;
+        return expected is null || left.IsConstructor || Reached(left.BoundSymbol!.Type, right.BoundSymbol!.Type, expected) ? hits > 0 : null;
 
         bool Position(int start, BoundType? a, BoundType? b)
         {
@@ -196,7 +203,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (type.Kind == BoundTypeKind.Parameter && type.Symbol is { } parameter && ContainerSlot(CallSlotOwner(function), parameter) == slot)
+            if (IsSlot(type, function))
             {
                 return true;
             }
@@ -211,6 +218,59 @@ public sealed partial class Binding
 
             return false;
         }
+
+        // The slot's occurrences in both results that the expected result's fill reaches, by CollectionEnters: along the same paths.
+        bool Reached(BoundType? a, BoundType? b, BoundType expected)
+        {
+            var x = Reaches(a, expected, left);
+            var y = Reaches(b, expected, right);
+            if (!x || !y || a is null || b is null)
+            {
+                return x == y;
+            }
+
+            if (IsSlot(a, left) || IsSlot(b, right))
+            {
+                hits++;
+                return IsSlot(a, left) && IsSlot(b, right);
+            }
+
+            for (var p = 0; p < a.Components.Count; p++)
+            {
+                if (!Reached(a.Components[p], b.Components[p], expected.Components[p]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool Reaches(BoundType? type, BoundType expected, FunctionKoto function)
+        {
+            if (type is null || IsSlot(type, function))
+            {
+                return type is not null;
+            }
+
+            if (!CollectionEnters(type, expected))
+            {
+                return false;
+            }
+
+            for (var p = 0; p < type.Components.Count; p++)
+            {
+                if (Reaches(type.Components[p], expected.Components[p], function))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool IsSlot(BoundType type, FunctionKoto function)
+            => type.Kind == BoundTypeKind.Parameter && type.Symbol is { } parameter && ContainerSlot(CallSlotOwner(function), parameter) == slot;
     }
 
     // This phase reads the whole resolved group. Applicability, defaults and literal defaults
@@ -239,6 +299,7 @@ public sealed partial class Binding
         }
 
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
+        // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
         var bindings = this.typeScratch.Rent(slotStride);
         var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
@@ -384,10 +445,9 @@ public sealed partial class Binding
                         return;
                     }
 
-                    if (pattern.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
-                        pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics || pattern.Components.Count != actual.Components.Count)
+                    if (!CollectionEnters(pattern, actual))
                     {
-                        return; // Neither projections nor adaptations are inverted.
+                        return;
                     }
 
                     for (var p = 0; p < pattern.Components.Count; p++)
