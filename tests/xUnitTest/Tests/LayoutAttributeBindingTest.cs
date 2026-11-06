@@ -158,6 +158,29 @@ public partial class LayoutAttributeBindingTest
     public void AReceiverIsNoUseItsConstructionIs(string form, string source, string records)
         => AssertUses(form, source, records);
 
+    // SPEC 8.15.3, 5.2.3 (BU-48 amended by G283): a pointee reached through a receiver's raw pointer Field is not the receiver's storage, so
+    // replacing it in a drop or init destroys it in place as a use, as in a free function: two records at the assignment, its in-place
+    // destruction's and its new value's (fail-before at d829c06c3: the destruction's lost in drop and init).
+    [Theory]
+    [InlineData("drop")]
+    [InlineData("init")]
+    [InlineData("function")]
+    public void APointeeThroughAReceiversRawFieldIsNoPartOfItsStorage(string form)
+    {
+        var (holder, body, target) = form switch
+        {
+            "drop" => ("struct H\n    public var p: raw/E\n    public var q: raw/E\n", "    drop\n", "*self.p"),
+            "init" => ("struct H\n    public var p: raw/E\n    public var q: raw/E\n", "    public init(p: raw/E, q: raw/E)\n        self.p = p\n        self.q = q\n", "*self.p"),
+            _ => (string.Empty, "func f(p: raw/E, q: raw/E)\n", "*p"),
+        };
+        var indent = form == "function" ? "    " : "        ";
+        var statement = $"{target} = ({target.Replace('p', 'q')})@move";
+        var c = Check("#Layout(\"C\")\nstruct E\n    drop => ()\n" + holder + body + indent + "unsafe\n" + indent + "    " + statement + "\nlet zz = 1\n");
+        Assert.Equal(
+            [$"InvalidCLayout_Kd {target}", $"InvalidCLayout_Kd {statement}"],
+            Errors(c).Select(static x => $"{x.Code} {(x.Text ?? string.Empty).Split('\n')[0]}").Order(StringComparer.Ordinal));
+    }
+
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S\n    static var count: i32\n    var n: i32")]
     [InlineData("#Layout(\"C\")\nstruct S<T>\n    var n: i32\n    var value: T")]

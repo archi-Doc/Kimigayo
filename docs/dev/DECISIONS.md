@@ -7566,9 +7566,11 @@ resumed by R4-M86 (2026-10-20).
   - Amended (G283, 2026-11-06; the owner, 「承認する」, to BU's question whether `Receiver` may also be a destructor's `self` local `_1`,
     SPEC 16.3.1): `Receiver` is a constructor's `_0` and a destructor's `_1`, the destruction receiver being like the construction
     receiver (16.3.1: no owner, never Copied or Moved; the destroyed value's creation is its use). The validator allows exactly those two
-    (a destructor's body is the one MIR names by its `_1` Type's destructor); `LayOutLocals` skips both, and the Drop of a Place rooted at
-    one (a destructor's cleanup of a Field or base with its own drop) is no use either: no glue edge where its Type has no layout, which
-    only a part of a receiver without one has (`InstanceCollector.Received`). So an uncalled `drop` of a struct without a layout has no
+    (a destructor's body is the one MIR names by its `_1` Type's destructor); `LayOutLocals` skips both, and the Drop of a part in a
+    receiver's own storage (a Place rooted at one through Field, base or fixed-array element steps, never past a Deref or another step
+    that leaves the storage, ListNeeds' boundary; a destructor's cleanup of a Field or base with its own drop) is no use either: no glue
+    edge where its Type has no layout, which such a part has only inside a receiver without one (`InstanceCollector.Received`); a
+    pointee destroyed through a raw pointer Field stays a use (8.15.3). So an uncalled `drop` of a struct without a layout has no
     record (it had `InvalidCLayout_Kd`, or `GenerationResourceLimit_Kd` over the size limit, at `drop`); `InstanceCollector.Generates`
     checks such a destructor only and does not generate it, as R5-M149's constructor.
   - Locations: (a) a parameter's record at its Type occurrence and a result's at its result Type occurrence: the builder sources each

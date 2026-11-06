@@ -34,10 +34,34 @@ internal sealed partial class InstanceCollector
     };
 
     // SPEC 6.3.4, 16.3.1 (DECISIONS BU-48, amended by G283): whether a Place is a constructor's or destructor's receiver
-    // (MirLocalRole.Receiver) or a part of it: storage its construction expression, or the destroyed value's creation, made and laid out, so
-    // neither a by-value use (LayOutLocals) nor, where the body destroys a part (a destructor's layer cleanup), a use (Edge). Such a part has
-    // no layout only where its receiver has none, a body checked only (Generates).
-    private static bool Received(MirBody body, MirPlace place) => !place.IsStatic && body.Locals[place.Root].Role == MirLocalRole.Receiver;
+    // (MirLocalRole.Receiver) or a part in its own storage, reached by no step that leaves it (Leaves: never past a Deref or another
+    // indirection, whose referent its creation did not lay out, SPEC 8.15.3): storage its construction expression, or the destroyed value's
+    // creation, made and laid out, so neither a by-value use (LayOutLocals) nor, where the body destroys such a part (a destructor's layer
+    // cleanup, a replaced Field), a use (Edge). Such a part is in its receiver's layout, so it has none only where the receiver has none, a
+    // body checked only (Generates).
+    private static bool Received(MirBody body, MirPlace place)
+    {
+        if (place.IsStatic || body.Locals[place.Root].Role != MirLocalRole.Receiver)
+        {
+            return false;
+        }
+
+        for (var id = place.Projection; id > 0; id = body.Projections[id].Prefix)
+        {
+            if (Leaves(body, place with { Projection = id }))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Whether a Place's last step leaves its prefix's storage: a pair layer (its case decides; ListNeeds) or a step whose prefix is laid out
+    // without its component (Layout.Indirect: a borrow, raw pointer, handle or sequence handle, X34).
+    private static bool Leaves(MirBody body, MirPlace step)
+        => body.Projections[step.Projection] is var row &&
+            (row.Kind == MirProjectionKind.PairLayer || Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!));
 
     // SPEC 8.15.3, 22.6 (DECISIONS R5-M150): an import a root module declares is checked as a nongeneric body is, called or not (22.6 makes
     // it nongeneric): its parameters' and result's Types (TyCtxt.Signature; none where Binding failed it) are by-value uses at their written
@@ -152,7 +176,7 @@ internal sealed partial class InstanceCollector
         {
             var step = place with { Projection = this.chain[i] };
             var row = projections[step.Projection];
-            if (row.Kind == MirProjectionKind.PairLayer || Layout.Indirect(body.TypeOf(step with { Projection = row.Prefix })!))
+            if (Leaves(body, step))
             {
                 (past, pair) = (true, row.Kind == MirProjectionKind.PairLayer && !past ? step.Projection : 0);
             }
