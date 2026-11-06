@@ -1,16 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // MirOrigins' judgment of one class (2a0-D §6.2-§6.4; D15-D17, D19, D20): its edges (each active row, Longer -> Shorter and back for an
-// equality, a meet expanded by MeetNode's rule; each containment edge; the meet law's, MirOrigins.Meets.cs); an edge between two Fixed
-// Origins judged at once, one oracle test (an Equality row failing both ways is one problem); Tarjan's components over the inner nodes
-// (Finite, Inferred and Dependent); finite-source and then fixed-source bitsets propagated in topological order through one pooled arena
-// that MirDataflow.Within admits; and at each edge into a Fixed node a problem per finite source (Refuted) and per fixed source the oracle
-// does not derive (Unknown), the oracle closed once per target and part. An edge of the layer's part (a layer row, or an edge between a
-// Field initializer's atoms) is judged with the layer's oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114);
-// a row or containment edge with an Unclassed end forms nothing and is the located limit. A Dependent node, an end a Binding failure left
-// Unbound or an unclassified Closure's pending atom (DECISIONS R4-M126 §2.5 (c)), is never a source or a judged target: it passes on what
-// reaches it, so a chain through it is judged between its ends and one ending at it records nothing (SPEC 23.1.2; DECISIONS R4-M118). A
-// failing chain with an end the view marks an enclosing body's call region is the located limit instead of its record (NestedLimit).
+// equality, a meet expanded by MeetNode's rule, a shorter meet's operand edges once per class; each containment edge; the meet law's,
+// MirOrigins.Meets.cs); an edge between two Fixed Origins judged at once, one oracle test (an Equality row failing both ways is one
+// problem); Tarjan's components over the inner nodes (Finite, Inferred and Dependent); finite-source and then fixed-source bitsets
+// propagated in topological order through one pooled arena that MirDataflow.Within admits; and at each edge into a Fixed node a problem per
+// finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle closed once per target and part. An edge of
+// the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with the layer's oracle, the Type's public
+// premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); a row or containment edge with an Unclassed end forms nothing and is the
+// located limit. A Dependent node, an end a Binding failure left Unbound or an unclassified Closure's pending atom (DECISIONS R4-M126 §2.5
+// (c)), is never a source or a judged target: it passes on what reaches it, so a chain through it is judged between its ends and one ending
+// at it records nothing (SPEC 23.1.2; DECISIONS R4-M118). A failing chain with an end the view marks an enclosing body's call region is the
+// located limit instead of its record (NestedLimit).
 
 using System.Numerics;
 using Kimi.Diagnostics;
@@ -82,11 +83,13 @@ internal sealed partial class MirOrigins
 
     // A class's edges, in order (classEdges): each active row's, Longer -> Shorter and back for an equality, then each containment edge's
     // (row -1), by MeetNode's rule (Relate); one with an Unclassed end forms none and is an entry with Tail -1 at its site; then the meet
-    // law's (MirOrigins.Meets.cs). False when the law's words are over the limit (D20).
+    // law's (MirOrigins.Meets.cs). The class's stamp (reachStamps; no walk runs before the law) marks each shorter meet whose operand edges
+    // are formed. False when the law's words are over the limit (D20).
     private bool ClassEdges(int c)
     {
         ref readonly var known = ref this.classes[c];
         this.classEdgeCount = 0;
+        this.reachStamp++;
         var rows = this.slice.Rows;
         var bits = this.rowBits.AsSpan(c * this.rowWords, this.rowWords);
         for (var r = 0; r < rows.Count; r++)
@@ -138,7 +141,9 @@ internal sealed partial class MirOrigins
     private bool InLayer(int tail, int head, int row) => row >= 0 ? row >= this.slice.LayerStart : this.slice.InLayer(tail) || this.slice.InLayer(head);
 
     // An edge `longer -> shorter` by MeetNode's rule (2a0-D D15), into classEdges: a meet at the longer end gives an edge from each operand
-    // and, unless it is Fixed, its own node's; a non-Fixed meet at the shorter end is its node, reached from each of its operands.
+    // and, unless it is Fixed, its own node's; a non-Fixed meet at the shorter end is its node, reached from each of its operands once per
+    // class, at its first row's site and row (a later row's copies differ only there: Refuted and Unknown read only edges into a Fixed node,
+    // Join judges only Fixed ends at once, and the meet law skips an operand's edge into its own meet).
     private void Relate(int longer, int shorter, SourceRef site, int row)
     {
         var meet = this.slice.Atoms[longer];
@@ -163,6 +168,13 @@ internal sealed partial class MirOrigins
         var target = this.slice.Atoms[shorter];
         if (target.Atom.Kind == OriginKind.Intersection && target.Kind != OriginAtomKind.Fixed)
         {
+            MirDataflow.Grow(ref this.reachStamps, shorter + 1); // By the rows' own atoms, which a second pass's table keeps: no regrow.
+            if (this.reachStamps[shorter] == this.reachStamp)
+            {
+                return;
+            }
+
+            this.reachStamps[shorter] = this.reachStamp;
             var operands = target.Atom.Operands;
             for (var i = 0; i < operands.Count; i++)
             {
