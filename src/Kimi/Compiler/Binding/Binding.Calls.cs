@@ -380,6 +380,8 @@ public sealed partial class Binding
                 var waitingOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
                 if (!this.CompleteWaiting(ref evaluation, winnerIndex, completedWaiting, waitingContexts))
                 {
+                    // SPEC 10.8: a completed waiting part fills no outer slot, so the judgment reads none of the parts' Types.
+                    this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), waitingOperations, out defaults);
                     return Complete(call, null);
                 }
 
@@ -476,16 +478,7 @@ public sealed partial class Binding
             }
 
             var completed = this.CompleteArguments(call, scope, selectedOperations);
-
-            // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources, a
-            // default's at the call (SPEC 15.6.4 step 3); the written inputs are judged also when a default has no Type, and the other
-            // inputs and the clauses also when a part failed after selection, which then forms no result and on which the call rests
-            // (SPEC 23.1.2; DECISIONS BU-96, BU-51).
-            var defaultCount = evaluated[winnerIndex].DefaultsUsed;
-            var receiverSlot = receiverOperation.Source is null ? -1 : receiverOperation.ParameterIndex;
-            var solution = this.Solution(evaluation, winnerIndex, selected, selectedType);
-            var formed = this.SelectedDefaults(solution, mapping.AsSpan(0, argumentCount), receiverSlot, defaultCount, out defaults);
-            this.JudgeSelectedCall(call, solution, selectedOperations, defaults.AsSpan(0, formed ? defaultCount : 0));
+            var formed = this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), selectedOperations, out defaults);
             if (!completed)
             {
                 return Complete(call, null);
@@ -528,7 +521,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
@@ -592,6 +585,20 @@ public sealed partial class Binding
 
         (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
         return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
+    }
+
+    // SPEC 15.6.1, 15.6.4 step 3, 23.1.2 (DECISIONS BU-51, BU-96): the selected candidate's Origin relations, never part of its
+    // applicability, judged at their sources over the solution its selection fixed, a default's at the call; `defaults` is rented for the
+    // caller to return, and false when one has no Type. The written inputs are judged also then, and the clauses and the other inputs also
+    // when a part failed after selection: the call then forms no result and rests on that part.
+    private bool JudgeSelected(InvocationKoto call, in CallEvaluation evaluation, int winner, BoundType? declaringType, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundArgumentOperation> operations, out BoundDefaultArgument[]? defaults)
+    {
+        var count = evaluation.Evaluated[winner].DefaultsUsed;
+        var receiver = operations[^1];
+        var solution = this.Solution(evaluation, winner, (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration, declaringType);
+        var formed = this.SelectedDefaults(solution, mapping, receiver.Source is null ? -1 : receiver.ParameterIndex, count, out defaults);
+        this.JudgeSelectedCall(call, solution, operations, defaults.AsSpan(0, formed ? count : 0));
+        return formed;
     }
 
     // SPEC 7.2.3, 10.1 step 2: the `count` defaults the selected candidate uses (DefaultSlots), each with its instantiated parameter Type;

@@ -9215,13 +9215,14 @@ resumed by R4-M86 (2026-10-20).
     (`BorrowAcquisitionTest.AValueCallsAcquisitionAndRelationsAreEachRecorded`). Open in PLAN: a call keeps one acquisition record (a
     second failing argument), a failed callee stops its arguments' judgments, and a failed part binding stops the other arguments' fits.
   - Supersedes BU-45's G421 line.
-  - Amended (G418, 2026-11-06; unit bu167; Major, the planning session's GO without a design review): at a named call, a part that
-    fails after selection (an erasure's condition or Owned part, `CompleteArguments`) stops none of the call's judgments either; the
-    solution was fixed by applicability, so `JudgeSelectedCall` judges the clauses and the other inputs, and the call then forms no
-    result and rests on the part, as after a default without a Type (BU-51). `RequireInputPremises` judges no input that already failed,
-    whatever its record. Kept: k's clause record beside a Closure's failed contract (pk_noclause and four forms). Open (PLAN G418,
-    G464): value calls and Case constructions, a clause located at the failed part, and the stopped call's plan-based
-    `UnprovenConstraint_Kd`.
+  - Amended (G418, 2026-11-06; unit bu167 with its review fix round; Major, the planning session's GO without a design review):
+    at a named call, a part that fails after selection stops none of the call's judgments either. `CompleteWaiting` and
+    `CompleteArguments` complete every part, each failure its own record. Selection fixed the solution, and a completed part fills
+    no outer slot (SPEC 10.8), so `JudgeSelected` judges the clauses and the other inputs after either stop; the call then forms no
+    result and rests on the failed parts, as after a default without a Type (BU-51). A relation judged at a node whose first record
+    is an Origin contract is published with that record (`FollowsContract`, shared by `RecordOriginChains` and
+    `PublishCallRelations`), and `RequireInputPremises` judges no input that already failed. Open (PLAN G418): value calls and Case
+    constructions.
 - **BU-98 A discarded value's Type is Binding's, published in its discard row** (2026-11-05; PLAN G233, unit bu140; design revision 2
   `G233\design.md`, design reviews 1 REVISE and 2 ACCEPT; R4's consent C-16 for the builder lines under hold H-4; supersedes BU-27's
   Open discard sentence and R4-M145's Open (PLAN G233) paragraph) SPEC 14.2.2, 14.2.4, 15.6.3, 10.2.
