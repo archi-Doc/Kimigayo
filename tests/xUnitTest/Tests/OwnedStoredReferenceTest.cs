@@ -101,7 +101,8 @@ public class OwnedStoredReferenceTest
 
     // A reserved stored reference is acquired exclusively: an overlapping input, a write or a Move during preparation conflicts with its
     // reservation, and a live child with its activation (H5; H3b T46: activation conflicts at the overlap and the write before). The
-    // Move's record has no `reservation` related (T49, until A6).
+    // Move's record has no `reservation` related: the reservation it meets is the Loan, related as `borrow` (DIAGNOSTICS A6's
+    // `Reservation` is an activation's or a destruction's).
     [Theory]
     [InlineData("twice(item.0, item.0)", DiagnosticCode.CallReservationConflict_Kd, "twice(item.0, item.0)", null, "borrow 10:15 item.0 | loan 10:1 twice(item.0, item.0) | reservation 10:7 item.0")]
     [InlineData("change3(item.0, poke(item.0))", DiagnosticCode.CallReservationConflict_Kd, "poke(item.0)", null, "borrow 10:9 item.0 | loan 10:1 change3(item.0, poke(item.0)) | reservation 10:22 item.0")]

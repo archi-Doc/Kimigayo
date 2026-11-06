@@ -144,7 +144,8 @@ public class CallReservationTest(ITestOutputHelper output)
     // SPEC 15.6.7: an exclusive input whose target is still lent to a live exclusive Reborrow is one conflict. The reservation
     // does not conflict with another reservation; the call's exclusive acquisition cannot activate while the Reborrow lives. Since the
     // MIR decides acceptance (H5, DECISIONS R5-M185) the record is A5's Loan conflict at the input (H3b T46: CallActivationConflict_Kd at
-    // the call before), relating the Reborrow and its later use, without the Note naming the implicit acquisition (T49, until A6).
+    // the call before), relating the Reborrow and its later use, without the Note naming the implicit acquisition (A6 has no
+    // acquisition fact, PLAN G433).
     [Theory]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\ntarget.set(3)\nsecond.set(2)", "target", "target.set(3)", "borrow 8:25 target | loan 10:1 second")]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second = target\ntarget.set(3)\nsecond.set(2)", "target", "target.set(3)", "borrow 8:14 target | loan 10:1 second")]
@@ -160,7 +161,7 @@ public class CallReservationTest(ITestOutputHelper output)
 
     // SPEC 15.6.7: when the Reborrow's last use is a later argument, the reserved input meets the active Loan during preparation
     // and the Loan has ended at activation. The input conflicts with that Loan, not with a call reservation. The record relates the
-    // Reborrow and its later use, without the implicit acquisition's Note (H5; H3b T49, until A6 publishes it).
+    // Reborrow and its later use, without the implicit acquisition's Note (H5; A6 has no acquisition fact, PLAN G433).
     [Theory]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\ntarget.set(read(second))", "target", "target.set(read", "borrow 8:25 target | loan 9:17 second")]
     [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\nset(target, read(second))", "target", "target, read", "borrow 8:25 target | loan 9:18 second")]
@@ -183,7 +184,8 @@ public class CallReservationTest(ITestOutputHelper output)
     // `drain.reset(values.iterateUniq())`, `values` meets the Loan `drain` keeps, not the reservation of `drain`. A Loan still
     // live at activation is one conflict. Since the MIR decides acceptance (H5, DECISIONS R5-M185) it is A5's Loan conflict at the
     // receiver (H3b T46: CallActivationConflict_Kd at the call before), relating the receiver's earlier Borrow and the later use of a
-    // value retaining its Loan (`first` keeps the item it took from `drain`), without the implicit acquisition's Note (T49, until A6).
+    // value retaining its Loan (`first` keeps the item it took from `drain`), without the implicit acquisition's Note (A6 has no
+    // acquisition fact, PLAN G433).
     [Theory]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(4)\nlet n = it.next()", "values", "values.append(4)", "borrow 7:10 values | loan 9:9 it")]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\n(values).append(4)\nlet n = it.next()", "(values)", "(values).append(4)", "borrow 7:10 values | loan 9:9 it")]
@@ -200,7 +202,8 @@ public class CallReservationTest(ITestOutputHelper output)
         => this.AssertOneRecord(Cell + body, "ComparisonLoanConflict_Kd", input, LoanConflict, related, at);
 
     // SPEC 15.6.7: when the Loan's last use is a later argument, the receiver meets it during preparation only. The record at the input
-    // relates the receiver's earlier Borrow and the Loan's later use, without the implicit acquisition's Note (H5; H3b T49, until A6).
+    // relates the receiver's earlier Borrow and the Loan's later use, without the implicit acquisition's Note (H5; A6 has no
+    // acquisition fact, PLAN G433).
     [Theory]
     [InlineData("func consume<I>(it: I) -> i32 => 4\nvar values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(consume(it@move))", "values", "values.append", "borrow 8:10 values | loan 9:23 it")]
     [InlineData("func consume<I>(it: I) -> i32 => 4\nvar table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\ntable.insertOrReplace(consume(it@move), 1)", "table", "table.insert", "borrow 8:10 table | loan 9:31 it")]
@@ -232,8 +235,8 @@ public class CallReservationTest(ITestOutputHelper output)
 
     // SPEC 15.6.7: two overlapping exclusive inputs are one problem. Since the MIR decides acceptance (H5, DECISIONS R5-M185) it is A5's
     // one record at the call whose activation meets the overlap (H3b T44: at the later input before), relating the later Borrow, the
-    // later use of the value that retains it (the call) and the reservation it meets, without the implicit acquisitions' Note (T49,
-    // until A6).
+    // later use of the value that retains it (the call) and the reservation it meets, without the implicit acquisitions' Note (A6 has
+    // no acquisition fact, PLAN G433).
     [Theory]
     [InlineData(Both + "var c = Cell.init()\nboth(c@uniq, c@uniq)", "both(c@uniq, c@uniq)", "borrow 8:14 c@uniq | loan 8:1 both(c@uniq, c@uniq) | reservation 8:6 c@uniq")]
     [InlineData("var p: i32 = 1\nKimi.Intrinsics.swap(p@uniq, p@uniq)", "Kimi.Intrinsics.swap(p@uniq, p@uniq)", "borrow 7:30 p@uniq | loan 7:1 Kimi.Intrinsics.swap(p@uniq, p@uniq) | reservation 7:22 p@uniq")]
@@ -251,8 +254,9 @@ public class CallReservationTest(ITestOutputHelper output)
     // SPEC 15.6.7: a write or Move during preparation, here in an argument that catches its own transfer, conflicts with the
     // reservation once, at the operation. Since the MIR decides acceptance (H5, DECISIONS R5-M185) A5's record relates the reserved
     // Borrow and, since the reserved argument's next use, the call, lies past the label block, that argument's declaration as the value
-    // retaining the Loan (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without a `reservation` related or
-    // the implicit acquisition's Note (H3b T49, until A6; the Move below, which no block separates from its call, relates the call).
+    // retaining the Loan (DIAGNOSTICS A6's `Store` witness; the U-T2 amendment of DECISIONS R4-M57), without a `reservation` related (the
+    // reservation it meets is the Loan, related as `borrow`; A6's `Reservation` is an activation's or a destruction's) or the implicit
+    // acquisition's Note (no A6 fact, PLAN G433; the Move below, which no block separates from its call, relates the call).
     // From a defer's write the walk follows the exit's drop chain to the call, since the block's body end, no completion of a block
     // that is no Never form, has no check edge (DECISIONS R4-M175; a record-selection move, Q13), so that row relates the call.
     [Theory]
@@ -268,7 +272,8 @@ public class CallReservationTest(ITestOutputHelper output)
         => this.AssertOneRecord(Cell + body, "CallReservationConflict_Kd", operation, ReservationConflict, related);
 
     // SPEC 15.6.7: a Move of the reserved target during preparation is one reservation conflict at the moved operand, relating the
-    // reserved Borrow and the later use of its reservation, the call, without a `reservation` related (H5; H3b T49, until A6).
+    // reserved Borrow and the later use of its reservation, the call, without a `reservation` related (H5; the reservation it meets is
+    // the Loan, related as `borrow`: DIAGNOSTICS A6's `Reservation` is an activation's or a destruction's).
     [Fact]
     public void AMoveDuringPreparationConflictsOnceWithTheReservation()
         => this.AssertOneRecord(Cell + "var text = \"owned\"\nKimi.Intrinsics.exchange(text@uniq, with: text@move)", "CallReservationConflict_Kd", "text", ReservationConflict, "borrow 7:26 text@uniq | loan 7:1 Kimi.Intrinsics.exchange(text@uniq, with: text@move)", "text@move");
