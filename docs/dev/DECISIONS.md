@@ -9506,6 +9506,22 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: StructuralCompletion's transfer set (it omits a transfer after a diverging item); a new target fact on the jump's
     row; Block and Unsafe as members (not expressions with one body); counting failed jumps in the exclusion (loses the failed
     exit's independent record).
+- **BU-107 An erasure the capability engine has not judged is the located limit; a payload's failed Owned condition is the payload's
+  record** (2026-11-06; PLAN G381, unit bu159; Major without a design review, the BU planning session's class) SPEC 11.6, 7.7.4,
+  6.5.2, 15.2.3.
+  - Limit: an inferred stored Property's initializer binds with its header (and again in PrepareStorage) before `capabilitiesReady`,
+    where the engine answers Unknown with no work for every subject that is not a leaf, so the Owned proof of a Closure's environment or
+    of a Function Item with bound Type arguments judges nothing. `FailDerived`'s branch for such a subject without a failed operand
+    context makes the use one located `Unsupported_Kd` at the converted value (it was `InternalInvariant_Kd`, or the construction's
+    `TypeMismatch_Kd` at a payload). After readiness that answer means a subject in an unresolved context, which stays the broken
+    contract, so the branch reads the engine's readiness. The typed and local twins bind after readiness and are valid.
+  - Payload: `CompletePayloads` records through `RecordMismatch`, as a call argument does, a misfit with facts of its own (a failed
+    condition, a fitting structure, an erasure whose Owned condition failed: a Constraint failure, SPEC 15.2.3); any other misfit, an
+    erasure's Shape or Receiver part included, stays the construction's one Type mismatch (SPEC 6.5.2).
+  - Removal: Owned judged during header binding (R7-D2 d with R7-C2/C6), or the R7 Closure design re-judging a Closure's conversion
+    on a later pass. Precedent: BU-73's Field Closure limit.
+  - Rejected: leaving the erasure pending for the bodies pass (a Closure is bound once, so it is never judged again); a leaf rule for
+    Tuples of leaves (a narrow subset: a captured struct would still reach the broken-contract branch).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

@@ -72,4 +72,16 @@ public partial class PropertyBindingTest
         "UninitializedPlace_Kd: init(data: ref/i32 during source) => self.data = data")]
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
+
+    // SPEC 11.6, 7.7.4 (DECISIONS BU-107, PLAN G381): an inferred Field's initializer is bound with its header, before the capability
+    // engine judges, so an erasure there (a call argument here; a Case payload in EnumBindingTest) is one located Unsupported_Kd at the
+    // converted value until Owned is judged during header binding (R7); it was InternalInvariant_Kd. Its typed and local twins are valid.
+    [Theory]
+    [InlineData("q3", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("q3t", "struct S\n    public let p: P = P.init(func (x: i32) -> i32 => x)\n", null)]
+    [InlineData("q3l", "func g() -> i32\n    let p = P.init(func (x: i32) -> i32 => x)\n    return 1\n", null)]
+    public void AnErasureInAFieldHeaderIsTheLocatedLimit(string id, string declarations, string? record)
+        => Assert.Equal(
+            [id, .. new[] { record }.OfType<string>()],
+            [id, .. RawPointerSyntaxTest.Records("struct P\n    public let f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\n\n" + declarations)]);
 }

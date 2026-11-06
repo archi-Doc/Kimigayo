@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 // Owns the failure of a common Function conversion whose subject is not proven Owned (SPEC 7.7.4, 15.2.3), a Constraint failure: one
 // on a failed part (an Error's cause, or the failed operand context of a subject no work judged) is derived from it (SPEC 23.1.2,
 // DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (an
-// OwnedConversionFact), chosen where the erasure decides (OwnedMember).
+// OwnedConversionFact), chosen where the erasure decides (OwnedMember). Before the capability engine judges (an inferred Field's
+// header, DECISIONS BU-107), a subject no work judged is the located limit.
 // Input: the erasure's Owned proof with its rest (the capability engine's parts that are not Proven, R4-M161); the erasure's outcome for
 // the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
 // Output: the explaining member; the use failed, or false when the erasure failed another part; a derived use, settled in Binding.Check's
@@ -83,7 +84,10 @@ public sealed partial class Binding
     }
 
     // An Owned failure no work judged rests on its subject's failed operand context, Invalid by construction (InvalidOperandContext),
-    // listed with no held cause; a subject without one is a broken contract (InternalInvariant_Kd) at once.
+    // listed with no held cause. Without one, before the capability engine judges (an inferred Field's header, which binds its initializer
+    // before every capability), the subject was not judged: the use is the located Unsupported_Kd until Owned is judged during header
+    // binding (DECISIONS BU-107; R7-D2 d with C2/C6). After, an unjudged subject is one in an unresolved context: a broken contract
+    // (InternalInvariant_Kd) at once.
     private void FailDerived(Koto use, Koto? part)
     {
         if (part is not null)
@@ -92,7 +96,8 @@ public sealed partial class Binding
             (this.derivedUses ??= []).Add((use, null, null, null));
         }
 
-        this.Fail(use, part is not null ? BindingFailure.InvalidConstraint : BindingFailure.Internal);
+        var failure = part is not null ? BindingFailure.InvalidConstraint : this.capabilitiesReady ? BindingFailure.Internal : BindingFailure.Unsupported;
+        this.Fail(use, failure);
     }
 
     // DECISIONS BU-76: after every producer's node has failed (Binding.Check's Final prologue, after FailNeededSites), a listed use with no
