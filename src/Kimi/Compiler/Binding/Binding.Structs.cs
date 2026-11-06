@@ -92,7 +92,7 @@ public sealed partial class Binding
     internal BoundType? StorageInstance(BoundType type, Subst subst)
     {
         var binder = subst.Binder;
-        var originBinder = binder is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : binder;
+        var originBinder = binder is FunctionKoto function ? function.OriginBinder : binder;
         var result = this.MemberType(type, subst.Declaring) is { } member && this.SubstituteType(member, binder, subst.Types, subst.Lengths) is { } substituted
             ? this.SubstituteStoredOrigins(substituted, originBinder, subst.Origins, subst.Inputs) : null;
         if (result is not null)

@@ -223,7 +223,7 @@ internal sealed partial class TyCtxt
             { IsVirtual: true } or { IsOverride: true } => types?.Declaring,
             _ => null,
         };
-        return self?.HasAbstractPart == true ? callee.Accessor?.Binder ?? callee : null;
+        return self?.HasAbstractPart == true ? callee.OriginBinder : null;
     }
 
     // A callee's declared parameter and result Types, in its own terms.
