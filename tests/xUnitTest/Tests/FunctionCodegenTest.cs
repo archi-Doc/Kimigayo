@@ -513,25 +513,32 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 16.3.1 (DECISIONS BU-48, amended by G283): a destructor's receiver is like the construction receiver, no use, so an uncalled
     // destructor whose receiver has no layout is accepted at check; no program that builds destroys such a value (its creation is a use of
-    // that layout), so a Library checks it only and does not generate it, and an Application neither, both without a record (fail-before:
-    // InvalidCLayout_Kd or GenerationResourceLimit_Kd at the drop).
+    // that layout), so a Library checks it only and does not generate it, and an Application neither, both without a record, also where it
+    // destroys a part of its layer with its own drop, whose glue the receiver's part needs no layout for (fail-before: InvalidCLayout_Kd or
+    // GenerationResourceLimit_Kd at the drop).
     [Theory]
     [InlineData(OutputKind.Library, "clayout")]
     [InlineData(OutputKind.Library, "limit")]
+    [InlineData(OutputKind.Library, "part")]
     [InlineData(OutputKind.Application, "clayout")]
     [InlineData(OutputKind.Application, "limit")]
+    [InlineData(OutputKind.Application, "part")]
     public void AnUncalledDestructorWithoutAReceiverLayoutIsCheckedOnly(OutputKind output, string form)
     {
-        var source = form == "clayout" ? "#Layout(\"C\")\npublic struct S\n    drop => ()\n"
-            : "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n    drop => ()\n";
+        var source = form switch
+        {
+            "clayout" => "#Layout(\"C\")\npublic struct S\n    drop => ()\n",
+            "part" => "#Layout(\"C\")\npublic struct C\n    public var n: i32\n    public var u: ()\n    drop => ()\npublic struct D\n    public var c: C\n    drop => ()\n",
+            _ => "public struct Big\n    public var a: [1073741824 of u8]\n    public var b: [1073741824 of u8]\n    public var c: [1073741824 of u8]\n    drop => ()\n",
+        };
         var c = Analyze(source + (output == OutputKind.Application ? "let zz = 1\n" : string.Empty), output);
         Assert.True(c.Accepts, string.Join(", ", Records(c)));
         using var writer = new StringWriter();
         Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
         Assert.Empty(Records(c));
         var set = c.Instances!;
-        Assert.False(set.IsGenerated(Assert.Single(
-            Enumerable.Range(0, set.RootCount), x => set.Items[x].Key.Body.Def.Decl?.Declaration is FunctionKoto { IsDestructor: true })));
+        Assert.Contains(Enumerable.Range(0, set.RootCount), x => set.Items[x].Key.Body.Def.Decl?.Declaration is FunctionKoto { IsDestructor: true });
+        Assert.DoesNotContain(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Decl is not null && set.IsGenerated(x));
     }
 
     // SPEC 4.7.4, 8.15.3 (DECISIONS R5-M149): an element of a fixed array behind a reference needs only the element's stride and the array's

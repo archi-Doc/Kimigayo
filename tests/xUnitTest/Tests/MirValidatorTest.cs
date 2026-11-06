@@ -1206,7 +1206,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
     // DECISIONS BU-48 (amended by G283, SPEC 16.3.1): MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver, and
     // a destructor's _1, its destruction receiver: the builder's are valid; the role dropped from either, set on another local of the
-    // constructor or on a destructor's _0, or set on _0 of a body that is neither, is a Local finding.
+    // constructor or on a destructor's _0, set on _0 of a body that is neither, or set on _1 of a by-value Self method (`consume`, `take`)
+    // or of a function local to the drop (`helper`), whose _1 is a value of the struct with the drop, is a Local finding.
     [Theory]
     [InlineData(null)]
     [InlineData("dropped")]
@@ -1215,19 +1216,25 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("destructor")]
     [InlineData("destructor dropped")]
     [InlineData("destructor result")]
+    [InlineData("consume")]
+    [InlineData("take")]
+    [InlineData("helper")]
     public void AReceiverIsExactlyAConstructorsResultOrADestructorsSelf(string? broken)
     {
-        var c = MirBuildTest.Compile("struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\n    drop => ()\nfunc f(n: i32) -> i32 => n\n");
+        var c = MirBuildTest.Compile(
+            "struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\n    drop\n        func helper(e: S) => ()\n" +
+            "    public func consume(self: Self) => ()\n    public func take(self: Self, k: i32) => ()\nfunc f(n: i32) -> i32 => n\n");
         var bodies = c.BuildMir().Bodies.ToArray();
         var destructor = broken?.StartsWith("destructor", StringComparison.Ordinal) == true;
-        var body = bodies.Single(x => x.Source.Module == 0 && (broken == "function" ? x.Key.Decl?.Name == "f"
+        var name = broken switch { "function" => "f", "consume" or "take" or "helper" => broken, _ => null };
+        var body = bodies.Single(x => x.Source.Module == 0 && (name is not null ? x.Key.Decl?.Name == name
             : destructor ? x.Key.Decl?.Declaration is FunctionKoto { IsDestructor: true } : AdtDef.IsConstructor(x.Key.Decl)));
         var locals = body.Locals.ToArray();
-        Assert.Equal(broken == "function" ? [] : [destructor ? 1 : 0], Enumerable.Range(0, locals.Length).Where(x => locals[x].Role == MirLocalRole.Receiver));
+        Assert.Equal(name is not null ? [] : [destructor ? 1 : 0], Enumerable.Range(0, locals.Length).Where(x => locals[x].Role == MirLocalRole.Receiver));
         var (at, role) = broken switch
         {
             "dropped" => (0, MirLocalRole.None),
-            "other" => (1, MirLocalRole.Receiver),
+            "other" or "consume" or "take" or "helper" => (1, MirLocalRole.Receiver),
             "function" => (0, MirLocalRole.Receiver),
             "destructor dropped" => (1, MirLocalRole.None),
             "destructor result" => (0, MirLocalRole.Receiver),
