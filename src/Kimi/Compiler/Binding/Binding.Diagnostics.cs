@@ -685,11 +685,12 @@ public sealed partial class Binding
         return limit ? BindingFailure.Unsupported : missing;
     }
 
-    // A Type position names a Type: an inaccessible qualifier explains the miss, otherwise the Name is missing.
-    private BoundType? FailMissingType(Koto name, BindingScope scope)
+    // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
+    // explains the miss, otherwise the Name is missing.
+    private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
         => this.ReportUnavailableQualifier(name, scope) is { } qualifier
             ? this.CompleteDependent(name, qualifier)
-            : this.Fail(name, this.MissingFailure(name, scope, BindingFailure.MissingType), true);
+            : this.Fail(name, this.MissingFailure(name, scope, missing), true);
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.

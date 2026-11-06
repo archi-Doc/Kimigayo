@@ -207,16 +207,20 @@ public sealed class HoverImprovementsTest
     }
 
     // SPEC 9.4.1 (PLAN G250 (4)): a struct qualifier is described as its Type although the member it selects is inaccessible, as when
-    // the member is accessible (the last row): Binding binds the qualifier in its container role where it rejects the member.
+    // the member is accessible (the last row), in a call, a value, a Function Item and a Case: Binding binds the qualifier in its
+    // container role where it rejects the member.
     [Theory]
     [InlineData("struct T\n    group G\n        public struct Box\n            public init() => ()\n", "T.G.Box.init()", "T", false)]
     [InlineData("struct T\n    struct Box\n        public init() => ()\n", "T.Box.init()", "T", false)]
     [InlineData("struct T<U>\n    group G\n        public struct Box\n            public init() => ()\n", "T<i32>.G.Box.init()", "T<i32>", false)]
     [InlineData("struct T\n    public struct U\n        group G\n            public struct Box\n                public init() => ()\n", "T.U.G.Box.init()", "T", false)]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "T.G.value", "T", false)]
+    [InlineData("struct T\n    group G\n        public func one() -> i32 => 1\n", "T.G.one", "T", false)]
+    [InlineData("struct T\n    enum K\n        A\n", "T.K.A", "T", false)]
     [InlineData("struct T\n    public group G\n        public struct Box\n            public init() => ()\n", "T.G.Box.init()", "T", true)]
-    public void AStructQualifierOfAnInaccessibleMemberKeepsItsDescription(string declarations, string call, string type, bool accepted)
+    public void AStructQualifierOfAnInaccessibleMemberKeepsItsDescription(string declarations, string use, string type, bool accepted)
     {
-        var source = declarations + "func f()\n    let b = " + call + "\n";
+        var source = declarations + "func f()\n    let b = " + use + "\n";
         var body = Render(At(Project(source, accepted), source.IndexOf("= T", StringComparison.Ordinal) + 2), false);
         Assert.Contains("\nType: " + type + "\n", body);
     }

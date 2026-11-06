@@ -101,14 +101,47 @@ public class ContainerNestingTest
         Assert.Equal(name, issue.Node.ToString());
     }
 
-    // SPEC 23.1.2, 9.1, 9.4.1 (PLAN G250 (4)): the qualifier of an inaccessible member is bound in its container role, so its own
-    // failure, an arity mismatch independent of the access, is reported beside the member's.
-    [Fact]
-    public void AQualifierOfAnInaccessibleMemberReportsItsOwnFailure()
+    // SPEC 23.1.2, 9.1, 9.4.1, 9.7.1 (PLAN G250 (4)): the qualifier of an inaccessible member is bound in its container role, so its own
+    // failures, independent of the access, are reported beside the member's: an arity mismatch, omitted outer arguments and an
+    // inaccessible argument.
+    [Theory]
+    [InlineData("T<i32, bool>.G.Box.init()", "InaccessibleBinding_Kd T<i32, bool>.G|InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData("T.G.Box.init()", "InaccessibleBinding_Kd T.G|InvalidTypeFormation_Kd T")]
+    [InlineData("T<H.Hidden>.G.Box.init()", "InaccessibleBinding_Kd H.Hidden|InaccessibleBinding_Kd T<H.Hidden>.G")]
+    public void AQualifierOfAnInaccessibleMemberReportsItsOwnFailure(string use, string records)
     {
-        var c = CompilationTestHelper.Parse("struct T<U>\n    group G\n        public struct Box\n            public init() => ()\nfunc f()\n    let b = T<i32, bool>.G.Box.init()\n");
+        var c = CompilationTestHelper.Parse("struct T<U>\n    group G\n        public struct Box\n            public init() => ()\ngroup H\n    struct Hidden\nfunc f()\n    let b = " + use + "\n");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(["InaccessibleBinding_Kd T<i32, bool>.G", "InvalidTypeFormation_Kd T<i32, bool>"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal));
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
+    // SPEC 9.4.1 (PLAN G250 (4)): a value, a Function Item or a Case selected through an inaccessible Container reports the access at
+    // that Container, as a call through it does, and its struct qualifier is bound as its Type.
+    [Theory]
+    [InlineData("    group G\n        public let value: i32 = 1\n", "T.G.value", "T.G")]
+    [InlineData("    group G\n        public func one() -> i32 => 1\n", "T.G.one", "T.G")]
+    [InlineData("    enum K\n        A\n", "T.K.A", "T.K")]
+    public void AMemberThroughAnInaccessibleContainerReportsTheAccess(string members, string use, string container)
+    {
+        var c = CompilationTestHelper.Parse("struct T\n" + members + "func f()\n    let b = " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal($"InaccessibleBinding_Kd {container}", $"{issue.Code} {issue.Node}");
+        Assert.Equal("T", Qualifier(c).TypeOf()?.Symbol?.Name);
+    }
+
+    // SPEC 9.4.1 (PLAN G250 (4)): a group qualifier of an inaccessible member is bound as its Container, symbol and Type, as when the
+    // member is accessible.
+    [Theory]
+    [InlineData("group G")]
+    [InlineData("public group G")]
+    public void AGroupQualifierOfAnInaccessibleMemberIsBoundAsItsContainer(string member)
+    {
+        var c = CompilationTestHelper.Parse("group T\n    " + member + "\n        public struct Box\n            public init() => ()\nfunc f()\n    let b = T.G.Box.init()\n");
+        c.Bind();
+        var qualifier = Qualifier(c);
+        Assert.Equal((BindingSymbolKind.Container, "T"), (qualifier.SymbolOf()?.Kind, qualifier.SymbolOf()?.Name));
+        Assert.Same(qualifier.SymbolOf(), qualifier.TypeOf()?.Symbol);
     }
 
     [Fact]
@@ -229,4 +262,8 @@ public class ContainerNestingTest
     }
 
     private static string Describe(Compilation c) => c.Binding.Result + "\n" + string.Join('\n', c.Binding.Issues) + "\n" + string.Join('\n', TestDiagnostics.Of(c));
+
+    // The written qualifier `T` of the member that f uses.
+    private static IdentifierNameKoto Qualifier(Compilation c)
+        => HirColumnsTest.Reachable(c.Kotonoha).OfType<IdentifierNameKoto>().Single(static x => x.IdentifierName == "T" && x.Parent is MemberAccessKoto);
 }
