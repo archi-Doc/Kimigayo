@@ -14582,6 +14582,12 @@ structure is recorded here by the unit that first implements it.
     only for a body with neither fact and no merged problem's member. Tests: `VirtualHoverTest`'s
     `OwnershipChecksArePendingForABodyHoldingAConstructionRecord` and `...WithAValidatorFinding` (injected: no source program makes a
     finding); `MirBuildTest.ATupleOperatorWithoutItsComparisonIsUnsupported`, `DefaultExpansionStopsAtTheLimit`.
+  - Amended (G157 (1) U-B, 2026-11-06; R5's consent C-59): the Collector gates bullet's "(an empty range, `starts[o]` still written; no
+    A3b check or need listing)" now excludes the A3b checks of the body's operations and its need listing, not a static's declaration
+    row. The Rule excludes only the failing body; `CheckStatic` reads no body (its `Key` and `Source`, the definition's Type, setter and
+    instantiation; it read `Locals[0].Type`, a copy of that Type), so SPEC 23.1.2 requires that independent record beside the finding.
+    `Templates` calls it for every body before the gate; acceptance never moves. `ABodyWithAFindingDropsOnlyWhatRestsOnIt` gains j's
+    gap by this amendment, not under Q13.
 - **R5-M184 One publisher of MIR records (R6-check H3-2)** (2026-11-03, under R5-M182 and Q13; unit U0 bp, then U1a-U3) Major.
   - Rule: `Core/Compilation.Publication.cs` is Core's one publisher of MIR records. It maps one `MirReport.Merged` problem to the
     diagnostics adapter: the `Located` key form, ordinal conditions, one fact table (one arm per `MirFactKind`) and derived problems

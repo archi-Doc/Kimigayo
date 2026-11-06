@@ -484,9 +484,9 @@ public sealed partial class InstanceCollectorTest
     }
 
     // SPEC 23.1.2, DECISIONS R5-M183 (the owner's (a)): what rests on a body with a finding has no record: f's own uses and the instance
-    // of h that f alone requests (OversizedLayout_Kd at its T), and a broken static's own A3b gap (the Templates walk); every other body's
-    // records stay: static k's InvalidCLayout_Kd use and its static-storage gap (A3b's declaration row; an i128 division is Binding's
-    // Opaque until H7). Fail-before: the findings emptied the set.
+    // of h that f alone requests (OversizedLayout_Kd at its T); every other record stays: static k's InvalidCLayout_Kd use and its
+    // static-storage gap (A3b's declaration row; an i128 division is Binding's Opaque until H7), and broken j's own gap, whose declaration
+    // row reads no body (R5-M183's G157 (1) amendment). Fail-before: the findings emptied the set; then j's gap was dropped.
     [Fact]
     public void ABodyWithAFindingDropsOnlyWhatRestsOnIt()
     {
@@ -499,7 +499,7 @@ public sealed partial class InstanceCollectorTest
         Break(program, "j", MirBodyKind.StaticInit);
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(
-            "InvalidCLayout_Kd P.init(1, ())|Unsupported_Kd public var k: i32 = P.init(1, ()).n",
+            "InvalidCLayout_Kd P.init(1, ())|Unsupported_Kd public var j: i32 = 0|Unsupported_Kd public var k: i32 = P.init(1, ()).n",
             string.Join("|", program.Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}").Order(StringComparer.Ordinal)));
     }
 
