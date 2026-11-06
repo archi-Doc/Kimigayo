@@ -25,7 +25,7 @@ internal sealed partial class MirBuilder
     }
 
     // The one located Unsupported record with an Opaque value: the Opaque value of a value's evaluation at a node's site, naming the roots
-    // its caller collected (SiteRoots, or SiteRoots(int) for a part built already; a default its call does not instantiate names the
+    // its caller collected (SiteRoots, or SiteRoots(MirPlace?) for a part built already; a default its call does not instantiate names the
     // earlier slots, Defaults), and the node's record, merged by location, unless the value is one the lexer or Binding rejected, whose
     // error the Opaque value is derived from (SPEC 23.1.2).
     private void Unsupported(Koto node, MirPlace destination, Koto value)

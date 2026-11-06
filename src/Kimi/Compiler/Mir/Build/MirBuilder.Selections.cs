@@ -149,7 +149,7 @@ internal sealed partial class MirBuilder
         {
             this.Evaluate(range is null ? index.Right : range.Start);
             this.Evaluate(range?.End);
-            this.SiteRoots(sequence.Root);
+            this.SiteRoots(sequence);
             this.Unsupported(index, destination, index);
             return;
         }

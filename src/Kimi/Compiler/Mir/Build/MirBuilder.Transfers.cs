@@ -13,18 +13,18 @@ internal sealed partial class MirBuilder
     private readonly List<Target> targets = []; // The constructs around the code being built that a transfer may target, innermost last.
     private readonly List<(int Block, SourceInfo Info)> ends = []; // The open constructs' non-value ends, innermost last, which Close ends.
 
-    // The root of a derived jump's operand (Transfer): a Place its Adjust would acquire (bare: Copied, moved, Reborrowed or by case)
-    // designated in place, any other operand built; -1 for a constant.
-    private int DerivedOperand(Koto operand)
+    // The Place of a derived jump's operand (Transfer): a Place its Adjust would acquire (bare: Copied, moved, Reborrowed or by case)
+    // designated in place, a local's or a static's, any other operand built; none for a constant.
+    private MirPlace? DerivedOperand(Koto operand)
     {
         var adjust = HirTables.AdjustOf(operand);
         if (adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase })
         {
-            return this.Place(operand).Root;
+            return this.Place(operand);
         }
 
         var given = this.Operand(operand, expected: null);
-        return given.Kind == MirOperandKind.Const ? -1 : given.Place.Root;
+        return given.Kind == MirOperandKind.Const ? null : given.Place;
     }
 
     // SPEC 14.5, 16.2.2, 15.6.7: a transfer evaluates and secures its operand, then branches: at run time it ends the borrows of the calls
@@ -43,7 +43,7 @@ internal sealed partial class MirBuilder
             // selected no arm; DECISIONS R5-M31, R5-M42), so the jump is derived from that record (SPEC 23.1.2): its operand is built,
             // keeping its own records, and the jump is an Opaque value of what the operand gave or designates, without a record. No
             // consumer takes the operand, so a Place it designates is not acquired (an acquisition is its consumer's, DECISIONS BU-27).
-            this.SiteRoots(operand is null ? -1 : this.DerivedOperand(operand));
+            this.SiteRoots(operand is null ? null : this.DerivedOperand(operand));
             this.Site(jump, this.Temp(jump), Completes(jump));
             return;
         }
