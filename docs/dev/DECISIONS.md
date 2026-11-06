@@ -9335,6 +9335,16 @@ resumed by R4-M86 (2026-10-20).
     and `RequireInputPremises` judges no input that already failed. Open (PLAN G418): value calls and Case constructions; after the
     `CompleteWaiting` stop the candidate's re-check (`TryCandidate`) and its pending Constraint are not judged, nor are the receiver's
     object erasure and the per-call Origin stop.
+  - Amended (G418 (2), 2026-11-06; unit U-A, D11 Revision 1; Major): a Case construction is a call. A failed payload stops the payloads
+    after it (PLAN G262 F2), but not the judgments over the solution that `SolveConstruction` fixed, since completing a payload fills no
+    slot (SPEC 10.8). `BindEnumConstruction` judges the completed payloads' premises (`RequireInputPremises`, `JudgePositionRows`),
+    publishes them, judges the Type Constraints (`CheckConstraints`), and keeps the resting construction's plan with its completed
+    payloads, so `CompleteEnumAcquisitions` judges its formation (the Origin clauses) as every plan's; no consumer reads a resting
+    plan (`TryGetEnumConstruction`), and the pass-end Origin rewrite (`CompleteEnumOrigins`) changes only a published result Type.
+    The construction then rests and forms no result. A construction holding its own record (a payload's
+    Type mismatch or acquisition) judges neither, R7-E1's one record per node; the gate goes with R7-E1. Records (Q13): an
+    UnprovenConstraint_Kd or UnsatisfiedConstraint_Kd at the construction beside the payload's record, on invalid programs only; where
+    the expected Type fixes the Origin it restates the annotation's relation, as the no-failure twin does. No verdict moves.
 - **BU-98 A discarded value's Type is Binding's, published in its discard row** (2026-11-05; PLAN G233, unit bu140; R4's consent C-16
   for the builder lines under hold H-4; supersedes BU-27's Open discard sentence and R4-M145's Open (PLAN G233) paragraph) SPEC
   14.2.2, 14.2.4, 15.6.3, 10.2.
