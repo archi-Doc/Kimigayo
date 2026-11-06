@@ -356,6 +356,20 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: no cap (two acceptance movers in one area can interact where neither unit's own run did); keeping three (the same
     failure rate at a higher cost per unit); rules on the board only (a new session does not see them).
 
+- **Q16 Native results are reused when their inputs did not change** (2026-11-07, owner; [VERIFICATION](VERIFICATION.md) "Shared
+  heavy runs and bases", WORKFLOW "Windows"; the Coordinator's unit T1).
+  - The owner (verbatim): 「1と2を進める」, to the Coordinator's proposal to reuse native results whose inputs did not change and to run
+    independent window steps in parallel.
+  - Rule: `test-scalars.ps1 -ReuseResults` reuses a fixture's passed result when its fixture key (the `.ll`, `.stdout`, `.stderr`,
+    `.exit` and `.observation` files) and the environment key (the four LLVM tools the worker runs, the backend archive, the kernel32
+    library, the six runner files, the allowed symbols and the deadline) match an entry verified within `-ReuseHours` (24); every
+    other fixture runs. `native-results.json`, written by every run, is the new base file; a window passes the base's file through
+    `verify.ps1 -NativeReuse` and seeds the next base with the merged file. Only passed entries are reused.
+  - Reason: W-45's native step took 1,670 of its 2,454 seconds, and eight of nine window transitions (r4w35 to r4w45) changed no
+    fixture; identical inputs give the identical outcome, and the daily re-execution bounds machine drift the keys do not see.
+  - Rejected: selecting native families by changed files (a Binding change reaches generated code without touching Backend files);
+    reusing by `.ll` hash alone (the oracle files, toolchain and runner change outcomes too); no re-execution period (drift).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.

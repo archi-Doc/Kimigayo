@@ -196,8 +196,8 @@ A window merges queued units onto dev, verifies them once and lands them togethe
 - **Files.** Units of one window share no file except PLAN's table end and separate DECISIONS entries. An overlap waits for the
   next window, in order of readiness.
 - **Run.** The Coordinator merges the units onto dev, builds the solution with warnings as errors and runs the heavy set once: the
-  default Session with the diagnostic snapshot against the shared base and every native fixture, the milestones, the CLI harnesses
-  and a semantic write. The window's opening line names each unit's expected moves; any other snapshot difference fails the window.
+  default Session with the diagnostic snapshot against the shared base and every native fixture (a fixture whose inputs match the
+  base's passed result within 24 hours is reused, VERIFICATION), the milestones, the CLI harnesses and a semantic write. The window's opening line names each unit's expected moves; any other snapshot difference fails the window.
 - **Failure.** A failing unit leaves the window and the window runs again. When a failure names no unit, the units are split in
   halves until it does.
 - **Close.** The Coordinator associates the evidence with `scripts/verify-commit.ps1`, pushes dev, seeds the shared base and closes
