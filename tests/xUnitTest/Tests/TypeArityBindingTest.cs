@@ -9,6 +9,8 @@ namespace XunitTest;
 
 public class TypeArityBindingTest
 {
+    private const string Contract = "contract C<T>\n    func get(self) -> i32\n";
+
     [Theory]
     [InlineData("struct Box\nstruct Box<T>")]
     [InlineData("struct Box<T>\nstruct Box")]
@@ -85,6 +87,39 @@ public class TypeArityBindingTest
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Contains(restored.Binding.Issues, x => x.Code == expected);
+    }
+
+    // SPEC 9.7, 8.4, 23.1.2 (PLAN G513): explicit Type arguments resolve in the use-site context, so a head or arity that forms no
+    // application, a Type's or a Contract reference's (a parent's and a clause's included), keeps its arguments' own failures; a
+    // Contract without parameters takes no written arguments. The arity-only guard keeps one record; the valid twins bind.
+    [Theory]
+    [InlineData("struct T<U>\nfunc f(b: T<i32, Missing>) => ()", "InvalidTypeFormation_Kd T<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("struct T<U, V>\nfunc f(b: T<Missing>) => ()", "InvalidTypeFormation_Kd T<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("group H\n    struct P\nstruct T<U>\nfunc f(b: T<i32, H.P>) => ()", "InaccessibleBinding_Kd H.P|InvalidTypeFormation_Kd T<i32, H.P>")]
+    [InlineData("group H\nstruct T<U>\nfunc f(b: T<i32, H>) => ()", "InvalidTypeFormation_Kd T<i32, H>|UnresolvedBinding_Kd H")]
+    [InlineData("struct T<U>\nfunc f(b: T<i32, Option<Missing>>) => ()", "InvalidTypeFormation_Kd T<i32, Option<Missing>>|UnresolvedBinding_Kd Missing")]
+    [InlineData("enum E<T>\n    A(T)\nfunc f(e: E<i32, Missing>) => ()", "InvalidTypeFormation_Kd E<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("struct T<U>\nfunc f<X>(b: T<X, Missing>) => ()", "InvalidTypeFormation_Kd T<X, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("struct T<U>\nfunc f(b: ::T<i32, Missing>) => ()", "InvalidTypeFormation_Kd T<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("func f(b: Nope<Missing>) => ()", "UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd Nope")]
+    [InlineData("func f<X>(b: X<Missing>) => ()", "InvalidTypeFormation_Kd X<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(Contract + "func f(b: C<Missing>) => ()", "InvalidTypeFormation_Kd C<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(Contract + "func f<X>(x: X)\n    X is C<i32, Missing>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is C<i32, Missing>\n    return|TypeMismatch_Kd C<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("contract C<T, U>\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is C<Missing>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is C<Missing>\n    return|TypeMismatch_Kd C<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("contract D\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is D<i32>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is D<i32>\n    return|TypeMismatch_Kd D<i32>")]
+    [InlineData("contract D\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is D<Missing>\n    return", "InvalidConstraint_Kd func f<X>(x: X)\n    X is D<Missing>\n    return|TypeMismatch_Kd D<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(Contract + "struct S\n    Self is C<i32, Missing>\n    public func get(self) -> i32 => 1", "InvalidConstraint_Kd Self is C<i32, Missing>|InvalidConstraint_Kd struct S|TypeMismatch_Kd C<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(Contract + "contract D : C<i32, Missing>\n    func put(self) -> i32", "InvalidConstraint_Kd C<i32, Missing>|InvalidConstraint_Kd contract D|InvalidTypeFormation_Kd C<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData("struct T<U>\nfunc f(b: T<i32, bool>) => ()", "InvalidTypeFormation_Kd T<i32, bool>")]
+    [InlineData("struct T<U>\nfunc f(b: T<i32>) => ()", "")]
+    [InlineData(Contract + "func f<X>(x: X)\n    X is C<i32>\n    return", "")]
+    [InlineData("contract D\n    func get(self) -> i32\nfunc f<X>(x: X)\n    X is D\n    return", "")]
+    [InlineData(Contract + "contract D : C<i32>\n    func put(self) -> i32", "")]
+    public void AFailedHeadOrArityKeepsItsArgumentsOwnFailures(string source, string records)
+    {
+        var c = Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
     [Theory]

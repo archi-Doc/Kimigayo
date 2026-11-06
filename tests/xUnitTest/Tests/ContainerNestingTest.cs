@@ -118,8 +118,14 @@ public class ContainerNestingTest
     // SPEC 23.1.2, 9.1, 9.7, 9.7.1, 6.1 (PLAN G481 (1), (3)): a qualifier's own failure is reported at the qualifier whatever form reads
     // it, and stays failed: a struct qualifier's wrong arity or omitted outer arguments (a call, a Type position, a `::` path, also
     // a middle segment), a qualifier resting on its failed argument, and a group qualifier's written arguments, since a group has no
-    // own parameters. The consumer rests on it. The valid twins bind.
+    // own parameters. The consumer rests on it. A failed qualifier's arguments keep their own failures (SPEC 9.7; PLAN G513). The
+    // valid twins bind.
     [Theory]
+    [InlineData(false, "func f()\n    let b = T<i32, Missing>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(false, "func f(b: T<i32, Missing>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(true, "func f()\n    let b = T<Missing>.G.Box.init()\n", "InvalidTypeFormation_Kd T<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(true, "func f() -> i32 => T<Missing>.one()\n", "InvalidTypeFormation_Kd T<Missing>|UnresolvedBinding_Kd Missing")]
+    [InlineData(true, "group H\n    struct Hidden\nfunc f() -> i32 => T<H.Hidden>.value\n", "InaccessibleBinding_Kd H.Hidden|InvalidTypeFormation_Kd T<H.Hidden>")]
     [InlineData(false, "func f()\n    let b = T<i32, bool>.G.Box.init()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
     [InlineData(false, "func f()\n    let b = T.G.Box.init()\n", "InvalidTypeFormation_Kd T")]
     [InlineData(false, "func f(b: T<i32, bool>.G.Box) => ()\n", "InvalidTypeFormation_Kd T<i32, bool>")]
