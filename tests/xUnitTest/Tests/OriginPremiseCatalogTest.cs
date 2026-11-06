@@ -104,8 +104,14 @@ public class OriginPremiseCatalogTest
     // of a nested signature or body. A nested function's or anonymous function's inputs, or a comparison's required signature, may name
     // `z` (`Projection[x]`), but `p outlives z` stays outer's obligation, so `p outlives q` is Unknown there; in an anonymous function's
     // body, `x` and `z` are fixed Origins (SPEC 15.6.5, 15.8.2), so `x outlives z` is Unknown too. A required signature's own input
-    // (`ref/(ref/i64 during x) during z`) still gives its condition.
+    // (`ref/(ref/i64 during x) during z`) still gives its condition. A meet whose operand names `z` does not make a comparison's relation
+    // between fixed Origins a body's: `(p and z) outlives q` needs `p outlives q` (SPEC 15.3.6, 15.6.1), also where 15.3.6 solves it,
+    // as `g5`'s `a := (p and z)` whose well-formedness needs `a outlives q` (r5, the inferred form of r1; SPEC 15.2.2 absorbs no meet
+    // by a body relation).
     [Theory]
+    [InlineData("func g5(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives a\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g5\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during (p and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Converted + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData("func h2(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during x) during z, ref/i64 during z) -> ref/i64 during z = h2\n    return 0\n", null)]
     [InlineData(Outer + "    let f = func() -> i32\n        let w: ref/i64 during z = x\n        return 0\n    return f()\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Outer + "    let f = func() -> ref/i64 during z => x\n    let k = f()\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
@@ -140,10 +146,12 @@ public class OriginPremiseCatalogTest
         Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
     }
 
-    // SPEC 15.6.5 (the owner's 「(b)にする」, PLAN G491, G492): a comparison in the body that declares the locals judges a relation
-    // between their Origins as a body chain, as the local fit `let w: ref/i64 during z = x` does: `x outlives z` ends at the finite
-    // Origin of `z`, so R5 proves it, at a function's, a nested function's own and the top level's locals.
+    // SPEC 15.6.1, 15.6.5 (the owner's 「(b)にする」, PLAN G491, G492): a comparison in the body that declares the locals judges a
+    // relation that requires an Origin to outlive one of their borrows as that body's, as the local fit `let w: ref/i64 during z = x`
+    // is: R5 proves `x outlives z`, at a function's, a nested function's own and the top level's locals, and a meet operand by operand
+    // (SPEC 15.3.6: `p outlives z` proves `p outlives (q and z)`).
     [Theory]
+    [InlineData(Compared + Outer + "    let f: (ref/i64 during p, ref/i64 during (q and z)) -> ref/i64 during (q and z) = h\n    return 0\n" + Main)]
     [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
     [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
     [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during p, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]

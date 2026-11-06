@@ -35,7 +35,7 @@ public sealed partial class Binding
                 edges = Math.Max(edges, capacity.Edges);
                 retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
                     environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null ||
-                    environment.Comparison.Expected is not null;
+                    environment.Comparison.Expected is not null || environment.Shorter is not null;
             }
 
             return (this.originPremiseEnvironments.Count, nodes, edges, retains);
@@ -66,6 +66,9 @@ public sealed partial class Binding
         return node;
     }
 
+    // Whether a request is made in a Callable comparison, whose required signatures' premises it assumes (ExtractOriginPremises).
+    private static bool InComparison(in CallableInstance comparison) => comparison.Expected is not null || comparison.Outer is not null;
+
     // SPEC 15.3.6 (PLAN G74): whether the premises visible at `use` entail `longer outlives shorter`, both resolved at the use.
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
@@ -86,6 +89,8 @@ public sealed partial class Binding
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
         environment.Comparison = comparison;
+        environment.Shorter = shorter;
+        bool entailed;
         try
         {
             var closure = environment.Closure;
@@ -93,14 +98,44 @@ public sealed partial class Binding
             var target = closure.Node(shorter, out _);
             var candidate = closure.Node(longer, out _);
             this.ExtractOriginPremises(environment, use);
-            var entailed = closure.Entails(candidate, target, condition);
+            entailed = closure.Entails(candidate, target, condition);
             this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
-            return entailed;
         }
         finally
         {
             this.ReturnPremises(environment);
         }
+
+        // SPEC 15.3.6, 15.6.1: in a comparison R5 depends on the request's shorter end (ExtractOriginPremises), so a meet there is judged
+        // operand by operand: `(a and b) outlives c` needs `a outlives c` and `b outlives c`, and `x outlives a` proves
+        // `x outlives (a and b)`.
+        if (entailed || !InComparison(comparison))
+        {
+            return entailed;
+        }
+
+        if (longer.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < longer.Operands.Count; i++)
+            {
+                if (!this.EntailsOrigin(longer.Operands[i], shorter, use, comparison, condition))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        for (var i = 0; i < shorter.Operands.Count; i++)
+        {
+            if (this.EntailsOrigin(longer, shorter.Operands[i], use, comparison, condition))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The environment of the next nesting level for a request at `use`, returned with ReturnPremises; null beyond MaxOriginPremiseDepth,
@@ -180,9 +215,9 @@ public sealed partial class Binding
     // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
     // (R4), the inputs (R2, a Closure's call receiver among them) and result (R3) of each enclosing signature, a computed or
     // requirement Property's header being its getter's result (SPEC 11.4), and the clauses of each established enclosing declaration (R1).
-    // Then every borrowed complete local Place of the use's own body among the graph's expressions adds its stored Origins (R5),
-    // including Places that those Origins introduce, so the closure applies R5 at every expression it reaches; last, the premises of
-    // the comparisons the request is made in.
+    // Then the premises of the comparisons the request is made in, and every borrowed complete local Place of the use's own body among
+    // the graph's expressions adds its stored Origins (R5), including Places that those Origins introduce, so the closure applies R5 at
+    // every expression it reaches.
     private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
     {
         Koto? previous = null;
@@ -232,13 +267,29 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 15.3.7, the owner's (a): a request made in a Callable comparison assumes the own well-formedness of the comparison's
+        // required signature and of each enclosing comparison's; no other request sees them.
+        this.AddRequiredPremises(environment, environment.Comparison.Expected);
+        for (var outer = environment.Comparison.Outer; outer is not null; outer = outer.Outer)
+        {
+            this.AddRequiredPremises(environment, outer.Required);
+        }
+
         // R5, SPEC 15.6.1, 15.6.5: the well-formedness of a borrow of a complete local Place, the body's obligation, which its finite
-        // Origin proves without premises. So it serves only a request of the body that declares the local, never its own declaration,
-        // and reaches only the Origins of that body: those of the request and of its declarations' premises, read above. A nested body or
-        // signature (a nested or anonymous function's, a Function Type's, a comparison's required one, read below) has only its own
-        // premises, the local's Origins being fixed there (SPEC 15.2.2, 15.3.4, 15.3.7; PLAN G491; the owner's 「(b)にする」).
-        var closure = environment.Closure;
+        // Origin proves without premises. So it serves only a request of the body that declares the local, never its own declaration;
+        // a nested body or signature (a nested or anonymous function's, a Function Type's) has only its own premises, the local's
+        // Origins being fixed there (SPEC 15.2.2, 15.3.4). A comparison is judged from premises alone, except a relation that requires an
+        // Origin to outlive a local Place of the body, which is that body's (SPEC 15.3.7, 15.6.1; PLAN G491; the owner's 「(b)にする」):
+        // so in a comparison R5 serves only a request whose shorter end is such a Place, and EntailsOrigin judges a meet there operand
+        // by operand.
         var body = PremiseSignature(environment.Use);
+        if (InComparison(environment.Comparison) && !(environment.Shorter is { Kind: OriginKind.Projection, Binder: VariableKoto place } &&
+            ReferenceEquals(PremiseSignature(place), body)))
+        {
+            return;
+        }
+
+        var closure = environment.Closure;
         for (var node = 0; node < closure.NodeCount; node++)
         {
             if (closure.Origin(node) is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
@@ -247,14 +298,6 @@ public sealed partial class Binding
             {
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }
-        }
-
-        // SPEC 15.3.7, the owner's (a): a request made in a Callable comparison assumes the own well-formedness of the comparison's
-        // required signature and of each enclosing comparison's; no other request sees them.
-        this.AddRequiredPremises(environment, environment.Comparison.Expected);
-        for (var outer = environment.Comparison.Outer; outer is not null; outer = outer.Outer)
-        {
-            this.AddRequiredPremises(environment, outer.Required);
         }
     }
 
@@ -505,6 +548,10 @@ public sealed partial class Binding
         // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
         internal CallableInstance Comparison { get; set; }
 
+        // The request's shorter end (EntailsOrigin), which decides R5 in a comparison; null for an environment without one (a body's
+        // oracle, retention, a dependence query).
+        internal BoundOrigin? Shorter { get; set; }
+
         // Whether this request is a dependence query's own, which reads failed contracts (readingFailedContracts; DECISIONS BU-69).
         internal bool ReadsFailedContracts { get; set; }
 
@@ -528,6 +575,7 @@ public sealed partial class Binding
             this.Use = null!;
             this.Scope = null;
             this.Comparison = default;
+            this.Shorter = null;
             this.ReadsFailedContracts = false;
             this.Dependence = false;
             this.Reads.Clear();
