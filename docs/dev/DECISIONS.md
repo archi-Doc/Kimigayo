@@ -342,6 +342,34 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: keeping Full for shared representations (the mandatory design review and the owner's per-unit instruction cover
     it); reviewing every document (only AGENTS, SPEC and IMPL bind every session's work).
 
+- **Q15 Window size; the window rules move to WORKFLOW** (2026-11-07, owner; [WORKFLOW](WORKFLOW.md) "Windows"; supersedes the
+  board's window-size rule of 2026-11-06 18:39 (R5 on M's proposal); R7-M2's window rules move to WORKFLOW).
+  - The owner (verbatim): 「「記録や受理が動くユニットは、1つの window に3つまでというルール」について ルールの根拠の文書と、上限緩和の
+    可能性について検討してください。」, 「今回の変更は、WORKFLOW.mdに記載した方が良いと思いますが、いかがか？」, then 「進める」 to the
+    Coordinator's recommendation.
+  - Rule, as WORKFLOW states: at most five units that move records or acceptance, at most one acceptance mover per area;
+    documentation-only, test-only and behavior-preserving units up to eight in all; R7-M2's entry, file, failure and push rules
+    unchanged, and a failure that names no unit splits the window in halves.
+  - Reason: the heavy set's time (25-45 minutes in W-37 to W-45) does not depend on the unit count, and one unit in about 25 failed
+    (W-41 run 1), since every unit passes its own checks against the shared base first; a larger window lowers the cost per unit and
+    still holds one heavy-run slot. One acceptance mover per area keeps an interaction attributable without a bisect.
+  - Rejected: no cap (two acceptance movers in one area can interact where neither unit's own run did); keeping three (the same
+    failure rate at a higher cost per unit); rules on the board only (a new session does not see them).
+
+- **Q16 Native results are reused when their inputs did not change** (2026-11-07, owner; [VERIFICATION](VERIFICATION.md) "Shared
+  heavy runs and bases", WORKFLOW "Windows"; the Coordinator's unit T1).
+  - The owner (verbatim): 「1と2を進める」, to the Coordinator's proposal to reuse native results whose inputs did not change and to run
+    independent window steps in parallel.
+  - Rule: `test-scalars.ps1 -ReuseResults` reuses a fixture's passed result when its fixture key (the `.ll`, `.stdout`, `.stderr`,
+    `.exit` and `.observation` files) and the environment key (the four LLVM tools the worker runs, the backend archive, the kernel32
+    library, the six runner files, the allowed symbols and the deadline) match an entry verified within `-ReuseHours` (24); every
+    other fixture runs. `native-results.json`, written by every run, is the new base file; a window passes the base's file through
+    `verify.ps1 -NativeReuse` and seeds the next base with the merged file. Only passed entries are reused.
+  - Reason: W-45's native step took 1,670 of its 2,454 seconds, and eight of nine window transitions (r4w35 to r4w45) changed no
+    fixture; identical inputs give the identical outcome, and the daily re-execution bounds machine drift the keys do not see.
+  - Rejected: selecting native families by changed files (a Binding change reaches generated code without touching Backend files);
+    reusing by `.ll` hash alone (the oracle files, toolchain and runner change outcomes too); no re-execution period (drift).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -5660,6 +5688,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Task per hop (a 1.5 MB pool stack and an allocation per hop).
   - O-24: the owner (R4's dialog, 2026-11-06), verbatim 「O-24 は、bでお願いいたす」: the transfer is a named exception of 'Catch
     boundaries'.
+- **R4-M179 A binding's Error Copy proof leaves its match buildable (PLAN G471, G485)** (2026-11-06; R4, design D12: outside
+  R4-M88's owner reservation, since Binding resolved the match; class Major) SPEC 14.8.4, 15.1.6, 23.1.2. Supersedes BU-110's "and
+  its plan Invalid" and `AcquireBinding`'s Coverage write.
+  - Cause: `BoundMatch.Invalid` means a located failure at a Pattern position or a guard, and every other writer pairs with a `Fail`.
+    `AcquireBinding` also set it, with the Coverage `Invalid`, on an Error Copy proof, which was consistent while it failed the
+    binding; BU-110 (a7ed3e0b0) removed that located failure and kept both writes, so their reason no longer holds. `MirBuilder.Match`
+    then built the match Opaque, losing its arms' independent MIR records (G471), and the Coverage hid `NonExhaustiveMatch_Kd` and
+    the unreachable-arm Warnings (G485).
+  - Rule: an Error proof makes the binding Deferred (HIR Failed) only; its plan stays buildable and its coverage stays the Patterns'
+    (14.8.4). `MirBuilder.Bind` derives the Failed binding as a loop's (BU-110). A failed Pattern (`ValidatePatternType`'s late
+    recheck) keeps its Invalid plan and Opaque; a failed guard or arm leaves an Error node (G121, R4-M88).
+  - Records (23.1.2, Q13): additions only, on programs the declaration's failure rejects: the arms' MIR records,
+    `NonExhaustiveMatch_Kd` and `UnreachablePattern_Kd`. No acceptance moves.
+  - Rejected: an `Acquisition`-aware test in `MirBuilder.Match` (a second copy of the rule); a new plan flag (a mode); waiting for
+    G121 (a resolved match is not its case).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -6582,7 +6625,7 @@ resumed by R4-M86 (2026-10-20).
   role (inference and matching, open Origins, premises, regions, effects, construction premises), and the old analysis never sees a raw
   Origin (Q-O3 is moot). Identity: `BoundType.SameExceptOrigins` (every part of the layer but `Origin` and Origin arguments,
   `RawOrigin` compared exactly: no identity treats it as open, omitted or inferred) is shared by `SameCompleteType`,
-  `SameModuloOpenOrigins` and `SameExceptOmittedOrigins`. `ArchitectureRulesTest` pins the self-rebuilds and the raw role's reads and
+  `SameExceptOmittedOrigins` and `SameExceptRawOrigins`. `ArchitectureRulesTest` pins the self-rebuilds and the raw role's reads and
   writes by site. Rejected: A′ (the same field and a borrow view): a gate and the rewriter it guards read different meanings (a
   body-local region escapes through `ResolveLocalResultOrigins`). G160-1 (C1b) appends §0's vocabulary (`Holder`, `Shared`, `Unstated`)
   and the owner's decisions. C1b (unit bu20; the owner's Q-O1, Q-O2, Q-O6 of design-final §0, Q-O4 and Q-O5 as R4-M105 (OQ-R1 (a),
@@ -9701,8 +9744,10 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
     result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
 
-- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; PLAN G439, unit
-  bu174; Major; R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes BU-103's "`Match` builds an
+- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; its "and its plan Invalid" and
+  `AcquireBinding`'s Coverage write superseded by R4-M179; PLAN G439, unit bu174; Major;
+  R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes
+  BU-103's "`Match` builds an
   Invalid or Pending plan as Opaque, so `Bind` never takes a Failed binding; a For's plan holds none (its acquisitions are
   `Binding.Sequences`', PLAN's open item)": a loop's plan holds a Failed binding, and `Bind` takes it.
   - Cause: two copies of 15.1.6's rule. `Binding.Sequences` decided a for item's at bind time and took an Error Copy proof as
@@ -14927,6 +14972,12 @@ structure is recorded here by the unit that first implements it.
     guess rule's own first test (the same structural completion), so nested requires whose outer failure bodies cannot complete cost no
     walk of theirs. Nested failure bodies that all can complete, in an incomplete pass, stay quadratic in the walk; the old check paid it
     only per falling require.
+  - Amended (G47, 2026-11-06; BU, Major, design review Revision 1 ACCEPT): a guess is what StructuralCompletion's guessed walk
+    reads and Binding did not establish, whatever the node's BindingState. It is asked only where the walk reads the node itself:
+    a block (its items; a guess only when the parser supplied it) and an evaluated node (its Never evidence; a guess when Binding
+    did not resolve it and published no Type). A composed form is judged by its parts. This narrows the domain `!= Resolved` that
+    held since 8bcc48526, so a written path through a rejected match, if or for keeps its fallthrough direct. Rejected: keying on
+    Invalid versus Unresolved (fd88f6625; one failure gets either state).
 - **R5-M187 H5's corpus difference member and generation's one gate (R6-check H5 Rec)** (2026-11-05, the H5 split plan's row Rec) Minor.
   - pair-cases.json: a row whose MIR verdicts differ from the SPEC's keeps the SPEC's verdicts in `Expected` and `Run` and states
     the MIR's per-case verdicts in a `Mir` member (`Expected` in the row's form and a `Note` naming its (e) row and the PLAN row that
@@ -15171,7 +15222,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     from this entry (R7-M2, R7-M3).
 - **R7-M2 The arrangement: three sessions by component, windows and the board** (owner, 2026-11-03, RQ1 and RQ7; plan §3 and §9;
   supersedes the session names of R4-M119 and R5-M113, whose caps stand, and the hold record of R5-M7, R5-M148 and R5-M167, whose
-  protocol stands; amends R5-M182's window assignment from the window after the flip group's)
+  protocol stands; amends R5-M182's window assignment from the window after the flip group's; its window rules now in WORKFLOW
+  "Windows", Q15; the window runner the Coordinator, R7-M4)
   - The front session (Syntax and Binding: `Compiler/Lexing/**`, `Parsing/**`, `Helper/**`, `src/Kimi/Misc/**`, `Binding/**` but the
     library index files, the root helpers `Compiler/*.cs`, `Checking/**`, `Lsp/**`, `src/Kimi/Diagnostics/**`) runs R7 and R6-check's
     Binding side; the middle session (`Compiler/Mir/**`, the HIR columns' builder readers, `tests/mir`, `Compiler/Documentation/**`)

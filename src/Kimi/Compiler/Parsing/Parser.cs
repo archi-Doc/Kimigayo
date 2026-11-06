@@ -269,7 +269,13 @@ public static partial class Parser
             }
         }
 
-        if (reader.CurrentTokenKind != TokenKind.EqualsGreaterThan)
+        // A declaration's header ends its line, since the declaration may be bodyless. A function expression's required body judges its
+        // header's line (FunctionKoto.Parse) and stops at an enclosing grouping's closer; an attribute continuing it is misplaced (SPEC 6.7).
+        if (anonymous)
+        {
+            reader.ReportMisplacedAttributes();
+        }
+        else if (reader.CurrentTokenKind != TokenKind.EqualsGreaterThan)
         {
             reader.ExpectLineEnd(bodyMayFollow: true);
         }
@@ -3359,11 +3365,12 @@ CloseParameters:
         }
     }
 
-    private static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader, bool statementHeader = false)
+    // The required indented body of a construct, parsed as its owning function's block when it has one (a function expression's).
+    internal static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader, bool statementHeader = false, FunctionKoto? function = null)
     {
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            return ParseBlock(ref reader);
+            return ParseFunctionBlock(ref reader, function);
         }
 
         // A token left on a statement header's line, before the indented body that follows, is where the header's line should
@@ -3372,7 +3379,7 @@ CloseParameters:
         {
             reader.Expect(SyntaxForm.LineEnd);
             reader.SkipHeaderLine();
-            return ParseBlock(ref reader);
+            return ParseFunctionBlock(ref reader, function);
         }
 
         // An empty body is supplied where the body is missing. It is a recovery: a check that reads its Type or its normal

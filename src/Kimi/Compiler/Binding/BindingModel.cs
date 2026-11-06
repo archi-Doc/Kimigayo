@@ -654,10 +654,11 @@ public sealed record BoundType
     public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
 
     // Whether two Types agree in every part of their own layer but their Origin and Origin arguments, which each identity compares in
-    // its own way (exactly, modulo open Origins, except omitted ones). A raw layer's Origin is compared here: no identity treats it as
-    // open, omitted or inferred (DECISIONS BU-24).
+    // its own way (exactly, modulo open Origins, except omitted ones). The Name is a primitive's whole layer (SPEC 3.1, 3.8: `i32` and
+    // `i64`, `Wrapping<T>` and `T` differ), and a part of any other layer its Symbol or Kind already decides. A raw layer's Origin is
+    // compared here: no identity treats it as open, omitted or inferred (DECISIONS BU-24).
     internal bool SameExceptOrigins(BoundType other)
-        => this.Kind == other.Kind && ReferenceEquals(this.Symbol, other.Symbol) && this.Semantics == other.Semantics && this.Length == other.Length &&
+        => this.Kind == other.Kind && ReferenceEquals(this.Symbol, other.Symbol) && this.Name == other.Name && this.Semantics == other.Semantics && this.Length == other.Length &&
             ReferenceEquals(this.LengthExpression, other.LengthExpression) && ReferenceEquals(this.ClosureContext, other.ClosureContext) &&
             this.LengthArguments.AsSpan().SequenceEqual(other.LengthArguments) && this.Components.Count == other.Components.Count &&
             this.OriginArguments.Count == other.OriginArguments.Count && ReferenceEquals(this.RawOrigin, other.RawOrigin);
