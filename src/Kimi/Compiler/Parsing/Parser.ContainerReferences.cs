@@ -125,22 +125,78 @@ public static partial class Parser
         }
     }
 
-    private static Koto ParseGroupedContainerSuffix(ref TokenReader reader, Koto type)
+    // SPEC F.5: a Type head's PathSuffixes, Type arguments and OriginApplication (NamedType := NamedReference OriginApplication?), the
+    // one loop for every head; a grouped head enters it only where ContinuesGroupedType holds. A Semantics prefix's Type has read its
+    // own suffixes, so a "." after it belongs to the enclosing construct.
+    private static Koto ParseTypeSuffixes(ref TokenReader reader, Koto left, bool disambiguateGenerics)
     {
-        while (reader.CurrentTokenKind == TokenKind.Dot)
+        while (reader.CanRead)
         {
-            reader.Advance();
-            var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                ? ParseDeclarationType(ref reader, parseOrigin: true, parseFunctionType: false, parseContainerSuffix: false)
-                : ParseMemberName(ref reader);
-            type = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, member.Span.End), type, member);
-            if (reader.CurrentTokenKind == TokenKind.LessThan)
+            var tokenKind = reader.CurrentTokenKind;
+            if (tokenKind == TokenKind.Dot)
             {
-                type = ParseGenericsPostfix(ref reader, type);
+                if (left is TypeSemanticsKoto { Type: not null })
+                {
+                    break;
+                }
+
+                var operatorRange = reader.CurrentTokenRange;
+                reader.Advance();
+
+                var accessor = ParseTypeMember(ref reader);
+                if (accessor is ErrorKoto failed)
+                {
+                    // The member Name failed, so the qualified Type is the Error's recovery, as a failed head is.
+                    return new ErrorKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, failed.Span.End))) { Cause = failed.Cause };
+                }
+
+                left = new MemberAccessKoto(
+                    ref reader,
+                    SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
+                    left,
+                    accessor);
+            }
+            else if (tokenKind == TokenKind.LessThan)
+            {
+                // In a conversion, a following '<' may start a comparison.
+                // Type declarations and nested type arguments have no such ambiguity.
+                if (disambiguateGenerics && !OpensAdjacentTypeArguments(ref reader, left.Span))
+                {
+                    break;
+                }
+
+                left = ParseGenericsPostfix(ref reader, left);
+            }
+            else if (tokenKind == TokenKind.OpenParenthesis && !disambiguateGenerics &&
+                left is TypeSemanticsKoto { Type: null } or MemberAccessKoto or GenericsKoto or SyntaxFormKoto { Akind: KotoKind.RootName })
+            {
+                left = ParseOriginApplication(ref reader, left);
+            }
+            else
+            {
+                break;
             }
         }
 
-        return type;
+        return left;
+
+        // After a '.', a member is a Name, whose Type arguments the loop reads, or a parenthesized Contract (SPEC 8.5); a fixed
+        // array or a root name there is where the Name was expected. A '/' after the member is left to the enclosing construct.
+        static Koto ParseTypeMember(ref TokenReader reader)
+        {
+            if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
+            {
+                return ParseBareParenthesizedType(ref reader);
+            }
+
+            if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+            {
+                var cause = reader.Expect(SyntaxForm.Name);
+                return new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = cause };
+            }
+
+            return new TypeSemanticsKoto(ref reader, reader.Read());
+        }
     }
 
     internal static Koto ParseContainerReference(ref TokenReader reader)
