@@ -101,7 +101,7 @@ internal sealed partial class MirBuilder
             this.Record(node, DiagnosticCode.InternalInvariant_Kd);
             var temp = this.Temp(stored, node);
             this.opaqueTemps.Add(temp.Root);
-            this.SiteRoots(place.Root);
+            this.SiteRoots(place);
             this.Site(node, temp, Completes(node));
             return MirOperand.Move(temp);
         }
