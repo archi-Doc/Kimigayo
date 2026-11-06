@@ -41,14 +41,16 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceCopy" + name, source, string.Empty);
     }
 
+    // SPEC 15.6.2, 3.5.1: a `uniq` Element reached through `ref` grants no exclusive access: a write through it is SharedPathAccess_Kd, and
+    // its bare acquisition at a `uniq/i32` parameter has no Reborrow, so it is TransferRequired_Kd at the Place (PLAN G262).
     [Theory]
-    [InlineData("values[1].0@follow += 2")]
-    [InlineData("change(values[1].0)")]
-    public void SharedLayersStillRejectExclusiveAcquisition(string use)
+    [InlineData("values[1].0@follow += 2", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("change(values[1].0)", DiagnosticCode.TransferRequired_Kd)]
+    public void SharedLayersStillRejectExclusiveAcquisition(string use, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Header + "func run(values: ref/Dictionary<i32, (uniq/i32 during a, i32)>)\n    " + use);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, static x => x.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.NoApplicableOverload_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
     [Theory]

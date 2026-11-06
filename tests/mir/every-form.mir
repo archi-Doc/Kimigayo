@@ -24,7 +24,6 @@ fn f @0
       _7 = &_1.0: ref/i32 @0
       _0 = copy (*_7) @0
       EndBorrow(_7) @0
-      FakeRead(static0) @0
       FakeRead((_2@b0)) @0
       _2 = acquire b0 _2 @0
       _2 = acquire b0 _2 two-phase @0
@@ -57,6 +56,7 @@ fn f @0
   bb5:
       _12 = intrinsic StaticEnsure(const 0_isize) -> bb6 @0
   bb6:
+      FakeRead(static0) @0
       return @0
   bb7:
       FakeRead(_11) @0

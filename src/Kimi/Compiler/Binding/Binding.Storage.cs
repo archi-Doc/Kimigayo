@@ -566,23 +566,12 @@ public sealed partial class Binding
         this.ValidateEnumProjections();
     }
 
+    // SPEC 9.7.2, 15.3.1 (PLAN G425): a declaration's Type at an occurrence of its Type, every Type and declared Origin slot mapped to the
+    // occurrence's arguments in one pass (SubstituteType); a clause's form (StoredConstraint) uses the same images.
     private BoundType? StoredType(BoundType field, BoundType owner)
     {
-        var binder = owner.Symbol!.Declaration;
-        var substituted = this.SubstituteType(field, binder, (BoundType[])owner.Components);
-        if (substituted is null)
-        {
-            return null;
-        }
-
-        if (owner.Kind == BoundTypeKind.Slice && owner.Origin is { } origin)
-        {
-            // The one Slice slot is passed on the stack: a conditional with an array branch would allocate it per call.
-            ReadOnlySpan<BoundOrigin> single = [origin];
-            return this.SubstituteStoredOrigins(substituted, binder, single);
-        }
-
-        return this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
+        Span<BoundOrigin> single = [BoundOrigin.Static];
+        return this.SubstituteType(field, owner.Symbol!.Declaration, (BoundType[])owner.Components, default, OccurrenceOrigins(owner, single));
     }
 
     // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages). A pair's outer Origin `o`, a negative

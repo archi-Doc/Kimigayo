@@ -180,7 +180,7 @@ public sealed partial class Binding
                 }
             }
 
-            // A dependency module's supplies are not linked yet (PLAN G329), but the reserved kernel32 one: the import's limit, the located
+            // A dependency module's supplies are not linked yet, but the reserved kernel32 one: the import's limit, the located
             // Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92).
             if (name is not WindowsProfile.Kernel32Library && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha))
             {

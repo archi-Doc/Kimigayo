@@ -136,7 +136,7 @@ public class EnumBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
 
-    // SPEC 6.5.2, 3.5, 8.14 (PLAN G252, DECISIONS BU-45): a payload Place is acquired by its bare acquisition, so a pair layer Copies or
+    // SPEC 6.5.2, 3.5, 8.14 (DECISIONS BU-45): a payload Place is acquired by its bare acquisition, so a pair layer Copies or
     // Reborrows by case, and only a case without a plan (an owner whose target is not proven Copy, the exclusive case through a shared
     // path) fails. Each row: Binding's errors.
     [Theory]
@@ -244,6 +244,9 @@ public class EnumBindingTest
     [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(Option.None)")]
     [InlineData("func f()\n    var values: Array<Option<i64>> = []\n    values@uniq.append(Option.Some(1))")]
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o: Option<i64> = Option.Some(identity(1))")]
+    [InlineData("enum E\n    A((i32) -> i32)\n    B\nstruct S\n    public let e: E = E.A(func (x: i32) -> i32 => x)")]
+    [InlineData("enum E\n    A((i32) -> i32)\n    B\nfunc f()\n    let e = E.A(func (x: i32) -> i32 => x)")]
+    [InlineData("enum E\n    A((i32) -> i32)\n    B\ngroup K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let e: E = E.A(K.idg<i32>)")]
     public void ACaseConstructionSolvesItsSlotsFromItsPayloads(string source)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
@@ -283,6 +286,20 @@ public class EnumBindingTest
         var errors = DiagnosticCorpus.Check(Source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
         (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.TypeMismatch_Kd), "1")];
         Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
+    }
+
+    // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381): a payload erased in a Field initializer, bound with the Field's header before the
+    // capability engine judges, is one located Unsupported_Kd at the converted Closure or Function Item with bound Type arguments; the
+    // MIR's record at the struct stays (R5-M184). It was the construction's TypeMismatch_Kd; typed and local twins are valid.
+    [Theory]
+    [InlineData("struct S\n    public let e = E.A(func (x: i32) -> i32 => x)\n", "(x: i32) -> i32")]
+    [InlineData("group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let e = E.A(K.idg<i32>)\n", "K.idg<i32>")]
+    public void APayloadErasedInAFieldHeaderIsTheLocatedLimit(string declarations, string at)
+    {
+        var source = "enum E\n    A((i32) -> i32)\n    B\n" + declarations + "public func main() -> () => ()\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.Unsupported_Kd), at)];
+        Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 10.8, 3.8 (DECISIONS BU-2, R11): a Never element is no evidence, while a Never component of a typed part's Type is.

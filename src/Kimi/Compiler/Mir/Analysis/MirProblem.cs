@@ -29,7 +29,8 @@ namespace Kimi.Compiler.Mir;
 /// <param name="Subject">The syntax the problem is about.</param>
 /// <param name="Body">The ordinal of the body whose views <paramref name="Views"/> numbers, <see cref="NoBody"/>, or a record's
 /// <see cref="MirRecordClass"/>.</param>
-/// <param name="Views">The views that have the problem, bit i for view i (every bit: a problem no view decides).</param>
+/// <param name="Views">The views that have the problem, bit i for view i (a problem no view decides: every view's bit,
+/// <see cref="MirCases.Every"/>); NoBody's and a record's views name no body's cases.</param>
 /// <param name="Reason">The relation an Origin problem names (D18); the default for any other problem.</param>
 internal readonly record struct MirProblem(
     DiagnosticCode Code,

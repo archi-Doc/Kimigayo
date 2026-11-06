@@ -376,7 +376,7 @@ public sealed partial class Binding
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
-                var result = this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope);
+                var result = this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope, origins: (BoundOrigin[])type.OriginArguments);
                 this.RequireConstraint(node, result, mode);
                 if (node.BindingState == BindingState.Invalid)
                 {

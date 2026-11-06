@@ -144,7 +144,7 @@ internal sealed partial class MirBorrows
     // The accesses of one location (A3 5's access, E13 (1)), each as KindOf classifies its use: a Reborrowing PairAcquire's operand Place
     // borrows as its Use's marker says (reborrow; TwoPhaseUniq reserves, a shared access); every write is also R26-access's, whether its root
     // is borrowed or not (MirBorrows.Defaults). Each operand's accesses, its index locals' and its own, take its operand's check set. An
-    // Opaque site's roots are its problems' (derived, R4-M10).
+    // Opaque site's roots (MirDescriptors.IsOpaqueRoot) are its problems' (derived, R4-M10).
     private struct Accessing(MirBorrows owner, MirLocation at, MirRefKind reborrow) : IMirUses
     {
         private MirOperand operand;
@@ -163,8 +163,7 @@ internal sealed partial class MirBorrows
             var (taking, reborrows) = (this.inOperand ? this.operands - 1 : TakesStores, this.inOperand && this.operand.Kind == MirOperandKind.PairAcquire &&
                 reborrow != MirRefKind.Raw && this.operand.Place == place);
             this.inOperand &= this.operand.Place != place; // An operand's index locals precede its Place.
-            var opaque = (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
-            if (!opaque && owner.KindOf(at, place, reborrows ? access | MirAccess.Borrows : access, reborrows ? reborrow : kind) is { } known)
+            if (!MirDescriptors.IsOpaqueRoot(access) && owner.KindOf(at, place, reborrows ? access | MirAccess.Borrows : access, reborrows ? reborrow : kind) is { } known)
             {
                 if (known == AccessKind.Write)
                 {

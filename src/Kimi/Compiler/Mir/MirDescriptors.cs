@@ -170,6 +170,7 @@ internal static class MirDescriptors
         IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Capacity => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
+        // No producer until R8-A1c (destroyValues<T>); its row gets the destruction meaning A4 needs with that producer.
         IntrinsicId.DestroyValues => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),
@@ -190,6 +191,12 @@ internal static class MirDescriptors
         IntrinsicId.FormatFinish => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort, 4), // The adapter, then FormatBuffer's operands.
         _ => default,
     };
+
+    /// <summary>Gets whether an access a walk reports is an Opaque site's root's (G191 N1): only the Opaque row's roots carry Reads with
+    /// Writes, so the predicate is that row's root access, which the validator's static rule and A5's accesses read.</summary>
+    /// <param name="access">The access <see cref="MirUses"/> reports.</param>
+    /// <returns>Whether it is an Opaque site's root's.</returns>
+    internal static bool IsOpaqueRoot(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
 
     private static MirDescriptor Row(MirAccess access, MirEffect effects, sbyte arity = -1, bool diverges = false, sbyte retained = -1) => new(
         Defined: true,

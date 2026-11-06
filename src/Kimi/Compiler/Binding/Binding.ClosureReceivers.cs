@@ -211,7 +211,7 @@ public sealed partial class Binding
 
         // SPEC 7.7.3, 7.7.2: whether the body uses a Place reached from a capture (the capture itself or a Place its path reaches, one
         // NextPathStep at a time: a part of it through Fields or elements, a captured referent through a follow, a raw pointer's
-        // referent, `*p` as `p[0]`, SPEC 5.2) exclusively. Such a body mutates the environment or a captured referent, so the call is
+        // referent, `*p` as `p[0]`, SPEC 5.2) exclusively. Such a body uses its environment, or what it reaches, exclusively, so the call is
         // Exclusive, by case only where that use is an acquisition of the capture itself by value that Reborrows in some admitted cases,
         // which the capture's case Type tells. Such a Reborrow of a Place reached through the capture takes that Place's cases, which
         // the capture's do not tell, so it counts in every case: the strongest receiver (PLAN G13). The need's ByValue is the capture's

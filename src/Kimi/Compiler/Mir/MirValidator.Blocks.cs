@@ -14,8 +14,8 @@ namespace Kimi.Compiler.Mir;
 //   NeverWrite, Unterminated, TargetRange, CheckTarget, Operation, Type, Unreachable and Entry findings; an Assign's rvalue goes to
 //   MirValidator.Rvalues, a Call to MirValidator.Calls, a lending write to MirValidator.Inputs, then MirUses walks the location.
 // - Invariants: Block and Terminator return false when a successor is out of range or MirUses cannot walk a location, and Validate
-//   then runs none of Diverged, Reach and Entries; a location outside the scopes marks the body Unscoped, and Validate then skips only
-//   Entries. Entries walks the raw scope table, which MirValidator.Tables checked, not a MirBody query that trusts validated IR.
+//   then runs none of Diverged, Reach, Unensured and Entries; a location outside the scopes marks the body Unscoped, and Validate then
+//   skips only Entries. Entries walks the raw scope table, which MirValidator.Tables checked, not a MirBody query that trusts validated IR.
 // - Prohibitions: no rule of an rvalue, an operand or a callee (MirValidator.Rvalues, MirValidator.Calls).
 internal sealed partial class MirValidator
 {
@@ -171,7 +171,7 @@ internal sealed partial class MirValidator
         internal bool Block(int index)
         {
             ref readonly var block = ref body.Blocks[index];
-            this.at = block.Terminator.Source;
+            (this.at, this.atBlock) = (block.Terminator.Source, index);
             var walked = InRange(block.Start, block.Count, body.Statements.Length);
             if (!walked)
             {
