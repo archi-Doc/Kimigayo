@@ -136,7 +136,7 @@ public class EnumBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
 
-    // SPEC 6.5.2, 3.5, 8.14 (PLAN G252, DECISIONS BU-45): a payload Place is acquired by its bare acquisition, so a pair layer Copies or
+    // SPEC 6.5.2, 3.5, 8.14 (DECISIONS BU-45): a payload Place is acquired by its bare acquisition, so a pair layer Copies or
     // Reborrows by case, and only a case without a plan (an owner whose target is not proven Copy, the exclusive case through a shared
     // path) fails. Each row: Binding's errors.
     [Theory]
