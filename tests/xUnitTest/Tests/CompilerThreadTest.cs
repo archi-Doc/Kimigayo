@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// The compile stack (DECISIONS R4-M177). Isolated, so that no other test's hop takes a worker between two hops of one row.
+// The compile stack (DECISIONS R4-M178). Isolated, so that no other test's hop takes a worker between two hops of one row.
 [Collection<AllocationIsolationCollection>]
 public class CompilerThreadTest
 {

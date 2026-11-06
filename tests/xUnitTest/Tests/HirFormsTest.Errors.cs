@@ -83,7 +83,7 @@ public sealed partial class HirFormsTest
 
     // DECISIONS BU-106: the jump walk of a rejected labeled do visits its subtree once per enclosing rejected labeled do: linear in the
     // number of the do's body statements at a fixed depth, and at most depth times the program's nodes for nesting. The depth rows reach
-    // G414's 100, since the phases run on a compiler thread (DECISIONS R4-M177); a 1.5 MB Debug host overflowed from about 63, PLAN G444.
+    // G414's 100, since the phases run on a compiler thread (DECISIONS R4-M178); a 1.5 MB Debug host overflowed from about 63, PLAN G444.
     [Fact]
     public void TheJumpWalkIsBoundedByItsSubtree()
     {

@@ -54,7 +54,7 @@ public class AllocationMeasurementTest
     public void DetectsAllocatingWork()
         => Assert.True(AllocationMeasurement.Measure(() => GC.KeepAlive(new byte[128])) >= 128 * AllocationMeasurement.MeasuredOperations);
 
-    // MeasureOnce runs its operation exactly once, on a compiler thread (DECISIONS R4-M177), and reports that run's allocation:
+    // MeasureOnce runs its operation exactly once, on a compiler thread (DECISIONS R4-M178), and reports that run's allocation:
     // none here.
     [Trait("Purpose", "Allocation")]
     [Fact]

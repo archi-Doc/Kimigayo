@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the compile stack S, 64 MB: the reserve of every compiler thread, the host stack of IMPL A.4 (DECISIONS R4-M177). Runs a
+// Owns the compile stack S, 64 MB: the reserve of every compiler thread, the host stack of IMPL A.4 (DECISIONS R4-M178). Runs a
 // site's work on a pooled compiler thread while its caller waits, and makes every compiler thread (Create: the pool's,
 // AllocationMeasurement's, the tests'). Input: a state, a static work and the caller's ExecutionContext. Output: the work's result,
 // or its exception rethrown on the caller with its original stack. Invariants: a site on a compiler thread runs inline; a warm hop
@@ -9,7 +9,7 @@
 // under the worker's own start context, so nothing a job sets stays on its worker; a job's references are cleared before its worker
 // is pooled; across the hop, the caller's `when` filters run after the work's `finally` blocks (inline, before them), and no filter
 // reads such state. Must not probe the stack, time out, cancel or retry; no second runner or thread maker; the transfer catch
-// handles nothing and rethrows every exception (ARCH "Catch boundaries"); no site off R4-M177's list. A site begins
+// handles nothing and rethrows every exception (ARCH "Catch boundaries"); no site off R4-M178's list. A site begins
 // `if (!CompilerThread.IsCurrent) { return CompilerThread.Run((this, a), static s => s.Item1.Entry(s.Item2)); }`.
 
 using System.Runtime.ExceptionServices;

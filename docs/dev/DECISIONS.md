@@ -5582,7 +5582,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     misname a defer's record, and a rename adds no vocabulary entry, so it needs no owner approval; the owner is told at landing.
   - Rejected: one chain followed by a selector (it would join different continuations); `TargetBody` holding a block body's temp
     itself (a second copy of Operand's guards, Value's hold and Result's input wrapper).
-- **R4-M177 The compile stack: compiler threads with a 64 MB reserve (PLAN G444 U1)** (2026-11-06; the owner (board O-20, R5's
+- **R4-M178 The compile stack: compiler threads with a 64 MB reserve (PLAN G444 U1)** (2026-11-06; the owner (board O-20, R5's
   dialog), verbatim 「推奨どおり承認」: Q3 c1, `Compilation` runs on its own thread; Q2 S = 64 MB, L = 1,024 being U2's; design D9
   revision 1, its review's re-check ACCEPT; class Major) SPEC 23; IMPL A.4.
   - Owner: `CompilerThread` (`Core/CompilerThread.cs`), the one runner and the one thread maker, owns S = 64 MB, IMPL A.4's host stack.

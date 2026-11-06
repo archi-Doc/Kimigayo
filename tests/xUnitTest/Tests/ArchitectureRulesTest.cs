@@ -139,7 +139,7 @@ public class ArchitectureRulesTest
     // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions.
     [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, MeasureOnce for one run that cannot
-    // repeat, or MeasureHops for a compile-stack hop (DECISIONS R4-M177), which retire the thread's allocation context first; a window
+    // repeat, or MeasureHops for a compile-stack hop (DECISIONS R4-M178), which retire the thread's allocation context first; a window
     // that reads the thread's counter itself can be charged a runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks
     // (src/Benchmark) are not tests. A letter in brackets keeps the pattern from matching its source.
     [InlineData("Allocation windows outside AllocationMeasurement", "tests", @"\bGC\.GetAllocatedBytesForCurrentThrea[d]\b", "xUnitTest/AllocationMeasurement.cs=7")]
