@@ -45,7 +45,8 @@ public sealed class ChildMoveActivationTest
 
     // The write through the parent meets the value that still holds the moved child's Loan, at the write, not at the call. Since the MIR
     // decides acceptance (H5, DECISIONS R5-M185) the record is A5's Loan conflict at the write's statement (H3b T44: at `p@follow`
-    // before), relating the Reborrow `let c = p` and the holder's later use (T49: the holder's declaration before).
+    // before), relating the Reborrow `let c = p` and the holder's later use: the holder's next use in the access's chain is the witness
+    // (DIAGNOSTICS A6's `Use`; DECISIONS R4-M57 and its U-T2 amendment: the declaration only where that use lies past the chain).
     [Theory]
     [InlineData(Keep + Child + "let k = keep(c@move)\np@follow = 2\n_ = k@follow", "p@follow = 2", "borrow 4:9 p | loan 7:5 k@follow")]
     [InlineData(Keep2 + Child + "let k = keep2(c@move)\np@follow = 2\n_ = k@follow", "p@follow = 2", "borrow 4:9 p | loan 7:5 k@follow")]
@@ -62,8 +63,9 @@ public sealed class ChildMoveActivationTest
 
     // SPEC 15.6.3, 15.6.7 (PLAN G53): a parent placed into a literal while its child is live there, whichever is placed first. The MIR's
     // record (H5) is a Loan conflict at the placed parent `p` (H3b T46: PlacementActivationConflict_Kd before); it relates the Reborrow
-    // `let c = p` and the literal, or the placed child, that holds the child's Loan, with no Note: the placement Note ("acquired
-    // exclusively where the literal places it") is a fact A6 publishes later (T49).
+    // `let c = p` and the literal, or the placed child, that holds the child's Loan, with no Note: the MIR reads the placed parent as an
+    // ordinary access (H3b T46), and A6 has no acquisition fact for the placement Note ("acquired exclusively where the literal places
+    // it"; PLAN G433).
     [Theory]
     [InlineData("var pair = (c@move, p@move)\n_ = pair.0@follow", "borrow 3:9 p | loan 4:12 (c@move, p@move)")]
     [InlineData("var pair = (p@move, c@move)\n_ = pair.1@follow", "borrow 3:9 p | loan 4:21 c")]
