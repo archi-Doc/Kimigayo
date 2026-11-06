@@ -62,7 +62,7 @@ public sealed class BlockClosureInferenceTest
     [InlineData("let f = func [] (flag: bool)\n    if flag => return 1")]
     [InlineData("let f = func [] ()\n    if true => return 1")]
     [InlineData("let f = func [] (flag: bool)\n    if flag => return func [] () => 1\n    return func [] () => 2")]
-    [InlineData("let f = func [] (flag: bool)\n    if flag => return func [] ()\n        return 1\n    return func [] ()\n        return 2")]
+    [InlineData("let f = func [] (flag: bool)\n    if flag => return (func [] ()\n        return 1\n    )\n    return func [] ()\n        return 2")]
     [InlineData("func named()\n    return 1")]
     [InlineData("let f = func [] (flag: bool, n: i64) => if flag => n else => (return true)")]
     [InlineData("let f = func [] (flag: bool, n: i64) -> i64 => if flag => n else => (return true)")]

@@ -93,10 +93,11 @@ public class ErasureOwnedDiagnosticTest
     public void AnOwnedConstraintProvesTheConversion()
         => Assert.Empty(DiagnosticCorpus.Check("func identity<T>(value: T) -> T => value@move\n\nfunc keepOwned<T>(value: T) -> (T) -> T\n    T is Owned\n    let f: (T) -> T = identity\n    return f@move\n\n" + Main + "    let f = keepOwned(1)\n    require f(2) == 2 else => $abort(\"f\")\n").Diagnostics);
 
-    // A call argument, a join's arm, and a closure whose receiver and environment both fail (the receiver is its record).
+    // A call argument, a join's arm (grouped: in an arm's single-item body a closure takes no indented body, SPEC F.4.4), and a closure
+    // whose receiver and environment both fail (the receiver is its record).
     [Theory]
     [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\n" + Main + "    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n")]
-    [InlineData(Join + "    var n: i32 = 0\n    let g: () -> i32 = if c => func [var n] () -> i32\n        n += 1\n        return n\n    else => func [] () -> i32 => 1\n    return 0\n")]
+    [InlineData(Join + "    var n: i32 = 0\n    let g: () -> i32 = if c => (func [var n] () -> i32\n        n += 1\n        return n\n    ) else => func [] () -> i32 => 1\n    return 0\n")]
     [InlineData(Join + "    var n: i32 = 0\n    let v = 1\n    let r = v@ref\n    let g: () -> i32 = func [var n, r] () -> i32\n        n += 1\n        return n\n    return 0\n")]
     public void AnExclusiveClosureStaysATypeMismatch(string source)
     {
