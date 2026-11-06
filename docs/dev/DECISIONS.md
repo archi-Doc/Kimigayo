@@ -4276,8 +4276,6 @@ and migration obligations remain in force; no numeric cap changes are authorized
     call's self-store row for the pair carrier (`TyCtxt.Retains`, `i Value -> i`) reaches it.
   - Superseded in part by R4-M148: `Record` again applies a view hold, PD13's, so the own-step Warning records without it; a Closure
     value is walked by its environment's parts, no longer counted as possibly an exclusive reference.
-  - Superseded in part by BU-108: a supplied layer whose Origin is a parameter's steps by its signature, so the Limit stays only for a
-    body-local borrow's Origin (`sharedSupplied`) and a `uniq`-stated one.
   - Superseded in part by R4-M170 (2026-11-04, the owner): Q1 (a)'s "an abstract part ... may be an exclusive reference" is overridden
     by (S), neither (a) nor (b): W goes past an abstract holder into the holders its holder's Loans and addresses name, writing by
     SPEC 15.6.4's provenance list (never through a shared Loan; the named holders and what is reached on from them by reads through
@@ -9509,21 +9507,20 @@ resumed by R4-M86 (2026-10-20).
     row; Block and Unsafe as members (not expressions with one body); counting failed jumps in the exclusion (loses the failed
     exit's independent record).
 
-- **BU-108 A stored raw layer's Origin is judged where it is bound** (2026-11-06; PLAN G148 (1)'s parameter half, unit bu164; Major
-  without a design review, F's GO) SPEC 5.7 Authority, 5.2.1 condition 3. Departs from DeclaredStep's "a layer a Type argument supplies
-  has the kind of the Origin the argument states" (design-final §15, BU-46, R4-M147's TyCtxt bullet), whose reason, that only a
-  declaration's cap judges a stored layer, does not hold: 5.7 judges an input's Origin by the signature binding it wherever it is stated.
-  - Rule (`Binding.BoundStep`, read by DeclaredStep's non-cap branch, so by StoredStep/`TyCtxt.RawStep`, the retention storage walk and
-    the hold walk): an Input or Parameter atom whose binder is a function's or accessor's signature steps by `SignatureStep` over that
-    binder's input Types; any other Origin by its kind (`StepOf`). StoredMembers keeps its kind test: A5 reads members only under an
-    Exclusive step, and a capped Shared layer keeps its published members (`TyCtxtTest`'s conditional rows).
-  - Moves: a supplied layer stating a parameter's Origin that only shared input borrows state is Shared, so A5's guard writes nothing
-    past it (paramShared, paramNamed: the Limit's `Unsupported_Kd` gone) and a callee's contract stores nothing through it (`reached {}`;
-    ss12's false `ComparisonLoanConflict_Kd` gone). Unchanged: a `uniq`-stated Origin (Exclusive, still the Limit), `static`, `self`.
-  - Not covered (PLAN G148 (1)): a body-local borrow's Origin. `w@ref` and `w@uniq` name one Place atom (BU-27), so
-    `Wrap<raw/u8 during w>` is one Type for the valid `sharedSupplied` and its invalid `uniq` twin, and no per-Type step decides it.
-  - Rejected: StoredMembers testing the judged step (drops the members of capped Shared layers); replacing SignatureStep's retention
-    call sites by BoundStep in this unit (equal for a callee's own atoms, unverified, a separate restructuring).
+- **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; Major
+  without a design review, F's GO; review REVISE B-1, fix round 1) SPEC 5.2.1 condition 3, 5.7 Authority, Calls. Keeps BU-24's
+  G160-2b: the stored-layer reader (`DeclaredStep`, `TyCtxt.RawStep`) is unchanged, and the retention walk of a contract's inputs
+  reads a layer they hold with the signature reader that G160-2b names.
+  - Rule (`Binding.Retention.Storage.cs`'s raw arm): a layer a declaration writes steps by `DeclaredStep` (its `ref`-slot cap,
+    `self`); any other, one a Type argument supplies included, by `SignatureStep` over the walked contract's inputs, the rule and
+    inputs `RetentionParts` and the own-layer arm already read. So `f(b: ref/…, w: uniq/Wrap<raw/… during b>, v)` stores nothing past
+    w's layer (ss12, r23: their false `ComparisonLoanConflict_Kd` is gone). Unchanged: a `uniq` or a `ref` plus `uniq` statement, and a
+    holder whose slot an exclusive Loan Field keeps (`HS.store`'s Self states `s` through that slot, r27n, r29).
+  - Not covered (PLAN G148 (1)): A5's guard (`TyCtxt.RawStep`) keeps the kind for a parameter's Origin; a callee whose inputs do not
+    state the caller's Origin (`Wrap.put<U>`, r20) keeps its false conflict.
+  - Rejected: judging an Input atom by its binder's declared signature (BoundStep, 36a8150e8; G160-2b's rejected cap). A holder formed
+    in the binder's body or passed as `Self` can bind a slot whose keepers are exclusive to that Origin, and that signature does not
+    show it: r27n, r27 and r29 were accepted, though invalid.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

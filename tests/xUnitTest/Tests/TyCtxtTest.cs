@@ -376,20 +376,6 @@ public sealed class TyCtxtTest
         Assert.Equal([RawStep.Static, RawStep.Shared, RawStep.Exclusive], [c.Types.RawStep(p[1], 0, []), c.Types.RawStep(p[2], 1, []), c.Types.RawStep(p[3], 1, [])]);
     }
 
-    // SPEC 5.7 Authority, 5.2.1 condition 3 (DECISIONS BU-108): a raw layer a Type argument supplies steps as its Origin is judged where it
-    // is bound, an input's by its signature: Shared where only shared input borrows state it (w), Exclusive where a `uniq` input does (x),
-    // and `static` Static (st).
-    [Fact]
-    public void ASuppliedLayerStepsByItsSignature()
-    {
-        var c = MinimalEmissionTest.Analyze("struct Wrap<E>\n    internal var value: E\n" +
-            "func probe(r: ref/(ref/i32 during b) during a, u: uniq/i32 during c, w: Wrap<raw/u8 during a>, x: Wrap<raw/u8 during c>, " +
-            "st: Wrap<raw/u8 during static>) => ()\npublic func main() => ()\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
-        Assert.Equal([RawStep.Shared, RawStep.Exclusive, RawStep.Static], [c.Types.RawStep(p[2], 0, []), c.Types.RawStep(p[3], 0, []), c.Types.RawStep(p[4], 0, [])]);
-    }
-
     // SPEC 15.3.5, 5.2.1 condition 3, 5.7 Origins (DECISIONS BU-44): a raw layer stating a slot only conditional pair slots use steps by
     // the case its holder selects, Shared only where the slot is `ref` in every such case, through an enclosing declaration's binder
     // (Outer<…>.Inner), a nested pair argument (N's Holder) and two binders (W) too; its members are the slot's keepers in those cases,

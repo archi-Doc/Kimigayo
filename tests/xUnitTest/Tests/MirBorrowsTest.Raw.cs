@@ -275,6 +275,98 @@ public sealed partial class MirBorrowsTest
                     inspect(w)
                 """));
 
+    // SPEC 5.2.1 condition 3, 5.7 Authority, Calls (DECISIONS BU-108): a callee's contract judges a layer a Type argument supplies by its
+    // own inputs, so where only a shared input borrow states its Origin the call stores nothing past it: refVia and rawVia are valid
+    // (fail-before: a false conflict at `y = 3`). Where a `uniq` input states it too (uniqVia, bothVia), or a holder keeps the slot it
+    // binds by an exclusive Loan Field (slotAlias, its layer declared; slotBoxAlias, in its Field's Type argument), the call may store
+    // past it and `y = 3` / `z = 5` err, as before (the review's r04, r05, r27n, r29).
+    [Fact]
+    public void ACallStoresPastASuppliedLayerByItsContractsInputs()
+        => Assert.Equal(
+            ["uniqVia: y = 3", "uniqVia: inspect(t)", "bothVia: y = 3", "slotAlias: z = 5", "slotBoxAlias: z = 5"],
+            Problems("""
+                struct Wrap<E>
+                    var value: E
+                    public init(value: E) => self.value = value@move
+                struct Box2<E>
+                    public var value: E
+                    public init(value: E) => self.value = value@move
+                struct HS {s}
+                    let loan: Loan<uniq/(raw/u8) during s>
+                    let b: raw/(raw/u8) during s
+                    public init(t: uniq/(raw/u8) during s)
+                        self.b = t@follow@raw
+                        self.loan = Loan.init(t)
+                    public func store(self: uniq/Self, v: raw/u8)
+                        unsafe => *self.b = v
+                struct HB {s}
+                    let loan: Loan<uniq/(raw/u8) during s>
+                    var b: Box2<raw/(raw/u8) during s>
+                    public init(t: uniq/(raw/u8) during s)
+                        self.b = Box2.init(t@follow@raw)
+                        self.loan = Loan.init(t)
+                    public func store(self: uniq/Self, v: raw/u8)
+                        unsafe => *self.b.value = v
+                func storeVia(w: uniq/Wrap<raw/(ref/i32 during c) during a>, r: ref/(ref/i32 during c) during a, v: ref/i32 during c) => ()
+                func storeViaU(w: uniq/Wrap<raw/(ref/i32 during c) during a>, r: uniq/(ref/i32 during c) during a, v: ref/i32 during c) => ()
+                func storeViaB(w: uniq/Wrap<raw/(ref/i32 during c) during a>, r: ref/(ref/i32 during c) during a, u: uniq/(ref/i32 during c) during a, v: ref/i32 during c) => ()
+                func storeRawVia(w: uniq/Wrap<raw/(raw/u8) during a>, r: ref/(raw/u8) during a, v: raw/u8) => ()
+                func refVia()
+                    var x = 1
+                    var y = 2
+                    var t: ref/i32 = x@ref
+                    let s = t@ref
+                    var h = Wrap.init(s@follow@raw)
+                    storeVia(h@uniq, s, y@ref)
+                    y = 3
+                    inspect(t)
+                func uniqVia()
+                    var x = 1
+                    var y = 2
+                    var t: ref/i32 = x@ref
+                    var s = t@uniq
+                    var h = Wrap.init(s@follow@raw)
+                    storeViaU(h@uniq, s, y@ref)
+                    y = 3
+                    inspect(t)
+                func bothVia()
+                    var x = 1
+                    var y = 2
+                    var x2 = 4
+                    var t: ref/i32 = x@ref
+                    var t2: ref/i32 = x2@ref
+                    let s = t@ref
+                    var h = Wrap.init(s@follow@raw)
+                    storeViaB(h@uniq, s, t2@uniq, y@ref)
+                    y = 3
+                    inspect(t)
+                func rawVia()
+                    var y = 2
+                    var slot: raw/u8 = null
+                    let s = slot@ref
+                    var h = Wrap.init(s@follow@raw)
+                    let k = y@ref
+                    storeRawVia(h@uniq, s, k@raw@raw/u8)
+                    y = 3
+                    inspect(slot@ref)
+                func slotAlias(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during c)
+                    origin c outlives a
+                    var z = 3
+                    let w = z@ref
+                    let u2: uniq/(raw/u8) during a = u
+                    var hs: HS during a = HS.init(u2)
+                    hs.store(w@raw@raw/u8)
+                    z = 5
+                func slotBoxAlias(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during c)
+                    origin c outlives a
+                    var z = 3
+                    let w = z@ref
+                    let u2: uniq/(raw/u8) during a = u
+                    var hb: HB during a = HB.init(u2)
+                    hb.store(w@raw@raw/u8)
+                    z = 5
+                """));
+
     // SPEC 15.6.4 (PLAN G266; DECISIONS BU-52): a call writes through the raw layers without an Origin a by-value argument holds, in a
     // struct's Field (viaBad, via2Bad), an enum's payload (optBad), a Type argument's Field (boxPlainBad), an Array's element
     // (arrPlainBad) or behind a `uniq` Field (uBad), and a consuming callee's cleanup does through its drop (consumeWBad, consumeDrop2Bad,

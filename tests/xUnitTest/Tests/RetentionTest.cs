@@ -78,6 +78,9 @@ public sealed partial class RetentionTest
     // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
     private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
 
+    // A holder whose slot an exclusive Loan Field keeps (PLAN G148 (1)'s review B-1: its raw layers stating `s` are exclusive).
+    private const string SlotKept = "struct HS {s}\n    let loan: Loan<uniq/(raw/u8) during s>\n";
+
     // A slot kept by an exclusive Loan Field (design review A-B3: a raw parameter during `v.source` may store what the Dictionary admits).
     private const string KeptView = "struct View<K, V> {source}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during source>\n" +
         "    public init(d: uniq/Dictionary<K, V> during source) => self.loan = Loan.init(d)\n";
@@ -630,8 +633,10 @@ public sealed partial class RetentionTest
     // layer's Origin gives no row (SPEC 15.6.4 as DECISIONS R4-M116 revised it, R-B3). An Option or a Holder holding a `uniq` borrow by
     // value stores what a read through it carries into that borrow's referent (`1 Content store 1`, DECISIONS BU-49), and only that
     // into the storage the raw layer addresses, whose `ref/i32` members cannot hold its value (`1 Content` at store 2; DECISIONS R4-M154).
-    // A layer a Type argument supplies (`Wrap<raw/… during b>`) is judged by the same signature (DECISIONS BU-108): with `b` a `ref` input
-    // the call writes nothing past it (`reached {}`), with a `uniq` one its referent.
+    // A layer a Type argument supplies (`Wrap<raw/… during b>`) is judged by the same inputs (DECISIONS BU-108): with `b` a `ref` input
+    // the call writes nothing past it (`reached {}`), with a `uniq` one, or a `ref` and a `uniq` one, its referent; and a holder's method
+    // reads a layer stating its slot `s`, which an exclusive Loan Field keeps, as exclusive, declared (`b: raw/…`) or supplied
+    // (`b: Box2<raw/…>`), so it may store `v` past it (the review's B-1).
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "result {0 Value Chain, 1 Value Chain}, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "result {0 Value Chain, 1 Value Chain}, untied")]
@@ -663,6 +668,12 @@ public sealed partial class RetentionTest
     [InlineData(
         Wrap + "func f(b: uniq/(ref/i32 during q), w: uniq/Wrap<raw/(ref/i32 during q) during b>, v: ref/i32 during q) => ()",
         "store 0: own {0 Content, 1 Content, 2 Value}, reached {}, store 1: own {0 Value, 1 Content, 2 Content}, reached {0 Content, 1 Content, 2 Value}")]
+    [InlineData(Wrap + "func f(b: ref/(raw/u8), w: uniq/Wrap<raw/(raw/u8) during b>, v: raw/u8) => ()", "store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(
+        Wrap + "func f(b: ref/(ref/i32 during q) during o, u: uniq/(ref/i32 during q) during o, w: uniq/Wrap<raw/(ref/i32 during q) during o>, v: ref/i32 during q) => ()",
+        "store 1: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 2: own {0 Value, 1 Value, 2 Content, 3 Content}, reached {0 Content, 1 Content, 2 Content, 3 Value}")]
+    [InlineData(SlotKept + "    let b: raw/(raw/u8) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct Box2<E>\n    public var value: E\n" + SlotKept + "    var b: Box2<raw/(raw/u8) during s>\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 

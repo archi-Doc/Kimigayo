@@ -961,12 +961,10 @@ public sealed partial class MirBorrowsTest
     // Origin steps Exclusive, whose members Binding does not publish, over a Loan-free pointee) is one located Unsupported_Kd at the call,
     // never a Language problem, and the view's independent problems stay: a Field (flat), a nested instance's Field (nested), a Case
     // payload (optionNested), each call in a loop with an independent conflict beside it (looped: `k = 2`), a constructor lending the holder
-    // and a call through it (reachedByStep), and a layer whose Origin is a body-local shared borrow (sharedSupplied, valid, the Limit's
-    // cost: `w@ref` and `w@uniq` name one Place Origin, so its Type cannot tell the two apart, PLAN G148 (1)). A layer whose Origin is a
-    // parameter's is judged by the signature (DECISIONS BU-108): Shared where only a shared input borrow states it (paramShared,
-    // paramNamed: accepted), the Limit where a `uniq` one does (paramUniq, as before). A typed pointee decides the guard (nestedPointee
-    // errs; touched, valid as on dev), as does an exclusive part beside the layer (mixed errs, no record). A raw layer outside an instance
-    // reads its pointee (R4-M120): tupleW is accepted, its typed twin errs (an open issue, PLAN G148). Where a call's pair holds (DECISIONS R4-M154, Revision 4), a callee its instantiated
+    // and a call through it (reachedByStep), and a layer whose Origin is a shared borrow (sharedSupplied, valid, the Limit's cost until
+    // Binding publishes its members). A typed pointee decides the guard (nestedPointee errs; touched, valid as on dev), as does an exclusive
+    // part beside the layer (mixed errs, no record). A raw layer outside an instance reads its pointee (R4-M120): tupleW is accepted, its
+    // typed twin errs (an open issue, PLAN G148). Where a call's pair holds (DECISIONS R4-M154, Revision 4), a callee its instantiated
     // signature admits may store z's borrow into w or v through the instance's uniq or raw layers, whose local regions may coincide, so
     // nestedPointee, mixed and tupleTyped also err at `z = 5`.
     [Fact]
@@ -1056,24 +1054,6 @@ public sealed partial class MirBorrowsTest
                 h.put(z@ref)
                 z = 5
                 inspect(w)
-            func paramShared(s: ref/(ref/i32 during b))
-                var z = 3
-                var h = Wrap.init(s@follow@raw@raw/u8)
-                h.put(z@ref)
-                z = 5
-                inspect(h)
-            func paramNamed(s: ref/(ref/i32 during b) during a)
-                var z = 3
-                var h = Wrap.init(s@follow@raw@raw/u8)
-                h.put(z@ref)
-                z = 5
-                inspect(h)
-            func paramUniq(s: uniq/(ref/i32 during b))
-                var z = 3
-                var h = Wrap.init(s@follow@raw@raw/u8)
-                h.put(z@ref)
-                z = 5
-                inspect(h)
             func nestedPointee()
                 var x = 1
                 var z = 3
@@ -1123,8 +1103,7 @@ public sealed partial class MirBorrowsTest
             [
                 "flat: h.put(z@ref) Unsupported_Kd", "nested: o.put(z@ref) Unsupported_Kd", "optionNested: putAny(o@uniq, z@ref) Unsupported_Kd",
                 "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
-                "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "paramUniq: h.put(z@ref) Unsupported_Kd",
-                "nestedPointee: z = 5",
+                "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: z = 5",
                 "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5", "tupleTyped: inspect(w)",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));

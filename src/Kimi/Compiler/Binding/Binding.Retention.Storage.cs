@@ -148,7 +148,9 @@ public sealed partial class Binding
                 return;
             }
 
-            var step = at.Holder is not null ? this.DeclaredStep(type, at.Written, at.Holder)
+            // A layer a declaration writes steps by DeclaredStep (its cap, `self`); any other, one a Type argument supplies included, by
+            // the walked contract's inputs (SignatureStep, as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-108).
+            var step = ReferenceTypes.IsPointer(at.Written) ? this.DeclaredStep(type, at.Written, at.Holder)
                 : this.SignatureStep(OwnedOrigin(type), CollectionsMarshal.AsSpan(this.retentionScope)[..this.retentionInputs]);
             if (step == RawStep.Own)
             {
