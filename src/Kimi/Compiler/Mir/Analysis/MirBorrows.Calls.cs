@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Mir;
 // callee's call receiver is its input at position call.Count, the callee operand, read before the Moves, and a store into it takes W as
 // any argument's (ER-closure-stores; SPEC 15.8.2, DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a per-output
 // membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) the store reaches
-// refs(S) alone (W's first step, Referents; R4-M143), and the destruction the operation's published row lists is composed at the call
+// W's first step alone (Referents; R4-M143), and the destruction the operation's published row lists is composed at the call
 // after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
@@ -116,7 +116,7 @@ internal sealed partial class MirBorrows
         this.Store(state, call.Place, result, 0, issue: false);
     }
 
-    // The store through one output: W from its argument's value (at a referent store, refs(S) alone; R4-M143), each holder taking its
+    // The store through one output: W from its argument's value (at a referent store, its first step alone; R4-M143), each holder taking its
     // storage's record (Received). A Drop's drops store through the same path (MirBorrows.Destructions).
     private void Keep(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
     {

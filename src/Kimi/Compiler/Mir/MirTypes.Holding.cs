@@ -21,7 +21,9 @@ internal enum MirWrites : byte
 
     /// <summary>Some part gives the write fact (decided): past no shared layer, an exclusive reference to storage that may hold a Loan (a
     /// raw layer whose step lets a call write past it counting as one), an abstract part past an exclusive reference, a pair layer, or a
-    /// Function value, which may be one (the guard); a Closure value by its environment's parts (DECISIONS R4-M148).</summary>
+    /// Function value, which may be one (the guard); a Closure value by its environment's parts (DECISIONS R4-M148). Past it the holders
+    /// its exclusive Loans and addresses name, never one only a shared Loan names, and E where its state carries Φ_E (SPEC 15.6.4 item 1;
+    /// DECISIONS R4-M177).</summary>
     Through,
 
     /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not publish (a Type
