@@ -19,12 +19,14 @@ public sealed partial class Binding
     private readonly List<(int Input, RetentionKind? Kind)> retentionRawSources = new();
 
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
-    // Shared (Shared).
+    // Shared (Shared); in a Closure's environment, whose bindings' Types its body's captures wrote, not the walked signature (Captured,
+    // DECISIONS BU-108: no signature cap judges a layer there).
     [Flags]
     private enum RetentionPlace : byte
     {
         None = 0,
         Shared = 1,
+        Captured = 2,
     }
 
     // SPEC 15.8.2 (DECISIONS R4-M148): a Closure contract's input 0, its call receiver as its body is checked against it: `R/Env during ρ`,
@@ -89,6 +91,7 @@ public sealed partial class Binding
             this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
             var place = exclusive ? RetentionPlace.None : RetentionPlace.Shared;
             var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer, place);
+            var captured = content with { Place = place | RetentionPlace.Captured };
             var variance = exclusive ? OriginVariance.Invariant : OriginVariance.Covariant;
             if (outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
             {
@@ -96,7 +99,7 @@ public sealed partial class Binding
                 for (var i = 0; i < environment.Components.Count; i++)
                 {
                     var field = captures[i].Environment.MutableCapture ? variance : OriginVariance.Covariant;
-                    this.RetentionWalk(environment.Components[i], content, field, callable: false);
+                    this.RetentionWalk(environment.Components[i], captured, field, callable: false);
                 }
             }
             else
@@ -187,6 +190,7 @@ public sealed partial class Binding
     // none past one, 5.2.1).
     private void RetentionParts(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
+        at = type.Kind == BoundTypeKind.Closure ? at with { Place = at.Place | RetentionPlace.Captured } : at;
         type = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
         var writable = at.Writable && variance == OriginVariance.Invariant;
         var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
@@ -200,8 +204,7 @@ public sealed partial class Binding
         }
 
         var rawOrigin = type.RawOrigin;
-        var step = raw && !inside
-            ? this.SignatureStep(rawOrigin, this.retentionBinder, CollectionsMarshal.AsSpan(this.retentionScope)[..this.retentionInputs]) : RawStep.Unstated;
+        var step = raw && !inside ? this.SignatureStep(rawOrigin, this.SignatureInputs(at.Captured)) : RawStep.Unstated;
         var past = at.Shared || shared || step == RawStep.Shared;
         var through = raw ? !past && step is RawStep.Unstated or RawStep.Static : at.Writable && !shared;
         var below = at with { Layer = layer, Writable = !inside && (through || writable), Place = past ? at.Place | RetentionPlace.Shared : at.Place };
@@ -215,6 +218,12 @@ public sealed partial class Binding
             this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, ComponentVariance(type, i, this)), inside);
         }
     }
+
+    // SPEC 5.2.1 condition 3 (the owner's O-23, 「aでお願いいたす」; DECISIONS BU-108): the input Types the signature cap reads at a raw
+    // layer by its route: the walked signature's own inputs for a layer that signature wrote, whatever binds its Origin; none for one in
+    // a Closure's environment (Captured), whose Type the body's captures wrote, so it steps by its kind (SignatureStep).
+    private ReadOnlySpan<BoundType> SignatureInputs(bool captured)
+        => captured ? [] : CollectionsMarshal.AsSpan(this.retentionScope)[..this.retentionInputs];
 
     // A Closure part of a contract input as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148): its environment, read at every
     // Closure part, the call receiver's (RetentionInput) and a nested one's (RetentionParts); one that does not substitute is the
@@ -266,5 +275,7 @@ public sealed partial class Binding
         int Input, RetentionKind? Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, RetentionPlace Place = RetentionPlace.None)
     {
         public bool Shared => (this.Place & RetentionPlace.Shared) != 0;
+
+        public bool Captured => (this.Place & RetentionPlace.Captured) != 0;
     }
 }

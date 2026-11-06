@@ -279,13 +279,18 @@ public sealed partial class MirBorrowsTest
     // own inputs, so where only a shared input borrow states its Origin the call stores nothing past it: refVia and rawVia are valid
     // (fail-before: a false conflict at `y = 3`). Where a `uniq` input states it too (uniqVia, bothVia), or a holder keeps the slot it
     // binds by an exclusive Loan Field (slotAlias, its layer declared; slotBoxAlias, in its Field's Type argument), the call may store
-    // past it and `y = 3` / `z = 5` err, as before (the review's r04, r05, r27n, r29). A Closure's own `ref` input stating an Origin the
-    // enclosing signature binds, there also by `uniq`, does not judge it: a captured layer (capturedBox, a supplied one, fail-before
-    // accepted on feaff9158; capturedRaw, its own, accepted on dev) lets the call store w's address into u's referent, so `z = 5` errs.
+    // past it and `y = 3` / `z = 5` err, as before (the review's r04, r05, r27n, r29). The cap judges a layer by its route (the owner's
+    // O-23, 「aでお願いいたす」): a layer in a Closure's environment steps by its kind, so a captured layer stating an Origin the enclosing
+    // signature also states by `uniq` lets the call store w's address into u's referent and `z = 5` errs (capturedBox, a supplied one,
+    // accepted on feaff9158; capturedRaw and capturedNested, accepted on dev); a layer written in a Closure's or nested function's own
+    // signature keeps the cap whatever binds its Origin, so closureParam and nestedParam are valid (they err on 22d1216a0).
     [Fact]
     public void ACallStoresPastASuppliedLayerByItsContractsInputs()
         => Assert.Equal(
-            ["uniqVia: y = 3", "uniqVia: inspect(t)", "bothVia: y = 3", "slotAlias: z = 5", "slotBoxAlias: z = 5", "capturedBox: z = 5", "capturedRaw: z = 5"],
+            [
+                "uniqVia: y = 3", "uniqVia: inspect(t)", "bothVia: y = 3", "slotAlias: z = 5", "slotBoxAlias: z = 5", "capturedBox: z = 5",
+                "capturedRaw: z = 5", "capturedNested: z = 5",
+            ],
             Problems("""
                 struct Wrap<E>
                     var value: E
@@ -382,6 +387,31 @@ public sealed partial class MirBorrowsTest
                     var k = func [p] (q: ref/(raw/u8) during a, v: raw/u8)
                         unsafe => *p = v
                     k(r, w@raw@raw/u8)
+                    z = 5
+                func capturedNested(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let p = u@follow@raw
+                    var outer = func [p] (r2: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *p = null
+                        var inner = func [p] (q: ref/(raw/u8) during a, v2: raw/u8)
+                            unsafe => *p = v2
+                        inner(r2, v)
+                    outer(r, w@raw@raw/u8)
+                    z = 5
+                func closureParam(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    var k = func (q: ref/(raw/u8) during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8) => ()
+                    var x = u@follow@raw
+                    k(r, x@uniq, w@raw@raw/u8)
+                    z = 5
+                func nestedParam(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    func passOn(q: ref/(raw/u8) during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8) => ()
+                    var x = u@follow@raw
+                    passOn(r, x@uniq, w@raw@raw/u8)
                     z = 5
                 """));
 
