@@ -45,6 +45,9 @@ public sealed partial class Binding
     // signature and where the declaration's parameters are not the contract's inputs (a `drop`'s receiver). Reused.
     private readonly List<BoundType> retentionDeclared = new();
 
+    // A binder's declared inputs while BinderStep reads them (TyCtxt.Signature in place), reused.
+    private readonly List<BoundType> retentionBinderInputs = new();
+
     // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where every raw source's own value may be held, each a
     // carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the computation's own
     // erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
@@ -247,7 +250,7 @@ public sealed partial class Binding
             this.RetentionInput(inputs[i], i, this.SignatureInput(i));
         }
 
-        var atom = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null) with { Signature = this.SignatureResult };
+        var atom = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null, Signature: this.SignatureResult);
         this.RetentionWalk(result, atom, OriginVariance.Covariant, callable: false);
         return this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of a retention at `{use}` is not ready: it depends on itself (PLAN G74).");

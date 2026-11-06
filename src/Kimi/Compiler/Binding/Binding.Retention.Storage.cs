@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // hold walk, DECISIONS BU-52) and the input fold into an input's sources (Binding.Retention.Sources.cs, Source), and the parts a value
 // holds at its own address (HeldParts), which the fits read too; Binding.Retention.Rows.cs reads the storages into StorageRetentions.
 // Inputs: the contract's instantiated inputs and result, its premise environment's nodes (Binding.Retention.cs), and the stored parts
-// Binding's instances keep (Instance), with each stored raw layer's step (DeclaredStep, SignatureStep).
+// Binding's instances keep (Instance), with each raw layer's step by its position (RawStepAt: the Type a declaration writes there, the
+// walked signature's declared Type there, DECISIONS BU-113).
 // Outputs: per walk, the storages (the root, Own; the Abstract one, what an abstract part hides, at each carrier's ReachedNode; one per
 // contract Type past an exclusive layer, keyed for its Origin-erased Type), each position's node and the Types its fit reads (Value
 // tests, Reads: a raw layer stating an Origin as the borrows that Origin belongs to; no Type: any value), every Origin occurrence's
@@ -147,7 +148,8 @@ public sealed partial class Binding
         }
         else if (this.BorrowReferent(type, out _, out var exclusive) is { } referent)
         {
-            this.Past(environment, referent, targets, exclusive, layer, below with { Signature = declared is null ? null : this.BorrowReferent(declared, out _, out _) });
+            var written = declared is null ? null : this.BorrowReferent(declared, out _, out _);
+            this.Past(environment, referent, targets, exclusive, layer, below with { Signature = written });
         }
         else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Rc or SemanticsKind.Arc, Components: [var payload] })
         {
@@ -161,11 +163,8 @@ public sealed partial class Binding
                 return;
             }
 
-            // A layer a declaration writes steps by DeclaredStep (its cap, `self`); any other, one a Type argument supplies included, by
-            // the signature cap over the walked signature's inputs where that signature wrote it, by its kind in a Closure's environment
-            // (SignatureInputs, as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-108).
-            var step = ReferenceTypes.IsPointer(at.Written) ? this.DeclaredStep(type, at.Written, at.Holder)
-                : this.SignatureStep(OwnedOrigin(type), this.SignatureInputs(at.Captured));
+            // A layer steps by its position (RawStepAt, as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-113).
+            var step = this.RawStepAt(type, at.Written, at.Holder, declared, captured: at.Captured);
             below = below with { Signature = DeclaredComponent(declared, type, 0) };
             if (step == RawStep.Own)
             {
