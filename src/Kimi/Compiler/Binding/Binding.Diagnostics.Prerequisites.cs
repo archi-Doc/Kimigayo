@@ -164,6 +164,20 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
+    // SPEC 23.1.2: a check whose result the node being checked does not read runs with no frame open, so nothing it fails becomes that
+    // node's prerequisite: a header that a set Type demands is its declaration's (BindType), a part an unselected call binds on its
+    // own is read by no check of that call (CompleteUnselected; DECISIONS U4b), and the binding result of a declaration that a container
+    // or a Property contains is read by no verdict of it (BindContainedDeclarations, BindVariableCore; DECISIONS G52-1). ResumeConsultation
+    // reopens the frame.
+    private (int Start, Koto? Node) SuspendConsultation()
+    {
+        var parent = (this.consultationStart, this.consultationNode);
+        (this.consultationStart, this.consultationNode) = (-1, null);
+        return parent;
+    }
+
+    private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
+
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
     /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
     /// <param name="dependency">The node whose result was read.</param>

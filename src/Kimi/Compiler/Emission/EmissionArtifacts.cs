@@ -199,7 +199,8 @@ public static class EmissionArtifacts
 
     // SPEC 20.3.2: libraries required by external declarations, sorted by Ordinal name. Only the root
     // module's own self-targeted supplies connect yet: a logical name alone cannot identify another
-    // module's requirement, and combined-module native records are not generated.
+    // module's requirement, and combined-module native records are not generated, so Binding makes a
+    // dependency module's import, but kernel32's, the located Unsupported_Kd (DECISIONS BU-92).
     private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(Compilation compilation, ProjectFile settings)
     {
         List<(string Name, string Kind, string Input, string? Sha256)>? result = null;
@@ -210,11 +211,6 @@ public static class EmissionArtifacts
             if (import.Library == WindowsProfile.Kernel32Library)
             {
                 continue;
-            }
-
-            if (!ReferenceEquals(import.Decl.Declaration.CodeContext.Kotonoha, compilation.Kotonoha))
-            {
-                throw new InvalidDataException("Native supplies required by dependency modules are not linked yet.");
             }
 
             var known = false;

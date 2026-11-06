@@ -281,8 +281,9 @@ public sealed partial class Binding
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its signature fits under its conditions (CallableSignatureFits) and its complete environment is Owned. Initializations, returns and
     // call arguments share this judgment. A failure publishes its first failed part for its record and Note (erasureOutcomes): the
-    // receiver, the signature's structure, Owned (an environment that is not Owned is the record first, its Error's cause held, its member named), then a
-    // condition, the conversion's one record at `node`, made here from the judgment's failure (RecordCondition).
+    // receiver and the signature's structure, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
+    // condition, the value's own failure, recorded here at `node` (FailOwnedConversion, RecordCondition; DECISIONS BU-107), on which every
+    // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
         var failure = default(ComparisonFailure);
@@ -308,6 +309,10 @@ public sealed partial class Binding
         {
             this.RecordCondition(node, failure, signature!, expected);
         }
+        else if (part == ErasurePart.Owned)
+        {
+            this.FailOwnedConversion(actual, expected, node, node);
+        }
 
         return false;
     }
@@ -315,10 +320,12 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
     // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
-    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition (ErasesToFunction) is the value's failure.
+    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part (ErasesToFunction) is the
+    // value's failure.
     private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
     {
-        if (node.BindingFailure == BindingFailure.OriginContract)
+        if (node.BindingFailure == BindingFailure.OriginContract ||
+            (node.BindingState == BindingState.Invalid && this.ErasureOf(actual, expected) is { Part: ErasurePart.Owned }))
         {
             return true;
         }

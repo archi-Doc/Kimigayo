@@ -519,6 +519,17 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Same(exception, thrown);
     }
 
+    // SPEC 23.4: the dependency lock's read catches only its own failures, so a pending lock read propagates out of the check unchanged.
+    [Fact]
+    public void APendingLockFileReadPropagatesOutOfTheCheck()
+    {
+        var project = this.WriteProject("PendingLock", ("main.kimi", Valid));
+        var path = DependencyLock.PathForProject(project);
+        var exception = new PendingInputException(path);
+        var thrown = Record.Exception(() => this.Run(project, inputs: new FailingInputSource(path, exception)));
+        Assert.Same(exception, thrown);
+    }
+
     // SPEC 23.2.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
     [Fact]
     public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()

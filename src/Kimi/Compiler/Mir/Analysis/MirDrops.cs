@@ -3,8 +3,9 @@
 // Owns drop elaboration (A2; SPEC 16.2, 16.3.2, 15.1.3; DECISIONS R4-M6, R4-M6a) of one body per Semantics case view.
 // Input: the state MirInit's checks replay holds before each Drop the runtime edges reach (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
-// no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop one verdict group per view class, the
-// body's flags and their set and clear points, the views judged (A1 and A2 completed them), the body's first A1 or A2 problem, an inline
+// no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
+// for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
+// the views judged (A1 and A2 completed them), the body's first A1 or A2 problem, an inline
 // copy's included (its code, its subject in its location's scope and MirReport.Add's index, -1 for a copy's, which the report drops; both
 // set it after Add; the table is exact only without one, R4-M6a, R4-M102, R4-M132), and MovedPlace_Kd through MirReport where a layer
 // with its own drop may be incomplete at its Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69).
@@ -359,7 +360,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         return next;
     }
 
-    // Merges the group just added into the Drop's previous group when they differ only in their views, so a Drop has one group per view class.
+    // A group equal but for its views to the Drop's previous group is merged into it (R4-M6a); lookups are by view (MirDropTable.Group).
     private void Merge(int block, int start)
     {
         var rows = CollectionsMarshal.AsSpan(this.table.Rows);

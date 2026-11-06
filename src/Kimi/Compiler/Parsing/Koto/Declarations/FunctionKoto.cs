@@ -373,6 +373,10 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal BoundAccessor? Accessor { get; }
 
+    // SPEC 15.6.4, DECISIONS R4-M154 r2.1: the declaration whose syntax binds this function's Origins and its inputs' Origins, an erased
+    // signature's Binder: an accessor view's BoundAccessor.Binder, else the function.
+    internal Koto OriginBinder => (Koto?)this.Accessor?.Binder ?? this;
+
     internal bool IsPropertyWitness { get; private set; }
 
     internal void SetPropertyWitnessBody(Koto expression, BoundType result)

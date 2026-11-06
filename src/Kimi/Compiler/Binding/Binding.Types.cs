@@ -324,15 +324,14 @@ public sealed partial class Binding
         if (syntax is TypeSemanticsKoto { BindingSetName: not null } &&
             OriginOwner(syntax) is FunctionKoto { IsAnonymous: false, BoundSymbol: { } function })
         {
-            var consultation = (this.consultationStart, this.consultationNode);
-            (this.consultationStart, this.consultationNode) = (-1, null);
+            var consultation = this.SuspendConsultation();
             try
             {
                 this.BindHeader(function);
             }
             finally
             {
-                (this.consultationStart, this.consultationNode) = consultation;
+                this.ResumeConsultation(consultation);
             }
 
             if (syntax.BoundType is { } bound)

@@ -22,7 +22,7 @@ internal sealed partial class MirOrigins
 {
     private readonly List<int> above = []; // Outlives' Fixed and Finite nodes at or above the longer end.
     private readonly List<int> below = []; // Outlives' Fixed nodes at or below the shorter end.
-    private int[] reachStamps = []; // Outlives' and the meet law's visit stamps by node, and its queue (the law's stack).
+    private int[] reachStamps = []; // Outlives', the meet law's and ClassEdges' stamps by node, and the walks' queue (the law's stack).
     private int[] reachQueue = [];
     private int reachStamp;
     private int edgesClass = -1; // The class whose edges tails, heads and their indexes hold for Outlives (-1: none, Judge's own).

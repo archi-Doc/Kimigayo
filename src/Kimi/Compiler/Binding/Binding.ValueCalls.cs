@@ -435,7 +435,7 @@ public sealed partial class Binding
         }
 
         // The callee's failure is the call's own record, which reads no argument: an argument judged after it would become its
-        // prerequisite (SPEC 23.1.2), so the arguments are then bound on their own (CompleteUnselected).
+        // prerequisite (SPEC 23.1.2), so the arguments are then bound on their own, outside the call's consultation (CompleteUnselected).
         if (!this.AcquireValueCallee(call, scope, receiver, out var receiverOperation))
         {
             return null;

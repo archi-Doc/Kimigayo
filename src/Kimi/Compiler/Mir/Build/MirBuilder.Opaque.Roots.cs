@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Mir;
 //   environment bindings and statics the rest of the node's syntax names or a Closure in it captures (Roots), a part located already
 //   named by its Place's root.
 // - Inputs: the node; the published Op, Res, Adjust and symbols; the Places the builder has bound or located.
-// - Outputs: roots, the root list Site reads (other producers of a derived site fill it themselves); the kept operands' MIR.
+// - Outputs: roots, the root list Site reads, or the root of a part built already (SiteRoots(MirPlace?)); Defaults names a default's earlier
+//   slots; the kept operands' MIR.
 // - Invariants: each root once; a kept operand is evaluated once, before the site, and its syntax's roots are not named again, also
 //   where several consumers take an Error node an expansion located (DECISIONS R4-M109).
 // - Prohibitions: no record, no acquisition of a kept operand, no site formed here.
@@ -46,6 +47,17 @@ internal sealed partial class MirBuilder
 
         this.kept.RemoveRange(start, this.kept.Count - start);
         (this.collector ??= new(this)).Collect(node);
+    }
+
+    // The roots of an Opaque site derived from a part built already: that part's Place root, a local's or a static's, none for a constant
+    // (null), never the node's syntax (R5-M63, R5-M84).
+    private void SiteRoots(MirPlace? built)
+    {
+        this.roots.Clear();
+        if (built is { } place)
+        {
+            this.Root(place.Root);
+        }
     }
 
     // A root of the Opaque site being formed, once: a kept operand's, or one its syntax names.

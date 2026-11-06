@@ -291,11 +291,13 @@ public sealed partial class Binding
     // The Types a position's fit reads (SPEC 5.7 "retains as that borrow would"; DECISIONS R4-M154, r2.2), appended to retentionReads as a
     // run its caller removes: a raw layer stating an Origin reads as each borrow that Origin belongs to among the contract's inputs
     // (RawMembers: an input whose outer Origin it is, a slot keeper), `ref/R` or `uniq/R` of its referent R by its mode, and as itself
-    // where none does; any other Type as itself. An incomplete member walk is the Limit.
+    // where none does; any other Type as itself. OwnedOrigin leaves out `self` (Holder, SPEC 5.7): it names the holding value, no input
+    // of the contract, and what a `during self` layer admits is HeldParts' (SelfAdmitted), so such a layer reads as itself. An incomplete
+    // member walk is the Limit.
     private (int Start, int End) Reads(BoundType type)
     {
         var start = this.retentionReads.Count;
-        var stated = type.Semantics == SemanticsKind.Raw && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated or OriginKind.Holder) };
+        var stated = type.Semantics == SemanticsKind.Raw && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) };
         var members = this.rawMembers.Count;
         this.retentionLimit |= stated && !this.RawMembers(OwnedOrigin(type)!, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
         for (var i = members; i < this.rawMembers.Count; i++)

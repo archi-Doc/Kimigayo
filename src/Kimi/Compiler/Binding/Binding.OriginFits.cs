@@ -142,7 +142,7 @@ public sealed partial class Binding
         // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it. Beside a node whose
         // own record is a comparison's contract (RecordComparisonFacts), every chain is published with that record.
         var rows = false;
-        var further = node.BindingFailure == BindingFailure.OriginContract;
+        var further = FollowsContract(node);
         for (var i = 0; i < all.Count && (further || node.BindingFailure == BindingFailure.None); i++)
         {
             rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);

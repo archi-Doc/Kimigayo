@@ -53,8 +53,8 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
     // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
-    // case bound (plan 5.6.1), and every Closure it creates and every default template it calls has its body (plan 5.6.2; each
-    // staticEnsure's initializer is the validator's, DECISIONS R4-M121).
+    // case bound (plan 5.6.1); the bodies one body names, each staticEnsure's initializer, called default template and created Closure, are
+    // the validator's program pass's (plan 5.6.2, DECISIONS R4-M121).
     [Fact]
     public void CorpusBuildsValidBodies()
     {
@@ -70,20 +70,6 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             int[] counts = [0, 0, 0, 0];
             foreach (var body in program.Bodies)
             {
-                foreach (var block in body.Blocks)
-                {
-                    var templated = block.Terminator is not { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Arg: > 0 } template } ||
-                        program[new(template.Symbol, MirBodyKind.DefaultTemplate, template.Arg - 1)] is not null;
-                    Assert.True(templated, $"{name}: a call of a default template without its body");
-                }
-
-                foreach (var statement in body.Statements)
-                {
-                    var defined = statement.Rvalue is not { Kind: MirRvalueKind.Aggregate, Op: (byte)MirAggregateKind.Closure, Type: var closure } ||
-                        program[new(closure!.Symbol, MirBodyKind.Closure)] is not null;
-                    Assert.True(defined, $"{name}: a Closure without its body");
-                }
-
                 if (body.Source.Module == module.Syntax.Module)
                 {
                     counts[0]++;

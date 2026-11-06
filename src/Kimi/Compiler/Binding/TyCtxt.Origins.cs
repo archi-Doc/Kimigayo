@@ -11,8 +11,8 @@
 // Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved at its use
 // (OriginAtUse) and meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is Binding's
 // to judge (DECISIONS BU-26) and in no slice; a constructor's own body's slice is its rows, then its layer's (the struct's Field
-// initializers), each atom in its forming unit's part, Fixed atoms shared; a broken contract throws in a complete compilation (CheckFaulted_Kd, DECISIONS
-// BU-102), so MIR trusts every row and atom it reads.
+// initializers), each atom in its forming unit's part, Fixed atoms shared; a broken contract throws in a complete compilation
+// (CheckFaulted_Kd, DECISIONS BU-102), so MIR trusts every row and atom it reads.
 // Must not: decode a Projection slot for MIR (only ProjectionRole leaves the view, D7), read MirBodyKind, or judge a relation.
 
 using Kimi.Compiler.Parsing;

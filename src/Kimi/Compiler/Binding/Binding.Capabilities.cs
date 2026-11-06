@@ -430,7 +430,7 @@ public sealed partial class Binding
                 return ConstraintProof.Error;
             }
 
-            var condition = this.ProveConditionalPremises(declaration.Premises, container, work.Type, work.Scope);
+            var condition = this.ProveConditionalPremises(declaration.Premises, work.Type, work.Scope);
 
             result = CombineProof(result, CombineProof(validation, condition, true), false);
         }

@@ -25,13 +25,15 @@ internal sealed partial class MirBorrows
 {
     // A conflicting candidate's problem: its Loan's anchor, and its witness (E13 (6)): a holder it was found live in (for an activation, other
     // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92). One
-    // only the drop tier takes rests on a Drop past the destruction walk's bound: the depth limit at its drop-live holder's declaration.
+    // whose outcome is Deep, which only the drop tier takes, rests on a Drop past the destruction walk's bound: the depth limit at its
+    // drop-live holder's declaration.
     private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation, MirFact? effect)
     {
         ref readonly var found = ref this.candidates[candidate];
-        if (!found.Tags.Takes(taking))
+        var outcome = found.Outcome(taking);
+        if (outcome.IsDeep)
         {
-            this.Limit(this.Declaration(found.Dropped.Via), MirOutcome.Deep);
+            this.Limit(this.Declaration(found.Dropped.Via), outcome);
             return;
         }
 

@@ -410,7 +410,7 @@ public class LibraryImportTargetBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd);
     }
 
-    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (PLAN G329),
+    // SPEC 20.4: a requirement belongs to the module defining the import. A dependency module's supplies are not linked yet (DECISIONS BU-92),
     // so its import of a library other than kernel32 is the located Unsupported_Kd at the #LibraryImport, after the import's own checks:
     // a missing requirement stays the Language error alone. Either way the import is no LibraryImports entry publication would link.
     [Theory]
@@ -441,7 +441,7 @@ public class LibraryImportTargetBindingTest
         Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Library == "codec");
     }
 
-    // PLAN G329's twin: a dependency module's kernel32 import is linked, through the generated kernel32 import library.
+    // DECISIONS BU-92's twin: a dependency module's kernel32 import is linked, through the generated kernel32 import library.
     [Fact]
     public void ADependencyModuleImportsKernel32()
     {

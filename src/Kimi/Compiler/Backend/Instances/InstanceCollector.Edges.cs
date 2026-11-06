@@ -13,7 +13,9 @@
 // without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
 // site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault.
+// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault;
+// a default template's call has the template's body, read unchecked (the validator's program pass guarantees it, MirValidator.Program,
+// G191).
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
 // (InstanceCollector.Witnesses.cs) itself.
 
@@ -162,7 +164,7 @@ internal sealed partial class InstanceCollector
 
         if (callee.Arg > 0)
         {
-            return program.Callee(callee) is { } template ? this.Admit(item, subject, template, subst) : -1;
+            return this.Admit(item, subject, program.Callee(callee)!, subst);
         }
 
         return this.Implementation(program, item, subject, callee.Symbol!, subst);
@@ -213,19 +215,20 @@ internal sealed partial class InstanceCollector
     private int Descriptor(int item, SourceRef subject, BoundType payload)
         => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), payload, null);
 
-    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (TyCtxt.Adaptation from its source token's
-    // Type to its target, the rule MirCases.Adapt reads under the item's view) creates an object targets its payload's descriptor, as every
-    // creation does; any other operation none.
+    // SPEC 13.6.2, 8.14 (DECISIONS R5-M111): an Adapt whose operation in the item's instance (MirCases.Operation between its source
+    // token's Type, MirCases.AdaptSource, and its target, each closed in the instance, as MirCases.Adapt reads them under a view) creates
+    // an object targets its payload's descriptor, as every creation does; any other operation none.
     private int Adaptation(int item, SourceRef subject, MirBody body, in MirRvalue adapt)
     {
-        var token = body.Operands[adapt.Start + 1];
-        if (this.In(item, subject, body.Consts[token.Arg].Type) is not { } source || this.In(item, subject, adapt.Type!) is not { } target)
+        if (this.In(item, subject, MirCases.AdaptSource(body, adapt)) is not { } source ||
+            this.In(item, subject, adapt.Type!) is not { } target)
         {
             return -1;
         }
 
-        var operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
-        return operation == ConversionBinding.ObjectCreation ? this.Descriptor(item, subject, target.Components[0]) : -1;
+        return MirCases.Operation(source, target, adapt) == ConversionBinding.ObjectCreation
+            ? this.Descriptor(item, subject, target.Components[0])
+            : -1;
     }
 
     // K 4.5 rows 8 and 11-13, K 4.7 and K 4.8, in the item's instance: a case adaptation that creates an object its payload's descriptor
