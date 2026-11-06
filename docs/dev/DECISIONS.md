@@ -9729,7 +9729,11 @@ resumed by R4-M86 (2026-10-20).
     nodes per level are 19.0 / 11.5, 6.3 / 4.0, 18.0 / 12.5 and 19.0 / 10.0 x L; the least, calls in Debug, is 4.0 x L. PLAN G444's
     "2.9 x" compared levels with depth. The JIT tier moves a boundary by one or two levels.
   - Not covered: the parser's own recursion (on S about ten times L in Debug, G444's triage), U2b's count; declaration containers
-    nested past L, whose slots take only containers, keep their depth and are recorded at the outermost; the library's fixed sources.
+    nested past L, whose slots take only containers, keep their depth and are recorded at the outermost (U2b decides their cut);
+    the library's fixed sources (walking them costs about 2 ms per compilation). A later document's walk visits each earlier member
+    of the root and of merged containers once, so its cost grows with documents times members (PLAN G444).
+  - The margin rests on U1-m's four shapes; the depth-L forms of ten families (parentheses, `+`, calls, `if`, labeled `do`, `Option<`,
+    grouping Patterns, Closures, `.me()` chains, groups) run through Debug `emit` on S without a crash (U2a's review).
   - Rejected: a node at depth L + 1 as the cut (its `ErrorKoto` leaves depth L + 1, and a left-deep chain's innermost node gives two
     records); walking the whole module at each document (quadratic in documents); folding the walk into `SyntaxTable.Number` (it runs
     at Bind and would edit syntax there).

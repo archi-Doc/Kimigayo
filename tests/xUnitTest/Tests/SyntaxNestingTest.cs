@@ -68,6 +68,45 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.True(Depth(c.Kotonoha.RootKoto) <= L);
     }
 
+    // A written Type adds two nodes per Type argument level: at L nothing is cut, one level more is one cut (PLAN G348's written-Type
+    // half). The Type's own Generic generation limit may record beside it; only the nesting records are asserted.
+    [Fact]
+    public void AWrittenTypeAtTheLimitIsKeptAndOneLevelMoreIsCutOnce()
+    {
+        var levels = LevelsWithin("type");
+        var kept = this.Compile(Source("type", levels));
+        Assert.InRange(kept.Depth, L - PerLevel("type") + 1, L);
+        Assert.DoesNotContain(kept.Records, static x => x.Code == nameof(DiagnosticCode.NestingLimit_Kd));
+
+        var cut = this.Compile(Source("type", levels + 1));
+        Assert.Single(cut.Records, static x => x.Code == nameof(DiagnosticCode.NestingLimit_Kd));
+        Assert.True(cut.Depth <= L, $"depth {cut.Depth}");
+        Assert.False(cut.Accepted);
+    }
+
+    // Declaration containers nested past L: no slot above a nested container takes an ErrorKoto, so the chain keeps its depth and is
+    // recorded once, at the outermost container, also when a later document's parse walks the chain again (PLAN G444 U2b bounds it).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContainersNestedPastTheLimitAreRecordedOnceAtTheOutermost(bool secondDocument)
+    {
+        var levels = LevelsWithin("groups");
+        Assert.DoesNotContain(this.Compile(Source("groups", levels)).Records, static x => x.Code == nameof(DiagnosticCode.NestingLimit_Kd));
+
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("a.kimi", Groups(L))); // Group G1023 lies at depth L and has a child.
+        if (secondDocument)
+        {
+            c.Kotonoha.AddSource(new SourceDocument("b.kimi", "public func g() -> i32 => 1\n"));
+        }
+
+        var record = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.NestingLimit_Kd), 0, 0), (record.Code, record.Source, record.Span?.Start));
+        Assert.True(Depth(c.Kotonoha.RootKoto) > L);
+    }
+
     // Ten times L: one cut, linear (the parser loops on a chain and the walk stops at L), and every phase after parsing walks at most
     // L levels. Parentheses join when the parser's own recursion is bounded (PLAN G444 U2b).
     [Theory]
@@ -85,8 +124,22 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         {
             "parentheses" => CompilationEntryTest.Parentheses(levels),
             "plus" => $"public func f(c: bool) -> i32\n    return {Plus(levels)}\n",
+            "type" => $"public func f(x: {string.Concat(Enumerable.Repeat("Option<", levels))}i32{new string('>', levels)}) -> i32 => 0\n",
+            "groups" => Groups(levels),
             _ => CompilationEntryTest.LabeledDos(levels),
         };
+
+    // `levels` nested groups around one static.
+    private static string Groups(int levels)
+    {
+        var source = new System.Text.StringBuilder();
+        for (var i = 0; i < levels; i++)
+        {
+            source.Append(' ', 4 * i).Append($"group G{i}\n");
+        }
+
+        return source.Append(' ', 4 * levels).Append("let v: i32 = 1\n").ToString();
+    }
 
     // A left-deep chain of `levels` additions, which the parser builds in a loop.
     private static string Plus(int levels)
