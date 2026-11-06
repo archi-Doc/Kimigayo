@@ -71,4 +71,27 @@ public sealed class FailedDeclarationUseTest
         Assert.Contains(records, x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
         Assert.DoesNotContain(records, x => x.Code == nameof(DiagnosticCode.InvalidConstraint_Kd));
     }
+
+    // DECISIONS G52-1 (G449): a container's or a stored Property's verdict reads no result of the declarations it contains, so a member or accessor
+    // resting on a syntax recovery (a guessed relation operator) leaves the container's own record: the form is its valid-clause twin
+    // plus the clause's record. A header duplicate, a nested Type's redeclared slot, an inline cycle, a Property's initializer mismatch.
+    [Theory]
+    [InlineData("struct Holder<E> {h, h}\n    func f(self: ref/Self, x: ref/E during a, y: ref/E during b) -> i32\n        origin a OP b\n        return 0\n", nameof(DiagnosticCode.DuplicateBinding_Kd))]
+    [InlineData("struct Outer {h}\n    let v: i32\n    struct Holder<E> {h}\n        func f(self: ref/Self, x: ref/E during a, y: ref/E during b) -> i32\n            origin a OP b\n            return 0\n", nameof(DiagnosticCode.DuplicateBinding_Kd))]
+    [InlineData("struct Node\n    var next: Option<Node>\n    func f(self: ref/Self, x: ref/i32 during a, y: ref/i32 during b) -> i32\n        origin a OP b\n        return 0\n", nameof(DiagnosticCode.InvalidInlineLayout_Kd))]
+    [InlineData("struct S {s, t}\n    let p: ref/i32 during s\n    let q: ref/i32 during t\n    let v: i32 = true\n        get(self: ref/Self) -> i32\n            origin s OP t\n            return 0\n", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    public void AContainedDeclarationsRecoveryLeavesItsContainersRecord(string declarations, string code)
+    {
+        var twin = Codes(declarations.Replace("OP", "==", StringComparison.Ordinal));
+        Assert.Contains(code, twin);
+        Assert.Equal([.. twin.Append(nameof(DiagnosticCode.OriginRelationOperator_Kd)).Order(StringComparer.Ordinal)], Codes(declarations.Replace("OP", "=", StringComparison.Ordinal)));
+    }
+
+    // DECISIONS G52-1 (G449): a Field's syntax recovery leaves its struct's header duplicate, with no unavailable prerequisite in its place.
+    [Fact]
+    public void AFieldsRecoveryLeavesItsStructsHeaderDuplicate()
+        => Assert.Equal([nameof(DiagnosticCode.DuplicateBinding_Kd), nameof(DiagnosticCode.ExpectedSyntax_Kd)], Codes("struct Holder {h, h}\n    let v: [2 i32]\n"));
+
+    private static string[] Codes(string declarations)
+        => [.. DiagnosticCorpus.Check(declarations + "public func main()\n    let x: i32 = 1\n").Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)];
 }

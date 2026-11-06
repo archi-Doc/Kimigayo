@@ -232,6 +232,40 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 23.1.2 (DECISIONS G52-1, G449): the declarations a container contains are each their own declaration, and the container's verdict reads no
+    // result of them, so they are bound with its consultation frame suspended: none is its prerequisite, and one that rests on a syntax
+    // recovery leaves the container's own record. Its generic parameters, bases and Constraints stay in the frame; its checks read them.
+    private void BindContainedDeclarations(DeclarationContainerKoto container, BindingScope scope)
+    {
+        var consultation = this.SuspendConsultation();
+        try
+        {
+            for (var i = 0; i < container.Members.Count; i++)
+            {
+                this.BindNode(container.Members[i], scope);
+            }
+
+            for (var i = 0; i < container.NestedContainers.Count; i++)
+            {
+                this.BindNode(container.NestedContainers[i], scope);
+            }
+
+            if (container.IsRoot && container.Kotonoha.GeneratedFunction is { } generated)
+            {
+                this.BindNode(generated, scope);
+            }
+
+            if (container is StructKoto { ImplicitConstructor: { } constructor })
+            {
+                this.BindNode(constructor, scope);
+            }
+        }
+        finally
+        {
+            this.ResumeConsultation(consultation);
+        }
+    }
+
     // Declaration checks that need the bound bodies: Origin requirements, API access, certificates and witnesses.
     private void ValidateBoundDeclarations(BindingMode mode)
     {

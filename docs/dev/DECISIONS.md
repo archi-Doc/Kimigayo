@@ -9603,6 +9603,12 @@ resumed by R4-M86 (2026-10-20).
   in the oversized entry file. It is one Binding responsibility, not a line-count split or a new component, state, table or vocabulary.
   Rejected: growing the mixed file, an argument-only wrapper or a merged prerequisite representation before its need is established.
   Attribute legality and the behavior change remain with their existing owners in the next unit.
+  - Amended (G449, 2026-11-06; unit bu168): a container's members, nested Types, generated function and implicit constructor
+    (`BindContainedDeclarations`) and a stored Property's accessors (`BindVariableCore`) are bound outside the container's or
+    Property's consultation frame, with `SuspendConsultation` (U4b's amendment). Its verdict reads no result of them, so none is its
+    prerequisite (SPEC 23.1.2), and one that rests on a syntax recovery no longer derives the container's own record (a header
+    duplicate, an inline cycle, a Property's initializer mismatch). Generic parameters, bases and Constraints stay in the frame:
+    the container's own checks read them, and their share of its one failure slot is R7's Problem records (PLAN G465).
 
 - **G52-2 Rejected attributes retain their declaration cause** (2026-10-24). SPEC 23.1.2 makes an invalid selected Attribute the cause
   of its target's rejection, not a second failed requirement. Test, Layout, unknown markers and non-function LibraryImport share the
