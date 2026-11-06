@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -13,10 +14,14 @@ namespace XunitTest;
 /// location uses and its effects by the rows; a body that every rule accepts has no finding, and each rule rejects a body that breaks only
 /// it, at the syntax of what breaks it; a warm validation allocates nothing.</summary>
 [Collection(nameof(MirValidatorTest))] // Its fixture's TyCtxt, which MirDumpTest shares, is not thread-safe.
-public sealed class MirValidatorTest
+public sealed class MirValidatorTest(ITestOutputHelper output)
 {
     // An owning interpolation of a literal, a value and a literal (FormatBuffer, three FormatSegments, a write, FormatFinish).
     private const string Interpolation = "func f(n: i32) -> string => \"n=\\(n)!\"\n";
+
+    // A static, as the static tests write it, and a body reading it on two branches, each after its own staticEnsure (G191).
+    private const string Registry = "group Registry\n    public let total: i32 = 5\n";
+    private const string Branches = "func use(c: bool) -> i32 => if c => Registry.total else => Registry.total\n";
 
     private static readonly SourceInfo At = default;
 
@@ -95,7 +100,7 @@ public sealed class MirValidatorTest
         var value = MirModelTest.Local(body, payload!);
         PairBinder.Collect(types.Generic, body.Binders);
         var shared = body.Static(new(types.Function, BoundType.I32, false, true));
-        var (entry, abort, drop, exit, ensure) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var (ensure, entry, abort, drop, exit) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock()); // The ensure first.
         var result = new MirPlace(0);
         void Assign(MirPlace place, MirRvalue rvalue) => body.Push(entry, MirStatement.Assign(place, rvalue, At));
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
@@ -113,11 +118,11 @@ public sealed class MirValidatorTest
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
         var text = Operands(MirOperand.Const(body.Const(new(MirConstKind.String, BoundType.String, Value: "abort"))));
         body.Terminate(abort, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At) with { CheckTarget = drop });
-        body.Terminate(drop, MirTerminator.Drop(array, ensure, At));
+        body.Terminate(drop, MirTerminator.Drop(array, exit, At));
         body.Terminate(exit, MirTerminator.Return(At));
         var ensured = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
         var slot = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, 0)));
-        body.Terminate(ensure, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(slot), 1, ensured, exit, At));
+        body.Terminate(ensure, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(slot), 1, ensured, entry, At));
         Assert.Empty(Validate(body));
 
         Assert.Equal(["Copy", "1* Reads", "Const", "Abort -1", "0 Writes, Defines"], Uses(body, entry, 0));
@@ -134,7 +139,7 @@ public sealed class MirValidatorTest
         Assert.Equal(["3 DropUse"], Uses(body, drop, 0));
         Assert.Equal(["0 Moves"], Uses(body, exit, 0));
         Assert.Equal(["Const", "StaticInit, Abort -1", "8 Writes, Defines"], Uses(body, ensure, 0));
-        Assert.Equal(new[] { 1, 0, 1, 0, 1 }, body.Blocks.ToArray().Select(static x => MirUses.Successors(x.Terminator)));
+        Assert.Equal(new[] { 1, 1, 0, 1, 0 }, body.Blocks.ToArray().Select(static x => MirUses.Successors(x.Terminator)));
 
         var cases = new MirCases(c.Types);
         cases.Select(body, 0);
@@ -529,6 +534,76 @@ public sealed class MirValidatorTest
 
         var read = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Place.Root == 0).Select(x => body.Subject(x.Source));
         Assert.Equal(form == "goto" ? read.Select(static x => (MirViolation.Unensured, x)) : [], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // G191 rule (3) (SPEC 22.4.3, DECISIONS R4-M121 as amended by U-C): on every runtime path from the entry a staticEnsure of its static
+    // precedes each access. The built bodies are valid, and so is a loop's access whose only ensure is before the loop ("loop": the in-loop
+    // ensure turned into a Goto). With one branch's ensure turned into a Goto ("branch", the other branch's still naming the static, rule
+    // (2)), or a loop's first ensure, whose access the loop's second ensure reaches only along the back edge ("latch"), the access it
+    // served is an Unensured finding at that access (fail-before: none).
+    [Theory]
+    [InlineData(null)]
+    [InlineData("branch")]
+    [InlineData("loop")]
+    [InlineData("latch")]
+    public void AStaticEnsurePrecedesEachAccessOnEveryPath(string? form)
+    {
+        var source = form switch
+        {
+            "loop" => "func use(n: i32) -> i32\n    var s = Registry.total\n    while s < n\n        s = s + Registry.total\n    return s\n",
+            "latch" => "func use(n: i32) -> i32\n    var s = 0\n    while s < n\n        s = s + Registry.total\n" +
+                "        s = s + Registry.total\n    return s\n",
+            _ => Branches,
+        };
+        var c = MirBuildTest.Compile(Registry + source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+        var ensures = Enumerable.Range(0, body.Blocks.Length).Where(b => body.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } }).ToArray();
+        Assert.Equal(2, ensures.Length);
+        var expected = new List<(MirViolation, SourceRef)>();
+        if (form is not null)
+        {
+            var (turned, served) = (ensures[form == "loop" ? 1 : 0], body.Blocks[ensures[form == "loop" ? 1 : 0]].Terminator.Target);
+            body.Terminate(turned, MirTerminator.Goto(served, body.Blocks[turned].Terminator.Source));
+            var block = body.Blocks[served]; // The access the turned ensure served, the first of its target to read the static.
+            var at = Enumerable.Range(0, block.Count + 1).First(i => Uses(body, served, i).Any(static x => x.StartsWith("-1 ", StringComparison.Ordinal)));
+            var access = at < block.Count ? body.Statements[block.Start + at].Source : block.Terminator.Source;
+            expected.AddRange(form == "loop" ? [] : [(MirViolation.Unensured, body.Subject(access))]);
+        }
+
+        Assert.Equal(expected, Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // G191 rule (3)'s cost: a body of N groups, each a branch and a nested loop reading two statics, grows its blocks linearly with N, and
+    // the ensure solve's work (MirValidator.Work: the bit words its runtime edges meet, over passes the loop depth bounds) with them.
+    [Fact]
+    public void TheEnsureSolveScalesLinearly()
+    {
+        var (sizes, blocks, work) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var text = new StringBuilder("group Registry\n    public let a: i32 = 5\n    public let b: i32 = 7\n");
+            text.Append("func use(c: bool, n: i32) -> i32\n    var s = 0\n");
+            for (var k = 0; k < sizes[i]; k++)
+            {
+                text.Append("    if c => s += Registry.a\n    while s < n\n        while s < n\n            s += Registry.b\n");
+            }
+
+            var c = MirBuildTest.Compile(text.Append("    return s\n").ToString());
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var (validator, findings) = (new MirValidator(c.Types), new List<MirFinding>());
+            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+            validator.Validate(body, findings);
+            Assert.Empty(findings);
+            (blocks[i], work[i]) = (body.Blocks.Length, validator.Work);
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: blocks {string.Join(", ", blocks)}, solve work {string.Join(", ", work)}");
+        Assert.True(blocks[2] - blocks[1] <= (2 * (blocks[1] - blocks[0])) + 8, $"blocks {string.Join(", ", blocks)}");
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"solve work {string.Join(", ", work)}");
     }
 
     // G191 (K package 4.5 row 7, DECISIONS R4-M121): the builder ensures only the statics whose initializers it builds, so over the program
@@ -1181,14 +1256,16 @@ public sealed class MirValidatorTest
     }
 
     // V11: validating a body again, the Type tier's and its Adapt's case views included, an owning interpolation's steps and its FormatFinish's
-    // pairing (DECISIONS R5-M131) included, and enumerating its uses, of the body and under each case view, allocates nothing.
+    // pairing (DECISIONS R5-M131) included, a static's reads on two branches with G191 rule (3)'s solve included, and enumerating its uses,
+    // of the body and under each case view, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmValidationAllocatesNothing()
     {
         var (body, typed) = (Build(null), Typed(null));
-        var c = MirBuildTest.Compile(Interpolation);
-        var formatted = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var c = MirBuildTest.Compile(Interpolation + Registry + Branches);
+        var bodies = c.BuildMir().Bodies.ToArray();
+        var (formatted, statics) = (bodies.Single(static x => x.Key.Decl?.Name == "f"), bodies.Single(static x => x.Key.Decl?.Name == "use"));
         var (validator, formats) = (new MirValidator(Fixture.Value.Compilation.Types), new MirValidator(c.Types));
         var cases = new MirCases(Fixture.Value.Compilation.Types);
         var findings = new List<MirFinding>();
@@ -1198,6 +1275,7 @@ public sealed class MirValidatorTest
             validator.Validate(body, findings);
             validator.Validate(typed, findings);
             formats.Validate(formatted, findings);
+            formats.Validate(statics, findings);
             for (var block = 0; block < body.Blocks.Length; block++)
             {
                 for (var i = 0; i <= body.Blocks[block].Count; i++)
@@ -1351,7 +1429,6 @@ public sealed class MirValidatorTest
         Assign(reference, MirRvalue.Ref(MirRefKind.Shared, x, body.TypeOf(reference)!));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(reference, MirProjectionKind.Deref, 0)))));
         Push(MirStatementKind.EndBorrow, reference);
-        Push(MirStatementKind.FakeRead, shared);
         Push(MirStatementKind.FakeRead, body.Project(pair, MirProjectionKind.PairLayer, 0));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.TwoPhaseUniq));
@@ -1454,6 +1531,7 @@ public sealed class MirValidatorTest
         body.Terminate(exit, MirTerminator.Goto(ensure, At, check));
         var ensured = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp); // G191: the static's staticEnsure.
         body.Terminate(ensure, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(Const(MirConstKind.Integer, BoundType.ISize, 0)), 1, ensured, done, At));
+        body.Push(done, MirStatement.Of(MirStatementKind.FakeRead, shared, At)); // After its staticEnsure on every runtime path (G191 rule (3)).
         body.Terminate(done, MirTerminator.Return(At));
         body.Push(check, MirStatement.Of(MirStatementKind.FakeRead, stopped, At)); // Only a check edge reaches check.
         body.Terminate(check, MirTerminator.Unreachable(At));

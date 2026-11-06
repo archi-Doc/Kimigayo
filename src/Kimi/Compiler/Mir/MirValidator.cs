@@ -51,7 +51,8 @@ internal enum MirViolation : byte
     // a Copy, other than a case site's operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88).
     StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10),
     // or, over the program, its static without a StaticInit body (G191).
-    Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names (G191).
+    Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names, or, where a
+    // runtime edge reaches the access, that a staticEnsure does not precede on every runtime path from the entry (G191 rule (3)).
     Lent, // A Temp a Call takes as an input that reserves (MirCases.Reserves), written by a Ref or an Adapt and by another write (G136).
     SharedPath, // A projected Place written, destroyed in place or acquired exclusively (a Ref Uniq or TwoPhaseUniq, a PairAcquire in its
     // binder's exclusive case, an Adapt's exclusive borrow under a view) past a shared layer (MirTypes.IsSharedLayer) after its last raw
@@ -66,11 +67,12 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands
 /// (a Copy's Type Copy by Binding's proof, but a case site's, DECISIONS BU-88), rvalues and arities, the Types values flow between
-/// (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
-/// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131), a Call's input temps
-/// (G136), where each region, the body or a default's copy, is entered (DECISIONS R5-M90), the statics its Places access (G191) and the
-/// shared layers a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1); and over a program, the initializer each staticEnsure names
-/// and the body each default template's call and each created Closure names (G191), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
+/// (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every Semantics case view (<see cref="MirCases"/>), the blocks that
+/// read a Temp only diverging Calls write (G131), a Call's input temps (G136), where each region, the body or a default's copy, is
+/// entered (DECISIONS R5-M90), the statics its Places access, each ensured before it on every runtime path (G191), and the shared layers
+/// a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1); and over a program, the initializer each
+/// staticEnsure names and the body each default template's call and each created Closure names (G191), before any analysis reads it.
+/// It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and an owning interpolation's steps' as their constants,
 /// a FormatFinish's estimate its FormatBuffer's (DECISIONS R5-M131), a Value callee's against its Type's signature where
@@ -106,7 +108,8 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         Array.Clear(this.writes, 0, body.Locals.Length);
         this.caseSites.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.caseSites, this.writes, this.parts, types);
+        this.accesses.Clear();
+        var checker = new Checker(body, findings, this.Unknown(body), this.Ensured(body), this.accesses, this.caseSites, this.writes, this.parts, types);
         if (!checker.Tables())
         {
             body.HasFinding = findings.Count > count;
@@ -131,6 +134,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
             this.Diverged(body, findings);
             this.Reach(body, findings);
+            this.Unensured(body, findings);
             this.Finishes(body, findings);
         }
 
@@ -149,6 +153,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         List<MirFinding> findings,
         bool[] unknown,
         bool[] ensured,
+        List<(int Block, int Slot, SourceInfo Source)> accesses,
         List<(MirRvalue Site, SourceInfo Source)> caseSites,
         byte[] writes,
         HashSet<BoundType> parts,
@@ -156,6 +161,7 @@ internal sealed partial class MirValidator(TyCtxt types)
     {
         private readonly TyCtxt.CopyFacts copies = types.Copies(body.Key.Decl); // The body definition's, resolved once per body (BU-88).
         private SourceInfo at;
+        private int atBlock; // The block of the location walked, which a static access records (MirValidator.Statics).
         private int opaqueValues;
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
