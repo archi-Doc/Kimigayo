@@ -9879,6 +9879,30 @@ resumed by R4-M86 (2026-10-20).
   - Removal stage: R7 N1 (`ResolvePath` evaluates both paths before either publishes).
   - Rejected: AmbiguousBinding_Kd or UnresolvedBinding_Kd for the found-neither class (a Language error on valid forms, d01).
 
+- **BU-112 Parsing bounds syntax nesting at L = 1,024: `SyntaxNesting` and `NestingLimit_Kd`** (2026-11-06; PLAN G444 U2a, unit
+  bu191; Major, G444's design (a) reviewed; the owner (board O-20), verbatim 「推奨どおり承認」: Q1 a new Resource code, Q2 L = 1,024
+  on R4-M178's S) IMPL A.4, 21.3.2; SPEC 23.1.1, 23.1.2.
+  - Parsing's contract: every tree a parse publishes has depth at most L (a node's distance from its module root), so no later walk
+    guards its own depth. `SyntaxNesting.Bound`, at the end of both parse entries (`Kotonoha.ParseSource`, `CodeContext.Parse`), cuts
+    a node at depth L that has a child: an `ErrorKoto` in its slot, or in its parent's slot where the slot holds only its own form (a
+    body, a name, an attribute). One `NestingLimit_Kd` record per cut (`limit:Number`, the cut's span), which the `ErrorKoto` rests
+    on; nothing under a cut is walked or recorded. A later document's walk visits its own nodes and the module's merge points
+    (declaration containers, the generated function and its body).
+  - Margin rule: 3.5 x L is at most the least crash depth on S over G444's shapes, Debug and Release, measured as L is (syntax depth).
+    U1-m's crash levels (labeled `do` 4,864 / 2,944, calls 6,400 / 4,096, `if` 9,216 / 6,400, `+` 19,456 / 10,240) at 4, 1, 2 and 1
+    nodes per level are 19.0 / 11.5, 6.3 / 4.0, 18.0 / 12.5 and 19.0 / 10.0 x L; the least, calls in Debug, is 4.0 x L. PLAN G444's
+    "2.9 x" compared levels with depth. The JIT tier moves a boundary by one or two levels.
+  - Not covered: the parser's own recursion (on S about ten times L in Debug, G444's triage), U2b's count; declaration containers
+    nested past L, whose slots take only containers, keep their depth and are recorded at the outermost (U2b decides their cut);
+    the library's trees, which KimiLibraryShapeTest checks and the run time does not walk (compiler-owned source fixed at build time;
+    a walk costs about 2 ms per compilation; F's option (c)). A later document's walk visits each earlier member
+    of the root and of merged containers once, so its cost grows with documents times members (PLAN G444).
+  - The margin rests on U1-m's four shapes; the depth-L forms of ten families (parentheses, `+`, calls, `if`, labeled `do`, `Option<`,
+    grouping Patterns, Closures, `.me()` chains, groups) run through Debug `emit` on S without a crash (U2a's review).
+  - Rejected: a node at depth L + 1 as the cut (its `ErrorKoto` leaves depth L + 1, and a left-deep chain's innermost node gives two
+    records); walking the whole module at each document (quadratic in documents); folding the walk into `SyntaxTable.Number` (it runs
+    at Bind and would edit syntax there).
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
