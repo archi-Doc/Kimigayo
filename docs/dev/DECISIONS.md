@@ -9758,6 +9758,24 @@ resumed by R4-M86 (2026-10-20).
     show it: r27n, r27 and r29 were accepted, though invalid. The binder condition of 22d1216a0 (the cap judges only an Origin the
     walked callee binds; O-23 (b)): it rejected c10 and c11, valid by 5.2.1's letter.
 
+- **BU-115 A value call completes its waiting parts at their instantiated parameter; a call stopped before its solution, at their
+  declared one until rule W** (2026-11-07; PLAN G494 unit 1, unit bu198; Major; a temporary structure) SPEC 10.5.1, 10.5.4, 7.7.4,
+  15.6.4 steps 1-3, 23.1.2.
+  - Rule: `BindValueCall` adapts its evidence parts first (`AcquireValueCallArguments`), solves the callee's Origins from them alone
+    (`SolveValueCallOrigins`), then completes each waiting part (`WaitsForValueCallSolve`: an anonymous function, a reference or
+    nested call that waits, a contextual Case, a Closure or Function Item at a Function Type) at its instantiated parameter, the
+    named call's order. An erasure is decided once, by `ErasesToFunction` under the use's premises (`CompleteValueCallPart`), so a
+    recorded mismatch always finds its outcome (BU-107).
+  - Temporary structure: when the first pass stops at a failed or misfitting part, or the solve fails, the waiting parts it prepared
+    are completed at their declared parameter, their expectation before G494. Reason: their own records are independent (vd_bad's
+    `undefinedName2` in an anonymous body), and without it an anonymous function stays unbound (`CompleteUnselected`, PLAN R1e).
+    Removal stage: G494 unit 2, when rule W's solve over a failed part (BU-79) gives them their instantiated parameter. Until then an
+    erasure judged at a declared parameter that names a per-call Origin may add a dependent record over the callee's Origin (vfb_bad).
+  - Record selection (DECISIONS Q13, G421 (i)'s one acquisition record): of two failed acquisitions the call keeps the evidence
+    part's, as the named call does (r17).
+  - Rejected: completing the waiting parts on their own after a stop (loses vd_bad's record); a premise-free signature fit before the
+    erasure (`ErasureSignatureFits`: under the caller's `origin s outlives t` it disagreed with the erasure, r04_cvprem_ok's crash).
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
