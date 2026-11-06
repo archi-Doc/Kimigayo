@@ -709,5 +709,21 @@
   { "Name": "lambda-indented-body-nested-if", "Source": "public func main()\n    let c = true\n    if c => func () -> ()\n        if c\n            return\n", "Intended": "the anonymous function's indented body is reported once; its own items form a new region, so the nested if is not",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "ArrowBody", "After": "func () -> ()" } ] },
   { "Name": "lambda-indented-body-in-argument", "Source": "func run(f: () -> ()) => f()\npublic func main()\n    let c = true\n    if c => run(func () -> ()\n        return\n    )\n    if c => run(func () -> ()\n        if c\n            return\n    )\n", "Intended": "an argument starts a region, so an anonymous function there may have an indented body inside a single-item body, with an if of its own (SPEC F.4.4)",
-    "Records": [] }
+    "Records": [] },
+  { "Name": "lambda-missing-body-line-end", "Source": "public func main()\n    let h = func () -> ()\n    h()\n", "Intended": "a function expression's missing body is supplied as a recovery, as every body-bearing expression's is; the Closure is built with it and its call is checked (SPEC F.9.1, 23.1.2)",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Body", "After": "= func () -> ()" } ] },
+  { "Name": "lambda-missing-body-inferred-result", "Source": "public func main()\n    let h = func ()\n", "Intended": "an inferred result read from the supplied body rests on the missing body's Error, so the local's Type adds no record",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Body", "After": "= func ()" } ] },
+  { "Name": "lambda-missing-body-argument-closer", "Source": "func run(f: () -> ()) => f()\npublic func main()\n    run(func () -> ())\n", "Intended": "inside an argument list the closer is where the function expression's body was expected; nothing past it is skipped, so the call keeps its ')' (DIAGNOSTICS 4.4)",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Body", "At": "())\n", "Skip": 2, "Length": 1, "Found": ")" } ] },
+  { "Name": "lambda-missing-body-element-separator", "Source": "public func main()\n    let x = (func () -> (), 1)\n", "Intended": "inside a Tuple the separator is where the function expression's body was expected, and the next element is still read",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Body", "At": ", 1)", "Length": 1, "Found": "," } ] },
+  { "Name": "lambda-missing-body-header-token", "Source": "public func main()\n    let h = func () -> () extra\n", "Intended": "a token left on a function expression's header line without an indented body after it is where the body was expected (DIAGNOSTICS 4.4)",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Body", "At": "extra", "Found": "extra" } ] },
+  { "Name": "lambda-header-token-before-body", "Source": "public func main()\n    let h = func () -> () extra\n        return\n    h()\n", "Intended": "with an indented body after the line, the token is where the header's line should end and the body is still the function expression's",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "extra", "Found": "extra" } ] },
+  { "Name": "lambda-missing-body-in-arrow-body", "Source": "public func main()\n    let h = func () -> (() -> ()) => func () -> ()\n", "Intended": "a nested function expression in a single-item body uses a single-item body too, so its missing body is a missing arrow body (SPEC F.4.4)",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "ArrowBody", "After": "=> func () -> ()" } ] },
+  { "Name": "lambda-attribute-before-arrow-body", "Source": "public func main()\n    let h = func () -> () #Inline => ()\n", "Intended": "an attribute after a function expression's header is misplaced (SPEC 6.7), and the arrow body after it is still the function's",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "Attribute", "At": "#Inline" } ] }
 ]
