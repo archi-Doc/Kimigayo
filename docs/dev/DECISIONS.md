@@ -9657,6 +9657,30 @@ resumed by R4-M86 (2026-10-20).
   - No code, requirement, `BindingFailure`, IR form or Evidence kind is added. Rejected: EffectBound's shape (the same text formed in
     the adapter as a Text Reason), which keeps the free text and its elision; separate adapter files without a contract of their own.
 
+- **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; Major
+  without a design review, F's GO; review REVISE B-1, fix round 1; re-check 1 REVISE B-3, fix round 2; re-check 2 B-4, the owner's
+  O-23, verbatim 「aでお願いいたす」, a new unit) SPEC 5.2.1 condition 3, 5.7 Authority, Calls. Keeps BU-24's G160-2b: the
+  stored-layer reader (`DeclaredStep`, `TyCtxt.RawStep`) is unchanged, and the retention walk of a contract's inputs reads a layer
+  they hold with the signature reader that G160-2b names.
+  - Rule (`Binding.Retention.Storage.cs`'s raw arm): a layer a declaration writes steps by `DeclaredStep` (its `ref`-slot cap,
+    `self`); any other, one a Type argument supplies included, by `SignatureStep` over the inputs its route gives (`SignatureInputs`),
+    the rule `RetentionParts` and the own-layer arm read. So `f(b: ref/…, w: uniq/Wrap<raw/… during b>, v)` stores nothing past
+    w's layer (ss12, r23: their false `ComparisonLoanConflict_Kd` is gone). Unchanged: a `uniq` or a `ref` plus `uniq` statement, and a
+    holder whose slot an exclusive Loan Field keeps (`HS.store`'s Self states `s` through that slot, r27n, r29).
+  - Route (O-23 (a): SPEC 5.2.1's letter holds, the cap judges a layer written in a function's, closure's or accessor's signature,
+    whatever binds its Origin): a layer the walked signature wrote reads the cap over that signature's inputs; a layer in a Closure's
+    environment (`RetentionPlace.Captured`, `StorageAt.Captured`, set where the walks enter `TyCtxt.ClosureEnvironment`: the call
+    receiver's bindings and a nested Closure part), whose Type the body's captures wrote, reads no inputs and steps by its kind. So a
+    captured layer stating an enclosing Origin the enclosing signature also states by `uniq` lets the call store through it (c01,
+    c02, c04b: `z = 5` errs; c02 and c04b were accepted on dev), and a Closure's or nested function's own parameter layer stating an
+    enclosing Origin its own `ref` input states is capped (c10, c11, c12: accepted, as on dev for c10 and c11).
+  - Not covered (PLAN G148 (1)): A5's guard (`TyCtxt.RawStep`) keeps the kind for a parameter's Origin; a callee whose inputs do not
+    state the caller's Origin (`Wrap.put<U>`, r20) keeps its false conflict.
+  - Rejected: judging an Input atom by its binder's declared signature (BoundStep, 36a8150e8; G160-2b's rejected cap). A holder formed
+    in the binder's body or passed as `Self` can bind a slot whose keepers are exclusive to that Origin, and that signature does not
+    show it: r27n, r27 and r29 were accepted, though invalid. The binder condition of 22d1216a0 (the cap judges only an Origin the
+    walked callee binds; O-23 (b)): it rejected c10 and c11, valid by 5.2.1's letter.
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
