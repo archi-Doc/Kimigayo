@@ -645,9 +645,10 @@ public sealed partial class Binding
 
     // SPEC 15.1.6, 3.5.2: the one acquisition rule of a Pattern binding, a match arm's or a for loop's item (SPEC 14.6.2;
     // CompleteIterationAcquisitions): a binding reached through a reference layer borrows its Place; an owned part is copied or
-    // transferred by its complete stored Type, and one whose Copy proof is Error, neither assumed Copy nor Non-Copy, is Deferred and
-    // makes its plan Invalid. A binding has no Copy requirement of its own, so it records no failure: the proof reads the declaration's
-    // failed Constraint, whose record is reported (SPEC 23.1.2; DECISIONS BU-110).
+    // transferred by its complete stored Type, and one whose Copy proof is Error, neither assumed Copy nor Non-Copy, is Deferred (HIR
+    // Failed). Its plan stays buildable and its coverage stays the Patterns' (Invalid means a located Pattern or guard failure; SPEC
+    // 14.8.4, 23.1.2; DECISIONS R4-M179). A binding has no Copy requirement of its own, so it records no failure: the proof reads the
+    // declaration's failed Constraint, whose record is reported (SPEC 23.1.2; DECISIONS BU-110).
     private void AcquireBinding(BoundMatch plan, int index)
     {
         var position = plan.PositionStorage[index];
@@ -656,11 +657,6 @@ public sealed partial class Binding
             : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
             : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
         plan.PositionStorage[index] = position with { Acquisition = acquisition };
-        if (proof == ConstraintProof.Error)
-        {
-            plan.Invalid = true;
-            plan.Coverage = new(MatchCoverageState.Invalid);
-        }
     }
 
     private void CalculateMatchCoverage(BoundMatch plan, BoundType? subject)
