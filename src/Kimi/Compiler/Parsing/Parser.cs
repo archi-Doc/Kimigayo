@@ -1712,67 +1712,22 @@ CloseParameters:
 
     private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false, bool optionalSuffix = true)
     {
-        // SPEC F.5: a grouped head takes a "." suffix only as ContinuesGroupedType allows. A Semantics prefix's Type has read its own
-        // suffixes, so a "." after it belongs to the enclosing construct.
+        // SPEC F.5: a grouped head takes suffixes only as ContinuesGroupedType allows.
         var start = reader.CurrentTokenRange.Start;
         var grouped = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
         var qualifier = grouped && IsBoundContainerQualifier(ref reader, out _);
         var left = ParseTypeInternal(ref reader, disambiguateGenerics);
+        if (left is not ErrorKoto && (!grouped || ContinuesGroupedType(ref reader, qualifier)))
+        {
+            left = ParseTypeSuffixes(ref reader, left, disambiguateGenerics);
+        }
+
         if (left is ErrorKoto)
         {
             return left;
         }
 
-        while (reader.CanRead)
-        {
-            var tokenKind = reader.CurrentTokenKind;
-            if (tokenKind == TokenKind.Dot)
-            {
-                if (left is TypeSemanticsKoto { Type: not null } || (grouped && !ContinuesGroupedType(ref reader, qualifier)))
-                {
-                    break;
-                }
-
-                grouped = false;
-                var operatorRange = reader.CurrentTokenRange;
-                reader.Advance();
-
-                var accessor = ParseTypeMember(ref reader);
-                if (accessor is ErrorKoto failed)
-                {
-                    // The member Name failed, so the qualified Type is the Error's recovery, as a failed head is.
-                    return new ErrorKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, failed.Span.End))) { Cause = failed.Cause };
-                }
-
-                left = new MemberAccessKoto(
-                    ref reader,
-                    SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
-                    left,
-                    accessor);
-            }
-            else if (tokenKind == TokenKind.LessThan)
-            {
-                // In a conversion, a following '<' may start a comparison.
-                // Type declarations and nested type arguments have no such ambiguity.
-                if (disambiguateGenerics && !OpensAdjacentTypeArguments(ref reader, left.Span))
-                {
-                    break;
-                }
-
-                left = ParseGenericsPostfix(ref reader, left);
-            }
-            else if (tokenKind == TokenKind.OpenParenthesis && !disambiguateGenerics &&
-                left is TypeSemanticsKoto { Type: null } or MemberAccessKoto or GenericsKoto or SyntaxFormKoto { Akind: KotoKind.RootName })
-            {
-                left = ParseOriginApplication(ref reader, left);
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        if (left is not TypeKoto && left is not ErrorKoto)
+        if (left is not TypeKoto)
         {
             left = new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, left.Span.End), left);
         }
@@ -1783,24 +1738,6 @@ CloseParameters:
         }
 
         return optionalSuffix ? ParseOptionalSuffix(ref reader, left, parseBorrowOrigin: !disambiguateGenerics) : left;
-
-        // After a '.', a member is a Name, whose Type arguments the loop reads, or a parenthesized Contract (SPEC 8.5); a fixed
-        // array or a root name there is where the Name was expected. A '/' after the member is left to the enclosing construct.
-        static Koto ParseTypeMember(ref TokenReader reader)
-        {
-            if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
-            {
-                return ParseBareParenthesizedType(ref reader);
-            }
-
-            if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
-            {
-                var cause = reader.Expect(SyntaxForm.Name);
-                return new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = cause };
-            }
-
-            return new TypeSemanticsKoto(ref reader, reader.Read());
-        }
 
         static Koto ParseTypeInternal(ref TokenReader reader, bool disambiguateGenerics)
         {
@@ -4703,7 +4640,7 @@ Separator:
             parameterList = true;
             if (parseContainerSuffix && ContinuesGroupedType(ref reader, qualifier))
             {
-                type = ParseGroupedContainerSuffix(ref reader, type);
+                type = ParseTypeSuffixes(ref reader, type, disambiguateGenerics: false);
                 parameterList = false;
             }
 

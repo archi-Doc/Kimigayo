@@ -22,6 +22,9 @@ public class AssociatedOriginBindingTest
     private const string OwnPick = Own + "    public init(v: ref/i32 during s) => self.v = v\n    public func read(self: ref/Self) -> ref/i32 during s => self.v\n" +
         "    public func pick(self: ref/Self, x: S#Item) -> ref/i32 during s => self.v\n";
 
+    private const string Lens = "contract Lens\n    associate View(a)\n    associate Plain\nstruct W {w}\n    Self is Lens\n    associate View(a) is ref/i32 during a\n" +
+        "    associate Plain is i32\n    public let c: ref/i32 during w\n";
+
     public static TheoryData<string, bool> ValidBases => Spellings(
         Base + "func f(a: ref/i32) -> ref/i32 during a\n    let w: S#Item = a\n    return w\n",
         Pair + "func f(a: ref/i32) -> ref/i32 during a\n    let w: (S#Item, C{x}) = (a, C.init(a))\n        origin x.s == a\n    return w.1.r\n",
@@ -69,6 +72,26 @@ public class AssociatedOriginBindingTest
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
+    }
+
+    // SPEC F.5, 8.5.4, 15.3.1: an OriginApplication follows a bound qualifier's projection as it follows a plain one, so each use binds
+    // with `(W during x)` exactly as with `W`: the valid ones without records, an invalid one with the plain spelling's record (G459).
+    [Theory]
+    [InlineData("func f(y: ref/i32 during x) -> i32\n    let v: HEAD.View(x) = y\n    return 0\n", "")]
+    [InlineData("func f(y: ref/i32 during x) -> i32\n    let v: HEAD.(Lens).View(x) = y\n    return 0\n", "")]
+    [InlineData("func f(y: ref/i32 during x) -> HEAD.View(x) => y\n", "")]
+    [InlineData("func f(y: ref/i32 during x, v: HEAD.View(x)) -> i32 => 0\n", "")]
+    [InlineData("func f(y: ref/i32 during x) -> i32\n    let v: HEAD.View = y\n    return 0\n", "InvalidAssociatedType_Kd")]
+    [InlineData("func f(y: ref/i32 during x) -> i32\n    let v: HEAD.View(x, x) = y\n    return 0\n", "InvalidAssociatedType_Kd")]
+    [InlineData("func f(y: ref/i32 during x) -> i32\n    let v: HEAD.Plain(x) = 1\n    return 0\n", "InvalidAssociatedType_Kd")]
+    [InlineData("func f(y: ref/i32 during x, z: ref/i32 during q) -> i32\n    let v: HEAD.View(x) = z\n    return 0\n", "UnprovenOriginRelation_Kd")]
+    public void ABoundQualifierAppliesTheFamilyAsAPlainHeadDoes(string use, string codes)
+    {
+        foreach (var head in (string[])["W", "(W during x)"])
+        {
+            var records = ContextualCaptureTest.PublishedRecords(Lens + use.Replace("HEAD", head, StringComparison.Ordinal) + "public func main() => ()\n");
+            Assert.True(codes == string.Join(' ', records.Select(static x => x.Code)), $"{head}: {string.Join(' ', records.Select(static x => $"{x.Code}@{x.Span.Start}"))}");
+        }
     }
 
     [Theory]
