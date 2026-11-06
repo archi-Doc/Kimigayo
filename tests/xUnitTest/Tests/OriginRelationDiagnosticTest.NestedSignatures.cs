@@ -109,8 +109,8 @@ public partial class OriginRelationDiagnosticTest
     // adds none (s4c; DECISIONS R4-M162: a nested signature's result is judged where it is written). h4: a call whose contextual `E.init()` needs q outlives r is valid
     // when the result is read while `long` lives (dev no longer reports G277 (4)'s Loan conflict). Its twin h4_n reads the result after
     // `short` ends: the call proves q outlives r for its instantiated Origins (SPEC 15.6.1, 15.6.4), so `short`'s Borrow must reach the
-    // `return` through `keep`, which no choice of regions allows: the Loan conflict at `short` (SPEC 15.6.6; since G216 (a) U3a's meet
-    // law). h6 declares the relation with `origin q outlives r`, and h9 assigns the result to another local.
+    // `return` through `keep`, which no choice of regions allows: the Loan conflict at `short` (SPEC 15.6.6; rejected since R6-check H5,
+    // when the MIR decides acceptance). h6 declares the relation with `origin q outlives r`, and h9 assigns the result to another local.
     [Theory]
     [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenConstraint_Kd .None")]
     [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None")]
