@@ -552,11 +552,11 @@ public sealed partial class Binding
         var plan = BoundClosure.Of(callee);
         var consuming = call && target.BoundType is { } calleeType && this.TryCallable(calleeType, this.ConstraintScope(node), out _, out var calleeReceiver) && calleeReceiver == SemanticsKind.Owner;
         var callNote = !call ? null : consuming ? objectCallee
-            ? "The call is Consuming (SPEC 7.7.3): it moves values out of the callee's environment, and an object payload offers no Take (SPEC 13.5.5)"
-            : "The call is Consuming (SPEC 7.7.3): it moves values out of the callee's environment, which a reference cannot supply, since a callable value is no read Type (SPEC 3.5.3, 7.3)"
+            ? "The call is Consuming (SPEC 7.7.3): it may move values out of the callee's environment, and an object payload offers no Take (SPEC 13.5.5)"
+            : "The call is Consuming (SPEC 7.7.3): it may move values out of the callee's environment, which a reference cannot supply, since a callable value is no read Type (SPEC 3.5.3, 7.3)"
             : plan is { ExclusiveReborrow: true, ExclusiveUse: { } use }
             ? $"The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference {use} exclusively"
-            : "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent";
+            : "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because a call of the callee may change its environment, or use it or what it reaches with exclusive access";
         if (code != DiagnosticCode.InvalidAssignment_Kd)
         {
             var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
