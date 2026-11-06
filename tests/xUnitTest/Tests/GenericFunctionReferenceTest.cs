@@ -17,6 +17,7 @@ public class GenericFunctionReferenceTest
     private const string Show = "func show(value: i32) -> () => Console.writeLine(\"plain\")\nfunc show<T>(value: T) -> () => Console.writeLine(\"generic\")\n";
     private const string Invoke = "func invoke<F>(action: ref/F) -> ()\n    F is Callable<(i32) -> ()>\n    action(1)\n";
     private const string Apply = "func apply<F>(action: ref/F, value: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\n";
+    private const string ApplyOwned = "func applyOwned<T>(action: (T) -> T, value: T) -> T => action(value@move)\n";
     private const string FirstOf = "func firstOf<T>(a: T, b: ref/i32) -> T => a@move\n";
     private const string Pick = "func pick<T>(a: T, b: T) -> T => a@move\n";
     private const string ResultOnly = "func g<T>(a: ref/i32, b: ref/i32) -> T => $abort(\"never\")\n";
@@ -86,6 +87,28 @@ public class GenericFunctionReferenceTest
         Assert.True(error.Text is "identity" or "pair" or "keep", error.ToString() + " " + error.Text); // Located at the reference.
         Assert.DoesNotContain("per-call", error.Note, StringComparison.Ordinal);
         Assert.Contains("Type parameters are bound from the expected signature", error.Note, StringComparison.Ordinal); // Owned failures: ErasureOwnedDiagnosticTest.
+    }
+
+    // SPEC 3.8, 7.7.4, 10.8 (PLAN G511): an explicit Type argument is kept, so one that differs from the binding S gives, in a primitive
+    // only, also in a Tuple element, an Option payload, a referent or a parameter's Function Type, is a Type mismatch at the reference.
+    // Its valid twins are ReferenceSlotCounterpartsAreAccepted's.
+    [Theory]
+    [InlineData(Identity + "let e: (i64) -> i64 = identity<i32>", "identity<i32>")]
+    [InlineData(Identity + "let e: (u32) -> u32 = identity<i32>", "identity<i32>")]
+    [InlineData(Identity + "let e: (Wrapping<i32>) -> Wrapping<i32> = identity<i32>", "identity<i32>")]
+    [InlineData(Identity + "let e: (string) -> string = identity<char>", "identity<char>")]
+    [InlineData(Identity + "let e: ((i64, i32)) -> (i64, i32) = identity<(i32, i32)>", "identity<(i32, i32)>")]
+    [InlineData(Identity + "let e: (i64?) -> i64? = identity<i32?>", "identity<i32?>")]
+    [InlineData(Identity + "let e: (ref/i64 during static) -> ref/i64 during static = identity<ref/i32>", "identity<ref/i32>")]
+    [InlineData(Identity + "let e: ((i64) -> i64) -> (i64) -> i64 = identity<(i32) -> i32>", "identity<(i32) -> i32>")]
+    [InlineData(ApplyOwned + "let e: ((i64) -> i64, i64) -> i64 = applyOwned<i32>", "applyOwned<i32>")]
+    public void AWrittenArgumentThatTheSignatureDoesNotGiveIsATypeMismatch(string source, string reference)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), reference), (error.Code, error.Text));
     }
 
     // SPEC 10.6, 15.3.6: a slot that only a per-call Origin of the fixed expected call signature would satisfy is one
@@ -244,6 +267,14 @@ public class GenericFunctionReferenceTest
     [InlineData("func keep<T>(f: T) -> T => f@move\nlet m: ((ref/i32) -> ref/i32) -> (ref/i32) -> ref/i32 = keep")]
     [InlineData(ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)")]
     [InlineData(ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(func (a, b) => g(a, b), x@ref, x@ref)")]
+    [InlineData(Identity + "let e: (i64) -> i64 = identity<i64>")]
+    [InlineData(Identity + "let e: (Wrapping<i32>) -> Wrapping<i32> = identity<Wrapping<i32>>")]
+    [InlineData(Identity + "let e: (char) -> char = identity<char>")]
+    [InlineData(Identity + "let e: ((i64, i32)) -> (i64, i32) = identity<(i64, i32)>")]
+    [InlineData(Identity + "let e: (i64?) -> i64? = identity<i64?>")]
+    [InlineData(Identity + "let e: (ref/i64 during static) -> ref/i64 during static = identity<ref/i64>")]
+    [InlineData(Identity + "let e: ((i64) -> i64) -> (i64) -> i64 = identity<(i64) -> i64>")]
+    [InlineData(ApplyOwned + "let e: ((i64) -> i64, i64) -> i64 = applyOwned<i64>")]
     public void ReferenceSlotCounterpartsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

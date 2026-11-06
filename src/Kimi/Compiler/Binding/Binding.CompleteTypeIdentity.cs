@@ -22,7 +22,7 @@ public sealed partial class Binding
             return equal;
         }
 
-        equal = left.Kind != BoundTypeKind.Primitive && left.SameExceptOrigins(right) && ReferenceEquals(left.Origin, right.Origin) &&
+        equal = left.SameExceptOrigins(right) && ReferenceEquals(left.Origin, right.Origin) &&
             ((BoundOrigin[])left.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])right.OriginArguments);
         if (equal && left.Kind == BoundTypeKind.Function)
         {
