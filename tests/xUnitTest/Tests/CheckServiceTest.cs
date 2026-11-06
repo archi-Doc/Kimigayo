@@ -543,6 +543,16 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Contains(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidTestDefinition_Kd));
     }
 
+    // DECISIONS R4-M178 (PLAN G444): the LSP's and `check --json`'s path runs every phase on a compiler thread, so 200 nested calls,
+    // which overflowed dev's 1.5 MB bind walk from about 138, are checked and accepted.
+    [Fact]
+    public void ADeepProgramIsCheckedOnACompilerThread()
+    {
+        var output = this.Run(this.WriteProject("Deep", ("main.kimi", CompilationEntryTest.Calls(200))));
+        Assert.Equal(CheckOutcome.Completed, output.Outcome);
+        Assert.True(output.Accepted);
+    }
+
     private static SourceIdentity Location(CheckOutput output, CheckDiagnostic diagnostic)
         => diagnostic.Source < 0 ? default : SourceIdentity.FromPath(output.Sources[diagnostic.Source].Path);
 

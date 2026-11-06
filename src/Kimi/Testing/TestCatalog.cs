@@ -75,6 +75,16 @@ internal sealed class TestCatalog
 
     internal void Discover(Compilation compilation)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            CompilerThread.Run((this, compilation), static s =>
+            {
+                s.Item1.Discover(s.compilation);
+                return default(ValueTuple);
+            });
+            return;
+        }
+
         this.Cases.Clear();
         this.Sites.Clear();
         this.siteIds.Clear();

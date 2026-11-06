@@ -3,6 +3,7 @@
 using System.Buffers;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Kimi.Compiler;
 using Xunit;
 using Xunit.v3;
 
@@ -39,7 +40,7 @@ public class AllocationMeasurementTest
         var isolated = true;
         var bytes = AllocationMeasurement.Measure(() =>
         {
-            isolated &= Environment.CurrentManagedThreadId != runnerThread && context.Value is null;
+            isolated &= Environment.CurrentManagedThreadId != runnerThread && context.Value is null && CompilerThread.IsCurrent;
             calls++;
         });
         Assert.True(isolated);
@@ -53,20 +54,20 @@ public class AllocationMeasurementTest
     public void DetectsAllocatingWork()
         => Assert.True(AllocationMeasurement.Measure(() => GC.KeepAlive(new byte[128])) >= 128 * AllocationMeasurement.MeasuredOperations);
 
-    // MeasureOnce runs its operation exactly once, on the calling thread, and reports that run's allocation: none here.
+    // MeasureOnce runs its operation exactly once, on a compiler thread (DECISIONS R4-M178), and reports that run's allocation:
+    // none here.
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void MeasureOnceRunsOnceOnTheCallingThread()
+    public void MeasureOnceRunsOnceOnACompilerThread()
     {
-        var callingThread = Environment.CurrentManagedThreadId;
         var calls = 0;
-        var onCaller = true;
+        var onCompilerThread = true;
         var bytes = AllocationMeasurement.MeasureOnce(() =>
         {
-            onCaller &= Environment.CurrentManagedThreadId == callingThread;
+            onCompilerThread &= CompilerThread.IsCurrent;
             calls++;
         });
-        Assert.True(onCaller);
+        Assert.True(onCompilerThread);
         Assert.Equal(1, calls);
         Assert.Equal(0, bytes);
     }

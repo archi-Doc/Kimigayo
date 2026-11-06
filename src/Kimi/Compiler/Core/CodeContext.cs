@@ -108,6 +108,16 @@ public sealed class CodeContext
     /// <exception cref="InvalidOperationException">This context already belongs to a source snapshot.</exception>
     public void Parse(DeclarationContainerKoto parentKoto, SourceDocument sourceDocument, string? producingModId = null, int additionOrder = 0)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            CompilerThread.Run((this, parentKoto, sourceDocument, producingModId, additionOrder), static s =>
+            {
+                s.Item1.Parse(s.parentKoto, s.sourceDocument, s.producingModId, s.additionOrder);
+                return default(ValueTuple);
+            });
+            return;
+        }
+
         ArgumentNullException.ThrowIfNull(parentKoto);
         ArgumentNullException.ThrowIfNull(sourceDocument);
         ArgumentOutOfRangeException.ThrowIfNegative(additionOrder);

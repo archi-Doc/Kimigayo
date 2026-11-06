@@ -430,6 +430,16 @@ public sealed partial class Kotonoha
 
     private void ParseSource(SourceDocument sourceDocument, string? modId = null, int additionOrder = 0)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            CompilerThread.Run((this, sourceDocument, modId, additionOrder), static s =>
+            {
+                s.Item1.ParseSource(s.sourceDocument, s.modId, s.additionOrder);
+                return default(ValueTuple);
+            });
+            return;
+        }
+
         this.Compilation.BeginSourceParsing(this);
 
         // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.

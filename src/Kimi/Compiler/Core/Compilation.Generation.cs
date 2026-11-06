@@ -59,6 +59,11 @@ public partial class Compilation
     /// one problem.</remarks>
     internal bool Generate(TextWriter writer)
     {
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run((this, writer), static s => s.Item1.Generate(s.writer));
+        }
+
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission); // The partition is the latest request's (DECISIONS R5-M165).
         if (!this.Accepts)
         {

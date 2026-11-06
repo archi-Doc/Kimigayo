@@ -251,6 +251,92 @@ public sealed class CompilationEntryTest
         Assert.Equal(expected, TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}"));
     }
 
+    // DECISIONS R4-M178 (PLAN G444): each public phase entry is a site that runs its walk on a compiler thread, so a valid program
+    // nested deeper than a 1.5 MB stack holds, within U2's syntax depth 1,024, is accepted and generated from the test's thread. By
+    // PLAN G444's triage, each Fact's depth exceeds what its own site's walk held on 1.5 MB (about the depth its comment names,
+    // Release), so it needs its own site; without any site each overflowed (U1-b's fail-first runs; in a Debug host the CheckBound and
+    // BuildMir Facts overflow first in the parser).
+    [Fact]
+    public void AddSourceParsesOnACompilerThread() // `if` 300; the parser overflowed from about 200.
+        => AcceptsAndGenerates(Source(NestedIfs(300)));
+
+    [Fact]
+    public void CodeContextParseParsesOnACompilerThread() // Parentheses 600; the parser overflowed from about 380.
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Parentheses(600));
+        AcceptsAndGenerates(c);
+    }
+
+    [Fact]
+    public void BindBindsOnACompilerThread() // Calls 200; the bind walk overflowed from about 89 in Debug, 138 in Release.
+        => AcceptsAndGenerates(Source(Calls(200)));
+
+    [Fact]
+    public void CheckBoundPublishesOnACompilerThread() // Labeled `do` values 200; the HIR publish overflowed from about 150.
+    {
+        var c = Source(LabeledDos(200));
+        AcceptsAndGenerates(c);
+        Assert.True(c.Binding.CheckBound().IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    [Fact]
+    public void BuildMirBuildsOnACompilerThread() // Calls 480; the MIR builder overflowed from about 450.
+        => AcceptsAndGenerates(Source(Calls(480)));
+
+    // G444's probe shapes: `public func f(c: bool) -> i32` with `depth` nested levels.
+    internal static string NestedIfs(int depth)
+    {
+        var source = new System.Text.StringBuilder("public func f(c: bool) -> i32\n");
+        for (var i = 0; i < depth; i++)
+        {
+            source.Append(' ', 4 * (i + 1)).Append("if c\n");
+        }
+
+        return source.Append(' ', 4 * (depth + 1)).Append("let z = 1\n    return 1\n").ToString();
+    }
+
+    internal static string Parentheses(int depth)
+        => $"public func f(c: bool) -> i32\n    return {new string('(', depth)}1{new string(')', depth)}\n";
+
+    internal static string Calls(int depth)
+        => $"func g(x: i32) -> i32 => x\npublic func f(c: bool) -> i32\n    return {string.Concat(Enumerable.Repeat("g(", depth))}1{new string(')', depth)}\n";
+
+    internal static string LabeledDos(int depth)
+    {
+        var source = new System.Text.StringBuilder("public func f(c: bool) -> i32\n");
+        for (var i = 0; i < depth; i++)
+        {
+            source.Append(' ', 4 * (i + 1)).Append($"let y{i}: i32 = label a{i}: do\n");
+        }
+
+        source.Append(' ', 4 * (depth + 1)).Append($"exit to a{depth - 1} 1\n");
+        for (var i = depth - 1; i > 0; i--)
+        {
+            source.Append(' ', 4 * (i + 1)).Append($"exit to a{i - 1} y{i}\n");
+        }
+
+        return source.Append("    return y0\n").ToString();
+    }
+
+    private static Compilation Source(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Deep.kimi", source));
+        return c;
+    }
+
+    // Accepted, reported and generated, as a Library build runs them.
+    private static void AcceptsAndGenerates(Compilation c)
+    {
+        Assert.True(Analyze(c, OutputKind.Library), MinimalEmissionTest.Describe(c));
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.True(c.Accepts && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+    }
+
     private static bool Analyze(Compilation c, OutputKind output)
         => c.Bind().IsComplete && (c.IsTestBuild ? c.Binding.CheckTestStartup() : c.Binding.CheckStartup(output)).IsComplete && c.Analyze().IsVerified;
 }

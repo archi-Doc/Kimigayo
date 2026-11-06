@@ -5597,6 +5597,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
     states in 15.6.4 item 1 that a call writes "never a holder that only a shared Loan names", and 5.2.1 condition 3 gives no write
     authority through a shared Loan; R4-M73's "with no exclusion" (2026-10-19) predates that text.
   - Out of scope: reads past a shared layer (G419's read-only Loan variant).
+- **R4-M178 The compile stack: compiler threads with a 64 MB reserve (PLAN G444 U1)** (2026-11-06; the owner (board O-20, R5's
+  dialog), verbatim 「推奨どおり承認」: Q3 c1, `Compilation` runs on its own thread; Q2 S = 64 MB, L = 1,024 being U2's; design D9
+  revision 1, its review's re-check ACCEPT; class Major) SPEC 23; IMPL A.4.
+  - Owner: `CompilerThread` (`Core/CompilerThread.cs`), the one runner and the one thread maker, owns S = 64 MB, IMPL A.4's host stack.
+    `Create` makes every compiler thread: a background thread with S, started by `UnsafeStart`, so it keeps no creator context. `Run`
+    (a hop) runs a site's work on a pooled worker under the caller's captured ExecutionContext, else under the worker's start context,
+    and rethrows its exception on the caller (`ExceptionDispatchInfo`); a site on a compiler thread runs inline, and `Run` refuses a
+    caller that is one, so no compiler thread waits on another. One process-wide LIFO pool, which grows to the peak number of
+    concurrent callers and never shrinks; a worker pools itself before it signals; a warm hop allocates nothing.
+  - How O-20 Q3 is met: BU's c1 put `Compilation`'s public phase entries on one compiler thread. A pool in Core with sites in
+    Binding, Checking and Testing meets it, because one thread per process would serialize xUnit's parallel classes.
+  - Scope rule: the covered callers are the product hosts (CLI, LSP, Playground, Benchmark in process) and every caller of a public
+    phase entry. A site is a public phase entry, or a member a product host calls outside the entries, that starts a walk recursing on
+    syntax depth or Type height; it begins with the site pattern (`CompilerThread`'s header). A new site adds a row here and a test,
+    and U2's L needs its 3.5× margin on S for each such walk. Sites (U1-b): `Kotonoha.ParseSource`,
+    `CodeContext.Parse(DeclarationContainerKoto, SourceDocument, string?, int)`, `Binding.Bind(BindingMode)`, `Binding.CheckBound()`,
+    `Compilation.BuildMir()`, `Compilation.ReportAnalysis()`, `Compilation.Generate(TextWriter)`, `TestCatalog.Discover(Compilation)`
+    and `CheckService.Run`. Not sites: members that start no walk (`Prepare`, `CheckStartup`, `CheckTestStartup`,
+    `ReportStartupDiagnostics`, `ReportDiagnostics`, `Finalize`), bounded inputs (the library parse, Markdown at depth 256) and the
+    LSP's snapshot reads. Exempt: tests and benchmarks that call internal components directly (`HirTables.Publish`,
+    `new MirBuilder(c).Build()`, `InstanceCollector.Run`, `HoverBuilder.Create`, `ConstructMir` from CompilerPipelineBenchmark, also in
+    BDN's child process, and ParseBenchmark), on fixed inputs below the 1.5 MB depths; a deep row enters through a site.
+  - Measurement on compiler threads: `AllocationMeasurement.Measure` makes its thread with `Create`; `MeasureOnce`, `MeasureSeries`
+    and Benchmark's `Main` begin with the site pattern, so measured work stays on the measuring thread. `MeasureHops`, the tests' new
+    window (ArchitectureRulesTest's sites in AllocationMeasurement), measures a hop from a plain thread and assumes an isolated
+    collection. MeasureOnce's row asserts a
+    compiler thread instead of the calling thread, an expectation change O-20 requires. BDN's memory column reads
+    `GC.GetTotalAllocatedBytes`, which counts the workers; BDN timings across U1 compare only with both sides on U1, or with the hop
+    cost stated.
+  - Rejected: `DOTNET_DefaultStackSize` (G444's triage: it does not change the host's stack), stack probes, iterative walks (U2 bounds
+    the depth), c2's four per-host threads, one thread per process (it serializes xUnit) or per `Compilation` (no end of life), and a
+    Task per hop (a 1.5 MB pool stack and an allocation per hop).
+  - O-24: the owner (R4's dialog, 2026-11-06), verbatim 「O-24 は、bでお願いいたす」: the transfer is a named exception of 'Catch
+    boundaries'.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

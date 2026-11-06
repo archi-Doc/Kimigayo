@@ -5,6 +5,7 @@ using System.Diagnostics.Tracing;
 using System.Globalization;
 using System.Reflection.Emit;
 using System.Runtime;
+using Kimi.Compiler;
 
 namespace XunitTest;
 
@@ -40,15 +41,15 @@ internal static class AllocationMeasurement
 
     private static readonly CompileEvents Compiles = new();
 
-    // Keep test-runner execution context and thread setup outside the measured interval. The result is the largest
-    // allocation of MeasuredOperations consecutive operations of the valid window, the whole standard window.
-    // Zero remains a strict assertion at every call site.
+    // Keep test-runner execution context and thread setup outside the measured interval: the operation runs on a compiler thread
+    // of its own (CompilerThread.Create), where every site runs inline. The result is the largest allocation of MeasuredOperations
+    // consecutive operations of the valid window, the whole standard window. Zero remains a strict assertion at every call site.
     internal static long Measure(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
         long allocated = 0;
         Exception? failure = null;
-        var thread = new Thread(() =>
+        ThreadStart measure = () =>
         {
             try
             {
@@ -98,11 +99,8 @@ internal static class AllocationMeasurement
             {
                 failure = exception;
             }
-        }) { IsBackground = true };
-        using (ExecutionContext.SuppressFlow())
-        {
-            thread.Start();
-        }
+        };
+        var thread = CompilerThread.Create(measure);
 
         // The bound only stops a hung measurement. A parallel Debug run can take several times longer than an isolated one, so
         // it is generous, for each window; the zero-byte assertions at the call sites are unchanged.
@@ -120,11 +118,16 @@ internal static class AllocationMeasurement
     }
 
     // The allocation of one run of an operation that cannot repeat on its state: a cold first build or analysis, or a designed
-    // second pass. Measure is the rule otherwise. It runs on the calling thread, after the step that retires the thread's
-    // allocation context; no warm-up, no repeated or retried window and no excused cause.
+    // second pass. Measure is the rule otherwise. It runs on a compiler thread, the calling thread when it is one, after the step
+    // that retires the thread's allocation context; no warm-up, no repeated or retried window and no excused cause.
     internal static long MeasureOnce(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run(operation, static operation => MeasureOnce(operation));
+        }
+
         RetireAllocationContext();
         var before = GC.GetAllocatedBytesForCurrentThread();
         operation();
@@ -141,6 +144,11 @@ internal static class AllocationMeasurement
     internal static long[] MeasureSeries(int count, Func<int, Action> fresh)
     {
         ArgumentNullException.ThrowIfNull(fresh);
+        if (!CompilerThread.IsCurrent)
+        {
+            return CompilerThread.Run((count, fresh), static series => MeasureSeries(series.count, series.fresh));
+        }
+
         fresh(0)();
         var allocated = new long[count];
         for (var i = 0; i < count; i++)
@@ -149,6 +157,34 @@ internal static class AllocationMeasurement
         }
 
         return allocated;
+    }
+
+    // The allocation of a warm hop (CompilerThread.Run), on its caller and on its worker, which no window on a compiler thread takes:
+    // Run refuses such a caller. From the calling thread, not a compiler thread: the standard warm-up of hops, the step that retires
+    // the allocation contexts, then MeasuredOperations hops on one worker, each reading that worker's counter. The result is the
+    // caller's allocation over the hops and the worker's between its first and last reading; no repeated or retried window. It needs
+    // an isolated collection (AllocationIsolationCollection): another test's hop could take the worker between two hops, and the
+    // measurement then fails ("two workers").
+    internal static (long Caller, long Worker) MeasureHops()
+    {
+        for (var i = 0; i < WarmupOperations; i++)
+        {
+            CompilerThread.Run(0, Reading);
+        }
+
+        RetireAllocationContext();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var first = CompilerThread.Run(0, Reading);
+        var last = first;
+        for (var i = 1; i < MeasuredOperations; i++)
+        {
+            last = CompilerThread.Run(0, Reading);
+        }
+
+        var caller = GC.GetAllocatedBytesForCurrentThread() - before;
+        return first.Worker == last.Worker ? (caller, last.Allocated - first.Allocated) : throw new InvalidOperationException("The hops ran on two workers.");
+
+        static (int Worker, long Allocated) Reading(int unused) => (Environment.CurrentManagedThreadId, GC.GetAllocatedBytesForCurrentThread());
     }
 
     // A runtime pause that is not a collection can charge the unused tail of a partially used allocation context (up to ~8 KB)
