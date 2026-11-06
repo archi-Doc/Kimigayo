@@ -90,8 +90,9 @@ public class GenericFunctionReferenceTest
     }
 
     // SPEC 3.8, 7.7.4, 10.8 (PLAN G511): an explicit Type argument is kept, so one that differs from the binding S gives, in a primitive
-    // only, also in a Tuple element, an Option payload, a referent or a parameter's Function Type, is a Type mismatch at the reference.
-    // Its valid twins are ReferenceSlotCounterpartsAreAccepted's.
+    // only, also in a Tuple element, an Option payload, a referent or a parameter's Function Type, or of a method value, is a Type
+    // mismatch at the reference. At a per-call signature a different referent is this mismatch, not the per-call slot record that
+    // APerCallOriginLeavesTheReferenceSlotUnsolved's Explicit row gives. Its valid twins are ReferenceSlotCounterpartsAreAccepted's.
     [Theory]
     [InlineData(Identity + "let e: (i64) -> i64 = identity<i32>", "identity<i32>")]
     [InlineData(Identity + "let e: (u32) -> u32 = identity<i32>", "identity<i32>")]
@@ -100,8 +101,10 @@ public class GenericFunctionReferenceTest
     [InlineData(Identity + "let e: ((i64, i32)) -> (i64, i32) = identity<(i32, i32)>", "identity<(i32, i32)>")]
     [InlineData(Identity + "let e: (i64?) -> i64? = identity<i32?>", "identity<i32?>")]
     [InlineData(Identity + "let e: (ref/i64 during static) -> ref/i64 during static = identity<ref/i32>", "identity<ref/i32>")]
+    [InlineData(Identity + "let e: (ref/i64) -> ref/i64 = identity<ref/i32>", "identity<ref/i32>")]
     [InlineData(Identity + "let e: ((i64) -> i64) -> (i64) -> i64 = identity<(i32) -> i32>", "identity<(i32) -> i32>")]
     [InlineData(ApplyOwned + "let e: ((i64) -> i64, i64) -> i64 = applyOwned<i32>", "applyOwned<i32>")]
+    [InlineData(Counter + "let e: (ref/Counter, i64) -> i64 = Counter.pick<i32>", "Counter.pick<i32>")]
     public void AWrittenArgumentThatTheSignatureDoesNotGiveIsATypeMismatch(string source, string reference)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -275,6 +278,7 @@ public class GenericFunctionReferenceTest
     [InlineData(Identity + "let e: (ref/i64 during static) -> ref/i64 during static = identity<ref/i64>")]
     [InlineData(Identity + "let e: ((i64) -> i64) -> (i64) -> i64 = identity<(i64) -> i64>")]
     [InlineData(ApplyOwned + "let e: ((i64) -> i64, i64) -> i64 = applyOwned<i64>")]
+    [InlineData(Counter + "let e: (ref/Counter, i64) -> i64 = Counter.pick<i64>")]
     public void ReferenceSlotCounterpartsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
