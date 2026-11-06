@@ -278,7 +278,7 @@ public sealed partial class Binding
                         ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
-                if (!this.FitsTypeAt(result, expected, use, out var failure) && !this.CheckLocalTypeUse(result, expected, use))
+                if (!this.FitsValueAt(result, expected, use, use, out var failure))
                 {
                     return this.RecordMismatch(use, use, result, expected, failure);
                 }
@@ -551,8 +551,7 @@ public sealed partial class Binding
             // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
             // Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
             var fits = this.AdaptInput(source, type, actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
-                (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsTypeAt(adaptedType, type, source, out failure) ||
-                this.CheckLocalTypeUse(adaptedType, type, source));
+                (this.FailStaticBorrow(source, kind, type.Semantics) || this.FitsValueAt(adaptedType, type, source, source, out failure));
             var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
                 ? deferred : default(AcquisitionFailure?);
             if (acquisition is { } failed)

@@ -314,7 +314,7 @@ public sealed partial class Binding
                 ? Complete(binary, result) : this.FailMismatch(binary, binary.Right, right, BoundType.ISize, ComparisonFailure.Shape);
         }
 
-        if (!this.FitsTypeAt(right, left, binary, out var fit) && !this.CheckLocalTypeUse(right, left, binary.Right))
+        if (!this.FitsValueAt(right, left, binary, binary.Right, out var fit))
         {
             return this.FailMismatch(binary, binary.Right, right, left, fit);
         }
