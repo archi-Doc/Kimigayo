@@ -9505,10 +9505,15 @@ resumed by R4-M86 (2026-10-20).
     compilation a break throws at its site (`BrokenContract`) and ends the check as `CheckFaulted_Kd`, as `Binding.Readable` does
     (BU-36). The walk's version, a slice's index and an atom are stored only after their checks pass, and the part check runs at every
     read, so every later read throws again. In an incomplete compilation the state rests on a Binding failure, and the view keeps it.
-  - The contract, each condition by construction: no row with no body is left (the declaration judge consumes every one whose ends are
-    declaration atoms, BU-26, BU-89, and a header names no other: a body stamps each non-declaration atom, R4-M101 E1); a case binder
-    is its body's (only a declaration's scope declares a pair binder); every atom has a class and none is Dependent (E1; only a Binding
-    failure leaves an Unbound or pending atom, R4-M118); a unit names a non-Fixed atom of its own part or of none.
+  - The contract, each condition by construction but for the unverified cases below: no row with no body is left (the declaration
+    judge consumes every one whose ends are declaration atoms, BU-26, BU-89, and a header names no other: a body stamps each
+    non-declaration atom, R4-M101 E1); a case binder is its body's (only a declaration's scope declares a pair binder); every atom has a
+    class and none is Dependent (E1; only a Binding failure leaves an Unbound or pending atom, R4-M118); a unit names a non-Fixed atom of
+    its own part or of none.
+  - Unverified (R4-M118's two cases, carried forward by PLAN G440): an Unbound atom left by path d (`PendingAssociatedType`'s early
+    return) or at a use outside its owner's subtree that `OriginAtUse` cannot resolve. R4-M118's guard (F) closed them; this throw now
+    does. Showing that a later bind completes every Type that return leaves or an Error rests on it, and that no row or atom names an
+    Unbound atom outside its owner's subtree, verifies them.
   - Part rule (E4, one form on both paths): an atom's part is its forming unit's (`PartOf`: 1 the constructor's body, 2 its layer, a
     meet its operands'), as R4-M114 gave an atom MIR reads; a declaration atom or another body's belongs to no part. Rows gave every end
     their row's part, so a callee's Unclassed Parameter atoms (PLAN G195) named by both parts reached both: dev's finding, the first

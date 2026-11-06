@@ -14,7 +14,10 @@
 // atom, R4-M118); a unit names a non-Fixed atom of its own part or of none (an atom's part is its forming unit's, E4, and one body forms
 // a meet's operands). A break throws at its site in a complete compilation, ending the check as CheckFaulted_Kd (BrokenContract); the
 // pass's state is stored only after its check passes, so every later read throws again. In an incomplete compilation such a state rests
-// on a Binding failure (SPEC 23.1.2, R4-M118) and the view keeps it.
+// on a Binding failure (SPEC 23.1.2, R4-M118) and the view keeps it. Unverified (R4-M118, BU-102): an Unbound atom left by path d
+// (PendingAssociatedType's early return) or at a use outside its owner's subtree that OriginAtUse cannot resolve, which only the throw
+// closes; showing that a later bind completes every Type that return leaves or an Error rests on it, and that no row or atom names an
+// Unbound atom outside its owner's subtree, verifies them.
 // Must not: judge a relation, decode a slot for MIR, or keep a broken contract for a later reader.
 
 using Kimi.Compiler.Parsing;
