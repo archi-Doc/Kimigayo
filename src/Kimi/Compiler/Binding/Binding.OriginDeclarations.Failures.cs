@@ -66,6 +66,11 @@ public sealed partial class Binding
         declaration.Failure ??= clause;
     }
 
+    // The failed clause an owner's InvalidOrigin failure rests on (FailOriginClause), or null: such an owner failed only by that clause.
+    private Koto? FailedOriginClause(Koto owner)
+        => owner.BindingFailure == BindingFailure.InvalidOrigin && this.originDeclarations.TryGetValue(owner, out var declaration) &&
+            declaration.Failure is { } clause && this.partPrerequisites.TryGetValue(owner, out var cause) && ReferenceEquals(cause, clause) ? clause : null;
+
     // SPEC 15.3.3: a local's clauses are checks that assume nothing, so when each of its failed clauses names a bound Origin, only the
     // inference variables they name rest on the failure (RestsOnFailedClause) and the completion goes on. A contract's failed clause, or
     // a clause that names no bound Origin, makes the whole contract unavailable. Returns whether it did, which ends the completion.

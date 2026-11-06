@@ -242,6 +242,7 @@ public sealed partial class Binding
 
             var proof = declarationProof;
             IsKoto? specification = null;
+            Koto? resting = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -422,16 +423,31 @@ public sealed partial class Binding
 
                 var selected = match.Member!;
                 var selection = match.Selection;
-                var compatibility = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope, selection);
+                var implementation = (FunctionKoto)selected.Declaration;
+                var compatibility = this.CompatibleRequirement(conformance, function, implementation, self, scope, selection);
                 if (compatibility is ConstraintProof.Error or ConstraintProof.Refuted)
                 {
                     return Invalid(BindingFailure.IncompatibleImplementation);
+                }
+
+                // SPEC 23.1.2: a function failed by its Origin clause was compared without its relations, so this requirement rests on
+                // that clause; the other requirements are still judged, and the conformance fails, derived, only when none of them does.
+                if ((this.FailedOriginClause(function) ?? this.FailedOriginClause(implementation)) is { } clause)
+                {
+                    resting ??= clause;
+                    continue;
                 }
 
                 proof = CombineProof(proof, compatibility, true);
                 var witness = new BoundWitness(identity, selected, this.FunctionWitness(conformance, identity));
                 conformance.WitnessStorage.Add(witness);
                 conformance.WitnessMap.Add(identity, witness);
+            }
+
+            if (resting is not null)
+            {
+                this.AddPrerequisite(conformance.Use, resting);
+                return Invalid(BindingFailure.IncompatibleImplementation);
             }
 
             proof = UnsupportedProof(conformance, proof);
@@ -522,7 +538,11 @@ public sealed partial class Binding
 
     private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (requirement.BindingState == BindingState.Invalid || implementation.BindingState == BindingState.Invalid || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
+        // SPEC 23.1.2: the comparison reads each function's parts, not its verdict. A function whose failure is its Origin declaration's
+        // (FailedOriginClause) keeps every other part and is compared with that contract unavailable (FailOriginDeclaration).
+        if ((requirement.BindingState == BindingState.Invalid && this.FailedOriginClause(requirement) is null) ||
+            (implementation.BindingState == BindingState.Invalid && this.FailedOriginClause(implementation) is null) ||
+            ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
             return ConstraintProof.Error;
         }

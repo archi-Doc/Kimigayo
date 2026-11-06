@@ -439,7 +439,8 @@ public sealed partial class Binding
         }
 
         this.failedCallClause = null;
-        if (!this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison))
+        if ((this.originDeclarations.TryGetValue(function, out var declaration) && declaration.Failure is not null) ||
+            !this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison))
         {
             this.contractFailure = this.failedCallClause is { } clause
                 ? new ComparisonFailure(ComparisonFailureKind.Clause, clause.Longer, clause.Shorter, clause.Equality, comparison) { Clause = clause.Syntax }

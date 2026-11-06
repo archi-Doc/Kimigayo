@@ -544,17 +544,14 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.3.7: whether the declared relations of `function` hold at `use`. A failed declaration keeps none (FailOriginDeclaration);
+    // its reader decides what that means: a function value's fit fails (ContractFits), a conformance rests on the clause (VerifyConformance).
     private bool CheckCallOriginRelations(
         Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, in CallableInstance comparison)
     {
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {
             return true;
-        }
-
-        if (declaration.Failure is not null)
-        {
-            return false;
         }
 
         foreach (var relation in declaration.Relations)
