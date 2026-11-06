@@ -519,7 +519,7 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Same(exception, thrown);
     }
 
-    // SPEC 23.4: the dependency lock's read catches only its own failures, so a pending lock read propagates out of the check unchanged (PLAN G48).
+    // SPEC 23.4: the dependency lock's read catches only its own failures, so a pending lock read propagates out of the check unchanged.
     [Fact]
     public void APendingLockFileReadPropagatesOutOfTheCheck()
     {

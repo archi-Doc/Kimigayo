@@ -43,7 +43,7 @@ Work policy (commit and push per unit, a final Session per working session) is i
 - **Virtual/object creation:** The accepted [C1–C2 / V1–V6 plan](../../draft/Changes/2026-10-07%20Virtual%20Override.md#92-作業単位) remains active at inherited conformance projection (G83), exclusive OCC/receiver value-flow evidence, artifact/CSP publication and final measurements. STATUS owns the detailed support boundary.
 - **P38:** exclusive projections remain in OCC-X. The P38 completion review is the user's decision.
 - **Implementation order (resumes after the compiler reduction's R6; P42's remainder starts after R6-check's acceptance flip, unit H5 (landed), once its post-merge sweep passes (H0b §7; DECISIONS R5-M13):** P42's remainder first, then P38 → P39 → P41 → OCC-X → P43, alternating timed sessions with shared-object P40. Under the R7, R8 and R9 plan (RQ5, RQ17; DECISIONS R7-M1): P42's design package runs beside R7's first units in the middle and back sessions and its Binding part lands after R7-N1 and V2; the rest of this order follows R7's exit, in the front session's lane. Next default timed target: the U7 remainder (§4's U7 row). Independent repairs do not change this order; sessions run one at a time in this working tree.
-- **Audits:** G424 (from G55), G47/G48 and [DIAGNOSTICS §11](DIAGNOSTICS.md#11-audit-findings-d1) retain unresolved findings. Finalized milestone design rules remain in SPEC/IMPL.
+- **Audits:** G424 (from G55), G47 and [DIAGNOSTICS §11](DIAGNOSTICS.md#11-audit-findings-d1) retain unresolved findings. Finalized milestone design rules remain in SPEC/IMPL.
 
 ## 4. Milestones (execution order)
 
