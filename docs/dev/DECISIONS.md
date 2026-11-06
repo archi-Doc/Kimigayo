@@ -1716,14 +1716,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptance). The root flags only select the accesses checked.
   - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
     so R4 asks that H3, the first publisher, does it, and hands it to H0 through AR-4 (the step-2 plan's X-3 list).
-- **R4-M73** (2026-10-19; superseded in part by R4-M177; owner, PLAN G148, R4-M76; P13's interim by the owner, below; A3 §12 E16) A Call's store row reaches every
-  holder its
-  argument reaches: ret(i, κ) joins every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no
-  exclusion. It supersedes R4-M63's store target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line. Superseded in part by R4-M143: at a
-  4.6–4.9 operation's referent store whose referent destroys shallowly the store reaches refs(S) alone, and P13's hold does not fire
-  there. Superseded in part by R4-M154: a holder W reaches takes its storage's record (`Own`, a `Reached` entry or `All`), not the
-  argument's one kind. Superseded in part by R4-M147: the guard reads each part (`MirWrites` None, Through, Limit), and P13's interim,
-  the body hold below, is removed.
+- **R4-M73** (2026-10-19; superseded in part by R4-M177; owner, PLAN G148, R4-M76; P13's interim by the owner, below; A3 §12 E16)
+  A Call's store row reaches every holder its argument reaches: ret(i, κ) joins every holder of W(val(a_j)) (A3 E16, rule G: SPEC
+  15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store target, refs(val(a_j)) (A3 E14), and A3 §5's Calls
+  line. Superseded in part by R4-M143: at a 4.6–4.9 operation's referent store whose referent destroys shallowly the store reaches
+  refs(S) alone, and P13's hold does not fire there. Superseded in part by R4-M154: a holder W reaches takes its storage's record
+  (`Own`, a `Reached` entry or `All`), not the argument's one kind. Superseded in part by R4-M147: the guard reads each part
+  (`MirWrites` None, Through, Limit), and P13's interim, the body hold below, is removed.
   - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
     (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's
     or enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw
@@ -4112,8 +4111,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: the publisher's own names (`Consume`, `Take`, `TakeKind`, `Write`) for a lasting component; a second copy of the
     static-storage test (Binding's `IsStatic` serves the rule).
 - **R4-M143 A5 reads Binding's referent stores: a 4.6–4.9 operation's receiver store reaches refs(S) alone, with a destruction guard
-  (G255 C3)** (superseded in part by R4-M150: the destruction guard, and under BU-67) (2026-10-26; the combined design's revision 1,
-  items 1, 3, 4, 6, 7, and BU's design review 2 with its O5–O8; the fact is BU-42's `CallRetention.ReferentStores`).
+  (G255 C3)** (superseded in part by R4-M150: the destruction guard, and under BU-67; by R4-M177: refs(S) is W's first step, without
+  a holder that only a shared Loan names) (2026-10-26; the combined design's revision 1, items 1, 3, 4, 6, 7, and BU's design review 2
+  with its O5–O8; the fact is BU-42's `CallRetention.ReferentStores`).
   - Rule (SPEC 4.9.6, 15.6.4, which defers to 4.9.6; R4-M131): an operation of SPEC 4.6 to 4.9 writes, through its exclusive borrowed
     receiver, only the storage that receiver refers to, and no layer stored there. So at a call's referent store, A5's rule G stores
     the row's value into refs(S), W's first step (`MirBorrows.Referents`), never W's passes. The rule holds for every row at that
@@ -4443,7 +4443,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rule: a destruction retains as a call of each `drop` it runs, whose `self` is a `uniq/Self` receiver referring to the destroyed part.
     A Drop the view keeps composes its destruction (a scope end, a reassignment, a temporary's, `_ = x@move`); a published destroying call
     composes the destruction its row lists (`PublishedRow.Destroys`: `clear`, `truncate`, `removeAll`, `replace`, `insertOrReplace`'s
-    unused key) at the call after its own rows. A referent store reaches refs(S) alone, always (R4-M143's rule without its guard).
+    unused key) at the call after its own rows. A referent store reaches refs(S) alone, always (R4-M143's rule without its guard; since
+    R4-M177, W's first step alone: refs(S) without a holder that only a shared Loan names).
   - Representation (`MirBorrows.Destructions`): a kept Drop's receiver is the destroyed root's plain address (an existing A5 entry,
     `MirBorrows.Addresses`: never a conflict candidate, never stored, BU-47's input 0 having no Value row; every direct-Loan reader reads
     it as a reference to the root), formed in the `Receivers` pre-pass for each Drop whose destruction may run a drop (Dropping: Observe);
@@ -5588,7 +5589,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a shared Loan names, at every step of W: the first (`Referents`, its own loop: E where the set carries Φ_E or no direct Loan at
     all, a shared one counting, so a set of shared Loans alone writes nothing), past a holder whose guard is Through as past a Named
     one (`Write`; Through keeps Φ_E, Named Φ_W), and the Deep step's comparison (`Changes`). `Refs` (refs(S)) is unchanged for its
-    other readers. No representation, vocabulary or SPEC change; two-phase Loans and addresses are unaffected.
+    other readers. A 4.6–4.9 referent store takes the first step alone (R4-M143, R4-M150, which name this entry). No representation,
+    vocabulary or SPEC change; two-phase Loans and addresses are unaffected.
   - Supersedes in part R4-M73 and A3 E16 as R4-M147 and R4-M154 read them (W's first, past and Deep steps named holders by direct
     Loans in any mode), and extends R4-M170's named-step filter to Through and to the first and Deep steps. The reason that no longer
     holds: the guard's Through covering every Loan of σ(h). The owner-approved SPEC revision of R4-M170 (2026-11-04, 「SPEC 改訂を行います」)

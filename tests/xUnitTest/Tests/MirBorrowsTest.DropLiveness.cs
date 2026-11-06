@@ -171,7 +171,7 @@ public sealed partial class MirBorrowsTest
     public void AnAbstractPartBesideAPartPastTheBoundIsComposedAtAReferentStore(string form, int depth, string expected)
     {
         var (element, value) = form == "deep"
-            ? ($"(T, {NestedType(depth)})", $"(T.make(p: slot@raw, q: w@raw@raw/u8), {Nested("0", depth)})")
+            ? ($"(T, {NestedType("i32", depth)})", $"(T.make(p: slot@raw, q: w@raw@raw/u8), {Nested("0", depth)})")
             : ("T", "T.make(p: slot@raw, q: w@raw@raw/u8)");
         var c = CompileDepthForm(Prelude + RawShapes + ReferentShapes + "func clearGen<T>()\n    T is MakeW\n    var y: i32 = 1\n" +
             $"    var w: ref/i32 = y@ref\n    var slot: raw/u8 = null\n    var a: Array<{element}> = []\n    a.append({value})\n    a.clear()\n" +
