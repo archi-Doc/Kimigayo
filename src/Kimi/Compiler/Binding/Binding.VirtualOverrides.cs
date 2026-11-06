@@ -41,7 +41,7 @@ public sealed partial class Binding
         }
 
         var selection = this.LookupTypeMember(baseType, function.Name, scope, self);
-        if (selection.Pending || selection.DeclaringType?.Symbol?.Declaration is not { } owner)
+        if (selection.Pending || selection.DeclaringType?.Symbol is null)
         {
             return;
         }
@@ -120,7 +120,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.DirectFacts)
             {
-                var bound = this.SubstituteConstraint(fact, owner, (BoundType[])selection.DeclaringType.Components);
+                var bound = this.StoredConstraint(fact, selection.DeclaringType);
                 // Closed propositions are obligations, not assumptions (SPEC 8.3.3).
                 if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && this.DependentConstraint(bound))
                 {
@@ -445,7 +445,7 @@ public sealed partial class Binding
 
         foreach (var fact in environment.DirectFacts)
         {
-            var bound = this.SubstituteConstraint(fact, slot.DeclaringType.Symbol!.Declaration, (BoundType[])slot.DeclaringType.Components);
+            var bound = this.StoredConstraint(fact, slot.DeclaringType);
             // Applicability belongs to the public slot. A refuted substituted premise supplies no
             // body evidence; ordinary definition checks still run (SPEC 8.3.3). Generation keeps
             // the inapplicable slot's position without requesting its body.

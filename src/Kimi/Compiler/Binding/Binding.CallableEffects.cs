@@ -131,9 +131,9 @@ public sealed partial class Binding
             }
 
             var substituted = this.SubstituteConstraint(fact, binder, arguments, lengths);
-            if (declaring?.Symbol?.Declaration is { } owner)
+            if (declaring?.Symbol is not null)
             {
-                substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaring.Components);
+                substituted = this.StoredConstraint(substituted, declaring);
             }
 
             substituted = this.ContractConstraint(substituted, scope, null);

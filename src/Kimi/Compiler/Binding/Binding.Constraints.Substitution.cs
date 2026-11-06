@@ -7,16 +7,23 @@ namespace Kimi.Compiler;
 // SPEC 8.3, 10.5.5, 10.8: a declaration's Constraint clauses under a substitution of its slots, and their judgment.
 public sealed partial class Binding
 {
-    private BoundConstraint SubstituteConstraint(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false)
+    // SPEC 6.2.2, 15.3.1, 9.7.2 (PLAN G425): a declaration's clause at an occurrence of its Type, under the occurrence's Type and Origin
+    // arguments, as StoredType substitutes a Field's Type: the one form of every occurrence's clause.
+    private BoundConstraint StoredConstraint(BoundConstraint constraint, BoundType owner)
+        => this.SubstituteConstraint(constraint, owner.Symbol!.Declaration, (BoundType[])owner.Components, origins: (BoundOrigin[])owner.OriginArguments);
+
+    // A clause under its binder's substitution: the Type and length slots, then the declared Origin slots' images (SubstituteStoredOrigins),
+    // which a call's own slots do not have yet (PLAN G417).
+    private BoundConstraint SubstituteConstraint(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, ReadOnlySpan<BoundOrigin> origins = default)
     {
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths, incomplete));
+            return this.NegateConstraint(this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths, incomplete, origins));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            return this.InternConstraint(new(constraint.Kind, left: this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths, incomplete), right: this.SubstituteConstraint(constraint.Right!, binder, arguments, lengths, incomplete)));
+            return this.InternConstraint(new(constraint.Kind, left: this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths, incomplete, origins), right: this.SubstituteConstraint(constraint.Right!, binder, arguments, lengths, incomplete, origins)));
         }
 
         if (constraint.Subject is null)
@@ -26,11 +33,13 @@ public sealed partial class Binding
 
         var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths);
         var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths);
+        subject = subject is null ? null : this.SubstituteStoredOrigins(subject, binder, origins);
+        required = required is null ? null : this.SubstituteStoredOrigins(required, binder, origins);
         var contract = constraint.Contract;
         if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract))
         {
             // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own.
-            var substituted = this.SubstituteType(reference, binder, arguments, lengths);
+            var substituted = this.SubstituteType(reference, binder, arguments, lengths) is { } image ? this.SubstituteStoredOrigins(image, binder, origins) : null;
             subject = substituted is null && incomplete ? null : subject;
             contract = substituted is null ? contract : this.BoundContractReference(substituted);
         }
@@ -40,7 +49,7 @@ public sealed partial class Binding
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null, ReadOnlySpan<BoundOrigin> origins = default)
     {
         this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
@@ -70,10 +79,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, slotOwner ?? binder, arguments, lengths, incomplete);
-            if (declaringType?.Symbol?.Declaration is { } owner)
+            var substituted = this.SubstituteConstraint(bound, slotOwner ?? binder, arguments, lengths, incomplete, origins);
+            if (declaringType?.Symbol is not null)
             {
-                substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
+                substituted = this.StoredConstraint(substituted, declaringType);
             }
 
             // Associated identities also need normalization for calls without a receiver.
@@ -118,9 +127,9 @@ public sealed partial class Binding
             }
 
             var substituted = this.SubstituteConstraint(bound, slotOwner ?? binder, arguments, lengths, true);
-            if (declaringType?.Symbol?.Declaration is { } owner)
+            if (declaringType?.Symbol is not null)
             {
-                substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
+                substituted = this.StoredConstraint(substituted, declaringType);
             }
 
             if (!substituted.HasUnresolved && this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope) == ConstraintProof.Unknown)

@@ -576,9 +576,9 @@ public sealed partial class Binding
                 }
 
                 var substituted = this.SubstituteConstraint(constraint, implementation, arguments.AsSpan(0, requirement.GenericArguments.Count));
-                if (selection.DeclaringType is { Symbol.Declaration: { } owner } declaring)
+                if (selection.DeclaringType is { Symbol: not null } declaring)
                 {
-                    substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaring.Components);
+                    substituted = this.StoredConstraint(substituted, declaring);
                 }
 
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);

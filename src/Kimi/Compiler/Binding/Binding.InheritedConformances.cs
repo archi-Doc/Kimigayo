@@ -282,7 +282,7 @@ public sealed partial class Binding
             {
                 if (((IsKoto)clause).BoundConstraint is { } constraint)
                 {
-                    this.AddConstraintFact(environment, this.SubstituteConstraint(constraint, path.Type.Declaration, (BoundType[])self.Components));
+                    this.AddConstraintFact(environment, this.StoredConstraint(constraint, self));
                 }
             }
 

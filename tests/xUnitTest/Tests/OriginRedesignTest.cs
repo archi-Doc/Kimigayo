@@ -245,6 +245,29 @@ public class OriginRedesignTest
     public void AnUnrelatedSetIsAFixedOrigin(string declaration, string codes)
         => Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code).Order(StringComparer.Ordinal)));
 
+    // SPEC 6.2.2, 15.3.1, 9.7.2 (PLAN G425): a Type occurrence's Constraints hold under its whole substitution, its Origin arguments
+    // included: a base clause (single-slot, set and concrete), a Field, a parameter, an enum Type, a method's own clause over its
+    // declaring Type's slot and a conditional conformance's condition. A premise naming another Origin, an elided slot (`during` on
+    // `ref`, SPEC 3.3.2) and the declaration's own slot standing for another occurrence's prove nothing.
+    [Theory]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\nstruct Derived<T> {d} : Base<T> during d\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    public func again(self: ref/Self) -> ref/i32 during d => self.w", "")]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d} : Base<T>{b}\n    origin b.h == d\n    T is Source\n    T.(Source).Item is ref/i32 during d", "")]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\nstruct Derived {d} : Base<Cursor during d> during d", "")]
+    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\nstruct Holder<T> {d}\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    public let b: Box<T> during d", "")]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nfunc f<T>(b: ref/(Base<T> during d)) -> i32\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    return 0", "")]
+    [InlineData("enum E<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    One(ref/i32 during h)\nfunc g<V>(e: ref/(E<V> during m)) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during m\n    return 0", "")]
+    [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    public func get<U>(self: ref/Self, u: ref/U) -> i32\n        U is Source\n        U.(Source).Item is ref/i32 during h\n        return 0\nfunc g<V>(b: ref/(Box<i32> during m), v: ref/V) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during m\n    return b.get(v)", "")]
+    [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    Self is Marker when T is Source, T.(Source).Item is ref/i32 during h\nfunc need<M>(m: ref/M) -> i32\n    M is Marker\n    return 0\nfunc g<V>(b: ref/(Box<V> during m)) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during m\n    return need(b)", "")]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d} : Base<T> during d\n    T is Source", "InvalidConstraint_Kd InvalidTypeFormation_Kd UnprovenConstraint_Kd")]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d, e} : Base<T> during d\n    T is Source\n    T.(Source).Item is ref/i32 during e", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidTypeFormation_Kd UnprovenConstraint_Kd")]
+    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\nstruct Holder<T> {d, e}\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    public let b: Box<T> during e", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nfunc f<T>(b: ref/Base<T> during d) -> i32\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    return 0", "UnprovenConstraint_Kd")]
+    [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public func other(self: ref/Self, b: ref/(Box<T> during x)) -> i32 => 0", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
+    [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    public func get<U>(self: ref/Self, u: ref/U) -> i32\n        U is Source\n        U.(Source).Item is ref/i32 during h\n        return 0\nfunc g<V>(b: ref/(Box<i32> during m), v: ref/V, z: ref/i32 during n) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during n\n    return b.get(v)", "UnprovenConstraint_Kd")]
+    [InlineData("struct Box<T> {h}\n    public let w: ref/i32 during h\n    Self is Marker when T is Source, T.(Source).Item is ref/i32 during h\nfunc need<M>(m: ref/M) -> i32\n    M is Marker\n    return 0\nfunc g<V>(b: ref/(Box<V> during m), z: ref/i32 during n) -> i32\n    V is Source\n    V.(Source).Item is ref/i32 during n\n    return need(b)", "UnprovenConstraint_Kd")]
+    public void ATypeOccurrenceProvesItsConstraintsUnderItsOriginArguments(string declaration, string codes)
+        => Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code).Order(StringComparer.Ordinal)));
+
     // SPEC 15.3.4: the same set name repeats only across declarations that cannot see each other (two `when` lists); within one
     // declaration, or where an enclosing declaration's set is visible, it is a duplicate.
     [Theory]
