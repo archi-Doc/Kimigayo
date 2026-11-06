@@ -276,8 +276,8 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   lands the unit; PLAN §3 keeps area ownership. The board's tables are the windows, the queue, holds, heavy runs (the registry
   `artifacts/heavy-runs/` stays the lock), quiet time, consents and questions, the owner outbox and the append-only log; every row has an
   id and a stamp, a session edits its own rows, the file is re-read before every atomic rewrite, and a row older than 24 hours without a
-  state change is stale. Units land only through the windows (two or three a day; each runs the heavy set once): R6-check's through the flip group's are the
-  back's (DECISIONS R5-M182), later ones the middle's until the Coordinator takes them over (R7-M4); no input-changing push outside one. A unit implemented outside its files' owner holds the files and is reviewed by the owner (RP17).
+  state change is stale. Units land only through the windows ([WORKFLOW](WORKFLOW.md#windows), DECISIONS Q15): R6-check's through the flip group's were the
+  back's (DECISIONS R5-M182), later ones the middle's through W-45, and the Coordinator's from W-46 (R7-M4). A unit implemented outside its files' owner holds the files and is reviewed by the owner (RP17).
 - **R5 progress** (DECISIONS R5-M8) ended with R5's exit (DECISIONS R5-M148), **R6-gen progress** (DECISIONS R5-M152) with R6-gen's
   exit (DECISIONS R5-M167; M8's Emission rows at 0; `Ownership.Bodies` 30, R6-check's).
 

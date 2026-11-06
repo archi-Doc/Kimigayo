@@ -342,6 +342,34 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: keeping Full for shared representations (the mandatory design review and the owner's per-unit instruction cover
     it); reviewing every document (only AGENTS, SPEC and IMPL bind every session's work).
 
+- **Q15 Window size; the window rules move to WORKFLOW** (2026-11-07, owner; [WORKFLOW](WORKFLOW.md) "Windows"; supersedes the
+  board's window-size rule of 2026-11-06 18:39 (R5 on M's proposal); R7-M2's window rules move to WORKFLOW).
+  - The owner (verbatim): 「「記録や受理が動くユニットは、1つの window に3つまでというルール」について ルールの根拠の文書と、上限緩和の
+    可能性について検討してください。」, 「今回の変更は、WORKFLOW.mdに記載した方が良いと思いますが、いかがか？」, then 「進める」 to the
+    Coordinator's recommendation.
+  - Rule, as WORKFLOW states: at most five units that move records or acceptance, at most one acceptance mover per area;
+    documentation-only, test-only and behavior-preserving units up to eight in all; R7-M2's entry, file, failure and push rules
+    unchanged, and a failure that names no unit splits the window in halves.
+  - Reason: the heavy set's time (25-45 minutes in W-37 to W-45) does not depend on the unit count, and one unit in about 25 failed
+    (W-41 run 1), since every unit passes its own checks against the shared base first; a larger window lowers the cost per unit and
+    still holds one heavy-run slot. One acceptance mover per area keeps an interaction attributable without a bisect.
+  - Rejected: no cap (two acceptance movers in one area can interact where neither unit's own run did); keeping three (the same
+    failure rate at a higher cost per unit); rules on the board only (a new session does not see them).
+
+- **Q16 Native results are reused when their inputs did not change** (2026-11-07, owner; [VERIFICATION](VERIFICATION.md) "Shared
+  heavy runs and bases", WORKFLOW "Windows"; the Coordinator's unit T1).
+  - The owner (verbatim): 「1と2を進める」, to the Coordinator's proposal to reuse native results whose inputs did not change and to run
+    independent window steps in parallel.
+  - Rule: `test-scalars.ps1 -ReuseResults` reuses a fixture's passed result when its fixture key (the `.ll`, `.stdout`, `.stderr`,
+    `.exit` and `.observation` files) and the environment key (the four LLVM tools the worker runs, the backend archive, the kernel32
+    library, the six runner files, the allowed symbols and the deadline) match an entry verified within `-ReuseHours` (24); every
+    other fixture runs. `native-results.json`, written by every run, is the new base file; a window passes the base's file through
+    `verify.ps1 -NativeReuse` and seeds the next base with the merged file. Only passed entries are reused.
+  - Reason: W-45's native step took 1,670 of its 2,454 seconds, and eight of nine window transitions (r4w35 to r4w45) changed no
+    fixture; identical inputs give the identical outcome, and the daily re-execution bounds machine drift the keys do not see.
+  - Rejected: selecting native families by changed files (a Binding change reaches generated code without touching Backend files);
+    reusing by `.ll` hash alone (the oracle files, toolchain and runner change outcomes too); no re-execution period (drift).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -15194,7 +15222,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     from this entry (R7-M2, R7-M3).
 - **R7-M2 The arrangement: three sessions by component, windows and the board** (owner, 2026-11-03, RQ1 and RQ7; plan §3 and §9;
   supersedes the session names of R4-M119 and R5-M113, whose caps stand, and the hold record of R5-M7, R5-M148 and R5-M167, whose
-  protocol stands; amends R5-M182's window assignment from the window after the flip group's)
+  protocol stands; amends R5-M182's window assignment from the window after the flip group's; its window rules now in WORKFLOW
+  "Windows", Q15; the window runner the Coordinator, R7-M4)
   - The front session (Syntax and Binding: `Compiler/Lexing/**`, `Parsing/**`, `Helper/**`, `src/Kimi/Misc/**`, `Binding/**` but the
     library index files, the root helpers `Compiler/*.cs`, `Checking/**`, `Lsp/**`, `src/Kimi/Diagnostics/**`) runs R7 and R6-check's
     Binding side; the middle session (`Compiler/Mir/**`, the HIR columns' builder readers, `tests/mir`, `Compiler/Documentation/**`)
