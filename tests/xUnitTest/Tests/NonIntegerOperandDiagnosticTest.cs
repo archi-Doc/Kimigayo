@@ -172,6 +172,22 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Empty(compilation.Binding.Issues);
     }
 
+    // SPEC 13.3.4, 5.3: a raw pointer reached through a layer takes the raw-pointer route once @follow reads it; an offset
+    // keeps its value read.
+    [Theory]
+    [InlineData("func f(p: ref/raw/i32, n: isize) -> raw/i32\n    unsafe => return p@follow + n\npublic func main() => ()")]
+    [InlineData("func f(p: ref/raw/i32, n: isize) -> raw/i32\n    unsafe => return p@follow - n\npublic func main() => ()")]
+    [InlineData("func f(p: ref/raw/i32, n: isize) -> i32\n    unsafe => return p@follow[n]\npublic func main() => ()")]
+    [InlineData("func f(items: uniq/Array<raw/i32>, n: isize)\n    for item in items\n        unsafe => item@follow += n\npublic func main() => ()")]
+    [InlineData("func f<s/T>(p: s/raw/i32, n: isize, t: s/T) -> raw/i32\n    s is value or valueborrow\n    unsafe => return p@follow + n\npublic func main() => ()")]
+    [InlineData("func f(p: raw/i32, n: ref/isize) -> raw/i32\n    unsafe => return p + n\npublic func main() => ()")]
+    public void AFollowedRawPointerTakesThePointerRoute(string source)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
     [Fact]
     public void IndependentErrorsSurviveAndRebindingRepeatsNothing()
     {
@@ -375,6 +391,76 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         "raw/i32",
         "-",
         "2 - p",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, n: isize) => p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, n: isize) => p - n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "-",
+        "p - n",
+        null)]
+    [InlineData(
+        "func f(p: uniq/raw/i32, n: isize) => p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "uniq/raw/i32",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, n: isize)\n    var q = p\n    q += n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "+=",
+        "q += n",
+        null)]
+    [InlineData(
+        "func f(p: uniq/raw/i32, n: isize)\n    var q = p\n    q -= n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "uniq/raw/i32",
+        "-=",
+        "q -= n",
+        null)]
+    [InlineData(
+        "func f<T>(p: ref/raw/T, n: isize) => p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/T",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32, q: ref/raw/i32) => p + q\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "+",
+        "p + q",
+        null)]
+    [InlineData(
+        "func f<s/T>(p: s/raw/i32, n: isize, t: s/T)\n    s is value or valueborrow\n    return p + n\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "s/raw/i32",
+        "+",
+        "p + n",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32) => p * 2\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "*",
+        "p * 2",
+        null)]
+    [InlineData(
+        "func f(p: ref/raw/i32) => p % 2\npublic func main() => ()",
+        "NonIntegerOperand_Kd",
+        "ref/raw/i32",
+        "%",
+        "p % 2",
         null)]
     [InlineData(
         "func f(p: raw/i32)\n    var q = p\n    q *= 2\npublic func main() => ()",

@@ -77,6 +77,12 @@ public sealed partial class Binding
                 return restriction;
             }
 
+            // SPEC 13.3.4, 5.3: the raw-pointer row takes the operand's own Type; a raw pointer reached through a layer has no provider.
+            if (kind is KotoKind.Plus or KotoKind.Minus && ReferenceTypes.IsPointer(leftCore) && !ReferenceEquals(leftCore, operand))
+            {
+                return new(null, null, BindingFailure.OperatorNotDefined, null, null, operand, leftCore);
+            }
+
             left = leftCore;
         }
 
