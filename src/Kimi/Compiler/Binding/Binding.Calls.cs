@@ -140,11 +140,6 @@ public sealed partial class Binding
             this.Fail(callReceiver, BindingFailure.InvalidAssignment);
         }
 
-        if (unknownArgument)
-        {
-            return Complete(call, null);
-        }
-
         callee.BoundSymbol = group;
         callee.BindingState = BindingState.Resolved;
         if (imports is { Count: > 1 } && this.CheckGatheredParameterShapes(callee, imports, aliasStage: true))
@@ -281,6 +276,15 @@ public sealed partial class Binding
             }
 
             var (selection, winnerIndex) = this.ClassifySelection(ref evaluation);
+            if (unknownArgument && AnyArgumentsMatch(evaluated.AsSpan(0, count), generic, explicitLengths))
+            {
+                // SPEC 10.1, 23.1.2 (DECISIONS BU-79, its G455 amendment): beside an unprepared argument the call reports only the checks
+                // SPEC 10.1 makes before inference, which read no argument's Type: the shape contracts and the explicit Type arguments'
+                // own records above, and NoApplicable below when no candidate passes step 1's count and kinds and step 2's matching;
+                // every other outcome rests on the part.
+                return Complete(call, null);
+            }
+
             if (selection == CallSelection.FailedSignature)
             {
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays

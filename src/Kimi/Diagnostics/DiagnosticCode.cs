@@ -237,6 +237,7 @@ public enum DiagnosticCode
     InterpolationNestingLimit_Kd,
     ExpansionLimit_Kd,
     OwnershipDepthLimit_Kd,
+    NestingLimit_Kd,
 
     Count, // Last sentinel
 }

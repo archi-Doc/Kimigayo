@@ -11,13 +11,8 @@ public sealed partial class Binding
 
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {
-        if (declaration.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 })
-        {
-            return declaration;
-        }
-
-        var context = this.TypeContext(syntax, scope) with { SuppressOuter = true };
-        // SPEC 8.4: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type.
+        // SPEC 8.4: a Contract's own Type parameters are supplied at the reference, as for a constructed struct Type, so every written
+        // list, also one on a Contract without parameters, meets the arity check before the fast path.
         var unwrapped = syntax;
         while (unwrapped is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
         {
@@ -25,15 +20,23 @@ public sealed partial class Binding
         }
 
         var container = (DeclarationContainerKoto)declaration.Declaration;
-        BoundType? own = null;
-        if (container.GenericParameterNodes.Count != 0)
+        var generic = unwrapped as GenericsKoto;
+        if ((generic?.TypeArguments.Count ?? 0) != container.GenericParameterNodes.Count)
         {
-            if (unwrapped is not GenericsKoto generic || generic.TypeArguments.Count != container.GenericParameterNodes.Count)
-            {
-                this.Fail(syntax, BindingFailure.TypeMismatch);
-                return null;
-            }
+            this.BindUnappliedArguments(generic, scope, this.TypeContext(syntax, scope).Nested);
+            this.Fail(syntax, BindingFailure.TypeMismatch);
+            return null;
+        }
 
+        if (declaration.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 })
+        {
+            return declaration;
+        }
+
+        var context = this.TypeContext(syntax, scope) with { SuppressOuter = true };
+        BoundType? own = null;
+        if (generic is not null)
+        {
             generic.Identifier!.BoundSymbol = declaration;
             generic.Identifier.BindingState = BindingState.Resolved;
             own = this.BindTypeList(generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, declaration);

@@ -89,7 +89,7 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
         {
-            issue.Node.Report(requirement, issue.Code, DiagnosticTypeName(arithmetic.Type), arithmetic.Contract.Name, evidence: [arithmetic.Condition], related: [("contract", arithmetic.Contract.Declaration, "arithmetic Contract declaration")]);
+            ReportArithmeticConformance(issue.Node, requirement, issue.Code, arithmetic);
         }
         else if (issue.Failure == BindingFailure.ArithmeticSelection && this.arithmeticSelectionFailures?.TryGetValue(issue.Node, out var selection) == true)
         {
@@ -367,8 +367,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins?.TryGetValue(issue.Node, out var perCallOrigin) == true)
         {
-            // SPEC 15.3.6, 10.8: only the argument's own per-call Origin would satisfy the slot; the argument is related.
-            issue.Node.Report(requirement, issue.Code, evidence: [perCallOrigin.Reason], related: [("argument", perCallOrigin.Argument, null)]);
+            ReportPerCallOrigin(issue.Node, perCallOrigin, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
         {

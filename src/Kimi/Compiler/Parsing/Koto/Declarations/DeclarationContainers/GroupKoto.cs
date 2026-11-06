@@ -252,7 +252,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
     /// <param name="state">The root state that keeps the detached group.</param>
     /// <returns>The group that receives the excluded declarations.</returns>
     private GroupKoto ExcludedRootOwner(ref TokenReader reader, ref RootParseState state)
-        => reader.InExcludedSyntax ? this : state.Detached ??= (GroupKoto)CreateStandalone(reader.CodeContext, TokenKind.Group, default, this.Span, string.Empty);
+        => reader.InExcludedSyntax ? this : state.Detached ??= (GroupKoto)this.CreateDetached(reader.CodeContext, this.Span);
 
     /// <summary>The source-order state of SourceDocument root items (SPEC 18.2.1, 19.4).</summary>
     private struct RootParseState
