@@ -1242,7 +1242,7 @@ public sealed class TyCtxtTest
         Assert.Equal((3, 2, tall, 2), (item.Height, tall.Height, subst.Self, subst.Height));
     }
 
-    // DECISIONS R5-M39 (K package 4.1), R4-M<n>: Erase makes every Origin static and binds none of a substitution's (view's call binds an
+    // DECISIONS R5-M39 (K package 4.1), R4-M180: Erase makes every Origin static and binds none of a substitution's (view's call binds an
     // input Origin), and keeps everything else; two calls whose substitutions differ in Origins only have one erased substitution, and
     // every Type of the callee's body and closure, the closure's context included, erases alike in their instances; erasing is idempotent
     // and keeps a Type without Origins; a binder that does not instantiate has none.

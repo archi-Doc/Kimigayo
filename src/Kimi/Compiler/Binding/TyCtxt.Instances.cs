@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39, R5-M40, R5-M43, BU-60, R4-M<n>; R5 package F 4.11, K 4.1, X8, X26, X40):
+// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39, R5-M40, R5-M43, BU-60, R4-M180; R5 package F 4.11, K 4.1, X8, X26, X40):
 // whether a definition's body is checked once and generated per closed substitution (Instantiates), the null rule of instance keys, the
 // declaration whose instance the code at a scope holds, which a nested definition's instance holds and whose self a direct base call uses
 // (EnclosingDeclaration), whether a function's calls dispatch (Dispatches), and the Origin-erased form of a Type and a substitution (Erase),
@@ -10,7 +10,7 @@
 // its schemas, or for EnclosingDeclaration a scope; for Erase, an interned Type or substitution. Output: whether a definition instantiates,
 // kept across passes with no edit and discarded at an edit (Binding.Invalidate); an interned erased value, memoized like the interning.
 // Erase: every Origin becomes static (a reference's or a Slice's, written or inferred, and every Origin argument), a substitution or closure
-// context binds no Origin (R4-M<n>) and a raw layer states none (DECISIONS BU-24), while Kind, Semantics, symbols, lengths, arities, Self
+// context binds no Origin (R4-M180) and a raw layer states none (DECISIONS BU-24), while Kind, Semantics, symbols, lengths, arities, Self
 // and the declaring Type are kept; idempotent; Types whose instances differ in Origins only erase to one value; it only interns, never
 // preparing storage or rewriting a value.
 // Invariants: true exactly when the definition or a declaration enclosing it on its scope chain has a Type, Semantics or length slot, even an

@@ -561,7 +561,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([keep, keep], set.Targets(Item(program, set, "Fn host")).ToArray().Select(static x => x.Item).Where(x => x == keep));
     }
 
-    // SPEC 8.13.3, DECISIONS R4-M<n> (PLAN G157 (30)): an erased substitution binds no Origin, so an instance reached by a call (whose
+    // SPEC 8.13.3, DECISIONS R4-M180 (PLAN G157 (30)): an erased substitution binds no Origin, so an instance reached by a call (whose
     // substitution binds the callee's Origins) and by an Item, a VTable or a base call (whose substitutions bind none) is one item, with
     // one item per Closure of it, nested and held ones (BU-60's held representative) included; count<i32> and count<i64> stay two.
     // Fail-before: every form but the control was two items (two per Closure).
