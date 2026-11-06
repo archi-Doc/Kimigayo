@@ -27,7 +27,7 @@ internal sealed partial class MirValidator
                 return;
             }
 
-            this.Accessed(place);
+            this.Accessed(place, access);
             if (place.Root >= 0 && body.Locals[place.Root].Role == MirLocalRole.Result &&
                 (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse)) != 0 &&
                 !(this.delivering && place.Projection == 0 && (access & MirAccess.Moves) != 0))

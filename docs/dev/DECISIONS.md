@@ -2640,7 +2640,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin clause for some forms (no counterexample); C
     with P12 (Q1 (b): P12's only justification was rule 1's reach); keeping G193's skip (unsound); Q2 (b), keeping the code reserved.
 - **R4-M107 A5-F5's static-Loan witnesses on rooted MIR until P42** (2026-10-22; unit 2b-6w, OQ-1 (c) + (b) on bu22's design, under
-  R4-M90 PQ-1; extends R4-M97's ruling (b) to a temporary form)
+  R4-M90 PQ-1; extends R4-M97's ruling (b) to a temporary form; superseded in part by R4-M121's U-C amendment: the Root call is the
+  static's staticEnsure, which precedes each rooted Place on every runtime path, not a Goto)
   - Cause: bu22 (2b-6 (b)) makes every Borrow SPEC lends of a static-rooted Place Binding's located `Unsupported_Kd` until P42, so
     no source program but 2b-D §1.5's out-of-scope forms reaches A5 with a live Loan on a static Place.
   - Mechanism (tests only, `MirBorrowsTest.Rooted.cs`): each witness program is its source test's text with each static Borrow's
@@ -3207,10 +3208,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
     two slots for one static (P42's keys) and `Ensure`'s "the collector targets every staticEnsure" (other contracts). Test MIR follows
     the rules: A5's rooted bodies (`MirBorrowsTest.Rooted`) turn a stand-in's initializing call into its static's staticEnsure, the form
     P42's source gives.
-  - Not checked: that a staticEnsure precedes each access on every path (SPEC 22.4.3), which the builder gives by building it first
-    and no consumer guarded; a dominance rule is its own unit. Rejected: rule (2) over Opaque roots (InternalInvariant_Kd on
-    Binding-rejected programs); rule (2) as "each accessed static has an initializer" over the program (code generation's slot map is
-    per body).
+  - That a staticEnsure precedes each access on every path (SPEC 22.4.3): rule (3), the U-C amendment below. Rejected: rule (2) over
+    Opaque roots (InternalInvariant_Kd on Binding-rejected programs); rule (2) as "each accessed static has an initializer" over the
+    program (code generation's slot map is per body).
+  - Amended (G191 U-B, 2026-11-06; R4's Open issues lane): the program pass, now `MirValidator.Program.cs`, also owns the two cross-body
+    rules only `MirBuildTest.CorpusBuildsValidBodies` asserted: a default template's call (a Fn callee's Arg above 0) whose
+    `MirProgram.Callee` is null and a Closure aggregate whose Closure body the program lacks are each `MirViolation.Callee` at the call or
+    the statement, marking its body; the instance collector's two -1 fallbacks for them (`InstanceCollector.Callees`' Closure body,
+    `.Edges`' template) read the body unchecked. An Opaque site's roots are recognized by one predicate the descriptors' owner
+    publishes, `MirDescriptors.IsOpaqueRoot` (the Opaque row's root access, the only row with Reads and Writes), which rule (2)'s
+    exemption and A5's accesses (R4-M10) read; the validator's count after the site's Unknown effect is gone. Rejected: a new
+    `MirAccess` member for the root (a vocabulary entry). Rule (3), dominance: the U-C amendment.
+  - Amended (G191 U-C, 2026-11-06; R4's Open issues lane; replaces the sentence "Not checked: ... a dominance rule is its own unit"):
+    rule (3), in a body, on every runtime path from the entry a staticEnsure of its static precedes each access rule (2) admits, else
+    `Unensured` at the access (its row extended, no new entry); an access in a block only check edges reach keeps rule (2) alone. The
+    solve is the validator's own (`MirValidator.Statics`' `Unensured`): a forward must-solve over the runtime walk's reverse post-order,
+    a word group per block (a bit per static), the entry none and the others all, AND over runtime predecessors, a staticEnsure's
+    static added at its terminator, to a fixed point; skipped for a body without static accesses, in the validator's kept scratch.
+    R4's choice (i): `MirDataflow`'s input is a validated body and its storage limit the analyses', while the validator runs before
+    them on unvalidated input; the two solves have different contracts. Rejected: (ii) `MirDataflow` as a union problem "possibly
+    unensured" (the validator would read the analyses' component and inherit their storage limit, a responsibility move).
+  - It supersedes in part R4-M107, as R4-M107's removal condition requires of the change by which the validator requires an ensure
+    before a static access: its mechanism's "turns the Root call ... into Gotos" (the stand-in's Drop stays a Goto) and its premise
+    "no staticEnsure precedes a rooted Borrow". They held while the validator required no ensure (R5-M106); since R4-M121's rule (2),
+    `Rooted` turns the Root call into the static's staticEnsure, and under rule (3) that ensure precedes each rooted Place on every
+    runtime path, since the stand-in, a local, is initialized before each use. The rooted copies are validated under rule (3)
+    (`Validated`), and the Rooted rows of `MirBorrowsTest` pass with it. R4-M107's other premises, cause, witnesses and removal by
+    P42 stand.
 - **R4-M122 Rule W in SPEC 15.6.5, a read through a reference counted as a Copy; 14.8.3 and 15.8.2 cite it** (owner, 2026-10-24,
   verbatim answers to two questions: 「(a) 今、W だけで開く (推奨)」, this SPEC session holds W alone, and
   「(a) SPEC の W の文に書く (推奨)」, the reading the prototype round needed is one clause of W's sentence; R4-M104's proposal,

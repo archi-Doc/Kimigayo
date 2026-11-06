@@ -12,7 +12,8 @@
 // Output: the admitted item (Admit, the witness rows of InstanceCollector.Witnesses.cs, a glue of InstanceCollector.Glue.cs or an
 // intrinsic's row), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a callee without a
 // body or row (a foreign function) or a refused edge.
-// Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it.
+// Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it; a Closure's body is the
+// program's, read unchecked (the validator's program pass guarantees it, MirValidator.Program, G191).
 // Must not: read a site or a template, or record anything itself (Admit, the layout verdict, the witness and glue rows do) but Below's
 // verdict and a declared callee without a body, a broken contract.
 
@@ -31,7 +32,7 @@ internal sealed partial class InstanceCollector
     {
         if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
         {
-            return program[new(closure, MirBodyKind.Closure)] is { } body ? this.Admit(item, subject, body, this.types.SubstOfClosure(callable)) : -1;
+            return this.Admit(item, subject, program[new(closure, MirBodyKind.Closure)]!, this.types.SubstOfClosure(callable));
         }
 
         if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol })
