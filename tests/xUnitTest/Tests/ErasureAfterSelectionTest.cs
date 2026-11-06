@@ -137,15 +137,16 @@ public class ErasureAfterSelectionTest
     // SPEC 7.7.4, 12.4.1, 10.5.1 (G386; DECISIONS BU-83's rule E): a parenthesized anonymous function at a Function parameter is the
     // unparenthesized argument, erased once (HirFormsTest.AnErasureIsAdjustedOnceAtTheNodeBindingErased holds the other forms), also at a
     // parameter holding Origins and in a callee that calls it; an invalid one keeps its record: a header that does not fit
-    // (NoApplicableOverload_Kd), an environment that is not Owned (UnprovenConstraint_Kd).
+    // (NoApplicableOverload_Kd, at the call), an environment that is not Owned (UnprovenConstraint_Kd, at the grouping's operand, the
+    // value the erasure converts; DECISIONS BU-107).
     [Theory]
     [InlineData("g386", "func k(q: ref/i32, r: ref/i32, g: (Option<ref/(ref/i32 during q) during r>) -> i32) -> i32\n    return 0\nfunc run(a: ref/i32, b: ref/i32) -> i32\n    return k(a, b, (func [] (o) => 0))\n", "")]
     [InlineData("w6", "func k(g: (i32) -> i32) -> i32\n    return g(1)\nfunc run() -> i32\n    return k((func [] (o) => o))\n", "")]
     [InlineData("i386a", FnK + "func run() -> i32\n    return k((func [] (o: bool) => 0))\n", "NoApplicableOverload_Kd k((func [] (o: bool) => 0))")]
     [InlineData("a7", FnK + "func run() -> i32\n    return k(((func [] (o: bool) => 0)))\n", "NoApplicableOverload_Kd k(((func [] (o: bool) => 0)))")]
     [InlineData("a13", GenericK + "func run() -> i32\n    return k((func [] (o: bool) => o), 1)\n", "NoApplicableOverload_Kd k((func [] (o: bool) => o), 1)")]
-    [InlineData("i386c", FnK + "func run(x: ref/i32) -> i32\n    return k((func [x] (o) => x@follow))\n", "UnprovenConstraint_Kd (func [x] (o) => x@follow)")]
-    [InlineData("a8", FnK + "func run(x: ref/i32) -> i32\n    return k(((func [x] (o) => x@follow)))\n", "UnprovenConstraint_Kd ((func [x] (o) => x@follow))")]
+    [InlineData("i386c", FnK + "func run(x: ref/i32) -> i32\n    return k((func [x] (o) => x@follow))\n", "UnprovenConstraint_Kd func [x] (o) => x@follow")]
+    [InlineData("a8", FnK + "func run(x: ref/i32) -> i32\n    return k(((func [x] (o) => x@follow)))\n", "UnprovenConstraint_Kd func [x] (o) => x@follow")]
     public void AGroupedCallableArgumentIsErasedOnce(string form, string source, string records)
         => AssertRecords(form, source, records);
 

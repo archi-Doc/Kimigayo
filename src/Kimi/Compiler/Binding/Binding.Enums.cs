@@ -481,9 +481,9 @@ public sealed partial class Binding
 
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
     // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
-    // Type mismatch, one only in Origin relations or in an erasure's Owned condition fails at the payload (SPEC 15.6.1, 15.2.3), and a
-    // bare Place without a plan names its required spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own failure
-    // while bound is its record, on which the construction rests.
+    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Place without a plan names its required
+    // spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own failure while bound (PartFailed, as at a call
+    // argument; an erasure's Owned failure is its value's, DECISIONS BU-107) is its record, on which the construction rests.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -508,6 +508,7 @@ public sealed partial class Binding
 
             this.acquisitionFailure = null;
             if (fit == CandidateApplicability.Error || (this.PropagateBound(source, type) ?? this.BindNode(source, scope, type)) is not { } completed ||
+                this.PartFailed(source) ||
                 (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {
@@ -537,11 +538,7 @@ public sealed partial class Binding
                 this.FailAcquisition(use, failed.Kind, source, failed.Object);
             }
 
-            // A misfit with facts of its own is the payload's record (RecordMismatch), as at a call argument: a failed condition, a fitting
-            // structure, or an erasure whose Owned condition failed, a Constraint failure (SPEC 15.2.3, 7.7.4; DECISIONS BU-107). Any other
-            // misfit, an erasure's Shape or Receiver part included, is the construction's one Type mismatch (SPEC 6.5.2).
-            if (!fits && (failure.IsCondition || this.FitsStructurallyAt(adaptedType, type, source) ||
-                this.ErasureOf(adaptedType, type)?.Part == ErasurePart.Owned))
+            if (!fits && (failure.IsCondition || this.FitsStructurallyAt(adaptedType, type, source)))
             {
                 this.RecordMismatch(source, source, adaptedType, type, failure);
                 Complete(use, null);

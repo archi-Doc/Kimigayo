@@ -5113,6 +5113,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     derived failure on that context, and an Error's held cause likewise (BU-75). The member loop and `FirstUnownedOrigin` are deleted.
   - Rejected: the reader's cache read in its own scope (a join's scope can differ from its arm's); node keys; R/U in the engine.
   - Removes: `erasureSignatures`, two receiver re-tests, the second Owned proof of the erasure and the gate's Owned proof.
+  - Amended (G381, 2026-11-06; DECISIONS BU-107): a failed Owned part is recorded at the value where the erasure is judged, beside
+    `RecordCondition`, and every consumer rests on it; the erasure rests an Error's held cause there. The reason that no longer holds:
+    a join recorded from Types, but each arm is erased where it is bound (SPEC 10.2, 14.9.2), and one record at the join lost a second
+    arm's (SPEC 23.1.2). The Type keying stays for its readers (`FailsFunctionConversion`, `FailOwnedConversion`,
+    `ClosureConversionNote`), each reading the outcome the erasure of the same value just published.
 - **R4-M162 A nested signature's result is judged where it is written (G216 (a) U2.3s, the strict form)** (2026-11-02; superseded in
   part by R4-M163; the owner, verbatim 「(1) 厳格案を採る」, 2026-11-02; supersedes the result half of the owner's (A) of 2026-10-26, an R3
   premise for nested signatures and a value-call result obligation; R4-M137, the input half, stays) SPEC 15.3.4, 15.6.1.
@@ -9506,22 +9511,26 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: StructuralCompletion's transfer set (it omits a transfer after a diverging item); a new target fact on the jump's
     row; Block and Unsafe as members (not expressions with one body); counting failed jumps in the exclusion (loses the failed
     exit's independent record).
-- **BU-107 An erasure the capability engine has not judged is the located limit; a payload's failed Owned condition is the payload's
-  record** (2026-11-06; PLAN G381, unit bu159; Major without a design review, the BU planning session's class) SPEC 11.6, 7.7.4,
-  6.5.2, 15.2.3.
-  - Limit: an inferred stored Property's initializer binds with its header (and again in PrepareStorage) before `capabilitiesReady`,
-    where the engine answers Unknown with no work for every subject that is not a leaf, so the Owned proof of a Closure's environment or
-    of a Function Item with bound Type arguments judges nothing. `FailDerived`'s branch for such a subject without a failed operand
-    context makes the use one located `Unsupported_Kd` at the converted value (it was `InternalInvariant_Kd`, or the construction's
-    `TypeMismatch_Kd` at a payload). After readiness that answer means a subject in an unresolved context, which stays the broken
-    contract, so the branch reads the engine's readiness. The typed and local twins bind after readiness and are valid.
-  - Payload: `CompletePayloads` records through `RecordMismatch`, as a call argument does, a misfit with facts of its own (a failed
-    condition, a fitting structure, an erasure whose Owned condition failed: a Constraint failure, SPEC 15.2.3); any other misfit, an
-    erasure's Shape or Receiver part included, stays the construction's one Type mismatch (SPEC 6.5.2).
+- **BU-107 An erasure's failed Owned part is the converted value's own failure; before the capability engine judges, it is the
+  located limit** (2026-11-06; PLAN G381, unit bu159; Major, Revision 1's design review) SPEC 11.6, 7.7.4, 6.5.2, 10.2, 14.9.2,
+  15.2.3, 23.1.2. Amends R4-M161.
+  - The value's failure: `ErasesToFunction` records a failed Owned part at the converted value (`FailOwnedConversion`), as it records
+    a failed condition (`RecordCondition`), and `FailsFunctionConversion` makes either the value's failure. Every consumer rests on
+    it: a call argument, a Case payload (`PartFailed`, as a call argument), a Tuple or array element, a grouping's operand, a join arm.
+    Shape and Receiver stay the consumer's Type mismatch. A use records one failure: `FailOwnedConversion` returns at once for a use
+    that already failed (a consumer's `RecordMismatch` of the same value; PrepareStorage's second binding of an inferred Field's
+    initializer). `RecordMismatch`'s Owned clause only checks that an outcome exists.
+  - Limit: an inferred stored Property's initializer binds with its header before `capabilitiesReady`, where the engine answers
+    Unknown with no work for every subject that is not a leaf, so the Owned proof of a Closure's environment or of a Function Item
+    with bound Type arguments judges nothing. `FailDerived`'s branch for a subject without a failed operand context makes the use one
+    located `Unsupported_Kd` at the converted value (it was `InternalInvariant_Kd`, or a false Type mismatch of the construction or the
+    enclosing literal). Before readiness every unjudged subject, an unresolved context included, is the limit; after it the same answer
+    is a subject in an unresolved context, still a broken contract, so the branch reads the engine's readiness. Typed and local twins
+    bind after readiness and are valid.
   - Removal: Owned judged during header binding (R7-D2 d with R7-C2/C6), or the R7 Closure design re-judging a Closure's conversion
     on a later pass. Precedent: BU-73's Field Closure limit.
-  - Rejected: leaving the erasure pending for the bodies pass (a Closure is bound once, so it is never judged again); a leaf rule for
-    Tuples of leaves (a narrow subset: a captured struct would still reach the broken-contract branch).
+  - Rejected: a route per consumer (69a9ee98c's payload disjunct; literal elements would need another); leaving the erasure pending
+    for the bodies pass (a Closure is bound once, so it is never judged again); a leaf rule for Tuples of leaves (a narrow subset).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

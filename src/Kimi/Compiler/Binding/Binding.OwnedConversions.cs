@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 // Owns the failure of a common Function conversion whose subject is not proven Owned (SPEC 7.7.4, 15.2.3), a Constraint failure: one
 // on a failed part (an Error's cause, or the failed operand context of a subject no work judged) is derived from it (SPEC 23.1.2,
 // DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (an
-// OwnedConversionFact), chosen where the erasure decides (OwnedMember). Before the capability engine judges (an inferred Field's
-// header, DECISIONS BU-107), a subject no work judged is the located limit.
+// OwnedConversionFact), chosen where the erasure decides (OwnedMember), at the converted value (DECISIONS BU-107). Before the capability
+// engine judges (an inferred Field's header), a subject no work judged is the located limit.
 // Input: the erasure's Owned proof with its rest (the capability engine's parts that are not Proven, R4-M161); the erasure's outcome for
 // the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
 // Output: the explaining member; the use failed, or false when the erasure failed another part; a derived use, settled in Binding.Check's
@@ -20,10 +20,12 @@ public sealed partial class Binding
     // once the erasure's Owned failure is decided after the prologue).
     private List<(Koto Use, Koto? First, ICheckCause? Next, ICheckCause? ReentrySite)>? derivedUses;
 
-    // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction); a recorded mismatch of a
-    // Closure or Item against a Function Type always follows its erasure, so a missing outcome is a broken contract. An Owned failure that
-    // no work judged returned on its subject's failed operand context (RequestCapability). The member is a capture of a closure or a bound
-    // Type argument of an Item.
+    // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction), which records an Owned
+    // failure here at the converted value; a recorded mismatch of a Closure or Item against a Function Type always follows its erasure, so
+    // a missing outcome is a broken contract. A use records one failure: its erasure's record, made where it was judged, is that record, so
+    // a consumer reporting the same value or a second binding of it (an inferred Field's initializer in PrepareStorage) adds nothing. An
+    // Owned failure that no work judged returned on its subject's failed operand context (RequestCapability). The member is a capture of a
+    // closure or a bound Type argument of an Item.
     private bool FailOwnedConversion(BoundType implementation, BoundType required, Koto at, Koto use)
     {
         if (this.ErasureOf(implementation, required) is not { } erasure)
@@ -35,6 +37,11 @@ public sealed partial class Binding
         if (erasure.Part != ErasurePart.Owned)
         {
             return false;
+        }
+
+        if (use.BindingFailure != BindingFailure.None)
+        {
+            return true;
         }
 
         if (erasure.Owned.Cause is { } held)

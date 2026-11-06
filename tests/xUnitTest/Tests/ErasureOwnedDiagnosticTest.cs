@@ -18,11 +18,14 @@ public class ErasureOwnedDiagnosticTest
 {
     private const string Main = "public func main() -> ()\n";
 
-    // A join's arms are erased at the join's expected Type, and the join records from the two Types (SPEC 7.7.4).
+    // A join's arms are erased at the join's expected Type, each where it is bound, and a failing arm is its own record (SPEC 10.2,
+    // 14.9.2, 23.1.2; DECISIONS BU-107).
     private const string Join = Main + "    require k(true) == 0 else => $abort(\"j\")\n\nfunc k(c: bool) -> i32\n";
 
+    private const string Two = "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0; UnsatisfiedConstraint_Kd func [r] () -> i32 => 1";
+
     // A let annotation, a default, a call argument, a Case payload (PLAN G381: was the construction's TypeMismatch_Kd), a captured
-    // reference value and a join give the same record at the converted value;
+    // reference value and a join's arm give the same record at the converted value;
     // of two failing captures the body-local borrow is named, whatever their order, and in a nested closure the enclosing body's borrow
     // is fixed while the body's own is local (R4-M161).
     [Theory]
@@ -32,7 +35,7 @@ public class ErasureOwnedDiagnosticTest
     [InlineData("enum E\n    A(() -> i32)\n    B\n\n" + Main + "    let v = 1\n    let r = v@ref\n    let e = E.A(func [r] () -> i32 => 0)\n", "func [r] () -> i32 => 0", "r", "v@ref", "v@ref")]
     [InlineData(Main + "    var n = 7\n    let view = n@uniq\n    let f = func [view] () => view@follow@ref\n    let e: () -> ref/i32 = f@move\n", "f@move", "view", "n@uniq", "n@uniq")]
     [InlineData(Main + "    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let g: (i32) -> i32 = f\n", "f", "y", "y@ref", "y@ref")]
-    [InlineData(Join + "    let v = 1\n    let r = v@ref\n    let g: () -> i32 = if c => func [r] () -> i32 => 0 else => func [] () -> i32 => 1\n    return 0\n", "if c => func [r] () -> i32 => 0 else => func [] () -> i32 => 1", "r", "v@ref", "v@ref")]
+    [InlineData(Join + "    let v = 1\n    let r = v@ref\n    let g: () -> i32 = if c => func [r] () -> i32 => 0 else => func [] () -> i32 => 1\n    return 0\n", "func [r] () -> i32 => 0", "r", "v@ref", "v@ref")]
     [InlineData(Main + "    let a = 1\n    require k(a@ref) == 0 else => $abort(\"p1\")\n\nfunc k(x: ref/i32) -> i32\n    let v = 1\n    let r = v@ref\n    let g: () -> i32 = func [x, r] () -> i32 => 0\n    return 0\n", "func [x, r] () -> i32 => 0", "r", "v@ref", "v@ref")]
     [InlineData(Main + "    require m() == 0 else => $abort(\"p5\")\n\nfunc m() -> i32\n    let w = 1\n    let mr = w@ref\n    let k = func [mr] () -> i32\n        let v = 1\n        let kr = v@ref\n        let g: () -> i32 = func [mr, kr] () -> i32 => 0\n        return 0\n    return k()\n", "func [mr, kr] () -> i32 => 0", "kr", "v@ref", "v@ref")]
     public void ACaptureOverABorrowIsAnUnsatisfiedConstraint(string source, string text, string member, string origin, string related)
@@ -46,6 +49,25 @@ public class ErasureOwnedDiagnosticTest
         Assert.Contains($"{{\"name\":\"member\",\"kind\":\"Text\",\"value\":\"{member}\",\"elided\":false}}", json, StringComparison.Ordinal);
         Assert.Contains($"{{\"name\":\"origin\",\"kind\":\"Origin\",\"value\":\"{origin}\",\"elided\":false,\"origin\":\"borrow\"}}", json, StringComparison.Ordinal);
         Assert.DoesNotContain(nameof(DiagnosticCode.TypeMismatch_Kd), json, StringComparison.Ordinal);
+    }
+
+    // SPEC 15.2.3, 7.7.4, 23.1.2 (DECISIONS BU-107, PLAN G381): a failed Owned part is the converted value's own record wherever the
+    // value is: a Tuple or array element, an element of a payload or call argument, each failing join arm and array element, and beside
+    // another part's independent record. Before, an enclosing literal's TypeMismatch_Kd, or one record for two failures.
+    [Theory]
+    [InlineData("b1", "    let t: (() -> i32, i32) = (func [r] () -> i32 => 0, 1)\n", "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0")]
+    [InlineData("b2", "    let a: Array<() -> i32> = [func [r] () -> i32 => 0]\n", "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0")]
+    [InlineData("b7", "    let e = E2.A((func [r] () -> i32 => 0, 1))\n", "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0")]
+    [InlineData("b9", "    let n = takeT((func [r] () -> i32 => 0, 1))\n", "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0")]
+    [InlineData("j2", "    let h: () -> i32 = if c => func [r] () -> i32 => 0 else => func [r] () -> i32 => 1\n", Two)]
+    [InlineData("ar2", "    let a: Array<() -> i32> = [func [r] () -> i32 => 0, func [r] () -> i32 => 1]\n", Two)]
+    [InlineData("tm1", "    let t: (() -> i32, i32) = (func [r] () -> i32 => 0, missing)\n", "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0; UnresolvedBinding_Kd missing")]
+    public void EachFailedOwnedErasureIsItsValuesRecord(string id, string statement, string records)
+    {
+        var source = "enum E2\n    A((() -> i32, i32))\n    B\n\nfunc takeT(t: (() -> i32, i32)) -> i32 => 0\n\n" + Main +
+            "    require g(true) == 0 else => $abort(\"g\")\n\nfunc g(c: bool) -> i32\n    let v = 1\n    let r = v@ref\n" + statement + "    return 0\n";
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
+        Assert.Equal((id, records), (id, string.Join("; ", diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}"))));
     }
 
     // A bound Type parameter that is not proven Owned leaves the proof Unknown; its member is the Item's bound Type argument, with no

@@ -429,7 +429,8 @@ public sealed partial class Binding
     // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
     {
-        // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
+        // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch; the
+        // erasure recorded it at this value (DECISIONS BU-107), so this reader only checks that an outcome exists.
         if (expected is BoundType { Kind: BoundTypeKind.Function } owner &&
             actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
             this.FailOwnedConversion(value, owner, at, node))
