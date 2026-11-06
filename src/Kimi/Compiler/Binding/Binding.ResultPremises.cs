@@ -272,8 +272,7 @@ public sealed partial class Binding
 
             for (var j = start; j < end; j++)
             {
-                if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Contribution: Contribution.Evidence, Pattern: { } leaf } &&
-                    MentionsOriginSlot(leaf, solution.Binder, slot))
+                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j].Pattern is { } leaf && MentionsOriginSlot(leaf, solution.Binder, slot))
                 {
                     return true;
                 }
@@ -455,33 +454,53 @@ public sealed partial class Binding
 
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
     // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values. A waiting part,
-    // which has no actual yet, is no evidence (SPEC 10.5.1).
-    private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
+    // which has no actual yet, and a failed one (rule W, DECISIONS BU-79) are no evidence (SPEC 10.5.1). An argument is read by its rows
+    // (R3, DECISIONS BU-104; PLAN G504): a root without child rows by its completed Type; a Tuple or array literal or a join its call
+    // classifies, which waits, by each Evidence leaf whose part does not wait for the solve, adapted at the leaf's pattern as the named
+    // call's evidence walk adapts a typed part (InferAdapted; SPEC 10.5.1, 14.9.2). A selection's solve judges no Origin relation and
+    // always holds (SPEC 15.6.1; SolveOriginInference with `select`).
+    private void SolveValueCallOrigins(
+        Koto binder,
+        BoundType parameters,
+        ReadOnlySpan<BoundType> actuals,
+        BoundOrigin[] origins,
+        BoundOrigin[] inputs,
+        Koto use,
+        in SlotSolution solution,
+        BindingScope scope)
     {
         var inference = this.BeginOriginInference(use, binder);
         for (var i = 0; i < actuals.Length; i++)
         {
-            if (actuals[i] is { } actual)
+            this.ChildGroup(solution, i, out var start, out var end);
+            if (start == end && actuals[i] is { } actual)
             {
                 this.CollectOriginInference(parameters.Components[i], actual, inference);
+            }
+
+            for (var j = start; j < end; j++)
+            {
+                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j] is { Pattern: { } pattern, Part: var part } &&
+                    KotoHelper.UnwrapParentheses(part).BoundType is { } typed && !ReferenceEquals(typed, BoundType.Never) &&
+                    !this.WaitsForValueCallSolve(part, pattern) &&
+                    this.AdaptInput(part, pattern, this.ArgumentType(part, typed), scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
+                {
+                    this.CollectOriginInference(pattern, adapted, inference);
+                }
             }
 
             this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
         }
 
         var function = binder as FunctionKoto;
-        if (!(function is not null
+        _ = function is not null
             ? this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true)
-            : this.SolveOriginInference(inference, origins, inputs, use, select: true)))
-        {
-            return false;
-        }
+            : this.SolveOriginInference(inference, origins, inputs, use, select: true);
 
         // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
         // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
         // their supplying arguments, never as applicability.
         this.OpenUnsolvedOrigins(use, origins.AsSpan(0, function?.Origins.Count ?? 0), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
-        return true;
     }
 
     // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution
