@@ -446,7 +446,12 @@ public sealed partial class Binding
 
             if (resting is not null)
             {
-                this.AddPrerequisite(conformance.Use, resting);
+                // Derived only when nothing else failed: an ancestor's failure of the same use or a refuted part keeps its direct record.
+                if (proof is not (ConstraintProof.Error or ConstraintProof.Refuted) && conformance.Use.BindingFailure == BindingFailure.None)
+                {
+                    this.AddPrerequisite(conformance.Use, resting);
+                }
+
                 return Invalid(BindingFailure.IncompatibleImplementation);
             }
 
