@@ -380,7 +380,8 @@ public sealed partial class Binding
                 var waitingOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
                 if (!this.CompleteWaiting(ref evaluation, winnerIndex, completedWaiting, waitingContexts))
                 {
-                    // SPEC 10.8: a completed waiting part fills no outer slot, so the judgment reads none of the parts' Types.
+                    // SPEC 10.8: a completed waiting part fills no outer slot, so the solution is selection's; no judgment reads a failed
+                    // part's Type, since a part without an AdaptedType is not fitted (JudgeCallFit) and a failed one rests (PartFailed).
                     this.JudgeSelected(call, evaluation, winnerIndex, selectedType, mapping.AsSpan(0, argumentCount), waitingOperations, out defaults);
                     return Complete(call, null);
                 }
