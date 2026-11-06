@@ -476,6 +476,9 @@ public sealed partial class Binding
     // A construction or base call of a Type without constructors: the Type, and for a derived structure its omitted base selection.
     private readonly record struct ConstructorAbsence(BoundType Type, OmittedBaseSelection? Decision);
 
+    // SPEC 6.3, 10.1: the constructed Type, its Origins formed from the arguments before the candidate's trial. Each argument is adapted
+    // as the trial adapts it, a missing spelling deferred, and the probe keeps no acquisition fact: the trial records its own, which names
+    // the spelling only when it is the candidate's one obstacle (SPEC 10.1 step 5; PLAN G453).
     private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping)
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
@@ -488,6 +491,7 @@ public sealed partial class Binding
             return type;
         }
 
+        var acquisition = this.acquisitionFailure;
         var origins = this.originScratch.Rent(count);
         Array.Clear(origins, 0, count);
         for (var i = 0; i < type.OriginArguments.Count; i++)
@@ -501,7 +505,7 @@ public sealed partial class Binding
             {
                 var slot = mapping[i];
                 if (function.Parameters[slot].Type.BoundType is { } pattern && call.ArgumentNodes[i].BoundType is { } actual &&
-                    this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _))
+                    this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
                     this.MatchInputOrigins(this.StoredType(pattern, type)!, adapted, owner, origins, []);
                 }
@@ -520,6 +524,7 @@ public sealed partial class Binding
         finally
         {
             this.originScratch.Return(origins, clearArray: true);
+            this.acquisitionFailure = acquisition;
         }
     }
 
