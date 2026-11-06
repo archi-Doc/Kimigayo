@@ -214,6 +214,10 @@ public partial class CallableOriginForwardingTest
 
     private const string StaticJoinHost = "func host(s: ref/i32 during static, c: bool) -> i32\n";
 
+    private const string ClosureJoinHost = "func host(a: ref/i32, b: ref/i32, s: ref/i32 during a, c: bool) -> i32\n";
+
+    private const string ClosurePair = "    let ca = func [] (x: ref/i32 during a) -> i32 => 5\n    let cb = func [] (x: ref/i32 during b) -> i32 => 6\n";
+
     private const string LocalItem = "    func ha(x: ref/i32 during a) -> i32 => 5\n    let g = k3\n";
 
     private const string RetainedTuple = "func kr(q: ref/i32, p: (ref/i32 during q, (ref/i32 during q) -> i32)) -> ref/i32 during q => q\n\n" +
@@ -593,7 +597,9 @@ public partial class CallableOriginForwardingTest
     // instantiated parameter: valid through Items, an anonymous function, a Closure value, Items with different Origin rows (x05) and a
     // typed part that is q's only evidence (x09); the invalid twins' records name `s`, not the callee's `q`, and a borrow the result
     // retains through such a Tuple is the MIR's Loan conflict (a03). A waiting Case (x01) and an independently typed join whose
-    // anonymous source mismatches its Item Type (x04, SPEC 14.9.2 step 2) are guards.
+    // anonymous source mismatches its Item Type (x04, SPEC 14.9.2 step 2) are guards. A join source's erasure is decided once, under
+    // the use's premises (ErasureFits): Closure values admitted only by the caller's clause are valid at a value and a named call (y02c,
+    // y02cn; fcd84d01e and the base crashed), and with the clause reversed the record is at `cb` (z01).
     [Theory]
     [InlineData("v_ok", ClauseK + StaticHost + "    let g = k\n    return g(s, func [] (x) => 5)\n", "", null)]
     [InlineData("v_fi_ok", ClauseK + Hf + StaticHost + "    let g = k\n    return g(s, hf)\n", "", null)]
@@ -648,6 +654,9 @@ public partial class CallableOriginForwardingTest
     [InlineData("x09_tev_bad", PlainK + EvidenceTupleK + NestedHost + "    let g = kq\n    return g((s, h3))\n", "UnprovenOriginContract_Kd h3", InputOverS)]
     [InlineData("a03_tupw_loan_ok", PlainK + RetainedTuple + "    let v = use(r)\n    y = 3\n    return v\n", "", null)]
     [InlineData("a03_tupw_loan_bad", PlainK + RetainedTuple + "    y = 3\n    return use(r)\n", "ComparisonLoanConflict_Kd y = 3", null)]
+    [InlineData("y02c_join_conf_cl_ok", PlainK + ClosureJoinHost + "    origin a outlives b\n" + ClosurePair + "    let g = k3\n    return g(s, if c => ca else => cb)\n", "", null)]
+    [InlineData("y02cn_join_conf_cl_ok", PlainK + ClosureJoinHost + "    origin a outlives b\n" + ClosurePair + "    return k3(s, if c => ca else => cb)\n", "", null)]
+    [InlineData("z01_join_cl_rev_bad", PlainK + ClosureJoinHost + "    origin b outlives a\n" + ClosurePair + "    let g = k3\n    return g(s, if c => ca else => cb)\n", "UnprovenOriginContract_Kd cb", "the 1st parameter requires a outlives b, which is not proven")]
     public void AValueCallCompletesItsWaitingPartsAtTheInstantiatedParameter(string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 

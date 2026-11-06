@@ -289,10 +289,7 @@ public sealed partial class Binding
         var failure = default(ComparisonFailure);
         var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
-        var fits = actual.Kind == BoundTypeKind.Closure
-            ? expected.Kind == BoundTypeKind.Function && receiver == SemanticsKind.Ref && signature is not null &&
-                this.CallableSignatureFits(signature, expected, SignatureOwner(actual), node, out failure)
-            : this.ErasureSignatureFits(actual, expected, node, out failure);
+        var fits = this.ErasureFits(actual, expected, node, out failure);
         OwnedFact owned = default;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
         var part = receiver != SemanticsKind.Ref ? ErasurePart.Receiver
@@ -315,6 +312,18 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
+    // of `use`: a Closure's Shared receiver and its signature (CallableSignatureFits), a Function Item's contract (ErasureSignatureFits).
+    // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it.
+    private bool ErasureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        failure = default;
+        return actual.Kind == BoundTypeKind.Closure
+            ? expected.Kind == BoundTypeKind.Function && (BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref) == SemanticsKind.Ref &&
+                this.ClosureSignature(actual) is { } signature && this.CallableSignatureFits(signature, expected, SignatureOwner(actual), use, out failure)
+            : this.ErasureSignatureFits(actual, expected, use, out failure);
     }
 
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
