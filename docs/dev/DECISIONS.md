@@ -9051,13 +9051,31 @@ resumed by R4-M86 (2026-10-20).
     may report a dependent failure, and must not lose an independent one.
   - The rule (ArgumentKinds' contract): a failed part fits every candidate and is no evidence (U1.6d). Only a node's own verdict over
     a failed child is suppressed: a join's DecideRest, BU-78's sites 2-4, and CompleteJoinResults. Every other record of the call is
-    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records.
+    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records; beside an unbound failed argument,
+    only the checks SPEC 10.1 makes before inference (the G455 amendment below).
   - An unselected call's held join that its formation judged Conflict still writes its own record (ReportHeldConflicts, the part of
     BU-78's fix (a) that reports, not rests). Without it, an independent TypeMismatch_Kd would be lost (ACRT a1 and a3, f1).
   - Deleted: Binding.ArgumentKinds.FailedFits.cs (FailedFit, its scope, PublishFailedFit, PublishHeldFailures, RestingFailedPart,
     AmbiguityRestingPart, CertainMismatch); PublishJudged, RestJudged, RestOnVerdict, HasOwnCause and FailJudged; IsOwnLength.
   - The done-when (Q13): only an acceptance move, an InternalInvariant_Kd or Language error on a valid program, or a lost independent
     record blocks; dependent records added or removed are counted by class.
+  - Amended (G455, 2026-11-06; unit bu190): a named, method, constructor, requirement or constraint-based value call with an
+    unprepared argument (an unbound failed part; BindCallCore, SelectValueCall) runs only the checks SPEC 10.1 makes before inference,
+    which read no argument's Type, and reports their records: the group's acquisition-shape contracts (the 10.1 preamble, 7.4.4), the
+    explicit Type arguments' own records, and NoApplicableOverload_Kd when no candidate passes step 1 (the count and kinds of the
+    explicit Type arguments, `ExplicitTypeArgumentsFit`, which TryCandidateCore reads too) and step 2 (argument matching:
+    `MapCallArguments`; `MapValueCallArguments` for a constraint-based value call, which passes every argument positionally, 10.1.1).
+    That NoApplicable holds under every repair of the part. Every other outcome rests on the part, as before, in either argument order
+    at named and constraint-based value calls alike. FitArgument keeps its rule-W row for a part that kept its Type (U2.1 r2-3).
+    Records added, each independent: NoApplicableOverload_Kd (arity, a label, the `!` boundary, a default, an excess argument, the
+    explicit Type arguments' count or kind), UnprovenAcquisitionCorrelation_Kd (7.4.4's call contract) and an explicit Type argument's
+    own UnresolvedBinding_Kd. Step 1 judges every kind before a failed Type argument rests, so a call with no unprepared argument
+    reports a later kind misfit too (`pair<Undefined, 3>(5)`, as `pair<3, Undefined>(5)` already did). Not covered (PLAN G500): the checks after step 2 beside the part (another argument's or the result's
+    misfit, Ambiguous, UnboundTypeArgument, an arity misfit beside a failed explicit Type argument, the selected candidate's own
+    records), and a plain value call (BindValueCall), whose count and label checks are the base's other copy of 10.1.1's value-call
+    rule; G494's unit 2 replaces them with `MapValueCallArguments` judged up front. Rejected: judging every candidate with the part a
+    wildcard (option A): later checks read the missing evidence as a rejection (until PLAN G463, `ConstructorType`'s construction-target Origin), and an
+    Unsupported part's dependent UnboundTypeArgument_Kd is a Language error on a valid program (Milestone 41).
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
