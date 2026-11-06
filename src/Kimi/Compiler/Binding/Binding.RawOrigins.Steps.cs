@@ -79,18 +79,20 @@ public sealed partial class Binding
         return Written(written);
     }
 
-    // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): the step of a raw layer written in a signature whose input
-    // Types are `inputs` (a parameter's or the result's, under a call's substitution or not; none for a Function Type's): Shared when some
-    // input states its Origin and every statement of it in the inputs keeps only shared Loans (Statements: the outer Origin of a `ref`,
-    // `objref` or Slice layer or of a pair layer admitting only those, an argument of a slot `ref` in every case its Type selects), since a
-    // pointer read from the layer then has no write authority; raw layers state no borrow, and borrows formed in a body never count. Any
-    // other is its kind (StepOf).
-    internal RawStep SignatureStep(BoundOrigin? raw, ReadOnlySpan<BoundType> inputs)
+    // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」), 5.7 Authority (DECISIONS BU-108): the step of a raw layer
+    // in a signature whose input Types are `inputs` (a parameter's or the result's, under a call's substitution or not; none for a
+    // Function Type's) and whose Origins `binder` binds: for an Origin that signature binds (an Input or Parameter atom of `binder`, judged
+    // where it is bound), Shared when some input states it and every statement of it in the inputs keeps only shared Loans (Statements:
+    // the outer Origin of a `ref`, `objref` or Slice layer or of a pair layer admitting only those, an argument of a slot `ref` in every
+    // case its Type selects), since a pointer read from the layer then has no write authority; raw layers state no borrow, and borrows
+    // formed in a body never count. Any other is its kind (StepOf): an enclosing body's Origin a captured layer states included.
+    internal RawStep SignatureStep(BoundOrigin? raw, Koto? binder, ReadOnlySpan<BoundType> inputs)
     {
         var kept = RawStep.Unstated;
-        for (var i = 0; i < inputs.Length && kept != RawStep.Exclusive && raw is { Kind: OriginKind.Input or OriginKind.Parameter }; i++)
+        var bound = raw is { Kind: OriginKind.Input or OriginKind.Parameter } && binder is not null && ReferenceEquals(raw.Binder, binder) ? raw : null;
+        for (var i = 0; i < inputs.Length && kept != RawStep.Exclusive && bound is not null; i++)
         {
-            kept = this.Statements(inputs[i], raw, kept);
+            kept = this.Statements(inputs[i], bound, kept);
         }
 
         return kept == RawStep.Shared ? RawStep.Shared : StepOf(raw);

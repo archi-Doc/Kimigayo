@@ -53,13 +53,15 @@ public sealed partial class Binding
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
     // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
     // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
-    // in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
-    // (RetentionWalk), so each is walked once; and whether a member walk was incomplete (CallRetention.Limit).
+    // in a function's own signature) with the Binder of that callee's own Origins, the only ones the cap judges (DECISIONS BU-108); the
+    // (Origin, input) pairs whose content that walk has added and the positions its atom walk has met (RetentionWalk), so each is walked
+    // once; and whether a member walk was incomplete (CallRetention.Limit).
     private readonly List<BoundType> retentionErasedScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
     private List<BoundType> retentionScope = new();
     private int retentionInputs;
+    private Koto? retentionBinder;
     private bool retentionLimit;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
@@ -227,6 +229,7 @@ public sealed partial class Binding
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
         this.retentionInputs = signatureInputs;
+        this.retentionBinder = signatureInputs > 0 ? use : null;
         if (declaring is not null)
         {
             this.retentionScope.Add(declaring);

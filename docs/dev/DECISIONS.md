@@ -9508,14 +9508,18 @@ resumed by R4-M86 (2026-10-20).
     exit's independent record).
 
 - **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; Major
-  without a design review, F's GO; review REVISE B-1, fix round 1) SPEC 5.2.1 condition 3, 5.7 Authority, Calls. Keeps BU-24's
-  G160-2b: the stored-layer reader (`DeclaredStep`, `TyCtxt.RawStep`) is unchanged, and the retention walk of a contract's inputs
-  reads a layer they hold with the signature reader that G160-2b names.
+  without a design review, F's GO; review REVISE B-1, fix round 1; re-check 1 REVISE B-3, fix round 2) SPEC 5.2.1 condition 3, 5.7
+  Authority, Calls. Keeps BU-24's G160-2b: the stored-layer reader (`DeclaredStep`, `TyCtxt.RawStep`) is unchanged, and the
+  retention walk of a contract's inputs reads a layer they hold with the signature reader that G160-2b names.
   - Rule (`Binding.Retention.Storage.cs`'s raw arm): a layer a declaration writes steps by `DeclaredStep` (its `ref`-slot cap,
     `self`); any other, one a Type argument supplies included, by `SignatureStep` over the walked contract's inputs, the rule and
     inputs `RetentionParts` and the own-layer arm already read. So `f(b: ref/…, w: uniq/Wrap<raw/… during b>, v)` stores nothing past
     w's layer (ss12, r23: their false `ComparisonLoanConflict_Kd` is gone). Unchanged: a `uniq` or a `ref` plus `uniq` statement, and a
     holder whose slot an exclusive Loan Field keeps (`HS.store`'s Self states `s` through that slot, r27n, r29).
+  - Binder condition (`SignatureStep(raw, binder, inputs)`, `retentionBinder`, at all three of retention's sites): the inputs judge
+    only an Origin the walked callee binds (an Input or Parameter atom whose Binder is the callee's, `callee.Accessor?.Binder ??
+    callee`); any other steps by its kind. So a Closure's own `ref` input stating an enclosing signature's Origin does not cap a
+    captured layer stating it (c01, supplied; c02, its own, accepted on dev), and caller atoms a Type argument brings keep their kind.
   - Not covered (PLAN G148 (1)): A5's guard (`TyCtxt.RawStep`) keeps the kind for a parameter's Origin; a callee whose inputs do not
     state the caller's Origin (`Wrap.put<U>`, r20) keeps its false conflict.
   - Rejected: judging an Input atom by its binder's declared signature (BoundStep, 36a8150e8; G160-2b's rejected cap). A holder formed

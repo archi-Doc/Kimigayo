@@ -279,11 +279,13 @@ public sealed partial class MirBorrowsTest
     // own inputs, so where only a shared input borrow states its Origin the call stores nothing past it: refVia and rawVia are valid
     // (fail-before: a false conflict at `y = 3`). Where a `uniq` input states it too (uniqVia, bothVia), or a holder keeps the slot it
     // binds by an exclusive Loan Field (slotAlias, its layer declared; slotBoxAlias, in its Field's Type argument), the call may store
-    // past it and `y = 3` / `z = 5` err, as before (the review's r04, r05, r27n, r29).
+    // past it and `y = 3` / `z = 5` err, as before (the review's r04, r05, r27n, r29). A Closure's own `ref` input stating an Origin the
+    // enclosing signature binds, there also by `uniq`, does not judge it: a captured layer (capturedBox, a supplied one, fail-before
+    // accepted on feaff9158; capturedRaw, its own, accepted on dev) lets the call store w's address into u's referent, so `z = 5` errs.
     [Fact]
     public void ACallStoresPastASuppliedLayerByItsContractsInputs()
         => Assert.Equal(
-            ["uniqVia: y = 3", "uniqVia: inspect(t)", "bothVia: y = 3", "slotAlias: z = 5", "slotBoxAlias: z = 5"],
+            ["uniqVia: y = 3", "uniqVia: inspect(t)", "bothVia: y = 3", "slotAlias: z = 5", "slotBoxAlias: z = 5", "capturedBox: z = 5", "capturedRaw: z = 5"],
             Problems("""
                 struct Wrap<E>
                     var value: E
@@ -364,6 +366,22 @@ public sealed partial class MirBorrowsTest
                     let u2: uniq/(raw/u8) during a = u
                     var hb: HB during a = HB.init(u2)
                     hb.store(w@raw@raw/u8)
+                    z = 5
+                func capturedBox(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let bx = Box2.init(u@follow@raw)
+                    var k = func [bx@move] (q: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *bx.value = v
+                    k(r, w@raw@raw/u8)
+                    z = 5
+                func capturedRaw(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                    var z = 3
+                    let w = z@ref
+                    let p = u@follow@raw
+                    var k = func [p] (q: ref/(raw/u8) during a, v: raw/u8)
+                        unsafe => *p = v
+                    k(r, w@raw@raw/u8)
                     z = 5
                 """));
 
