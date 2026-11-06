@@ -480,7 +480,7 @@ public sealed partial class Binding
             var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
             if (ownBinder is not null && this.HasUnsubstitutedInput(signature, ownBinder))
             {
-                this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call);
+                this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call, solution, scope);
             }
 
             // SPEC 10.5.1, 10.5.4, 15.6.4 step 2 (PLAN G494): each waiting part is completed at its instantiated parameter, after the solve,

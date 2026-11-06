@@ -9948,6 +9948,19 @@ resumed by R4-M86 (2026-10-20).
     in the body of a waiting Closure after the failed part (the Middle's C-86 review, a01, a07, a11): the body is now completed at
     its instantiated parameter, so it reaches A1-A5 and reports there, beside independent records such as CallReservationConflict_Kd
     (a08i) and MovedPlace_Kd (a10i).
+  - Amended (G504, 2026-11-07; unit bu210; Major; F's GO without a design review): only a Literal is completed before the solve. A
+    Tuple or array literal argument and a join its call classifies wait like every other part, and the solve reads them by BU-104's
+    position rows, the owner of what each position contributes: `SolveValueCallOrigins` reads an argument with child rows by its
+    Evidence leaf rows whose part does not wait, each by the common adaptation at its leaf pattern (`AdaptInput`) and collected as a
+    root's completed Type is (`CollectOriginInference`), and a root without child rows by its completed Type. Unlike the named
+    call's `InferAdapted`, neither reading applies `SignatureAtFunction` (a callable leaf waits, so none is read) or
+    `MatchInputOrigins`. `IsEvidenceLeaf` is the one evidence-leaf predicate, read by `EvidenceNames` and by this solve. Their
+    waiting parts are then completed at the instantiated parameter (vt_ok, vtc_ok, r10_join_ok accepted; the invalid twins' records
+    name the caller's Origin, not the callee's `q`). A join source's erasure is decided once, under the use's premises: its late
+    Type reads `ErasureFits` (`ErasesToFunction`'s receiver and signature part, shared) and `AdaptAtPosition` decides it by
+    `ErasePart`; the premise-free `ErasureSignatureFits` stays applicability's. This removes an InternalInvariant_Kd at a join of
+    Closure values admitted only by the caller's clause, at value and named calls (y02c, y02cn). A5's input moves: such calls are
+    accepted and publish their relations. Open: a Typed callable is still no evidence at the root or a leaf (PLAN G537, §2).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
