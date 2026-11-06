@@ -694,7 +694,7 @@ public sealed partial class Binding
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.
-    // Returns the inaccessible qualifier it failed, which explains the failed lookup, and binds that member's qualifier.
+    // Returns the inaccessible qualifier it failed, which explains the failed lookup; binds the qualifier of an inaccessible or a missing member.
     private Koto? ReportUnavailableQualifier(Koto syntax, BindingScope scope)
     {
         if (syntax is GenericsKoto generic)
@@ -713,10 +713,12 @@ public sealed partial class Binding
         }
 
         if (this.TypeName(member.Left, scope, false) is not { } qualifier || !this.scopes.TryGetValue(qualifier.Declaration, out var members) ||
-            TypeSpelling(member.Right) is not { } name || !members.Types.TryGetValue(name, out var first))
+            TypeSpelling(member.Right) is not { } name)
         {
             return null;
         }
+
+        var missing = !members.Types.TryGetValue(name, out var first);
 
         for (var candidate = first; candidate is not null; candidate = candidate.Next)
         {
@@ -726,12 +728,20 @@ public sealed partial class Binding
             }
         }
 
-        // An inaccessible member is still the qualifier's nested declaration (SPEC 9.4), so the qualifier is bound in its container
-        // role, as BindContainerReference binds it for an accessible member, its own failures included (SPEC 23.1.2; PLAN G250).
-        if (qualifier.Declaration is DeclarationContainerKoto { IsRoot: false })
+        // An inaccessible member is still the qualifier's nested declaration (SPEC 9.4), and a missing one selects no other role, so a
+        // qualifier no form has bound (a projection base is bound by its projection) is bound in its container role, as
+        // BindContainerReference binds it for an accessible member, its own failures included (SPEC 9.7.1, 23.1.2; PLAN G250, G481).
+        // Only a group or a struct declares nested Containers (SPEC 6.1's table; an enum has none by 6.5.1, a Contract only
+        // requirements, associated Types and parents), so no other qualifier has that role.
+        if (member.Left.BindingState == BindingState.Unvisited && qualifier.Declaration is GroupKoto { IsRoot: false } or StructKoto)
         {
             member.Left.BoundSymbol = qualifier;
             this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope));
+        }
+
+        if (missing)
+        {
+            return null;
         }
 
         this.Fail(member, BindingFailure.Access);

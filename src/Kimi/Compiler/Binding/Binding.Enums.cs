@@ -25,7 +25,9 @@ public sealed class BoundEnumCase
     public ReadOnlySpan<Koto> Payload => ((SyntaxFormKoto)((SyntaxFormKoto)this.Symbol.Declaration).Operands[1]).Operands;
 }
 
-/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate.</summary>
+/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate. A resting construction's plan (a
+/// payload failed, PLAN G418 (2)) holds only its completed payloads and is judged only by the pass-end formation and acquisitions
+/// (CompleteEnumAcquisitions); no consumer reads it, since <see cref="Binding.TryGetEnumConstruction"/> returns a resolved use's plan.</summary>
 public sealed class BoundEnumConstruction
 {
     private BoundArgumentOperation[] operations = [];
@@ -61,7 +63,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundEnumConstruction> enumConstructions = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Gets this pass's construction plan; failed/replaced uses never expose old plans.</summary>
+    /// <summary>Gets this pass's construction plan; failed, resting and replaced uses never expose a plan (the Resolved gate).</summary>
     /// <param name="use">The construction expression.</param>
     /// <param name="construction">The committed plan, or null if unavailable.</param>
     /// <returns>Whether a valid construction was selected in the latest pass.</returns>
@@ -201,7 +203,7 @@ public sealed partial class Binding
 
             if (expected is not null && !ReferenceEquals(expected, BoundType.Never))
             {
-                if (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, enumeration.Owner))
+                if (ExpectedConstructionOrigins(expected, enumeration.Owner) is not { } supplied)
                 {
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
@@ -219,9 +221,9 @@ public sealed partial class Binding
                     arguments[i] ??= expected.Components[i];
                 }
 
-                for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
+                for (var i = 0; i < Math.Min(originCount, supplied.Count); i++)
                 {
-                    origins[i] = expected.OriginArguments[i];
+                    origins[i] = supplied[i];
                 }
             }
 
@@ -282,28 +284,36 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.CompletePayloads(use, payload, result, scope, operations, adapted, settled))
-            {
-                return null;
-            }
+            // SPEC 23.1.2, 10.8 (PLAN G418 (2), DECISIONS BU-96): a failed payload stops the payloads after it (PLAN G262 F2), not the
+            // judgments over the solution SolveConstruction fixed, since completing a payload fills no slot: the completed payloads'
+            // premises, the Constraints and the plan's formation are judged, and then the construction rests on the payload's record.
+            var completed = this.CompletePayloads(use, payload, result, scope, operations, adapted, settled);
 
             // SPEC 15.6.4 step 3: the call's walk over the instantiated inputs, each payload by its rows (JudgePositionRows) where it has
             // child rows, else by its contribution (RequireInputPremises; R4, DECISIONS BU-104).
             this.callRelationScratch.Clear();
-            for (var i = 0; i < count; i++)
+            var done = 0;
+            for (; done < count && operations[done].Source is { } source; done++)
             {
-                this.ChildGroup(solution, i, out var childStart, out var childEnd);
+                this.ChildGroup(solution, done, out var childStart, out var childEnd);
                 if (childStart != childEnd)
                 {
-                    this.JudgePositionRows(operations[i].Source!, rows[i] with { Type = operations[i].ParameterType }, solution);
+                    this.JudgePositionRows(source, rows[done] with { Type = operations[done].ParameterType }, solution);
                 }
                 else
                 {
-                    this.RequireInputPremises(operations[i].Source!, payload[i].BoundType!, operations[i].ParameterType!, adapted[i], rows[i].Contribution);
+                    this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution);
                 }
             }
 
             this.PublishCallRelations();
+
+            // A construction that holds its own record (a payload's Type mismatch or acquisition) has no second one: R7-E1's one record
+            // per node, whose removal removes this gate (PLAN G418).
+            if (!completed && use.BindingFailure != BindingFailure.None)
+            {
+                return null;
+            }
 
             var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, arguments.AsSpan(0, slots), scope);
             if (proof != ConstraintProof.Proven)
@@ -317,7 +327,14 @@ public sealed partial class Binding
                 this.enumConstructions.Add(use, plan = new());
             }
 
-            plan.Set(enumeration, result, operations.AsSpan(0, count));
+            // A resting construction's plan holds its completed payloads: its formation (the Origin clauses) and their acquisitions are
+            // judged as every plan's (CompleteEnumAcquisitions), and no consumer reads it (TryGetEnumConstruction reads a resolved use's).
+            plan.Set(enumeration, result, operations.AsSpan(0, done));
+            if (!completed)
+            {
+                return null;
+            }
+
             if (call is not null)
             {
                 call.CallStorage = null;
@@ -486,7 +503,9 @@ public sealed partial class Binding
     // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
     // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Place without a plan names its required
     // spelling (SPEC 6.5.2) beside the fit's record (SPEC 23.1.2); a payload's own failure while bound (PartFailed, as at a call
-    // argument; an erasure's Owned failure is its value's, DECISIONS BU-107) is its record, on which the construction rests.
+    // argument; an erasure's Owned failure is its value's, DECISIONS BU-107) is its record, on which the construction rests. False at
+    // the first failing payload: the payloads after it are not completed (PLAN G262 F2, R7-E1) and keep no operation, those before it keep
+    // theirs, and no slot is filled.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -653,7 +672,13 @@ public sealed partial class Binding
 
                 var type = this.RewriteOrigins(construction.Type, declaration);
                 construction.Set(construction.Case, type, operations.AsSpan(0, source.Length));
-                use.BoundType = type;
+
+                // A resting construction forms no result (DECISIONS BU-96 amended; whether it publishes one is PLAN G495's), so only a
+                // published result Type is rewritten.
+                if (use.BoundType is not null)
+                {
+                    use.BoundType = type;
+                }
             }
             finally
             {

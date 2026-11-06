@@ -485,7 +485,8 @@ public sealed partial class Binding
             this.storedFields.Clear();
             this.storageDeclarations.Add(container);
             var scope = this.scopes[container];
-            if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
+            // An `open` on an enum is the parser's (ModifierKind.Judged), kept only for recovery: no check here judges it again (SPEC 23.1.2).
+            if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0))
             {
                 this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
