@@ -812,12 +812,6 @@ internal sealed class WorkspaceCheck
             return;
         }
 
-        if (source.HasPendingInput)
-        {
-            loaded.Add(path, previous); // Project loading can translate an input exception to a load failure.
-            return;
-        }
-
         newProjects.Add(item);
         loaded.Add(path, item);
     }
@@ -897,11 +891,6 @@ internal sealed class WorkspaceCheck
         catch (PendingInputException)
         {
             return null;
-        }
-
-        if (source.HasPendingInput)
-        {
-            return null; // A compiler boundary may have translated the pending-input exception.
         }
 
         var repairs = new Dictionary<SourceIdentity, List<LspRepair>>();
