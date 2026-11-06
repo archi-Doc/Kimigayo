@@ -9730,7 +9730,8 @@ resumed by R4-M86 (2026-10-20).
     "2.9 x" compared levels with depth. The JIT tier moves a boundary by one or two levels.
   - Not covered: the parser's own recursion (on S about ten times L in Debug, G444's triage), U2b's count; declaration containers
     nested past L, whose slots take only containers, keep their depth and are recorded at the outermost (U2b decides their cut);
-    the library's fixed sources (walking them costs about 2 ms per compilation). A later document's walk visits each earlier member
+    the library's trees, which KimiLibraryShapeTest checks and the run time does not walk (compiler-owned source fixed at build time;
+    a walk costs about 2 ms per compilation; F's option (c)). A later document's walk visits each earlier member
     of the root and of merged containers once, so its cost grows with documents times members (PLAN G444).
   - The margin rests on U1-m's four shapes; the depth-L forms of ten families (parentheses, `+`, calls, `if`, labeled `do`, `Option<`,
     grouping Patterns, Closures, `.me()` chains, groups) run through Debug `emit` on S without a crash (U2a's review).
