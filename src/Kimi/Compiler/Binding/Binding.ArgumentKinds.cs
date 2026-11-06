@@ -12,8 +12,9 @@ namespace Kimi.Compiler;
 //   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes, one
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
-//   (Binding.ArgumentKinds.Positions.cs), and one whose typed parts have no common Type (ConflictWaits, U1.6g). Function: an anonymous
-//   function. Reference: a function reference that needs S, at a call argument (P1) or at a result of the probe's control flow (P2);
+//   (Binding.ArgumentKinds.Positions.cs), one whose typed parts have no common Type (ConflictWaits, U1.6g), and a typed one that holds
+//   a failed source (ClassifiedByCall, G368 (1)). Function: an anonymous function. Reference: a function reference that needs S, at a
+//   call argument (P1) or at a result of the probe's control flow (P2);
 //   a name there that needs none is bound as its Function Item, a typed part (SPEC 10.5.3, 14.9.2 step 2; the owner's reading).
 //   Case: a contextual `.Case(...)` (it resolves only in its expected enum). Call: a nested call or construction the argument probe
 //   deferred.
@@ -233,11 +234,12 @@ public sealed partial class Binding
         => this.argumentProbe is { } probe && this.RecordedPart(probe).Kind is PartKind.Literal or PartKind.Call or PartKind.Join &&
             this.UnderArgumentProbe(target);
 
-    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate is the argument
-    // probe's control flow, which its call classifies and completes at the selected candidate's Type. One of Tuple or array results
-    // (`shape`, its first aggregate part), one whose results hold a part awaiting its call (AwaitsCall), or one its survey left
-    // unclassified (no Literal record: a failed or unknown source beside its literals; U1.6h site 4) is Join: its results are
-    // classified position by position (Binding.ArgumentKinds.Positions.cs); a scalar one of literals keeps the kind its survey gave it.
+    // SPEC 10.5.1 (the owner, 2026-10-26: element by element; DECISIONS BU-43): whether a join that supplies no candidate, or a typed
+    // one that holds a failed source (G368 (1)), is the argument probe's control flow, which its call classifies and completes at the
+    // selected candidate's Type. One of Tuple or array results (`shape`, its first aggregate part), one whose results hold a part
+    // awaiting its call (AwaitsCall), or one its survey left unclassified (no Literal record: a failed or unknown source beside its
+    // literals; U1.6h site 4; a typed one) is Join: its results are classified position by position
+    // (Binding.ArgumentKinds.Positions.cs); a scalar one of literals keeps the kind its survey gave it.
     private bool ClassifiedByCall(Koto join, Koto? shape)
     {
         if (this.argumentProbe is not { } probe || !ReferenceEquals(ControlFlowExpression(probe), join))

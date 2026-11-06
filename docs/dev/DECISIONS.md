@@ -8882,6 +8882,12 @@ resumed by R4-M86 (2026-10-20).
     a new meaning: Waiting, not "takes no part".
   - Site 4 (U1.6h-5): a join its survey left unclassified (no Literal record: a failed or unknown source beside its literals) is a Join
     (ClassifiedByCall), so its call classifies and selects.
+  - Amended (G368 (1), 2026-11-06): a typed join whose survey fixed its Type and which holds a failed source is covered when it is its
+    call's control-flow argument: that Type is not its complete Type (SPEC 10.5.1), so DecideResult has its call classify it
+    (ClassifiedByCall), and its typed sources meet the selected candidate's Type on their own (named and value calls, Tuple and array
+    elements, nested joins, a failed operator source). The call records it adds where site 3 leaves the position without evidence
+    (Ambiguous on the six `*_typed_fov` gate rows and g129, UnboundTypeArgument on g251) are rule W's dependent records (BU-79). A
+    resting join outside a call (a local's use, an operator, A5's Loans) is not covered (PLAN G368 (1)).
   - U1.6d as amended (Part 1): a failed source of a join its call classifies fits every candidate as a source, not as its whole join.
     Its argument and its position are Waiting (10.5.1); its join records it as its cause and rests on it at its verdict (DecideRest).
     The evidence walk publishes the candidate's pattern at each unbound failed part (FailedFit, BU-77, with fix (b)); an ambiguity

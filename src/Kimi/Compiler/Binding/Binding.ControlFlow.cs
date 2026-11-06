@@ -302,6 +302,14 @@ public sealed partial class Binding
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
         }
 
+        // SPEC 10.5.1, 23.1.2 (G368 (1), DECISIONS BU-78 as amended): a typed join that holds a failed source fixes no complete Type
+        // without its call, so its call classifies it (ClassifiedByCall) and its typed sources meet the selected candidate's Type.
+        if (context.Inferred && types.Count > 0 && context.Cause is not null && this.ClassifiedByCall(node, null))
+        {
+            context.Wait(this.SourcesAwait(context));
+            return Complete(node, null);
+        }
+
         var suppliedValue = types.Count > 0 || awaiting;
         var common = context.Expected;
         if (common is not null && types.Count > 0 && HasArrayLengthHole(common))
