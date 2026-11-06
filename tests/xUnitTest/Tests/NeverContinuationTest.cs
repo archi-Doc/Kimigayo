@@ -167,9 +167,9 @@ public class NeverContinuationTest
 
     // SPEC 14.10.3, 15.1.3, 3.5 (DECISIONS R5-M159): an element consumed where its access cannot complete normally is checked on the
     // assumed path by its reachable twin's Move rules, with the twin's codes at the element: an explicit Move into a local or into a
-    // call has no static Move Path, nor has a dynamic Array's element (4.7.1, 15.1.5: an index through a conformance never offers Take),
-    // and a bare consume is TransferRequired_Kd beside the element path's Unsupported_Kd (fail-before: each accepted, the old analysis
-    // checking nothing there; the Array row is a guard). A part of a temporary is moved as its twin `take(make2(42).0@move)` is, with no
+    // call has no static Move Path, nor has a dynamic Array's element (4.7.1, 15.1.5: an index through a conformance never offers Take)
+    // (fail-before: each accepted, the old analysis checking nothing there; the Array row is a guard). A part of a temporary is moved as
+    // its twin `take(make2(42).0@move)` is, with no
     // record (1a, the owner's list of 2026-11-03: the old analysis's StaticMovePathRequired_Kd there went with H5, the MIR deciding
     // acceptance). A Copy element, a Tuple element's or an element's own, is read as its twin is, with no record. A program without a
     // record is generated as a Library, one with a record is not.
