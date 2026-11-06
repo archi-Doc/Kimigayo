@@ -8941,6 +8941,20 @@ resumed by R4-M86 (2026-10-20).
     a new meaning: Waiting, not "takes no part".
   - Site 4 (U1.6h-5): a join its survey left unclassified (no Literal record: a failed or unknown source beside its literals) is a Join
     (ClassifiedByCall), so its call classifies and selects.
+  - Amended (G368 (1), 2026-11-06): a join that holds a typed part (`ResultContext.HasTyped`: its survey found one at any depth, or a
+    collected source is one) and a failed source fixes no complete Type without its call (SPEC 10.5.1). As its call's control-flow
+    argument it is its call's Join (ClassifiedByCall, by the one exit DecideResult shares with ConflictWaits, which a conflict takes
+    first), so the call selects with the failed part a wildcard. A typed join nested in it still rests at its verdict; when the root
+    binds it at the selected Type, its bound sources keep their records (BindWaitedSources, as DecideWaiting's contract and rule W
+    say; a Conflict join's own record stands for its sources). Covered: named and value calls, Tuple and array elements, a failed
+    operator source, and typed joins nested at any depth, also when every typed part lies in them. Sites 2 and 6 hold: g192 is
+    unchanged, and g192t2 to g192t4 add J1's `twice` at `(bool) -> bool` (independent: the no-failure twin is NoApplicable). The
+    records it adds are rule W's dependent ones (BU-79): Ambiguous or UnboundTypeArgument where site 3 leaves the position without
+    evidence (the six `*_typed_fov` gate rows, g129, g251, i4, and v22, whose typed evidence comes from failed sources); and an inner
+    literal or waiting call that fits the tree's own Type, met at the selected one (`5` and `identity(4)` in t7, t8 and the four
+    `fp2_*_{inlit,deferred}_typed_fb` gate rows). Not covered (PLAN G368 (1)): a resting join outside a call (a local's use, an
+    operator, A5's Loans); a tree whose typed parts are only borrows or function references nested beside failed sources, which the
+    survey does not type (j1, j2).
   - U1.6d as amended (Part 1): a failed source of a join its call classifies fits every candidate as a source, not as its whole join.
     Its argument and its position are Waiting (10.5.1); its join records it as its cause and rests on it at its verdict (DecideRest).
     The evidence walk publishes the candidate's pattern at each unbound failed part (FailedFit, BU-77, with fix (b)); an ambiguity

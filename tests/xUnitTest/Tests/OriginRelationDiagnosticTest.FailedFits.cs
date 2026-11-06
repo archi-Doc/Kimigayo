@@ -20,6 +20,10 @@ public partial class OriginRelationDiagnosticTest
 
     private const string GBool1 = "func f(x: bool) -> i32 => 1\n";
 
+    private const string KDX = "func k(c: bool, d: bool, x: i64) -> i32\n";
+
+    private const string KDEX = "func k(c: bool, d: bool, e: bool, x: i64) -> i32\n";
+
     private const string ApI64 = "func ap(f: (i64) -> i64) -> i32 => 0\n";
 
     private const string DeferredRecords = "NoApplicableOverload_Kd identity(4); TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName";
@@ -251,17 +255,52 @@ public partial class OriginRelationDiagnosticTest
     public void AFailedSourceRestsItsJoinOnlyAtItsVerdict(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
+    // G368 (1) (SPEC 14.9.2 step 2, 10.5.1, 23.1.2; DECISIONS BU-78 as amended): a typed join whose survey found a typed part and which
+    // holds a failed source is its call's Join, as a literal one is (site 4): the call selects with the failed part a wildcard, and the
+    // typed source meets the selected candidate's Type on its own, at a named and a value call, a Tuple and an array element and beside a
+    // failed operator source. A typed join nested in it rests at its verdict, and its typed sources meet the selected Type when the root
+    // binds it (BindWaitedSources: a resting join's bound sources keep their records), also where every typed part lies in nested joins
+    // (two_nested, nested_failed, nested_never, tuple_two_nested). An inner literal that fits the tree's own Type then meets the selected
+    // one too, a dependent record rule W allows (inlit_fb's 5, deferred_fb's identity(4), nested_typed_fb's 8). Its twins keep their
+    // records: the name repaired as `true` (w1) and as Never (w2), x fitting the one candidate (fi), and a literal sibling at the join's
+    // own Type (lit_sib). Over two candidates the failed position has no evidence (site 3), so the call's Ambiguous is rule W's dependent
+    // record (fov).
+    [Theory]
+    [InlineData("fb", GBool1 + KX + "    return f(if c => undefinedName else => x)\n", "TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("value_fb", "func fh(x: bool) -> i32 => 0\n" + KX + "    let h = fh\n    return h(if c => undefinedName else => x)\n", "TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("tupleElem_fb", "func f(x: (bool, i32)) -> i32 => 1\n" + KX + "    return f((if c => undefinedName else => x, 3))\n", "TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("arrayElem_fb", "func f(x: Array<bool>) -> i32 => 1\n" + KX + "    return f([if c => undefinedName else => x, true])\n", "TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("inlit_fb", GBool1 + KDX + "    return f(if c => (if d => undefinedName else => 5) else => x)\n", "TypeMismatch_Kd 5; TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("deferred_fb", IdentityT + GBool1 + KDX + "    return f(if c => (if d => undefinedName else => identity(4)) else => x)\n", "TypeMismatch_Kd identity(4); TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("nested_typed_fb", GBool1 + KDX + "    return f(if c => (if d => undefinedName else => x) else => 8)\n", "TypeMismatch_Kd 8; TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("nested_two_typed_fb", GBool1 + "func k(c: bool, d: bool, x: i64, y: i64) -> i32\n    return f(if c => (if d => undefinedName else => x) else => y)\n", "TypeMismatch_Kd x; TypeMismatch_Kd y; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("nested_tupleElem_fb", "func f(x: (bool, i32)) -> i32 => 1\n" + KDX + "    return f((if c => (if d => undefinedName else => x) else => 8, 3))\n", "TypeMismatch_Kd 8; TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("two_nested", GBool1 + KDEX + "    return f(if c => (if d => undefinedName else => x) else => (if e => undefinedName2 else => x))\n", "TypeMismatch_Kd x; TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2")]
+    [InlineData("nested_failed", GBool1 + KDX + "    return f(if c => (if d => undefinedName else => x) else => undefinedName2)\n", "TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2")]
+    [InlineData("nested_never", "func stop() -> Never => $abort(\"stop\")\n" + GBool1 + KDX + "    return f(if c => (if d => undefinedName else => x) else => stop())\n", "TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("tuple_two_nested", "func f(x: (bool, i32)) -> i32 => 1\n" + KDEX + "    return f((if c => (if d => undefinedName else => x) else => (if e => undefinedName2 else => x), 3))\n", "TypeMismatch_Kd x; TypeMismatch_Kd x; UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2")]
+    [InlineData("operator_fb", GBool1 + KX + "    return f(if c => 1 + true else => x)\n", "NonNumericOperand_Kd 1 + true; TypeMismatch_Kd x")]
+    [InlineData("fov", FScalars + KX + "    return f(if c => undefinedName else => x)\n", "AmbiguousBinding_Kd f(if c => undefinedName else => x); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("fi", "func f(x: i64) -> i32 => 0\n" + KX + "    return f(if c => undefinedName else => x)\n", "UnresolvedBinding_Kd undefinedName")]
+    [InlineData("lit_sib", GBool1 + "func k(c: bool, d: bool, x: bool) -> i32\n    return f(if c => undefinedName else if d => x else => 8)\n", "TypeMismatch_Kd 8; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("w1", GBool1 + KX + "    return f(if c => true else => x)\n", "TypeMismatch_Kd x")]
+    [InlineData("w2", "func stop() -> Never => $abort(\"stop\")\n" + GBool1 + KX + "    return f(if c => stop() else => x)\n", "NoApplicableOverload_Kd f(if c => stop() else => x)")]
+    public void ATypedJoinWithAFailedSourceIsItsCallsJoin(string form, string body, string records)
+        => AssertRecords($"{form} [G368 (1)]", body, records, null);
+
     // U1.6h-4 (SPEC 14.9.2 steps 2-3, 23.1.2): a failed source takes no part in whether its join's sources await (SourcesAwait,
     // BoundSince), and one that fails when its join decides is the join's cause. So in g192 the inner join J1 [twice, J2] takes twice's
     // Item Type from twice alone, and J2's anonymous source fails at it on its own (TypeMismatch_Kd 4:89) beside the name's record and the
     // call's (C2's written header at f's one candidate). Its twins: without the name (t1), with C2's header at (bool) -> bool (t2), with
-    // twice (t3) or an unwritten header (t4) for C2.
+    // twice (t3) or an unwritten header (t4) for C2. In t2-t4 the call selects (G368 (1)), and J1, resting on J2, is bound at f's
+    // (bool) -> bool, where J1's twice fails on its own (SPEC 23.1.2: its no-failure twin is NoApplicable for the same Type), as t3's
+    // outer twice does; J2's anonymous source keeps its record at twice's Item (sites 2 and 6), and g192 is unchanged.
     [Theory]
     [InlineData("U1.6h-4", "g192", "undefinedName", "func [] (v: i64) -> i64 => v", "NoApplicableOverload_Kd f(label lp: if c3 => (if c2 => twice else => (if c1 => undefinedName else => func [] (v) => v)) else => func [] (v: i64) -> i64 => v); TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-4", "g192t1", "twice", "func [] (v: i64) -> i64 => v", "NoApplicableOverload_Kd f(label lp: if c3 => (if c2 => twice else => (if c1 => twice else => func [] (v) => v)) else => func [] (v: i64) -> i64 => v); TypeMismatch_Kd func [] (v) => v; TypeMismatch_Kd func [] (v: i64) -> i64 => v")]
-    [InlineData("U1.6h-4", "g192t2", "undefinedName", "func [] (v: bool) -> bool => v", "TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
-    [InlineData("U1.6h-4", "g192t3", "undefinedName", "twice", "TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
-    [InlineData("U1.6h-4", "g192t4", "undefinedName", "func [] (v) => v", "TypeMismatch_Kd func [] (v) => v; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-4", "g192t2", "undefinedName", "func [] (v: bool) -> bool => v", "TypeMismatch_Kd func [] (v) => v; TypeMismatch_Kd twice; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-4", "g192t3", "undefinedName", "twice", "TypeMismatch_Kd func [] (v) => v; TypeMismatch_Kd twice; TypeMismatch_Kd twice; UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6h-4", "g192t4", "undefinedName", "func [] (v) => v", "TypeMismatch_Kd func [] (v) => v; TypeMismatch_Kd twice; UnresolvedBinding_Kd undefinedName")]
     public void AFailedSourceTakesNoPartInWhetherItsJoinAwaits(string unit, string form, string inner, string outer, string records)
         => AssertRecords(
             $"{form} [{unit}]",

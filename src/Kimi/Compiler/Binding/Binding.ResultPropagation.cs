@@ -515,6 +515,7 @@ public sealed partial class Binding
                 else if (!awaits)
                 {
                     types.Add(source);
+                    context.HasTyped = true;
                 }
             }
         }
@@ -565,9 +566,10 @@ public sealed partial class Binding
                 // U1.6g (b), SPEC 7.7.4, 23.1.2: a bound part that does not fit takes the Type through its late adaptation (an Item by
                 // erasure); one that cannot is its own record, at the part, on which the join rests, as a waited part's misfit is. A
                 // Closure or Function Item converts to a Function Type only by its erasure, whose outcome is that record's fact
-                // (ErasePart, R4-M161).
+                // (ErasePart, R4-M161). A resting join's bound parts keep their records (DecideWaiting's contract, rule W: DECISIONS
+                // BU-79, G368 (1)); a Conflict join's own record stands for its sources.
                 fits = this.TryPropagate(source, type!, node);
-                if (!fits && !awaits && !rests)
+                if (!fits && !awaits && context.Outcome != JoinOutcome.Conflict)
                 {
                     if (context.Sources[i]!.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type!.Kind == BoundTypeKind.Function)
                     {
