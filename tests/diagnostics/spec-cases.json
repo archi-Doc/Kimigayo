@@ -126,6 +126,8 @@
     {"Uncomment": null, "Expected": []}]},
   {"Name": "15.6.1-well-formedness", "Section": "15.6.1", "Anchor": "func get(b: objref/Holder<ref/i32 during c> during o) -> ref/i32 during o", "Family": "F4", "Prelude": "()\nstruct Holder<T>\n    public let value: T\n", "Variants": [
     {"Uncomment": null, "Expected": []}]},
+  {"Name": "15.6.1-obligations", "Section": "15.6.1", "Anchor": "func relay(p: ref/i32, q: ref/i32) -> ref/i32 during q", "Family": "F4", "Prelude": "()\n", "Variants": [
+    {"Uncomment": null, "Expected": [{"Code": "UnprovenOriginRelation_Kd", "Line": "return rr@follow"}]}]},
   {"Name": "15.6.3-outer-replacement", "Section": "15.6.3", "Anchor": "let c = rr@follow@follow@uniq", "Family": "F2", "Prelude": "", "Variants": [
     {"Uncomment": null, "Expected": []},
     {"Uncomment": "let w = rr@follow@ref", "Expected": [{"Code": "ComparisonLoanConflict_Kd", "Line": "let w = rr@follow@ref"}]},

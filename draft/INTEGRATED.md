@@ -1275,6 +1275,10 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   with G318, and BU-72's three); row 3 names
   H11b's two `UntilH11` test methods. With Revision 3 this fixes R6-check's exit list to R7 (DECISIONS R5-M194); the plan stays
   一部取り込み (open), nothing frozen.
+- Revision 5 (2026-11-06, plan §14, the owner's workflow revision, DECISIONS Q14 and R7-M4): a Coordinator session takes the windows,
+  the numbering and the project documents; the Full and Owner classes end, so §5.5's units run as Major units with one prototype-first
+  candidate unless the owner instructs otherwise, and RP7 and RP21 end; RQ10's owner preview of SPEC text ends (SPEC and IMPL get an
+  independent review). The plan stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
