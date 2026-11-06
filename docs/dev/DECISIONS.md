@@ -9854,9 +9854,9 @@ resumed by R4-M86 (2026-10-20).
     is its prerequisite (SPEC 23.1.2), and one that rests on a syntax recovery no longer derives the node's own record (a header
     duplicate, an inline cycle, a Property's initializer mismatch). The declaration-level checks that read members' written parts
     (inline layout, enum formation, Contract and receiver shape, inherited names, C-layout split) run with no frame open, so this
-    change does not touch them. The inline layout also reads an inferred Field's Type. When that Type comes from a recovered
-    initializer, it forms a direct record today: c82, `var next = (Option<Node>.None`, reports InvalidInlineLayout_Kd beside the
-    MissingSyntax_Kd. That is pre-existing, and PLAN G476 tracks it. A check whose record must rest on a part it reads records that
+    change does not touch them. The inline layout also reads an inferred Field's Type. c82, `var next = (Option<Node>.None`, is no
+    recovery: the tokenizer supplies the closer, and its InvalidInlineLayout_Kd is independent (PLAN G476, closed). A check whose
+    record must rest on a part it reads records that
     part with `AddPrerequisite`, as the `length` slot does. Generic
     parameters, bases and Constraints stay in the frame: the container's own checks read them, and their share of its one failure
     slot is R7's Problem records (PLAN G465).
