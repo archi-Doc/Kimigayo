@@ -181,14 +181,6 @@ public sealed partial class Binding
     private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default, ReadOnlySpan<BoundOrigin> origins = default)
         => this.SubstitutePart(type, binder, arguments, lengths, origins, this.substitutedParts.Begin(this.storageVersion));
 
-    // SPEC 9.7.2, 15.3.1 (PLAN G425): a declaration's Type at an occurrence of its Type, every Type and declared Origin slot mapped to the
-    // occurrence's arguments in one pass; the one occurrence form of a Field's Type (StoredType) and of a clause (StoredConstraint).
-    private BoundType? OccurrenceType(BoundType declared, BoundType owner)
-    {
-        Span<BoundOrigin> single = [BoundOrigin.Static];
-        return this.SubstituteType(declared, owner.Symbol!.Declaration, (BoundType[])owner.Components, default, OccurrenceOrigins(owner, single));
-    }
-
     // An Origin of a declaration-terms Type under a substitution, each atom mapped once: a declared slot to its image
     // (SubstituteStoredOrigin), otherwise a pair's `o` through its Type argument (SubstitutePairOrigins).
     private BoundOrigin SubstituteSlotOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundOrigin> origins)

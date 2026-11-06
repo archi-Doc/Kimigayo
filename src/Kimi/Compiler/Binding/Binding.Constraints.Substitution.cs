@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 6.2.2, 15.3.1, 9.7.2 (PLAN G425): a declaration's clause at an occurrence of its Type, under the occurrence's Type and Origin
-    // arguments in one pass, as OccurrenceType substitutes a Field's Type.
+    // arguments in one pass, as StoredType substitutes a Field's Type.
     private BoundConstraint StoredConstraint(BoundConstraint constraint, BoundType owner)
     {
         Span<BoundOrigin> single = [BoundOrigin.Static];

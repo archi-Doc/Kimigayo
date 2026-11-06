@@ -566,7 +566,13 @@ public sealed partial class Binding
         this.ValidateEnumProjections();
     }
 
-    private BoundType? StoredType(BoundType field, BoundType owner) => this.OccurrenceType(field, owner);
+    // SPEC 9.7.2, 15.3.1 (PLAN G425): a declaration's Type at an occurrence of its Type, every Type and declared Origin slot mapped to the
+    // occurrence's arguments in one pass (SubstituteType); a clause's form (StoredConstraint) uses the same images.
+    private BoundType? StoredType(BoundType field, BoundType owner)
+    {
+        Span<BoundOrigin> single = [BoundOrigin.Static];
+        return this.SubstituteType(field, owner.Symbol!.Declaration, (BoundType[])owner.Components, default, OccurrenceOrigins(owner, single));
+    }
 
     // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages). A pair's outer Origin `o`, a negative
     // slot of its binder, is bound through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.

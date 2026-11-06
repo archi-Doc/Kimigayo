@@ -250,7 +250,7 @@ public class OriginRedesignTest
     // declaring Type's slot and a conditional conformance's condition. A premise naming another Origin, an elided slot (`during` on
     // `ref`, SPEC 3.3.2) and the declaration's own slot standing for another occurrence's prove nothing. The substitution is simultaneous:
     // a Type argument naming the declaration's own slots (`Box<Cursor during h> during x` inside `Box<T>{h}`, swapped slots) keeps them,
-    // in a clause, a nested Type, an inherited conformance and a Field's Type alike.
+    // in a clause, a nested Type, an inherited conformance, a Callable's effect bound and a Field's Type alike.
     [Theory]
     [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\nstruct Derived<T> {d} : Base<T> during d\n    T is Source\n    T.(Source).Item is ref/i32 during d\n    public func again(self: ref/Self) -> ref/i32 during d => self.w", "")]
     [InlineData("open struct Base<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\nstruct Derived<T> {d} : Base<T>{b}\n    origin b.h == d\n    T is Source\n    T.(Source).Item is ref/i32 during d", "")]
@@ -274,6 +274,8 @@ public class OriginRedesignTest
     [InlineData("struct Box<T> {h}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public func other(self: ref/Self, b: ref/(Box<Cursor during h> during x)) -> i32 => 0", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
     [InlineData("struct P2<T> {h, k}\n    T is Source\n    T.(Source).Item is ref/i32 during h\n    public let w: ref/i32 during h\n    public let v: ref/i32 during k\n    public func other(self: ref/Self, b: ref/(P2<Cursor during h>{q})) -> i32\n        origin q.h == k\n        origin q.k == h\n        return 0", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
     [InlineData("struct Box2<T> {h}\n    public let t: ref/T during h\n    public func get(self: ref/Self, b: ref/(Box2<Cursor during h> during x)) -> ref/(Cursor during x) during x => b.t", "UnprovenOriginRelation_Kd")]
+    [InlineData("struct Holder<F> {h}\n    origin s.at == h\n    F is Callable<(Cursor{s}) -> i32>\n        effect confined\n    public let w: ref/i32 during h\nfunc g<G>(x: ref/(Holder<G> during m)) -> i32\n    origin t.at == m\n    G is Callable<(Cursor{t}) -> i32>\n        effect confined\n    return 0", "")]
+    [InlineData("struct Holder<F> {h}\n    origin s.at == h\n    F is Callable<(Cursor{s}) -> i32>\n        effect confined\n    public let w: ref/i32 during h\nfunc g<G>(x: ref/(Holder<G> during m)) -> i32\n    origin t.at == m\n    G is Callable<(Cursor{t}) -> i32>\n    return 0", "UnsatisfiedEffectBound_Kd")]
     public void ATypeOccurrenceProvesItsConstraintsUnderItsOriginArguments(string declaration, string codes)
         => Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code).Order(StringComparer.Ordinal)));
 
