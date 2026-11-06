@@ -15,13 +15,13 @@ namespace XunitTest;
 /// Cause facts. Nothing is dropped and no verdict changes.</summary>
 public sealed partial class MirBorrowsTest
 {
-    // A result with an unstated raw Field and Fixed Origins (MirOrigins.Fixed reads no Field), so mkE's rule-A rows are Value and Chain
-    // (SPEC 15.6.4; DECISIONS BU-40), whose arrival in _0 rule W keeps as it is; only its innermost layer's Origin is the result's.
     // SPEC 15.6.5's call clause (DECISIONS R4-M104): a Field of one Origin and two producers, one retaining an Option argument (an
     // aggregate holding the borrow, not a Copy), one retaining the borrow itself.
     private const string Optional = "struct H2 {a}\n    public let r: Option<ref/i32 during a>\n    public init(o: Option<ref/i32 during a>) => self.r = o@move\n" +
         "func mk(o: Option<ref/i32 during s>) -> H2 during s => H2.init(o@move)\nfunc mkr(r: ref/i32 during s) -> H2 during s => H2.init(.Some(r))\n";
 
+    // A result with an unstated raw Field and Fixed Origins (MirOrigins.Fixed reads no Field), so mkE's rule-A rows are Value and Chain
+    // (SPEC 15.6.4; DECISIONS BU-40), whose arrival in _0 rule W keeps as it is; only its innermost layer's Origin is the result's.
     private const string ChainHolder = "struct Holder {a}\n    public var p: raw/u8\n    public var r: ref/i32 during a\n" +
         "func mkE(x: ref/(ref/(ref/i32 during a) during b) during c) -> Holder during a\n    loop => ()\n";
 
