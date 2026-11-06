@@ -129,16 +129,12 @@ public sealed partial class Binding
 
             if (decomposition is not null && slot is not null)
             {
-                var proof = this.ProveCopy(slot, name);
-                var acquisition = slotReach.Access != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-                    : proof == ConstraintProof.Proven ? PatternAcquisition.Copy
-                    : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.CopyOrMove;
+                // Acquired by the match's rule, when the match's bindings are (CompleteIterationAcquisitions).
                 var parent = source.IsTupleBinding ? 1 : 0;
                 var position = new BoundPattern(name, slot, BoundPatternKind.Binding, parent, parent * i, decomposition.Positions.Count + 1);
                 decomposition.PositionStorage.Add(position with
                 {
                     BodySymbol = symbol,
-                    Acquisition = acquisition,
                     WholePosition = true,
                     AccessMode = slotReach.Access,
                     ImplicitFollows = slotLayers,
@@ -275,6 +271,23 @@ public sealed partial class Binding
                 !(this.SelectsWitness(call.Target, subject, entry) && this.SelectsWitness(next.Target, iterator, this.Library.LendingIterator)))
             {
                 this.Fail(loop, BindingFailure.Ambiguous);
+            }
+        }
+    }
+
+    // SPEC 14.6.2, 15.1.6: a user iteration's item bindings are acquired by the match's rule (AcquireBinding) at the same point, after the
+    // declaration checks its Copy proof reads; a loop's plan has no written Pattern Type to recheck.
+    private void CompleteIterationAcquisitions()
+    {
+        for (var i = 0; i < this.userIterations.Count; i++)
+        {
+            var plan = BoundMatch.Of(this.userIterations[i].Loop);
+            for (var p = 0; plan is not null && p < plan.PositionStorage.Count; p++)
+            {
+                if (plan.PositionStorage[p].Kind == BoundPatternKind.Binding)
+                {
+                    this.AcquireBinding(plan, p);
+                }
             }
         }
     }

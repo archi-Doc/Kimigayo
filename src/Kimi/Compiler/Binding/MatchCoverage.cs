@@ -2,8 +2,9 @@
 
 // Owns the coverage vocabulary of a match: its state and what a non-exhaustive match lacks.
 // Input: the coverage written on BoundMatch.Coverage: Binding.Patterns' proof, or Exhaustive for an iteration's synthetic Some/None
-// match, exhaustive by construction (Binding.Sequences). Output: the state its consumers read and, for a non-exhaustive match, the
-// requirement its diagnostic reports.
+// match, exhaustive by construction (Binding.Sequences), which a binding whose Copy proof is Error makes Invalid (AcquireBinding; no
+// consumer reads a loop's coverage). Output: the state its consumers read and, for a non-exhaustive match, the requirement its
+// diagnostic reports.
 // Only a non-exhaustive match carries a reason; a missing Case or whole-payload reason names the Case's declaration index.
 // Must not prove coverage itself: Binding.Patterns decides it.
 

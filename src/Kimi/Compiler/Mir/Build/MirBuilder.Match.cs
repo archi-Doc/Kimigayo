@@ -165,6 +165,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 15.1.6: the selected arm's body locals, left to right, from the Places its binding positions selected, each as its Adjust
     // acquires it: Copied, moved, by case, or borrowed in the mode its path grants; a for loop's are its iteration bindings (SPEC 14.6.1).
+    // A failed one (Failed: a for item whose Copy proof is Error) takes a value derived from that failure, as Operand gives (BU-103, BU-110).
     private void Bind(BoundMatch plan, int pattern, int start)
     {
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
@@ -176,7 +177,9 @@ internal sealed partial class MirBuilder
                 var place = this.selected[start + i];
                 var mutable = Binding.Reassignable(symbol);
                 var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, local: true), mutable, symbol.Name)), this.lexical);
-                this.Use(new(local), this.Acquire(adjust, place, type, input: false, binding, new(local)), binding);
+                var value = adjust.Acquire == HirAcquire.Failed ? MirOperand.Move(this.Unsupported(binding, derived: true, type))
+                    : this.Acquire(adjust, place, type, input: false, binding, new(local));
+                this.Use(new(local), value, binding);
                 this.locals[symbol] = local;
             }
         }

@@ -9329,14 +9329,13 @@ resumed by R4-M86 (2026-10-20).
     - `ResolveTransferTarget` returning null (the lint and the old analysis need the lexical target);
     - a failed source (14.9.1: no source);
     - the MIR's `|| !Reached` (a consumer deciding what Binding owns).
-- **BU-103 A failed acquisition is `HirAcquire.Failed`** (2026-11-05; PLAN G422, unit bu149; design revision 2, design review 1 REVISE,
-  its re-check ACCEPT; the owner approved the entry beyond `HirAcquire`'s limit 7, verbatim 「123を推奨どおり、4を承認する」; R4's consent
-  C-21 for the builder lines under hold H-5) SPEC 23.1.2, 3.5, 15.1.6.
+- **BU-103 A failed acquisition is `HirAcquire.Failed`** (2026-11-05; superseded in part by BU-110; PLAN G422, unit bu149; design
+  revision 2, design review 1 REVISE, its re-check ACCEPT; the owner approved the entry beyond `HirAcquire`'s limit 7, verbatim
+  「123を推奨どおり、4を承認する」; R4's consent C-21 for the builder lines under hold H-5) SPEC 23.1.2, 3.5, 15.1.6.
   - Cause: `Unset` meant both "no consumer" (the column's default) and "a failed acquisition" (`BareOf`;
     `HirAdjust.Of(PatternAcquisition)`'s `_ => default`). `MirBuilder.Result` read a failed item as not consumed, so its destination
-    was never written (`=> t.5`; `=> b`
-    of a Type whose Copy proof is Error; `else => x` left `y` unwritten, and A1 reported `UninitializedPlace_Kd`), and `Derived`
-    (`!= default`) never folded an Error node's failed acquisition.
+    was never written (`=> t.5`; `=> b` of a Type whose Copy proof is Error; `else => x` left `y` unwritten, and A1 reported
+    `UninitializedPlace_Kd`), and `Derived` (`!= default`) never folded an Error node's failed acquisition.
   - Rule: `HirAcquire.Failed` has one meaning: a consumed Place or a Pattern binding whose acquisition failed (no Type, a failed Pattern
     Type check, or a Move resting on an Error Copy proof); its consumer takes a value derived from that failure. Binding writes it in
     `BareOf` and in `HirAdjust.Of(PatternAcquisition)` (`None or Deferred`), one row each, with no default; `Unset` means only that no
@@ -9624,6 +9623,26 @@ resumed by R4-M86 (2026-10-20).
     `Discards`). A closure whose body infers Unit publishes that body as its result, as a named function's value body.
   - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
     result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
+
+- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; PLAN G439, unit
+  bu174; Major; R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes BU-103's "`Match` builds an
+  Invalid or Pending plan as Opaque, so `Bind` never takes a Failed binding; a For's plan holds none (its acquisitions are
+  `Binding.Sequences`', PLAN's open item)": a loop's plan holds a Failed binding, and `Bind` takes it.
+  - Cause: two copies of 15.1.6's rule. `Binding.Sequences` decided a for item's at bind time and took an Error Copy proof as
+    CopyOrMove, so a Move with a valid plan; `CompletePatternAcquisitions` decides a match's after the declaration checks (Deferred,
+    the plan Invalid) and never saw a for's plan, which is no entry of `this.matches`.
+  - Rule: `Binding.AcquireBinding` is the one owner, called for a match's Binding positions and, by `CompleteIterationAcquisitions`
+    over `userIterations`, for a loop's, at the same point; the Sequences copy is deleted. Only a match re-checks Pattern Types (a
+    loop writes none). An Error proof makes the binding Deferred (HIR Failed) and its plan Invalid, and writes no failure on the
+    binding: 15.1.6 gives a binding no Copy requirement, and the proof reads the declaration's failed Constraint (`NominalCopy`),
+    whose record is reported, as BU-103's `=> b` is derived. `MirBuilder.Bind` gives a Failed binding the derived value `Operand`
+    gives (R4's shape); the loop and its body are built.
+  - Records (23.1.2, rule W): the match binding's dependent `InvalidConstraint_Kd` (`.Some(let v)`) is removed; a loop's binding never
+    had one. No acceptance moves.
+  - Rejected: building a loop with an Invalid plan Opaque, as `Match` does: it loses the body's independent records (an A1
+    `MovedPlace_Kd`; PLAN G471 for the match). Deciding at bind time through the shared rule: one rule, two decision times. The
+    binding's own dependent record (G439's review option (a)): longer, and a loop's names are not walked by the pass; a `Fail` on
+    them stayed across an edit and rebind and hid their hover (review 1 B-1).
 
 - **BU-111 Virtual declaration and base call failures record closed causes** (2026-11-06; PLAN G89 follow-up, unit bu176; Major,
   G89-2's shape for the owner's G89 request) SPEC 6.4.1, 6.4.4, 23.1. `Binding.VirtualDeclarations` and `Binding.BaseCalls` kept
