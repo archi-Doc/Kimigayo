@@ -685,15 +685,16 @@ public sealed partial class Binding
         return limit ? BindingFailure.Unsupported : missing;
     }
 
-    // A Type position names a Type: an inaccessible qualifier explains the miss, otherwise the Name is missing.
-    private BoundType? FailMissingType(Koto name, BindingScope scope)
+    // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
+    // explains the miss, otherwise the Name is missing.
+    private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
         => this.ReportUnavailableQualifier(name, scope) is { } qualifier
             ? this.CompleteDependent(name, qualifier)
-            : this.Fail(name, this.MissingFailure(name, scope, BindingFailure.MissingType), true);
+            : this.Fail(name, this.MissingFailure(name, scope, missing), true);
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.
-    // Returns the inaccessible qualifier it failed, which explains the failed lookup.
+    // Returns the inaccessible qualifier it failed, which explains the failed lookup, and binds that member's qualifier.
     private Koto? ReportUnavailableQualifier(Koto syntax, BindingScope scope)
     {
         if (syntax is GenericsKoto generic)
@@ -723,6 +724,14 @@ public sealed partial class Binding
             {
                 return null;
             }
+        }
+
+        // An inaccessible member is still the qualifier's nested declaration (SPEC 9.4), so the qualifier is bound in its container
+        // role, as BindContainerReference binds it for an accessible member, its own failures included (SPEC 23.1.2; PLAN G250).
+        if (qualifier.Declaration is DeclarationContainerKoto { IsRoot: false })
+        {
+            member.Left.BoundSymbol = qualifier;
+            this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope));
         }
 
         this.Fail(member, BindingFailure.Access);

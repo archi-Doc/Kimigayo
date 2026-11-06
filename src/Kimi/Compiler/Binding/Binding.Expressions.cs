@@ -493,7 +493,7 @@ public sealed partial class Binding
                 var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)
                 {
-                    return this.Fail(member, this.MissingFailure(member, scope, BindingFailure.MissingName), true);
+                    return this.FailMissing(member, scope, BindingFailure.MissingName);
                 }
 
                 return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, memberSymbol, null, scope, expected) : this.BindReference(member, memberSymbol, scope);
