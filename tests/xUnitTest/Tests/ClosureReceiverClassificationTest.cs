@@ -146,9 +146,9 @@ public class ClosureReceiverClassificationTest
 
     private const string ExclusiveCallNote = "The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because a call of the callee may change its environment, or use it or what it reaches with exclusive access";
 
-    // SPEC 7.7.3, 8.10 (PLAN G251 (2)): a call's Note holds for every cause of its receiver: a body that only reads through an
-    // exclusive borrow of a capture, and a generic callee, whose receiver is its declared Callable receiver (uniq or owner, 7.7.3's
-    // last paragraph) with no body known.
+    // SPEC 7.7.3, 8.10: a call's Note holds for every cause of its receiver (7.7.3's Exclusive row also names a use with exclusive
+    // access): a body that only reads through an exclusive borrow of a capture, and a generic callee, whose receiver is its declared
+    // Callable receiver (uniq or owner, 7.7.3's last paragraph) with no body known.
     [Theory]
     [InlineData("public func main() -> ()\n    var n = 7\n    let f = func [var n] () -> i32\n        let s = n@uniq\n        return s@follow\n    let v = f()\n", ExclusiveCallNote)]
     [InlineData("func callIt<F>(f: F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\npublic func main() -> ()\n    let v = 0\n", ExclusiveCallNote)]
