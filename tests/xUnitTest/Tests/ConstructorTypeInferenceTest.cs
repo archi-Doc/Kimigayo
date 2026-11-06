@@ -192,7 +192,7 @@ public class ConstructorTypeInferenceTest
     [InlineData("struct G<T> {a}\n    public let r: ref/T during a\n    public init(x: ref/T during a) => self.r = x\nfunc f() -> i32\n    let g = G.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
     [InlineData(Optional + "func f() -> bool\n    var v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    v = 2\n    return h.has()\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
     [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    return H2.init(.Some(v@ref))\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
-    // A pre-existing record shape (PLAN G<K-F1>): by SPEC 15.6.5 the conflict at `let v` rests on the Refuted relation (rule W), as
+    // A pre-existing record shape (PLAN G526): by SPEC 15.6.5 the conflict at `let v` rests on the Refuted relation (rule W), as
     // for the qualified `Option.Some` twin, which gives two UnsatisfiedOriginRelation_Kd; a function's waiting argument gives this row's
     // pair on dev (`mk(o: Option<ref/i32 during s>)`).
     [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
