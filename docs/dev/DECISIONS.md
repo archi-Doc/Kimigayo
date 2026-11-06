@@ -9262,9 +9262,9 @@ resumed by R4-M86 (2026-10-20).
     and `RequireInputPremises` judges no input that already failed. Open (PLAN G418): value calls and Case constructions; after the
     `CompleteWaiting` stop the candidate's re-check (`TryCandidate`) and its pending Constraint are not judged, nor are the receiver's
     object erasure and the per-call Origin stop.
-- **BU-98 A discarded value's Type is Binding's, published in its discard row** (2026-11-05; PLAN G233, unit bu140; design revision 2
-  `G233\design.md`, design reviews 1 REVISE and 2 ACCEPT; R4's consent C-16 for the builder lines under hold H-4; supersedes BU-27's
-  Open discard sentence and R4-M145's Open (PLAN G233) paragraph) SPEC 14.2.2, 14.2.4, 15.6.3, 10.2.
+- **BU-98 A discarded value's Type is Binding's, published in its discard row** (2026-11-05; PLAN G233, unit bu140; R4's consent C-16
+  for the builder lines under hold H-4; supersedes BU-27's Open discard sentence and R4-M145's Open (PLAN G233) paragraph) SPEC
+  14.2.2, 14.2.4, 15.6.3, 10.2.
   - Cause: a discard drops the Type its operand supplies (`Binding.SuppliedType`: a stored `uniq`/`objuniq` Place's Reborrow by
     Binding's name, BU-27), which a group's Meaning and every other consumer's Type carry, so `MirBuilder.Statement` and `Discard` held
     the temporary at the Place's stored Meaning: `_ = h.link` and `h.link` got `@a`, `(h.link)` `@(s and a)`, and A5 reported a false
@@ -9273,14 +9273,14 @@ resumed by R4-M86 (2026-10-20).
     group), written by the publisher's discard row (`DiscardRow`, beside R4-M145's Adjust, its gate wider by the explicit discard's
     operand, whose Adjust is the column's) from the existing gated `SuppliedType`. Every publish writes it for every node it reaches,
     null for a value item and a Place Binding did not resolve, so no row keeps an earlier pass's Type after an in-place edit and re-bind
-    (implementation review 1's B-1: a discarded local that became a function's name kept `i32`). `MirBuilder.Held` =
+    (a discarded local that becomes a function's name would keep `i32`). `MirBuilder.Held` =
     `DiscardedType ?? TypeOf(node)` is the only fallback (C-16); `Reborrowed` does not guard a missed write, so `HirFormsTest`'s row
     tests do. `Discards` is the one discard predicate (IsBareAcquisitionPosition reads it).
   - Class: Major by the adopted R7 plan's R7-Y3 row (this publication; ARCH's vocabulary unchanged); by WORKFLOW's table a shared
     representation across phases, so the class relies on R7-Y3. G233 lands before R7-Y1 (C-16); Y3 keeps its adaptation-mode half.
-  - Cost: +8 B per plan row (48 to 56; about 1,182 rows for Milestone34 with the library); a dense column would be about 81 KB.
+  - Cost: one reference per plan row, against one per node for a dense column.
   - Not this cause: pair layers acquired by case (G254), a discarded call (its Meaning carries the meet), G426. `AddBodyResult`'s
-    ungated copy of `SuppliedType` stays, PLAN's own row (design review 2's R-2).
+    ungated copy of `SuppliedType` stays, PLAN's own row.
   - Rejected: a HirTables column or a generalized `ErasedTypes`; the builder meeting the layers (a second PlaceOrigins); the Place's
     Meaning set to the adapted Type (SPEC gives the Place its stored Type); the DiscardKoto's own slot (no node for a bare statement:
     two paths); a TyCtxt query over Binding's pass-local adaptations.
@@ -9353,9 +9353,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: editing the three entries' text in place (DECISIONS keeps a superseded entry and names its replacement).
 
 - **BU-95 A function's set binds inside its header's Origin declaration** (2026-11-05; PLAN G417 (3) U1; the owner's
-  「(c) に切り替えます」 and 「123を推奨どおり、4を承認する」; BU's design `bu\batch\G417\binding-design.md` revision 6, design review 5 ACCEPT with
-  condition C-1) SPEC 15.3.4, 23.1.2. The cause it removes: `BindConstraints` runs before `BindHeader`, so a Constraint's set Type
-  bound in State 0 and kept `MissingOriginBinding_Kd`.
+  「(c) に切り替えます」 and 「123を推奨どおり、4を承認する」) SPEC 15.3.4, 23.1.2. The cause it removes: `BindConstraints` runs before
+  `BindHeader`, so a Constraint's set Type bound in State 0 and kept `MissingOriginBinding_Kd`.
   - Rule (`Binding.Types.BindType`, before `resolvingTypes.Add`): binding a binding-set annotation whose `OriginOwner` is a named
     function with an unbound header binds that header first, with the consultation frame suspended, because a header is its
     declaration's (R4-M101 E3).
@@ -9366,23 +9365,23 @@ resumed by R4-M86 (2026-10-20).
     block's sets, and a Contract-wide clause owns its own.
   - Rejected:
     - a Constraint region as owner (superseded by (c));
-    - triggering on a clause's syntax, which depends on order (h5, cx1);
+    - triggering on a clause's syntax, which depends on order;
     - binding every header before every Constraint.
 - **BU-100 An unrelated Constraint set's slot is an Origin of its own kind, `OriginKind.ConstraintSet`** (2026-11-05; PLAN G417 (3)
   U2, an Owner-class unit; the owner's 「(c) に切り替えます」, 「123を推奨どおり、4を承認する」, 「G417 の U2　aで」 and, approving the
-  vocabulary entry, 「(a) 新しい Origin の種類を足す で決定します」 (board O-18); BU's design `bu\batch\G417\binding-design.md`
-  revision 8, design review 7 ACCEPT; R4's consent C-19 for the view row) SPEC 15.3.2, 15.3.4. The cause it removes: the omitted
-  slot of a set that no relation equates had no completion, so it kept `MissingOriginBinding_Kd` and its declaration's
-  Constraints their dependent `InvalidConstraint_Kd`, though SPEC 15.3.4 makes such a set quantify every choice of its Origins.
+  vocabulary entry, 「(a) 新しい Origin の種類を足す で決定します」 (board O-18); R4's consent C-19 for the view row) SPEC 15.3.2,
+  15.3.4. The cause it removes: the omitted slot of a set that no relation equates had no completion, so it kept
+  `MissingOriginBinding_Kd` and its declaration's Constraints their dependent `InvalidConstraint_Kd`, though SPEC 15.3.4 makes such
+  a set quantify every choice of its Origins.
   - The kind's one contract: the Origin of a slot of a binding set that a Constraint names (not an associated specification),
     that its owner's declaration holds and that no relation fixes. It is a fixed Origin about which only its declaration's
     clauses say anything (P(ρ0)). No caller, conformance or nested signature substitutes it, so a caller proves a Constraint over
     it for every choice. In storage (`Binding.Storage.StorageType`) it is a hidden Origin, `InvalidOriginBinding_Kd` at the
     Origin expression (`ValidateOriginRequirements`). Binder: the set occurrence; Slot: the set Type's aggregate slot; shown
     `m.at`. It is appended after `Unstated`, so no value renumbers.
-  - Producer: only `OmittedOrigin`'s last step, through `Binding.ConstraintSet`, in an explicit position (C-2: only the
+  - Producer: only `OmittedOrigin`'s last step, through `Binding.ConstraintSet`, in an explicit position (only the
     Constraint position's omission).
-  - Readers (the design's table of every `OriginKind.` line): `FixedOrigin` and `FixedInBodyOrigin` true; `Declared` true; the
+  - Readers (every `OriginKind.` line): `FixedOrigin` and `FixedInBodyOrigin` true; `Declared` true; the
     display and Type text show `m.at`; `StepOf` an explicit Exclusive arm. A raw layer stating it is a located `Unsupported_Kd`,
     since SPEC 5.7 does not settle whether it keeps raw authority. Every substitution, quantification and schema reader keys on
     `Parameter` or `Input` and a binder, so it never matches. The frozen old path and Mir/** are unchanged.
@@ -9391,7 +9390,7 @@ resumed by R4-M86 (2026-10-20).
     over ρ0 for every choice, so a value carrying ρ0 exists only if a caller supplied one, through an argument proven to outlive
     a fixed unknown: only `static` is. So reading ρ0 as outliving a body admits no dangling borrow.
   - Rejected:
-    - `Parameter` with the set occurrence as Binder (U2's implementation review D1): `InContract` finds no scope it owns, so A5
+    - `Parameter` with the set occurrence as Binder: `InContract` finds no scope it owns, so A5
       leaves it Unclassed, and it gives `Parameter` a second meaning;
     - a Projection atom: `OriginClasses` reads a body's Projection as body-local (finite), not fixed;
     - extending `InContract` to a set occurrence: it keeps `Parameter`'s second meaning;
@@ -9437,12 +9436,11 @@ resumed by R4-M86 (2026-10-20).
     the last `Contribute`; property rows are Evidence where `PartContribution` may say Signature, inert because the input carries no
     Origin. Open: `CompleteWaiting` completes a waiting part at a ParameterType that still holds the callee's unsolved Origins (PLAN).
 - **BU-105 Declaration queries: one state per declaration and kind, `Binding.DeclQuery`** (2026-11-05; R7-D1a, plan §5.1 D1 and
-  §6's row, adopted by the owner with the plan 2026-11-03 (RQ1-RQ17, R7-M1); design `r7-d1/D1-design.md` revision 2, review 1
-  REVISE, re-check 1 ACCEPT on condition R1, re-check 2 ACCEPT) SPEC 9 "No backtracking", 11.6.
+  §6's row, adopted by the owner with the plan 2026-11-03 (RQ1-RQ17, R7-M1)) SPEC 9 "No backtracking", 11.6.
   - `Binding.DeclQuery` owns the state of each query Binding computes once per pass for one declaration: NotStarted, Running, Done,
     inline on the declaration's own `BindingSymbol`, valid in the pass `storageVersion` (the pass stamp) names; no Clear, no table,
-    0 B cold and warm. The state keeps a `uint` copy of the stamp: a state not written in 2^32 - 1 passes aliases one 2^32 passes
-    old (about 4.3 * 10^9 Binds of one `Binding`), stated in the contract's invariant (re-check 1's R1).
+    no allocation. The state keeps a `uint` copy of the stamp: a state not written in 2^32 - 1 passes aliases one 2^32 passes
+    old (about 4.3 * 10^9 Binds of one `Binding`), stated in the contract's invariant.
   - A kind is a row: its owner and writer, its output (kept where the owner publishes it), its re-entry rule (a SPEC cycle error at
     the declaration, or no evidence) and its not-ready path (Abandon to NotStarted). Kind: `Signature` (`BindHeader`): an inferred
     stored Property's re-entry is `CyclicBinding_Kd`, another header's re-entry reads no evidence, a header waiting on an associated
@@ -9450,17 +9448,17 @@ resumed by R4-M86 (2026-10-20).
     state guard, a second copy of `BindHeader`'s entry rule, is deleted.
   - Interims: the cycle record stays at today's demanders (`BindReference`, `BindVariableCore`) until D2 d2 moves it into the row
     with the Error state; the header and variable guards read each other's Running state (`Resolving`) until D2 d4 makes the
-    variable binding a kind. These two are the only reads of a state outside the component; `SetQueryState` is called only there
-    (ArchitectureRulesTest).
+    variable binding a kind. These two are the only reads of a state outside the component, and `SetQueryState` is called only in
+    it (ArchitectureRulesTest counts both).
   - Removes `BindingSymbol.HeaderBound` (6 references) and `Resolving`'s header use (5 of 10 references; the other 5, the variable
     binding's, are counted by ArchitectureRulesTest, at most 5, 0 at d4); D2 d1-d4 call through it. `SourceState` is not a kind
     until C3 replaces `PublishSourceStates`' rounds by demand: BU-59's reason holds (a round fixpoint in which a reader cannot tell
     Pending from a final Unknown); BU-57 and BU-59 unchanged.
   - Rejected: a per-kind epoch (a second pass stamp beside `storageVersion`); a `TypeMemo` table (per query, over Types); fields per
-    kind on the symbol (an open family); a Koto- or SourceRef-keyed table; a full `ulong` copy of the stamp (+11.5 KB cold); an
-    Error state before its writer (d2); memoizing the abandoned header (a wait, not a failure); a `SourceCheck` kind now (review 1's
-    B1); a `Variable` kind now (its callers re-bind a failed local on each use; d4); a state read at BU-95's site (a second copy of
-    the entry rule).
+    kind on the symbol (an open family); a Koto- or SourceRef-keyed table; a full `ulong` copy of the stamp (a larger symbol against
+    an alias no Bind count reaches); an Error state before its writer (d2); memoizing the abandoned header (a wait, not a failure); a
+    `SourceCheck` kind now (its rounds recompute a Running declaration, not once per pass); a `Variable` kind now (its callers re-bind
+    a failed local on each use; d4); a state read at BU-95's site (a second copy of the entry rule).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
