@@ -574,10 +574,35 @@ public sealed partial class Binding
         return this.SubstituteType(field, owner.Symbol!.Declaration, (BoundType[])owner.Components, default, OccurrenceOrigins(owner, single));
     }
 
-    // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages). A pair's outer Origin `o`, a negative
-    // slot of its binder, is bound through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
+    // Substitutes a stored Origin's declared slots and the binder's per-call atoms (PerCallImages): each atom becomes its SlotImage, a meet
+    // the meet of its operands' images, and an atom without an image is kept.
     private BoundOrigin SubstituteStoredOrigin(
         BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default, ReadOnlySpan<BoundType?> types = default)
+    {
+        if (this.SlotImage(origin, binder, arguments, images, types) is { } image)
+        {
+            return image;
+        }
+
+        if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
+        {
+            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, images, types);
+            for (var i = 1; i < origin.Operands.Count; i++)
+            {
+                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, images, types));
+            }
+
+            return result;
+        }
+
+        return origin;
+    }
+
+    // SPEC 15.3.6, 15.6.4: an atom's image under a substitution of `binder`'s slots, null where it has none. A declared slot takes its
+    // argument, a pair's outer Origin `o` (a negative slot) its Type argument's when they are given (SPEC 8.1.1, 8.1.2), an input or a
+    // reserved atom its per-call image. Whether an atom is substituted is this image's existence, never what the image names: in the
+    // binder's own body an image is often one of the binder's own atoms (PLAN G458).
+    private BoundOrigin? SlotImage(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images, ReadOnlySpan<BoundType?> types)
     {
         if (images.Argument(origin) is { } valueArgument)
         {
@@ -619,18 +644,30 @@ public sealed partial class Binding
             return input;
         }
 
-        if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
+        return null;
+    }
+
+    // Whether substituting `type` (SubstituteStoredOrigins with these images) keeps a slot of `binder`, an Origin parameter or an input,
+    // for want of its SlotImage: a test of the Type before substitution, through its Origin summary, its raw layers' included, since the
+    // result cannot tell a kept slot from an image that names the binder's own slot (PLAN G458).
+    private bool LacksImage(BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images = default)
+    {
+        var summary = this.SummaryOf(type);
+        return Lacks(this, summary.Nodes, binder, arguments, images) || Lacks(this, summary.RawNodes, binder, arguments, images);
+
+        static bool Lacks(Binding binding, BoundOrigin[] nodes, Koto binder, ReadOnlySpan<BoundOrigin> arguments, PerCallImages images)
         {
-            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, images, types);
-            for (var i = 1; i < origin.Operands.Count; i++)
+            for (var i = 0; i < nodes.Length; i++)
             {
-                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, images, types));
+                if (nodes[i].Kind is OriginKind.Parameter or OriginKind.Input && ReferenceEquals(nodes[i].Binder, binder) &&
+                    binding.SlotImage(nodes[i], binder, arguments, images, default) is null)
+                {
+                    return true;
+                }
             }
 
-            return result;
+            return false;
         }
-
-        return origin;
     }
 
     // One call is one query of rewrittenParts, its binder, arguments, images and corresponding binder fixed: a part's result depends on the

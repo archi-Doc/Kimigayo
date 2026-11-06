@@ -410,13 +410,12 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            var walk = new RelationWalk(this, use, OriginPart.Contract);
-            if (this.HasUnsubstitutedOrigin(parameter, function))
+            if (Substitute(Bound(function.Parameters[i].Type.BoundType!)!) is not { } parameter)
             {
                 return false;
             }
 
+            var walk = new RelationWalk(this, use, OriginPart.Contract);
             if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
             {
                 this.contractFailure = walk.Failure.Within((byte)(i + 1));
@@ -448,7 +447,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (symbol.Type is not { } result || Bound(result) is not { } boundResult || this.HasUnsubstitutedOrigin(result = Substitute(boundResult), function))
+        if (symbol.Type is not { } output || Bound(output) is not { } boundResult || Substitute(boundResult) is not { } result)
         {
             return false;
         }
@@ -476,8 +475,10 @@ public sealed partial class Binding
             return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
         }
 
-        BoundType Substitute(BoundType type)
-            => this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
+        // The solution's images; null where an atom of the function has none (LacksImage).
+        BoundType? Substitute(BoundType type)
+            => this.LacksImage(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount))
+                ? null : this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
     }
 
     private BoundType? BindFunctionType(FunctionTypeKoto function, BindingScope scope)

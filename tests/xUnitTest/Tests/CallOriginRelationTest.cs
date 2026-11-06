@@ -49,6 +49,15 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     private const string SharedInput = "func z5(x: ref/i32 during a, v: ref/i32 during b, " + Defaulted + ") -> ref/i32 during a\n    return v\n";
 
+    // G458's headers: a generic and a plain callable whose own body uses it, `z` passed for `y`, so the callee's k is the caller's j.
+    private const string OwnBodyCall = "func f<T>(t: T, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k)\n";
+
+    private const string OwnBodyValue = "func h(y: ref/i32 during k, z: ref/i32 during j) -> ref/i32 during k\n";
+
+    // A getter whose own body reads its Property.
+    private const string OwnBodyGetter = "struct S\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public computed view: ref/i32 during self\n" +
+        "        get(self: ref/Self) -> ref/i32 during self\n";
+
     // A default copying an input's referent, stored by the callee (G277 (1)'s k1).
     private const string Copying = "func put3(slot: uniq/(ref/i32 during a), v: ref/(ref/i32 during b) during c, w: ref/i32 during b = v@follow)\n" +
         "    origin b outlives a\n    slot@follow = w\n";
@@ -181,6 +190,11 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc caller(p: ref/i32, q: ref/i32, c: bool) -> ref/i32 during p\n    return if c => p else => id(q)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => p else => id(q)", "requires q outlives p, which is not proven", null)]
     [InlineData("func id(a: ref/i32) -> ref/i32 during a => a\nfunc keep(x: ref/i32 during static) -> i32 => 1\nfunc caller(q: ref/i32) -> i32 => keep(id(q))\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "id(q)", "requires q outlives static, which is not proven", null)]
     [InlineData("func pick2(a: ref/i32, b: ref/i32) -> ref/i32 during b => b\nfunc f(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return pick2($abort(\"x\"), short@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "pick2($abort(\"x\"), short@ref)", "requires the borrow short@ref outlives p, which is false", "short@ref", "return pick2($abort(\"x\"), short@ref)")]
+    [InlineData(OwnBodyCall + "    let p: (i32, ref/i32 during k) = f<i32>(1, z, z)\n    return (t@move, y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: (i32, ref/i32 during k) = f<i32>(1, z, z)", "requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyValue + "    let g = h\n    let p: ref/i32 during k = g(z, z)\n    return y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let p: ref/i32 during k = g(z, z)", "requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyValue + "    let e: (ref/i32 during j, ref/i32 during j) -> ref/i32 during k = h\n    return y\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "h", "the result requires j outlives k, which is not proven", null)]
+    [InlineData(OwnBodyGetter + "            let v: ref/i32 during static = self.view\n            return self.n@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "let v: ref/i32 during static = self.view", "requires self outlives static, which is not proven", null)]
+    [InlineData("enum Holder {at}\n    Some(ref/i32 during at)\n    Empty\n    public func remake(self: ref/Self, v: ref/i32) -> Holder during at => .Some(v)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "v", "requires v outlives self.at, which is not proven", null)]
     public void TheResultRelationIsJudgedAtItsDestination(string body, string code, string text, string label, string? origin, string? twin = null)
     {
         var source = body + Main;
@@ -427,6 +441,23 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(Identity + "func f() -> i32\n    let v: i32 = 1\n    let r = id(v)\n    return r@follow\n")]
     [InlineData(Identity + "func f() -> i32\n    let v: i32 = 1\n    let g = id\n    let r = g(v)\n    return r@follow\n")]
     public void ANeverArgumentLeavesItsInputOriginARegionOfTheCall(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 8.15.1, 8.15.3, 15.3.4, 15.3.6, 7.7.4 (PLAN G458): in a callable's own body its Origins are the caller's, and a call, an erasure,
+    // a value call or a Property read of it instantiates them as from any other body, though each image is then one of its own atoms:
+    // valid as from another function (UnprovenConstraint_Kd at the call before G410, InternalInvariant_Kd at the erasure, TypeMismatch_Kd
+    // at the generic erasure, Unsupported_Kd at the value call and the getter's read before). The invalid twins, and a Case construction
+    // in its enum's own method, are TheResultRelationIsJudgedAtItsDestination's rows.
+    [Theory]
+    [InlineData(OwnBodyCall + "    let p: (i32, ref/i32 during j) = f<i32>(1, z, z)\n    return (t@move, y)\n")]
+    [InlineData(OwnBodyValue + "    let e: (ref/i32 during j, ref/i32 during j) -> ref/i32 during j = h\n    return y\n")]
+    [InlineData(OwnBodyCall + "    let e: (i32, ref/i32 during j, ref/i32 during j) -> (i32, ref/i32 during j) = f<i32>\n    return (t@move, y)\n")]
+    [InlineData(OwnBodyValue + "    let g = h\n    let p: ref/i32 during j = g(z, z)\n    return y\n")]
+    [InlineData(OwnBodyGetter + "            let v: ref/i32 during self = self.view\n            return self.n@ref\n")]
+    public void ACallableUsedInItsOwnBodyIsJudgedAsFromAnotherBody(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
         Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));

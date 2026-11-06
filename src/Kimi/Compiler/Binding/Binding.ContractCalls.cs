@@ -12,27 +12,6 @@ public sealed partial class Binding
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 
-    // Whether a Type's Origins, its raw layers' included, name an Origin of `binder`: a test of its Origin summary's nodes
-    // (Binding.OriginSummaries).
-    private bool HasUnsubstitutedOrigin(BoundType type, Koto binder)
-    {
-        var summary = this.SummaryOf(type);
-        return Names(summary.Nodes, binder) || Names(summary.RawNodes, binder);
-
-        static bool Names(BoundOrigin[] nodes, Koto binder)
-        {
-            for (var i = 0; i < nodes.Length; i++)
-            {
-                if (ReferenceEquals(nodes[i].Binder, binder))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
         if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
