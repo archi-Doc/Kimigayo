@@ -48,6 +48,7 @@ public sealed partial class Binding
     {
         var kind = OperatorKind(operation);
         var operand = left;
+        BoundType? rightCore = null;
         var source = operation is BinaryKoto binarySource ? binarySource.Left : operation;
         Koto? fittedOperand = null;
         if (ReferenceEquals(left, BoundType.Never) && operation is BinaryKoto fitting &&
@@ -70,7 +71,7 @@ public sealed partial class Binding
         if (operation is BinaryKoto arithmetic && kind is KotoKind.Asterisk or >= KotoKind.Slash and <= KotoKind.Minus)
         {
             var leftCore = left is null ? null : this.ArithmeticTerminal(source, left);
-            var rightCore = right is null ? null : this.ArithmeticTerminal(arithmetic.Right, right);
+            rightCore = right is null ? null : this.ArithmeticTerminal(arithmetic.Right, right);
             var restriction = ArithmeticPairApplicability(operand, leftCore, right, rightCore);
             if (restriction.Failure != BindingFailure.None)
             {
@@ -108,12 +109,13 @@ public sealed partial class Binding
             return decision;
         }
 
-        if (left.IsNumeric && right is not null && kind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash)
+        // SPEC 13.3.4: the counterpart is judged at its terminal Type, as the left operand is, and keeps its own Type.
+        if (left.IsNumeric && rightCore is not null && kind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash)
         {
-            var counterpart = this.NumericApplicability(right, scope);
+            var counterpart = this.NumericApplicability(rightCore, scope);
             if (counterpart.Failure != BindingFailure.None)
             {
-                return counterpart;
+                return counterpart with { Operand = right };
             }
         }
 
