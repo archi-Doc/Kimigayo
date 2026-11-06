@@ -29,6 +29,14 @@ public sealed partial class Binding
         return this.InternAtom(slice, atom, use, PartOf(atom, slice));
     }
 
+    // SPEC 15.3.6: the canonical meet of two atoms of a body's table (TyCtxt.MeetAtom), interned and classed there like every atom.
+    internal int MeetAtomIn(ExecutableBody body, int a, int b, SourceRef site)
+    {
+        var slice = this.OriginRows(body);
+        var meet = this.Meet(slice.Atoms[a].Atom, slice.Atoms[b].Atom);
+        return this.InternAtom(slice, meet, this.compilation.SyntaxOf(site), PartOf(meet, slice));
+    }
+
     // E4 (DECISIONS R4-M114, BU-102): an atom's part in a constructor's slice, the part whose unit formed it (1 the body's own, 2 its
     // layer's, the Field initializers'), a meet its operands' parts; a declaration atom or another body's names none, as no unit forms it.
     private static byte PartOf(BoundOrigin atom, OriginRowSet slice)
@@ -168,7 +176,7 @@ public sealed partial class Binding
 
         if (EnclosingAtom(atom, slice.Body))
         {
-            return new(atom, OriginAtomKind.Fixed, role); // Row 6: an enclosing body's atom.
+            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom)); // Row 6: an enclosing body's atom, and whether it is a call region.
         }
 
         return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.
@@ -198,10 +206,11 @@ public sealed partial class Binding
     }
 
     // Rows 2, 2' and 9: a meet is one Fixed node when every operand is Fixed, a Dependent node when an operand is Dependent (DECISIONS
-    // R4-M118), an Inferred meet node otherwise, and forms no edge when an operand is Unclassed, a located limit that decides first.
+    // R4-M118), an Inferred meet node otherwise, and forms no edge when an operand is Unclassed, a located limit that decides first; it is
+    // an enclosing body's call region when an operand is.
     private OriginAtomEntry? ClassifyMeet(BoundOrigin meet, OriginRowSet slice)
     {
-        var kind = OriginAtomKind.Fixed;
+        var (kind, region) = (OriginAtomKind.Fixed, false);
         for (var i = 0; i < meet.Operands.Count; i++)
         {
             if (this.ClassifyAtom(meet.Operands[i], slice) is not { } operand)
@@ -216,9 +225,10 @@ public sealed partial class Binding
 
             kind = kind == OriginAtomKind.Dependent || operand.Kind == OriginAtomKind.Dependent ? OriginAtomKind.Dependent
                 : operand.Kind == OriginAtomKind.Fixed ? kind : OriginAtomKind.Inferred;
+            region |= operand.EnclosingCallRegion;
         }
 
-        return new(meet, kind, ProjectionRole.None);
+        return new(meet, kind, ProjectionRole.None, region);
     }
 
     // SPEC 15.3.4: a declaration atom is B's contract when its binder owns B's definition or a scope enclosing it.

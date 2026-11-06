@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Mir;
 // - Outputs: true where the relation, added as an edge, adds no relation the body could not satisfy for every value of its Fixed
 //   Origins: each Fixed node at or above the longer end (stopping at Fixed nodes) outlives, by the oracle, each Fixed node at or below
 //   the shorter end, and no Finite node above the longer end meets a Fixed one below the shorter end (SPEC 15.6.5); false otherwise;
-//   null where an end has no class (Unclassed or Dependent) or the view no class.
+//   null where an end has no class (Unclassed or Dependent), the view no class, or the class's meet law is over the storage limit (D20).
 // - Invariants: a query reads one class's edges, indexed once until the next class or body; it records no problem and changes no state
 //   Judge's problems read; an oracle it opens is disposed before it returns.
 // - Prohibitions: no Loan set, liveness or CFG order read; no fact of a body other than the one judged.
@@ -22,7 +22,7 @@ internal sealed partial class MirOrigins
 {
     private readonly List<int> above = []; // Outlives' Fixed and Finite nodes at or above the longer end.
     private readonly List<int> below = []; // Outlives' Fixed nodes at or below the shorter end.
-    private int[] reachStamps = []; // Outlives' visit stamps by node, and its queue.
+    private int[] reachStamps = []; // Outlives' and the meet law's visit stamps by node, and its queue (the law's stack).
     private int[] reachQueue = [];
     private int reachStamp;
     private int edgesClass = -1; // The class whose edges tails, heads and their indexes hold for Outlives (-1: none, Judge's own).
@@ -67,7 +67,11 @@ internal sealed partial class MirOrigins
             return true;
         }
 
-        this.IndexClass(c);
+        if (!this.IndexClass(c))
+        {
+            return null;
+        }
+
         this.Bounds(from, this.inStart, this.inEdges, this.tails, this.above);
         this.Bounds(to, this.outStart, this.outEdges, this.heads, this.below);
         var part = this.slice.InLayer(from) || this.slice.InLayer(to) ? this.slice.Layer : this.key;
@@ -116,16 +120,22 @@ internal sealed partial class MirOrigins
         }
     }
 
-    // A class's edges (ClassEdges, an Unclassed end's none) indexed by tail and by head, once per class.
-    private void IndexClass(int c)
+    // A class's edges (ClassEdges, an Unclassed end's none) indexed by tail and by head, once per class; false when its meet law is over the
+    // storage limit (D20).
+    private bool IndexClass(int c)
     {
         if (this.edgesClass == c)
         {
-            return;
+            return true;
         }
 
-        this.edgeCount = 0;
-        foreach (var edge in this.ClassEdges(c))
+        (this.edgeCount, this.edgesClass) = (0, -1);
+        if (!this.ClassEdges(c))
+        {
+            return false;
+        }
+
+        foreach (var edge in this.classEdges.AsSpan(0, this.classEdgeCount))
         {
             if (edge.Tail >= 0 && edge.Tail != edge.Head)
             {
@@ -136,7 +146,8 @@ internal sealed partial class MirOrigins
         }
 
         (this.edgesClass, this.edgesNodes) = (c, this.slice.Atoms.Count);
-        this.IndexEdges(this.tails, this.edgesNodes, ref this.outStart, ref this.outEdges);
-        this.IndexEdges(this.heads, this.edgesNodes, ref this.inStart, ref this.inEdges);
+        this.IndexEdges(this.tails.AsSpan(0, this.edgeCount), this.edgesNodes, ref this.outStart, ref this.outEdges);
+        this.IndexEdges(this.heads.AsSpan(0, this.edgeCount), this.edgesNodes, ref this.inStart, ref this.inEdges);
+        return true;
     }
 }

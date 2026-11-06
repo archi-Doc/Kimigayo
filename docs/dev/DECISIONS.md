@@ -5164,6 +5164,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     scope keeps its first cause, so the order would move records).
 - **R4-M164 Contributions at composed positions (G216 (a) U2.2)** (2026-11-03; the owner, verbatim 「候補 1 つで進める」, 2026-11-02: R4
   implements BU's design bu96; extends BU-51's one input-premise rule) SPEC 10.5.1, 10.3, 15.6.4 step 3. Later units extend this entry.
+  - Superseded in part by BU-99 (2026-11-05): F1's Result value and its per-argument reading; a slot's solution is its contributor's by
+    the premise visits' stop at a slot where no evidence is supplied.
   - F1: what a filled slot's position contributes to its selected call is one closed kind, `Contribution` (Evidence, Signature,
     Result), the evidence walk's fact (`Binding.ArgumentKinds.Evidence.cs`). `RequireInputPremises(at, parameter, supplied,
     contribution)` reads it: Evidence is judged beside its own Type, only where the fit replaced an Origin; a Signature position at
@@ -7920,6 +7922,8 @@ resumed by R4-M86 (2026-10-20).
     r2c's false `UnprovenConstraint_Kd`).
   - Superseded in part by BU-99 (2026-11-05): an Origin that a used default's premise bounds is solved by that premise, not opened
     as the call's region.
+  - Superseded in part by BU-104 (2026-11-06, the twelfth amendment): the region clause. Every callee Origin a solve leaves without a
+    candidate is a call region, whatever position names it; `OpenResultOnlyOrigins` is removed.
 
 - **BU-52 Rule A starts at every position the one walk names for input j: a by-value input's raw layers are storage the call writes,
   its cleanup among the writes; the class of shadow false errors of A5's whole-value Φ_E at calls as the owner's interim** (2026-10-29;
@@ -9339,11 +9343,12 @@ resumed by R4-M86 (2026-10-20).
 - **BU-99 A position's Result is the stop at its slot, leaf rows bound the solve, and a position without evidence solves the
   callee's Origins it alone names** (2026-11-05; G216 (a) U2, the Position Rows proposal revision 3 §3 rule 3, §4-§6; the planning
   session's design `artifacts\verify\g216a-oracle\U2-design.md`, fifth amendment, M's design review 2 ACCEPT) SPEC 10.3, 10.5.1,
-  15.3.6, 15.6.1, 15.6.4 step 3, 8.1.1, 15.3.7. Amends BU-94; supersedes BU-51's region clause in part.
+  15.3.6, 15.6.1, 15.6.4 step 3, 8.1.1, 15.3.7. Amends BU-94; supersedes BU-51's region clause and R4-M164's F1 Result in part.
   - R1: the premise visits walk a position's pattern beside its instantiated Type (`RequireInputPremises`,
     `CollectInputPremises(pattern, instantiated, ...)`). At a position that supplies no evidence (no actual Type: a Signature row, a
-    default) `WellFormedPart` stops at a slot of the pattern: the slot's solution is its contributor's (the expected result, a Type
-    argument (G412), the receiver's Type). At an Evidence position it goes on over the solution beside the position's own Type, judged
+    default) `WellFormedPart` stops at a slot of the pattern: the slot's solution is its contributor's (the expected result or a
+    Type argument, G412; `SlotSolution.Pattern` has already substituted a method's declaring-Type slot by the receiver's Type, so it is
+    no stop, while a constructor keeps its slots). At an Evidence position it goes on over the solution beside the position's own Type, judged
     where the fit replaced an Origin (15.6.1, rule 6): a solution the solve formed from several inputs' evidence is no one input's
     Type (arg2_n), the twin of the stored visit's slot line. A layer around the slot is the call's; `VisitStoredPremises` continues on
     the result at a slot and descends by the result's
@@ -9398,6 +9403,51 @@ resumed by R4-M86 (2026-10-20).
     Error state before its writer (d2); memoizing the abandoned header (a wait, not a failure); a `SourceCheck` kind now (review 1's
     B1); a `Variable` kind now (its callers re-bind a failed local on each use; d4); a state read at BU-95's site (a second copy of
     the entry rule).
+
+- **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
+  G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
+  third amendment, M's design review 3 ACCEPT; the owner's decision, 2026-11-05, verbatim 「案Aを採用します。ただし、以下の提案を検討して、
+  良い案なら採用してください。」: option A, the composition is the one owner of membership, with four reinforcements, all adopted) SPEC
+  10.5.1, 14.9.2 step 2, 15.3.6, 15.6.4 step 3, 23.1.2. Amends BU-94 and BU-99.
+  - R3: a candidate's child rows are composed once, at its first `SolveLate` (`RetainChildRows`, the probe's state: a waiting join,
+    its flattened nested joins, each part's recorded kind), into `childRows`, and retained as the candidate's slice
+    (`SlotSolution.ChildSlice`: start and count, count -1 until composed; `CallEvaluation.ChildSlices` per candidate, a Case
+    construction's, a value call's and a fixed construction's re-check their own). Every later reading reads the slice and composes
+    nothing: a later solve of the candidate (the re-run after `CompleteWaiting`, `CheckDefaulted`'s) instantiates each leaf's `Pattern`
+    under its own solution; the judgment (`JudgePositionRows`) derives Types top-down from the operation's Type by the new `Index`
+    column. A retained row holds structure (`Argument`, `Parent` relative to its slice, `Index`, `Part`), `Pattern` and
+    `Contribution`; `Type` is the reading's; a part's failure is read at the reading (rule W). `childRows` is one list whose
+    evaluations append and remove their own rows when they end (nested evaluations end first), so a warm Bind allocates nothing.
+    Supersedes BU-94's "child rows ... removed when the argument's judgment ends"; BU-94 and BU-99 stay.
+  - R3': an independently typed control-flow part (a join the call does not classify, its own formation's Type) is one position and
+    is not entered; a part formed part by part keeps its parts as positions.
+  - R4/R4': an argument whose root has child rows is judged by its rows wherever a root is read (named calls in `JudgeSelectedCall`,
+    value calls, Case constructions), whether or not its operation adapted it; no aggregate of the leaves is formed. A root's
+    Contribution is read only for a root without child rows; `EvidenceNames` reads the Evidence leaf rows, the Evidence roots without
+    child rows and the receiver, never a composed root's mark. `PartContribution`'s Join row reads "a control-flow part is Evidence".
+  - Evidence of the cause (the front's step 0, on dev ae112e08f): a join argument took `JudgeSelectedCall`'s rows branch, whose second
+    composition read completion state and found no child rows, so the root was judged as one Evidence leaf; each form had one solve,
+    whose `PremiseSolved` was empty because `EvidenceNames` read the join root's Evidence mark.
+  - Not in U3a: composition beneath a slot (R5, U3b); the Join record as a waiting fact, the survey path and one formation (U6).
+  - Twelfth amendment (2026-11-06; U3-design.md's twelfth amendment, C-49 and its re-check ACCEPT; the owner, verbatim 「Dは放棄します。
+    U3aについては、もう一度だけ設計して下さい。」 and 「B1 を直す」). Supersedes BU-51's region clause.
+    - Call regions (SPEC 15.6.4 step 1): after each candidate's solve, and at a function reference, a callee Origin that 15.3.6 leaves
+      without a candidate is a region of the executable body the call lies in, one per call and Origin (`OpenUnsolvedOrigins`,
+      replacing `OpenResultOnlyOrigins` and its result-only guard). Every relation of the call over it is a body row
+      (`JudgeCallPosition`'s `BodyChain`): Binding neither judges nor drops it, and no caller row names a callee's Parameter atom.
+    - A5's meet law at a shorter end (SPEC 15.3.6), the last step of `ClassEdges`, read by Judge and by Outlives: for a non-Fixed meet
+      and each in-edge whose tail is not an operand, an edge to the canonical meet of each choice of one bound per operand, at the
+      in-edge's site and row, judged as any edge into a Fixed node. An operand's bounds are the operand when Fixed, else each Fixed
+      node its walk meets and each bound of a meet it enters; the walk stops at Fixed nodes and never follows an operand's edge into
+      its own meet (`o outlives (o and ...)` bounds nothing). `TyCtxt.MeetAtom` (the view's `Meet` and `InternAtom`) gives the
+      canonical meet, Fixed, its part the operands' union.
+    - The nested-body limit: the view publishes on an atom's entry that it is an enclosing body's call region
+      (`OriginAtomEntry.EnclosingCallRegion`, set at `ClassifyAtom`'s row 6 and carried by a meet from an operand). A5 reads it at
+      Refuted and at Unknown (a Direct edge included): a failing chain with such an end, source or target, is the located
+      `Unsupported_Kd` at the chain's site, since only the enclosing body's rows decide it. Passing the requirement to the enclosing
+      body is G216 (b)'s.
+    - Rejected: the seventh's regions, the ninth as a placeholder, the tenth's narrowing and the eleventh's Rule E. Each reasoned at
+      the judgment about a callee Parameter atom the call had left in the caller.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and

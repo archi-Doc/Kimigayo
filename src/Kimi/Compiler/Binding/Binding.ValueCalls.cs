@@ -458,11 +458,17 @@ public sealed partial class Binding
         var originCount = ownBinder is FunctionKoto function ? function.Origins.Count : 0;
         var argumentOrigins = this.originScratch.Rent(inputCount);
         var origins = this.originScratch.Rent(originCount);
+        var rows = this.rowScratch.Rent(count);
+        var childSlice = this.indexScratch.Rent(2);
+        var childBase = this.childRows.Count;
         Array.Clear(argumentOrigins, 0, inputCount);
         Array.Clear(origins, 0, originCount);
         try
         {
-            if (!this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count), out var acquired))
+            // R3 (DECISIONS BU-104): the arguments' root rows at the known parameter Types and their child rows, composed once before the
+            // parts' completion and judged after it (JudgePositionRows).
+            var solution = new SlotSolution { Binding = this, Call = call, Rows = rows.AsSpan(0, count), ChildSlice = ResetSlice(childSlice) };
+            if (!this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count), ref solution, out var acquired))
             {
                 return null;
             }
@@ -511,9 +517,14 @@ public sealed partial class Binding
             this.callRelationScratch.Clear();
             for (var i = 0; i < count; i++)
             {
-                if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+                this.ChildGroup(solution, i, out var childStart, out var childEnd);
+                if (childStart != childEnd && operations[i] is { Source: { } whole, ParameterType: { } type })
                 {
-                    this.RequireInputPremises(at, parameter, parameter, adapted, this.PartContribution(at));
+                    this.JudgePositionRows(whole, rows[i] with { Type = type }, solution); // R4: by its rows.
+                }
+                else if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+                {
+                    this.RequireInputPremises(at, parameter, parameter, adapted, rows[i].Contribution);
                 }
             }
 
@@ -547,6 +558,9 @@ public sealed partial class Binding
         }
         finally
         {
+            this.rowScratch.Return(rows, clearArray: true);
+            this.indexScratch.Return(childSlice);
+            this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.typeScratch.Return(instantiated, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
@@ -564,6 +578,7 @@ public sealed partial class Binding
         BoundType parameters,
         Span<BoundArgumentOperation> operations,
         Span<BoundType> instantiated,
+        ref SlotSolution solution,
         out bool acquired)
     {
         acquired = true;
@@ -578,6 +593,14 @@ public sealed partial class Binding
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
             var literal = IsUnfittedLiteral(source);
+            if (!this.PrepareArgument(source, scope, null, callableContext: true))
+            {
+                Complete(call, null);
+                return false;
+            }
+
+            solution.Rows[i] = new(i, -1, 0, source, parameter, parameter, this.PartContribution(source)); // Once the part is recorded.
+            this.RetainArgumentRows(ref solution, i); // R3: composed while the part is prepared, before its completion.
             var actual = this.CompleteValueCallPart(source, parameter, scope);
             if (actual is null || source.BindingState != BindingState.Resolved)
             {

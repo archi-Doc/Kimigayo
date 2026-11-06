@@ -79,7 +79,15 @@ public sealed partial class Binding
 
         for (var i = 0; i < operations.Length; i++)
         {
-            if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
+            var childStart = 0;
+            var childEnd = 0;
+            if (i < argumentCount)
+            {
+                this.ChildGroup(solution, i, out childStart, out childEnd);
+            }
+
+            // R4 (DECISIONS BU-104): an argument whose root has child rows is judged by them, whether or not its operation adapted it.
+            if (childStart == childEnd && operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
             {
                 // The parameter's pattern as the candidate reads it, the receiver's too (DECISIONS BU-99).
                 var pattern = i < argumentCount ? solution.Rows[i].Pattern : solution.Pattern(selected.Parameters[receiver.ParameterIndex].Type.BoundType!);
@@ -95,7 +103,7 @@ public sealed partial class Binding
                     root = root with { Pattern = IsBorrow(root.Pattern!.Semantics) ? root.Pattern.Components[0] : root.Pattern, Type = value };
                 }
 
-                this.JudgePositionRows(whole, root);
+                this.JudgePositionRows(whole, root, solution);
             }
         }
 
