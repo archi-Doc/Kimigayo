@@ -99,16 +99,19 @@ public class OriginPremiseCatalogTest
     }
 
     // SPEC 15.2.2, 15.3.4, 15.6.1 (PLAN G491): R5 is the well-formedness obligation of the body that declares the local, never a premise
-    // of a nested signature. A nested function's or anonymous function's inputs, or a comparison's required signature, may name `z`
-    // (`Projection[x]`), but `p outlives z` stays outer's obligation, so `p outlives q` is Unknown there.
+    // of a nested signature or body. A nested function's or anonymous function's inputs, or a comparison's required signature, may name
+    // `z` (`Projection[x]`), but `p outlives z` stays outer's obligation, so `p outlives q` is Unknown there; in an anonymous function's
+    // body, `x` and `z` are fixed Origins (SPEC 15.6.5, 15.8.2), so `x outlives z` is Unknown too.
     [Theory]
+    [InlineData(Outer + "    let f = func() -> i32\n        let w: ref/i64 during z = x\n        return 0\n    return f()\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Outer + "    let f = func() -> ref/i64 during z => x\n    let k = f()\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Outer + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Annotated + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Outer + "    let f = func(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q => v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Outer + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during q) -> ref/i64 during p\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during p) during q, ref/i64 during p) -> ref/i64 during q = g\n    return 0\n", null)]
-    public void LocalPlaceIsNoPremiseOfANestedSignature(string body, string? code)
+    public void LocalPlaceIsNoPremiseOfANestedSignatureOrBody(string body, string? code)
         => Assert.Equal(code is null ? [] : [code], Check(body + Main).Codes);
 
     // PLAN G491, G492: an enclosing local named in a nested signature is a fixed Origin there (SPEC 15.3.4), so `x outlives q` is Unknown.

@@ -241,8 +241,8 @@ public sealed partial class Binding
 
         // R5, SPEC 15.6.1, 15.6.5: the well-formedness of a borrow of a complete local Place, the body's obligation, which its finite
         // Origin proves without premises. So it serves only a request of the body that declares the local, never its own declaration;
-        // a nested signature's request (a nested or anonymous function's, a Function Type's, a comparison's) has only its own premises
-        // (SPEC 15.2.2, 15.3.4; PLAN G491).
+        // a request in a nested body or signature (a nested or anonymous function's, a Function Type's, a comparison's) has only its own
+        // premises, the local's Origins being fixed there (SPEC 15.2.2, 15.3.4, 15.6.5; PLAN G491).
         if (environment.Comparison.Expected is not null || environment.Comparison.Outer is not null)
         {
             return;
