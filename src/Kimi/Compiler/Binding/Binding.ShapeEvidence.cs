@@ -34,15 +34,15 @@ public sealed partial class Binding
     // (SlotSolution.InferPosition): a typed position other than Never by its parameter Type's occurrences and, at a callable slot,
     // its call signature's; a Literal one likewise; an aggregate or a classified join by its child positions, each candidate's
     // `ref/` layer dropped (InferComposite); an anonymous function by the Types its header writes (SPEC 10.5.4); a waiting or failed
-    // position (DECISIONS BU-78) none but the callable slot it stands at (DECISIONS BU-2). Where no typed position binds the slot,
-    // the expected result fills it (SPEC 10.8), so the candidates' results are compared too. Every occurrence must have the same
+    // position (DECISIONS BU-78) none but the callable slot it stands at (DECISIONS BU-2). A single part's own Type decides the
+    // rest, as in InferPosition, which reads it the same way. `expected` is the expected result only where its fill (CollectTypes,
+    // SPEC 10.8) reached the slot, and then the candidates' results are compared too. Every occurrence must have the same
     // structural path and extraction rule; an extra candidate-specific source fails.
     private bool? SameArgumentEvidence(
         InvocationKoto call, ShapePair pair, int slot, ReadOnlySpan<int> leftMap, ReadOnlySpan<int> rightMap, BoundType? expected)
     {
         var (left, right) = (pair.Left, pair.Right);
         var hits = 0;
-        var bound = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var a = leftMap[i] < 0 ? null : left.Parameters[leftMap[i]].Type.BoundType;
@@ -56,7 +56,7 @@ public sealed partial class Binding
             }
         }
 
-        return bound || expected is null || left.IsConstructor || Paths(left.BoundSymbol!.Type, right.BoundSymbol!.Type) ? hits > 0 : null;
+        return expected is null || left.IsConstructor || Paths(left.BoundSymbol!.Type, right.BoundSymbol!.Type) ? hits > 0 : null;
 
         bool Position(int start, BoundType? a, BoundType? b)
         {
@@ -94,7 +94,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            return kind == PartKind.Literal ? Paths(a, b) : Early(a, b) && Early(Signature(a, left), Signature(b, right));
+            return Paths(a, b) && (kind == PartKind.Literal || Paths(Signature(a, left), Signature(b, right)));
         }
 
         // SPEC 10.8, 4.3.1: a composite by its child positions; at a bare slot the whole, only when every part is evidence.
@@ -131,22 +131,13 @@ public sealed partial class Binding
             var sb = b is null ? null : this.ExpectedCallSignature(right, b);
             for (var p = 0; p < closure.Parameters.Count; p++)
             {
-                if (closure.Parameters[p].Type.BoundType is not null && !Early(SignaturePart(sa, p), SignaturePart(sb, p)))
+                if (closure.Parameters[p].Type.BoundType is not null && !Paths(SignaturePart(sa, p), SignaturePart(sb, p)))
                 {
                     return false;
                 }
             }
 
-            return closure.ReturnType?.BoundType is null || Early(SignaturePart(sa, -1), SignaturePart(sb, -1));
-        }
-
-        // Typed evidence and a written header bind the slot before the expected result can (SPEC 10.8); a Literal does not.
-        bool Early(BoundType? a, BoundType? b)
-        {
-            var before = hits;
-            var same = Paths(a, b);
-            bound |= hits > before;
-            return same;
+            return closure.ReturnType?.BoundType is null || Paths(SignaturePart(sa, -1), SignaturePart(sb, -1));
         }
 
         BoundType? Signature(BoundType? pattern, FunctionKoto function)
@@ -389,7 +380,7 @@ public sealed partial class Binding
                             mode |= 8; // Keep differing witnesses; equal acquisition modes may still suffice.
                         }
 
-                        modes[at] |= mode;
+                        modes[at] |= fillOnly ? mode | 16 : mode; // 16: the expected result's fill reached the slot (SPEC 10.8).
                         return;
                     }
 
@@ -441,7 +432,7 @@ public sealed partial class Binding
                                 slot,
                                 allMaps.AsSpan(left * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
                                 allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
-                                expected)) is { } occurs &&
+                                ((modes[a] | modes[b]) & 16) != 0 ? expected : null)) is { } occurs &&
                             ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
                             (types[a] is { } ta && types[b] is { } tb && SameShapeBinding(ta, tb)) ||
                             (modes[a] == 0 && modes[b] == 0 && occurs)))

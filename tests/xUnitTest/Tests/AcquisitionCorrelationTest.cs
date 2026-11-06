@@ -112,6 +112,18 @@ public class AcquisitionCorrelationTest
         Assert.Equal("UnresolvedBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
     }
 
+    // SPEC 10.8, 10.3: an expected result whose structure reaches no slot of a candidate's result is no evidence, so the Literal alone
+    // correlates T and the call reports only that no candidate fits the expected result.
+    [Theory]
+    [InlineData("i64")]
+    [InlineData("ref/(i32, i32)")]
+    public void AnExpectedResultThatReachesNoSlotIsNoEvidence(string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(Results + Body + "    let r: " + expected + " = f(42, 0)");
+        c.Binding.ReportDiagnostics();
+        Assert.Equal("NoApplicableOverload_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
+    }
+
     // SPEC 7.4.4, 10.8, 10.5.1: the same witness or call-signature path, a Tuple element at its own position below a `ref/` layer
     // one candidate has, an expected result that fills nothing an argument binds, and a fixed explicit binding establish the contract.
     [Theory]
