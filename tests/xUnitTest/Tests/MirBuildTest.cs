@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
@@ -488,8 +489,14 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
 
         var adjust = HirTables.AdjustOf(node);
-        return adjust.Adaptation == HirAdaptation.None && adjust.Acquire is not (HirAcquire.Reborrow or HirAcquire.ByCase)
-            ? key : $"{key} {adjust.Acquire}/{adjust.Adaptation}";
+        var plain = adjust.Acquire switch // Every member named, so a new one fails here (G422's review N-1).
+        {
+            HirAcquire.Unset or HirAcquire.None or HirAcquire.Copy or HirAcquire.Move => true,
+            HirAcquire.Temporary or HirAcquire.Failed => true,
+            HirAcquire.Reborrow or HirAcquire.ByCase => false,
+            _ => throw new UnreachableException(),
+        };
+        return adjust.Adaptation == HirAdaptation.None && plain ? key : $"{key} {adjust.Acquire}/{adjust.Adaptation}";
     }
 
     // The first temp of a body with storage of its own, of a Type that may need drop, written whole and never dropped, or null.

@@ -614,23 +614,9 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (position.Kind != BoundPatternKind.Binding)
+                if (position.Kind == BoundPatternKind.Binding)
                 {
-                    continue;
-                }
-
-                // SPEC 15.1.6: a binding reached through a reference layer borrows its Place; an owned part is
-                // copied or transferred by its complete stored Type.
-                var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
-                var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-                    : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
-                    : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
-                plan.PositionStorage[i] = position with { Acquisition = acquisition };
-                if (proof == ConstraintProof.Error)
-                {
-                    plan.Invalid = true;
-                    plan.Coverage = new(MatchCoverageState.Invalid);
-                    this.Fail(position.Source, BindingFailure.InvalidConstraint);
+                    this.AcquireBinding(plan, i);
                 }
             }
 
@@ -654,6 +640,26 @@ public sealed partial class Binding
                     }
                 }
             }
+        }
+    }
+
+    // SPEC 15.1.6, 3.5.2: the one acquisition rule of a Pattern binding, a match arm's or a for loop's item (SPEC 14.6.2;
+    // CompleteIterationAcquisitions): a binding reached through a reference layer borrows its Place; an owned part is copied or
+    // transferred by its complete stored Type, and one whose Copy proof is Error, neither assumed Copy nor Non-Copy, fails at the
+    // binding and makes its plan Invalid (DECISIONS BU-110).
+    private void AcquireBinding(BoundMatch plan, int index)
+    {
+        var position = plan.PositionStorage[index];
+        var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
+        var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
+            : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
+            : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
+        plan.PositionStorage[index] = position with { Acquisition = acquisition };
+        if (proof == ConstraintProof.Error)
+        {
+            plan.Invalid = true;
+            plan.Coverage = new(MatchCoverageState.Invalid);
+            this.Fail(position.Source, BindingFailure.InvalidConstraint);
         }
     }
 

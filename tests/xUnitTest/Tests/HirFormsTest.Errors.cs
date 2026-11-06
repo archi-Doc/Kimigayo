@@ -254,10 +254,11 @@ public sealed partial class HirFormsTest
         Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(receiver), HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-103): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param whose Move
-    // rests on an Error Copy proof, a typeless local and a group of a typeless alias, and a binding whose Copy proof is Error (Deferred); an
-    // Error node's folds to its derived value (Temporary, None; R4-M109), and a discarded one's plan row is Failed, its column unset (no
-    // consumer takes it). Fail-before: each was the column's default (Unset, None).
+    // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param
+    // whose Move rests on an Error Copy proof, a typeless local and a group of a typeless alias, and a binding whose Copy proof is Error
+    // (Deferred), a match arm's or a for loop's item, also a Tuple item's slot; an Error node's folds to its derived value (Temporary, None;
+    // R4-M109), and a discarded one's plan row is Failed, its column unset (no consumer takes it). Fail-before: each was the column's default
+    // (Unset, None), and a for item whose Copy proof is Error was (Move, None). A valid Copy item stays Copied and a Non-Copy one Moved.
     [Fact]
     public void AFailedAcquisitionIsPublishedFailed()
     {
@@ -265,7 +266,11 @@ public sealed partial class HirFormsTest
             "    associate Iterator.Item is Bad\n    public init() => ()\n    public func next(self: uniq/Self) -> Option<Bad> => .None\n" +
             "func a(b: Bad) -> Bad => b\nfunc f(t: (i32, i32)) -> i32 => t.5\nfunc k(c: bool) -> i32\n    let x = missing\n    let z = x\n" +
             "    let y: i32 = if c => 1 else => x\n    let w: i32 = if c => 1 else => (z)\n    return y + w\nfunc g() -> i32\n    let q = missing\n    q\n" +
-            "func m(it: uniq/Gen)\n    match it.next()\n        .Some(let v) => ()\n        .None => ()\n";
+            "func m(it: uniq/Gen)\n    match it.next()\n        .Some(let v) => ()\n        .None => ()\n" +
+            "func n(xs: Array<Bad>, ys: Array<(Bad, i32)>)\n    for e in xs@move\n        _ = 1\n    for (p, j) in ys@move\n        _ = j\n" +
+            "struct Good\n    Self is Copy\n    public var n: i32 = 0\n    public init() => ()\nstruct Owned\n    public var s: string = \"\"\n" +
+            "    public init() => ()\nfunc h(gs: Array<Good>, os: Array<Owned>)\n    for o in gs@move\n        _ = o\n    for u in os@move\n" +
+            "        _ = u@move\n";
         var c = MinimalEmissionTest.Analyze(Source);
         HirTables.Publish(c);
         var rows = Reachable(c.Kotonoha)
@@ -275,9 +280,12 @@ public sealed partial class HirFormsTest
         string[] expected =
         [
             "b Name Failed Unset", "t.5 Error Temporary Unset", "x Name Failed Unset", "(z) Group Failed Unset", "q Name Unset Failed",
-            "let v Syntax Failed Unset",
+            "let v Syntax Failed Unset", "e Syntax Failed Unset", "p Syntax Failed Unset",
         ];
         Assert.Equal(expected, rows);
+        var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
+            .Select(static x => $"{x} {HirTables.AdjustOf(x).Acquire}");
+        Assert.Equal(["j Copy", "o Copy", "u Move"], items);
     }
 
     // The 1-based line:column of an offset in a source.

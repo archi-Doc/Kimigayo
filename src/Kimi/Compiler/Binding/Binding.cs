@@ -258,6 +258,7 @@ public sealed partial class Binding
         this.ValidateExpressionProjectionInputs(mode);
         this.CompleteEnumAcquisitions();
         this.CompletePatternAcquisitions();
+        this.CompleteIterationAcquisitions();
         if (mode == BindingMode.Final)
         {
             this.CompleteAliasWarnings();
