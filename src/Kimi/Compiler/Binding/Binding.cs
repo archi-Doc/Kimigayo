@@ -232,9 +232,10 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2 (DECISIONS G52-1, G449): the declarations a container contains are each their own declaration, and the container's verdict reads no
-    // result of them, so they are bound with its consultation frame suspended: none is its prerequisite, and one that rests on a syntax
-    // recovery leaves the container's own record. Its generic parameters, bases and Constraints stay in the frame; its checks read them.
+    // BindBodies' walk into a container, part of the pass order: its members, nested Types, generated function and implicit constructor.
+    // SPEC 23.1.2 (DECISIONS G52-1): each is its own declaration, and the container's verdict reads no binding result of them, so they are
+    // bound with its consultation frame suspended: none is its prerequisite, and one that rests on a syntax recovery leaves the container's
+    // own record. Its generic parameters, bases and Constraints stay in the frame (BindNodeCore), since its own checks read them.
     private void BindContainedDeclarations(DeclarationContainerKoto container, BindingScope scope)
     {
         var consultation = this.SuspendConsultation();

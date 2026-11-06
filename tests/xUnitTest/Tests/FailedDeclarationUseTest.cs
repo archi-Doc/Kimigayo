@@ -72,8 +72,8 @@ public sealed class FailedDeclarationUseTest
         Assert.DoesNotContain(records, x => x.Code == nameof(DiagnosticCode.InvalidConstraint_Kd));
     }
 
-    // DECISIONS G52-1 (G449): a container's or a stored Property's verdict reads no result of the declarations it contains, so a member or accessor
-    // resting on a syntax recovery (a guessed relation operator) leaves the container's own record: the form is its valid-clause twin
+    // DECISIONS G52-1 (G449): a container's or a Property's verdict reads no binding result of the declarations it contains, so a member or
+    // accessor resting on a syntax recovery (a guessed relation operator) leaves the container's own record: the form is its valid-clause twin
     // plus the clause's record. A header duplicate, a nested Type's redeclared slot, an inline cycle, a Property's initializer mismatch.
     [Theory]
     [InlineData("struct Holder<E> {h, h}\n    func f(self: ref/Self, x: ref/E during a, y: ref/E during b) -> i32\n        origin a OP b\n        return 0\n", nameof(DiagnosticCode.DuplicateBinding_Kd))]

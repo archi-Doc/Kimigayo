@@ -119,8 +119,9 @@ public sealed partial class Binding
         Complete(variable.NameKoto, symbol.Type);
         if (variable is PropertyKoto property)
         {
-            // SPEC 23.1.2 (DECISIONS G52-1, G449): a Property's verdict reads no result of its accessors (SPEC 11.6: its Type is never inferred from
-            // them), so they are bound outside its frame, as a container's declarations are (BindContainedDeclarations).
+            // SPEC 23.1.2 (DECISIONS G52-1): a Property's verdict, stored or computed, reads no binding result of its accessors (its Type is
+            // its header's or its initializer's, SPEC 11.4, 11.6), so they are bound outside its frame, as a container's declarations are
+            // (BindContainedDeclarations).
             var consultation = this.SuspendConsultation();
             try
             {
