@@ -72,6 +72,22 @@ public class OwnershipAnalysisTest
         Assert.False(c.Accepts);
     }
 
+    // Its valid counterpart: an explicit Move of a temporary's part is accepted with no record (SPEC 3.4.1: the part is a Place of its
+    // Temporary Place, reached by a Direct path; 15.1.3, 15.1.5: a Tuple element of an owned root is a static Move Path offering Take;
+    // 3.6: the temporary destroys only its remaining parts). Below a diverging operand: NeverContinuationTest's diverging-key theory.
+    [Theory]
+    [InlineData("take((\"p\", 1).0@move)")]
+    [InlineData("take(make2(1).0@move)")]
+    public void AMoveOfATemporarysPartIsAccepted(string statement)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "func take(s: string) => ()\nfunc make2(k: i32) -> (string, i32) => (\"m\", k)\nfunc f()\n    " + statement + "\nf()");
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        Assert.Empty(TestDiagnostics.Of(c));
+    }
+
     [Fact]
     public void OwnedDefaultsNowVerifyThroughTheOrdinaryPipeline()
     {
