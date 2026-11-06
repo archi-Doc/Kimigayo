@@ -311,7 +311,9 @@ public class ClosureReceiverClassificationTest
     // `(take(value), missing)` keep the mark and a `let` Closure's call stays Exclusive, and a dependent call `pair(missing, value)`
     // decides only a bare acquisition position, which its argument is not; a discarded use has no consumer whose failure explains it,
     // so a failed sibling arm leaves the mark (BU's re-check 3, N1); an assignment's failed target fixes its source's Type and explains
-    // it (the concrete twin is Shared). Each row: the records under `let h`, then under `var h`.
+    // it (the concrete twin is Shared); a later use of the Case value that takes it explains nothing: after `.Some(value)`, the bare
+    // `_ = o` is its own TransferRequired_Kd in the uniq case (SPEC 3.5.1; DECISIONS BU-84). Each row: the records under `let h`, then
+    // under `var h`.
     [Theory]
     [InlineData("        value\n", "InvalidAssignment_Kd h", "")]
     [InlineData("        (value)\n", "InvalidAssignment_Kd h", "")]
@@ -322,6 +324,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        match c\n            true => value\n            false => missing\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
+    [InlineData("        let o: Option<s/T> = .Some(value)\n        _ = o\n", "TransferRequired_Kd o; InvalidAssignment_Kd h", "TransferRequired_Kd o")]
     [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
     [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
     [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
@@ -441,7 +444,7 @@ public class ClosureReceiverClassificationTest
 
     // SPEC 3.5 (2c-2 re-check R2, R3): an enum Case's payload is a listed input, so `.Some(value)` of a captured pair layer Reborrows in
     // the uniq case: the capture is marked and a `let` Closure's call is Exclusive (SPEC 7.7.3), which its `let` slot cannot lend
-    // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; PLAN G252), as outside a
+    // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; DECISIONS BU-45), as outside a
     // Closure, so it has no TransferRequired_Kd; Binding's records.
     [Theory]
     [InlineData("let", "InvalidAssignment_Kd h")]

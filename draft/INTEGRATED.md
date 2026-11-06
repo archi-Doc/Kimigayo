@@ -1381,3 +1381,18 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   - Post-Reduction has 13 of its 18 items still open on dev.
 
   The review records are in `artifacts/handoff/2026-11-05-r5/proposals-review/`. Its probe of R1g-1 found a constructor's `self.helper()` accepted: PLAN G454.
+
+## 2026-11-06 — Pre-R5 Work Items closed
+
+- `Changes/2026-10-12 Pre-R5 Work Items.md`: 取り込み済み. It moved from `Proposals/` on the owner's instruction (verbatim
+  「2026-10-12 Pre-R5 Work Items.md を、Changesに移動してください。」), after the review recorded in the entry above.
+  - The file gained a closing status paragraph, and its two links to `Proposals/` follow the move. The whole file is now frozen.
+  - Dispositions:
+    - §2 was superseded and met by DECISIONS R5-M2.
+    - §3's R1 was met by R5's E9 and R5-M158, and R2 is rejected by A5.
+    - §4 was met by G87.
+    - §5's D1 and D2 are done.
+    - D3, the backup, has no record and is left undone.
+  - The old path in DECISIONS R5-M2, in `Proposals/2026-10-17 R5 and R6 Implementation Plan.md`, in `Proposals/2026-10-12
+    Post-Reduction Work Items.md` and in `Sketches/R5 Step 0/deep-dives/q4-evidence-metrics.md` reads this file.
+  - No SPEC or IMPL text came from it.
