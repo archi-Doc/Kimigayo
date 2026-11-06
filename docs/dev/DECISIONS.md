@@ -9591,6 +9591,16 @@ resumed by R4-M86 (2026-10-20).
     on a later pass. Precedent: BU-73's Field Closure limit.
   - Rejected: a route per consumer (69a9ee98c's payload disjunct; literal elements would need another); leaving the erasure pending
     for the bodies pass (a Closure is bound once, so it is never judged again); a leaf rule for Tuples of leaves (a narrow subset).
+- **BU-109 An anonymous function's body context is the one fixed before its body: `BoundClosure.InfersResult`** (2026-11-06; PLAN
+  G431, unit bu173; Major) SPEC 10.5.4, 14.2.2, 14.5.2. Restores BU-101's row contract (a null target row exactly at rows 9-10).
+  - Rule: `BindConcreteClosure` writes `InfersResult` before the body: no written result and no fixed expectation gave the symbol a
+    Type. `DiscardsFunctionBody` reads a bound result identical to Unit only where it is false, so the Type that inference writes
+    over the symbol after the body no longer decides the discard. A fact on an existing record, no vocabulary entry.
+  - Moved readers, now agreeing with the body's binding: receiver classification (`ClosureEffects.ConsumedByValue`), the Final
+    lints (rows 10 and the discard rows), `StructuralCompletion.CloseTransfers`, and the HIR publication (Adjust, Group,
+    `Discards`). A closure whose body infers Unit publishes that body as its result, as a named function's value body.
+  - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
+    result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

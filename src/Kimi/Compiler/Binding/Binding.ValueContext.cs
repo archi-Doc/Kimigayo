@@ -8,14 +8,15 @@ namespace Kimi.Compiler;
 // - Responsibility: Value Context (IsValueContext); a function or accessor body its Unit result discards (DiscardsFunctionBody); a
 //   selection whose result is required (IsResultRequiringSelection); the construct a transfer goes to (TransferTarget, DECISIONS BU-101).
 // - Inputs: the attached syntax tree, through Syntax's own rules (KotoHelper.ResolveTransferTarget, IsSelectionBody,
-//   IsParameterDefault), and Binding's facts: a written result Type resolved to Unit, and a function's bound result Type. Known open
-//   defect (PLAN G431): for an anonymous function that Type is its inferred result, so its discard rule can change during binding.
+//   IsParameterDefault), and Binding's facts: a written result Type resolved to Unit, a function's bound result Type, and whether an
+//   anonymous function's body infers it (BoundClosure.InfersResult, DECISIONS BU-109).
 // - Outputs: the four answers, read by Binding only: the jump binding, result sources and Structural Completion, bare acquisition and
 //   discarded Places, the Adjust rule, the HIR publication and the lints.
 // - Invariants: expected Unit alone does not discard a value. A body is discarded only by its declaration's form (a generated
 //   function, a constructor, a destructor, a named function other than a static initializer without a written result, a setter) or by
-//   a Unit result: the written `()`, a written or bound result Type identical to Unit, or a getter without a written result in a
-//   property of such a Type. An invalid transfer goes to no construct.
+//   a Unit result fixed before the body (SPEC 10.5.4): the written `()`, a written or bound result Type identical to Unit, never one
+//   the body's inference decided, or a getter without a written result in a property of such a Type. An invalid transfer goes to no
+//   construct.
 // - Prohibitions: no reader outside Binding; Syntax keeps only the syntactic rules these read.
 public sealed partial class Binding
 {
@@ -42,7 +43,7 @@ public sealed partial class Binding
     {
         FunctionKoto f => f.IsGenerated || f.IsConstructor || f.IsDestructor ||
             (f.ReturnType is null && !f.IsAnonymous && f.StaticInitializer is null) || IsUnitType(f.ReturnType) ||
-            ReferenceEquals(f.BoundSymbol?.Type, BoundType.Unit),
+            (f.ClosureStorage is not { InfersResult: true } && ReferenceEquals(f.BoundSymbol?.Type, BoundType.Unit)),
         PropertyAccessorKoto a => a.AccessorKind == PropertyAccessorKind.Set || IsUnitType(a.ReturnType) ||
             (a.ReturnType is null && a.Parent is PropertyKoto property && IsUnitType(property.TypeKoto)),
         _ => false,

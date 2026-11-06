@@ -10,8 +10,8 @@
 // - Inputs: the literal, its scope, an expected Type and whether its result is open, the capture sources it looks up; capture
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
-// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType and
-//   EvaluatingBody; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
+// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
+//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
 // - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
 //   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
 //   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
@@ -289,6 +289,7 @@ public sealed partial class Binding
         symbol.Type = function.ReturnType is { } annotation
             ? expected is null ? this.BindType(annotation, scope) : this.ClosureResultType(function, expected.Components[0], scope)
             : openResult ? null : expected?.Components[1];
+        plan.InfersResult = symbol.Type is null; // SPEC 10.5.4: the body's context is the one this fixes, never its inferred result.
         this.CompleteOriginDeclaration(originDeclaration);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
