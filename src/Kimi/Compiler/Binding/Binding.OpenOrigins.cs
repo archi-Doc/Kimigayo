@@ -219,7 +219,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 15.6.4 step 1: the region of `call` for a callee Origin no evidence supplies: Origin parameter `index` (from 0) or
-    // input Origin `-1 - index`, or a Never `$tryWrite` writer's Origin argument `index` (BindTryWrite). Keyed apart from argument
+    // input Origin `-1 - index`, or a Never `$tryWrite` writer's Origin argument `index` (BindTryWrite), or, keyed by the callee node of
+    // a construction rather than its call, the constructed Type's own slot `index` (ConstructorType). Keyed apart from argument
     // evidence by UnsolvedKey, parameters up and inputs down, all below UnsolvedKey / 2, so IsCallRegion holds for every one.
     private BoundOrigin CallRegion(Koto call, int index) => this.OpenOrigin(call, UnsolvedKey + index);
 

@@ -9700,8 +9700,11 @@ resumed by R4-M86 (2026-10-20).
     and the view's `EnclosingCallRegion` read them alike. Before, the result kept the callee's Input atom: `UnprovenConstraint_Kd`
     at a named call, `Unsupported_Kd` at a value call. Every binder that solves a callee's Origins reads it: named calls, methods,
     Contract requirements, value calls of a Function Item or Closure, and through a Function Type, a Callable bound or an erased
-    value (`SolveValueCallOrigins`' both branches; a Function Type has per-call inputs only). Not covered: a constructed Type's own
-    slots (PLAN G463). As a consequence an enclosing call's input region is Fixed in a Closure's body, so a failing chain there is
+    value (`SolveValueCallOrigins`' both branches; a Function Type has per-call inputs only). A constructed Type's own slot that no
+    argument fixes takes the expected result's Origin by direct match with an owner Type of the same declaration (SPEC 10.8.1, the rule
+    `ExpectedConstructionOrigins` gives Case constructions too), and otherwise is a region of its call, keyed by the construction's
+    callee node (`ConstructorType`, PLAN G463). As a consequence an enclosing call's input region is Fixed in a Closure's body, so a
+    failing chain there is
     the nested-body limit (b_enc_bad, PLAN G450; the owner, 2026-11-06: 「(i) に含めて認める」). A Never `$tryWrite` writer's
     Origin arguments are likewise its call's regions (`CallRegion`, read by `BindTryWrite` and `OpenUnsolvedOrigins`; SPEC 22.10.4
     acquires it as `uniq/Utf8Writer`, and 15.3.6 never replaces such an Origin by static). This supersedes 5881e0a62's static

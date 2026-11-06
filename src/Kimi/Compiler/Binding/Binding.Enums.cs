@@ -203,7 +203,7 @@ public sealed partial class Binding
 
             if (expected is not null && !ReferenceEquals(expected, BoundType.Never))
             {
-                if (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, enumeration.Owner))
+                if (ExpectedConstructionOrigins(expected, enumeration.Owner) is not { } supplied)
                 {
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
@@ -221,9 +221,9 @@ public sealed partial class Binding
                     arguments[i] ??= expected.Components[i];
                 }
 
-                for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
+                for (var i = 0; i < Math.Min(originCount, supplied.Count); i++)
                 {
-                    origins[i] = expected.OriginArguments[i];
+                    origins[i] = supplied[i];
                 }
             }
 
