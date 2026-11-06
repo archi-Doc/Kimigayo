@@ -43,13 +43,7 @@ internal sealed partial class MirBuilder
             // selected no arm; DECISIONS R5-M31, R5-M42), so the jump is derived from that record (SPEC 23.1.2): its operand is built,
             // keeping its own records, and the jump is an Opaque value of what the operand gave or designates, without a record. No
             // consumer takes the operand, so a Place it designates is not acquired (an acquisition is its consumer's, DECISIONS BU-27).
-            var root = operand is null ? -1 : this.DerivedOperand(operand);
-            this.roots.Clear();
-            if (root >= 0)
-            {
-                this.roots.Add(root);
-            }
-
+            this.SiteRoots(operand is null ? -1 : this.DerivedOperand(operand));
             this.Site(jump, this.Temp(jump), Completes(jump));
             return;
         }
