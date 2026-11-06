@@ -94,7 +94,8 @@ public sealed partial class Binding
 
     /// <summary>Gets the nodes a completion check rests on when the syntax from a node up to a root completes normally only through
     /// nodes whose completion Binding did not establish: a body the parser supplied for a missing one (docs/dev/DIAGNOSTICS.md §4.4)
-    /// or an unresolved expression. Written, resolved syntax reaching the same completion keeps the check direct. Its work is the
+    /// or an expression Binding left unresolved. Written syntax reaching the same completion, also through an expression Binding
+    /// rejected, keeps the check direct. Its work is the
     /// structural walk over the node's evaluation, so a caller asks only where the syntax can complete. The span is Binding's
     /// scratch, valid until the next guess query, so a caller copies it at once.</summary>
     /// <param name="node">The checked syntax.</param>
@@ -165,9 +166,12 @@ public sealed partial class Binding
     private static DiagnosticKey? SuppliedCause(Koto node)
         => node is CodeBlockKoto || (node is ErrorKoto && IsBodyItem(node)) ? node.CodeContext.RecoveryCause(node) : null;
 
-    // An expression whose completion Binding did not establish: unresolved, neither an Error nor a recovery.
+    // An expression whose completion Binding did not establish: one it left unresolved (or never reached), neither an Error nor a
+    // recovery (DECISIONS R5-M186). One it rejected (Invalid) has its completion: its Type's Never evidence, or its parts' (a match
+    // that failed only its coverage, an if whose condition is not bool), so a check through it is judged on that completion.
     private static bool IsUnresolvedGuess(Koto node)
-        => node.BindingState != BindingState.Resolved && node is ExpressionKoto and not ErrorKoto && node.CodeContext.RecoveryCause(node) is null;
+        => node.BindingState is not (BindingState.Resolved or BindingState.Invalid) && node is ExpressionKoto and not ErrorKoto &&
+            node.CodeContext.RecoveryCause(node) is null;
 
     // A node whose completion Binding did not establish, assumed not to complete: a supplied body or an unresolved expression.
     private static bool IsGuess(Koto node) => SuppliedCause(node) is not null || IsUnresolvedGuess(node);

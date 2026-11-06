@@ -125,6 +125,13 @@ public class DiagnosticPrecisionTest
     // derived from it (Binding.GuessedCompletion), so the failure alone is published.
     [InlineData("func f(flag: bool) -> i32\n    if flag\n        if missing => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UnresolvedBinding_Kd")]
     [InlineData("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\npublic func main() => ()", "UnresolvedBinding_Kd")]
+    // A match Binding rejected only for its coverage (SPEC 14.8.4) completes through its written arms, so a fallthrough an arm reaches
+    // is direct beside NonExhaustiveMatch_Kd, as with every arm written; with no arm completing, only the coverage error is published,
+    // in a function body and in a require failure body (PLAN G47).
+    [InlineData("func f(b: bool) -> i32\n    match b\n        true => ()\npublic func main() => ()", "FunctionFallthrough_Kd,NonExhaustiveMatch_Kd")]
+    [InlineData("func f(b: bool) -> i32\n    match b\n        true => ()\n        false => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(b: bool) -> i32\n    match b\n        true => return 1\npublic func main() => ()", "NonExhaustiveMatch_Kd")]
+    [InlineData("func f(ok: bool, b: bool)\n    require ok else\n        match b\n            true => return\npublic func main() => ()", "NonExhaustiveMatch_Kd")]
     // A rejected acquisition states its overlap once; a later use of the rejected Loan meets the same holder again, while an
     // independent access to the root during that holder's Loan is still its own problem.
     [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
