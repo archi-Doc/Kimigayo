@@ -107,9 +107,9 @@ public sealed class HirColumnsTest
     // node its completion; every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a
     // call that takes them, unless Binding recorded one at the node itself, and a Pattern binding its acquisition; the erasure an
     // operation's quality states is the one the column applies (DECISIONS BU-83): an erasing value operation's Source holds exactly one
-    // ErasedType node, itself or below its groups, which takes the Erasure, and no other operation's Source is one; a closure has its
-    // environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a built-in
-    // witness (a Shim), and an Abort or Fail call diverges.
+    // ErasedType node, itself or below its groups, which takes the Erasure, and no other operation's Source holds one; a closure has
+    // its environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a
+    // built-in witness (a Shim), and an Abort or Fail call diverges.
     internal static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
@@ -133,7 +133,7 @@ public sealed class HirColumnsTest
                 erased += HirTables.ErasedType(group) is null ? 0 : 1;
             }
 
-            if (Parsed(source) && (erasing ? erased != 1 : HirTables.ErasedType(source) is not null))
+            if (Parsed(source) && erased != (erasing ? 1 : 0))
             {
                 problems.Add($"{source.CodeContext.SourceDocument?.Path}:{source.Span.Start} {source.Akind} holds {erased} erasures for {operation.Kind}/{operation.Adaptation}");
             }
