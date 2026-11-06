@@ -191,6 +191,12 @@ internal static class MirDescriptors
         _ => default,
     };
 
+    /// <summary>Gets whether an access a walk reports is an Opaque site's root's (G191 N1): only the Opaque row's roots carry Reads with
+    /// Writes, so the predicate is that row's root access, which the validator's static rule and A5's accesses read.</summary>
+    /// <param name="access">The access <see cref="MirUses"/> reports.</param>
+    /// <returns>Whether it is an Opaque site's root's.</returns>
+    internal static bool IsOpaqueRoot(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
+
     private static MirDescriptor Row(MirAccess access, MirEffect effects, sbyte arity = -1, bool diverges = false, sbyte retained = -1) => new(
         Defined: true,
         access,

@@ -10,10 +10,10 @@ namespace Kimi.Compiler.Mir;
 //   and code generation read MirProgram.StaticInit and a body's slots without a guard.
 // - Inputs: a body's terminators and the Places MirUses reports; the program's bodies once all are built. Outputs: Unensured and, over
 //   the program, StaticSlot findings.
-// - Invariants: an Opaque site's roots, the Places MirUses reports right after the site's Unknown effect, name what its replaced syntax
-//   may access, whose static Binding may have rejected; that syntax never runs (its program has a record and is not generated), so no
-//   first access initializes through them (Effect); a staticEnsure of another form is the walk's StaticSlot finding (MirValidator.Calls)
-//   and names no static here.
+// - Invariants: an Opaque site's roots, the Places MirUses reports with the Opaque row's access (MirDescriptors.IsOpaqueRoot), name what
+//   its replaced syntax may access, whose static Binding may have rejected; that syntax never runs (its program has a record and is not
+//   generated), so no first access initializes through them (Accessed); a staticEnsure of another form is the walk's StaticSlot finding
+//   (MirValidator.Calls) and names no static here.
 // - Prohibitions: no order between a staticEnsure and the accesses it serves (any block of the body names it, as code generation maps a
 //   body's slots; that it precedes each access is the builder's, unchecked, DECISIONS R4-M121); no rule of the operand's form beyond
 //   decoding it (MirValidator.Calls).
@@ -75,23 +75,15 @@ internal sealed partial class MirValidator
 
     private partial struct Checker
     {
-        // An Opaque site's Unknown effect, whose roots MirUses reports next.
-        public void Effect(MirEffect effects, int site)
+        // No effect is a rule here: a static access is its Place's (Accessed), an Opaque site's root its access (MirDescriptors.IsOpaqueRoot).
+        public readonly void Effect(MirEffect effects, int site)
         {
-            if ((effects & MirEffect.Unknown) != 0)
-            {
-                this.named = body.OpaqueSites[site].Count;
-            }
         }
 
         // A valid Place a location accesses: a static root a staticEnsure of the body names; an Opaque site's root never runs.
-        private void Accessed(MirPlace place)
+        private readonly void Accessed(MirPlace place, MirAccess access)
         {
-            if (this.named > 0)
-            {
-                this.named--;
-            }
-            else if (place.IsStatic && !ensured[~place.Root])
+            if (place.IsStatic && !MirDescriptors.IsOpaqueRoot(access) && !ensured[~place.Root])
             {
                 this.Report(MirViolation.Unensured);
             }

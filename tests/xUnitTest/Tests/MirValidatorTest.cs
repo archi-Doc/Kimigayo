@@ -28,7 +28,8 @@ public sealed class MirValidatorTest
     public static TheoryData<string> Rules => new(Enum.GetNames<MirViolation>());
 
     // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
-    // member a row; a value outside the enumeration and IntrinsicId.None have none.
+    // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its roots', is an Opaque
+    // root's (MirDescriptors.IsOpaqueRoot, G191 N1).
     [Fact]
     public void EveryKindHasADescriptorRow()
     {
@@ -45,7 +46,9 @@ public sealed class MirValidatorTest
             var kind = overload.GetParameters()[0].ParameterType;
             foreach (var value in Enum.GetValues(kind))
             {
-                Assert.True(((MirDescriptor)overload.Invoke(null, [value])!).Defined != value is IntrinsicId.None, $"{kind.Name}.{value}");
+                var row = (MirDescriptor)overload.Invoke(null, [value])!;
+                Assert.True(row.Defined != value is IntrinsicId.None, $"{kind.Name}.{value}");
+                Assert.True(MirDescriptors.IsOpaqueRoot(row.Access) == value is MirRvalueKind.Opaque, $"{kind.Name}.{value}");
             }
 
             Assert.False(((MirDescriptor)overload.Invoke(null, [Enum.ToObject(kind, 200)])!).Defined);

@@ -156,7 +156,6 @@ internal sealed partial class MirValidator(TyCtxt types)
         private readonly TyCtxt.CopyFacts copies = types.Copies(body.Key.Decl); // The body definition's, resolved once per body (BU-88).
         private SourceInfo at;
         private int opaqueValues;
-        private int named; // The roots of the Opaque site being walked that are still to come (MirValidator.Statics).
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
         private bool delivering; // Whether they are a Move's into _0's whole Place, a Result local's one read (MirValidator.Tables).
