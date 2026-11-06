@@ -454,13 +454,18 @@ public sealed partial class Binding
     }
 
     // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
-    // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values.
+    // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values. A waiting part,
+    // which has no actual yet, is no evidence (SPEC 10.5.1).
     private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
     {
         var inference = this.BeginOriginInference(use, binder);
         for (var i = 0; i < actuals.Length; i++)
         {
-            this.CollectOriginInference(parameters.Components[i], actuals[i], inference);
+            if (actuals[i] is { } actual)
+            {
+                this.CollectOriginInference(parameters.Components[i], actual, inference);
+            }
+
             this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
         }
 

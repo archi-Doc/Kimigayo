@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // output of Binding.ArgumentKinds.cs. CompleteWaiting takes each argument of the selected candidate (TakeArgument), completes its
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
-// CompleteValueCallPart completes a value call's part at its one candidate's parameter Type; CompleteUnselected binds on its own each
+// CompleteValueCallPart completes a value call's part at its one candidate's parameter Type, a waiting one (WaitsForValueCallSolve) at
+// the instantiated parameter; CompleteUnselected binds on its own each
 // part of a call that completes none, outside its consultation. The selection, its defaults and their re-check (SolveSelected,
 // CheckDefaulted) stay in Binding.ArgumentKinds.cs.
 public sealed partial class Binding
@@ -126,10 +127,23 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 10.5.1, 10.5.4, 7.7.4, 15.6.4 step 2 (PLAN G494): whether a value call's prepared part waits for the call's solve, to be completed
+    // at its instantiated parameter, as a named call completes its waiting parts and erasures after selection (CompleteWaiting,
+    // CompleteArguments): every part CompleteValueCallPart binds at its parameter or erases there, but a Literal, whose input Type names no
+    // Origin, and an aggregate or a join, whose parts are the solve's evidence.
+    private bool WaitsForValueCallSolve(Koto part, BoundType parameter) => this.KindOf(part) switch
+    {
+        PartKind.Literal or PartKind.Aggregate or PartKind.Join => false,
+        PartKind.Typed => part.BoundType is not { } typed ||
+            (typed.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && parameter.Kind == BoundTypeKind.Function),
+        _ => true,
+    };
+
     // SPEC 12.5.2, 10.5.1, 10.1.1 (D1): a value call's part, classified as a named call's is (PrepareArgument, by its caller, which
     // composes its rows in between) and completed at its known parameter Type with no selection probe, since a value call has one
     // candidate: a Typed part keeps its own Type, which the call adapts; every other part is bound at the parameter Type, a Literal at
-    // its literal input Type. Null when it fails.
+    // its literal input Type. A part that waits for the solve (WaitsForValueCallSolve) is completed at its instantiated parameter. Null
+    // when it fails.
     private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
     {
         var literal = IsUnfittedLiteral(part);
