@@ -8,12 +8,15 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 6.2.2, 15.3.1, 9.7.2 (PLAN G425): a declaration's clause at an occurrence of its Type, under the occurrence's Type and Origin
-    // arguments, as StoredType substitutes a Field's Type: the one form of every occurrence's clause.
+    // arguments in one pass, as OccurrenceType substitutes a Field's Type.
     private BoundConstraint StoredConstraint(BoundConstraint constraint, BoundType owner)
-        => this.SubstituteConstraint(constraint, owner.Symbol!.Declaration, (BoundType[])owner.Components, origins: (BoundOrigin[])owner.OriginArguments);
+    {
+        Span<BoundOrigin> single = [BoundOrigin.Static];
+        return this.SubstituteConstraint(constraint, owner.Symbol!.Declaration, (BoundType[])owner.Components, origins: OccurrenceOrigins(owner, single));
+    }
 
-    // A clause under its binder's substitution: the Type and length slots, then the declared Origin slots' images (SubstituteStoredOrigins),
-    // which a call's own slots do not have yet (PLAN G417).
+    // A clause under its binder's substitution (SubstituteType): its Type, length and, given their images, declared Origin slots, which a
+    // call's own slots do not have yet (PLAN G417).
     private BoundConstraint SubstituteConstraint(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, ReadOnlySpan<BoundOrigin> origins = default)
     {
         if (constraint.Kind == ConstraintKind.Not)
@@ -31,15 +34,13 @@ public sealed partial class Binding
             return constraint;
         }
 
-        var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths);
-        var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths);
-        subject = subject is null ? null : this.SubstituteStoredOrigins(subject, binder, origins);
-        required = required is null ? null : this.SubstituteStoredOrigins(required, binder, origins);
+        var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths, origins);
+        var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths, origins);
         var contract = constraint.Contract;
         if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract))
         {
             // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own.
-            var substituted = this.SubstituteType(reference, binder, arguments, lengths) is { } image ? this.SubstituteStoredOrigins(image, binder, origins) : null;
+            var substituted = this.SubstituteType(reference, binder, arguments, lengths, origins);
             subject = substituted is null && incomplete ? null : subject;
             contract = substituted is null ? contract : this.BoundContractReference(substituted);
         }

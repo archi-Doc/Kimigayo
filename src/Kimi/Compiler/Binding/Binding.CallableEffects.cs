@@ -115,12 +115,12 @@ public sealed partial class Binding
             if (node.BoundType is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } type &&
                 node.Parent?.BoundType != type)
             {
-                this.CheckCallableEffectUses(node, container.ConstraintNodes, container, (BoundType[])type.Components, null, null);
+                this.CheckCallableEffectUses(node, container.ConstraintNodes, container, (BoundType[])type.Components, null, null, origins: (BoundOrigin[])type.OriginArguments);
             }
         }
     }
 
-    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, CallPlan? call, ReadOnlySpan<BoundLength?> lengths = default)
+    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, CallPlan? call, ReadOnlySpan<BoundLength?> lengths = default, ReadOnlySpan<BoundOrigin> origins = default)
     {
         var scope = this.ConstraintScope(use);
         for (var i = 0; i < clauses.Count; i++)
@@ -130,7 +130,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(fact, binder, arguments, lengths);
+            var substituted = this.SubstituteConstraint(fact, binder, arguments, lengths, origins: origins);
             if (declaring?.Symbol is not null)
             {
                 substituted = this.StoredConstraint(substituted, declaring);
