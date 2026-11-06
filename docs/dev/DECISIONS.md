@@ -3211,6 +3211,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and no consumer guarded; a dominance rule is its own unit. Rejected: rule (2) over Opaque roots (InternalInvariant_Kd on
     Binding-rejected programs); rule (2) as "each accessed static has an initializer" over the program (code generation's slot map is
     per body).
+  - Amended (G191 U-B, 2026-11-06; R4's Open issues lane): the program pass, now `MirValidator.Program.cs`, also owns the two cross-body
+    rules only `MirBuildTest.CorpusBuildsValidBodies` asserted: a default template's call (a Fn callee's Arg above 0) whose
+    `MirProgram.Callee` is null and a Closure aggregate whose Closure body the program lacks are each `MirViolation.Callee` at the call or
+    the statement, marking its body; the instance collector's two -1 fallbacks for them (`InstanceCollector.Callees`' Closure body,
+    `.Edges`' template) read the body unchecked. An Opaque site's roots are recognized by one predicate the descriptors' owner
+    publishes, `MirDescriptors.IsOpaqueRoot` (the Opaque row's root access, the only row with Reads and Writes), which rule (2)'s
+    exemption and A5's accesses (R4-M10) read; the validator's count after the site's Unknown effect is gone. Rejected: a new
+    `MirAccess` member for the root (a vocabulary entry). Rule (3), dominance, stays open (PLAN G191 N3).
 - **R4-M122 Rule W in SPEC 15.6.5, a read through a reference counted as a Copy; 14.8.3 and 15.8.2 cite it** (owner, 2026-10-24,
   verbatim answers to two questions: 「(a) 今、W だけで開く (推奨)」, this SPEC session holds W alone, and
   「(a) SPEC の W の文に書く (推奨)」, the reading the prototype round needed is one clause of W's sentence; R4-M104's proposal,

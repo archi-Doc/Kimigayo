@@ -37,7 +37,8 @@ internal enum MirViolation : byte
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee; a FormatFinish whose adapter is over no
     // FormatBuffer's buffer, or whose estimate is not that FormatBuffer's (DECISIONS R5-M131).
-    Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic.
+    Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic;
+    // over the program, a default template's call or a created Closure without its body (G191).
     Discriminant, // A Discriminant of a Place that is not an enum.
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
@@ -69,7 +70,7 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131), a Call's input temps
 /// (G136), where each region, the body or a default's copy, is entered (DECISIONS R5-M90), the statics its Places access (G191) and the
 /// shared layers a write, an in-place destruction or an exclusive acquisition passes (W1 rule 1); and over a program, the initializer each staticEnsure names
-/// (G191), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
+/// and the body each default template's call and each created Closure names (G191), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and an owning interpolation's steps' as their constants,
 /// a FormatFinish's estimate its FormatBuffer's (DECISIONS R5-M131), a Value callee's against its Type's signature where

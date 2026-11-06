@@ -559,6 +559,41 @@ public sealed class MirValidatorTest
         Assert.Equal(broken, use.HasFinding); // The ensuring body's verdict (DECISIONS R5-M183).
     }
 
+    // G191 N2 (DECISIONS R4-M121 as amended): over the program, each default template's call and each created Closure has its body, which
+    // the instance collector reads unchecked: the built program is valid, and a call of a function without defaults with its Arg set to
+    // 1 (a template call) or an Assign of a Closure aggregate over a symbol without a Closure body is a Callee finding at the call or the
+    // statement, which marks its body (fail-before: no finding).
+    [Theory]
+    [InlineData(null)]
+    [InlineData("template")]
+    [InlineData("closure")]
+    public void ANamedBodyIsInItsProgram(string? broken)
+    {
+        var c = MirBuildTest.Compile("func plain() -> i32 => 1\nfunc use() -> i32 => plain() + 1\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var use = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+        var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
+        var call = Array.FindIndex(use.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Fn });
+        var assign = Array.FindIndex(use.Statements.ToArray(), static x => x.Kind == MirStatementKind.Assign);
+        SourceInfo at = default;
+        if (broken == "template")
+        {
+            at = use.Blocks[call].Terminator.Source;
+            Unsafe.AsRef(in use.Blocks[call]).Terminator = use.Blocks[call].Terminator with { Callee = use.Blocks[call].Terminator.Callee with { Arg = 1 } };
+        }
+        else if (broken == "closure")
+        {
+            at = use.Statements[assign].Source;
+            var closure = c.Types.Intern(BoundTypeKind.Closure, plain, SemanticsKind.Owner, []);
+            Unsafe.AsRef(in use.Statements[assign]) = use.Statements[assign] with { Rvalue = new(MirRvalueKind.Aggregate, (byte)MirAggregateKind.Closure, Type: closure) };
+        }
+
+        new MirValidator(c.Types).Validate(program);
+        Assert.Equal(broken is null ? [] : [(MirViolation.Callee, use.Subject(at))], program.Findings.Select(static x => (x.Rule, x.Subject)));
+        Assert.Equal(broken is not null, use.HasFinding);
+    }
+
     // R3-10 (DECISIONS R5-M131 as PLAN G157 (37) amends it): an owning interpolation's steps carry their constants, which code generation
     // reads unchecked, each of its position's kind (the literal bytes an Integer, the values' Types a token of their Tuple, the direct mark a
     // Bool, a segment's text a string), and its FormatFinish the estimate operands of the FormatBuffer whose buffer its adapter is over,

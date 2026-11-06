@@ -13,7 +13,9 @@
 // without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
 // site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault.
+// departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row is a fault;
+// a default template's call has the template's body, read unchecked (the validator's program pass guarantees it, MirValidator.Program,
+// G191).
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
 // (InstanceCollector.Witnesses.cs) itself.
 
@@ -162,7 +164,7 @@ internal sealed partial class InstanceCollector
 
         if (callee.Arg > 0)
         {
-            return program.Callee(callee) is { } template ? this.Admit(item, subject, template, subst) : -1;
+            return this.Admit(item, subject, program.Callee(callee)!, subst);
         }
 
         return this.Implementation(program, item, subject, callee.Symbol!, subst);
