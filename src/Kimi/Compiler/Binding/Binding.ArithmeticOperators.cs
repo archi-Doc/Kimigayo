@@ -160,8 +160,8 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 23.1.2, rule W (DECISIONS BU-79): a probed operand that bound to nothing and waits for no position or call rests on its own
-    // failure, so its operator rests at once; binding it again under an expected Type would bind the failed subtree again (PLAN G506).
+    // SPEC 23.1.2, rule W (DECISIONS BU-79): a probed operand that bound to nothing and is no deferred call or waiting callable has failed,
+    // itself or through a part it rests on, so its operator rests at once; binding it again would bind the failed subtree again (PLAN G506).
     private bool RestsOn(Koto operand, BoundType? bound)
         => bound is null && !this.IsWaitingPart(operand) && !this.IsWaitingCallable(operand);
 
@@ -176,7 +176,7 @@ public sealed partial class Binding
         var operand = this.BindIndependentOperand(unary.Operand, scope);
         if (operand is null)
         {
-            // A waiting operand is bound with its expected Type by the ordinary path; a failed one is not bound again (PLAN G506).
+            // A waiting operand is bound once more by the ordinary path, on its own (SPEC 13.3.4); a failed one is not bound again (PLAN G506).
             if (!this.RestsOn(unary.Operand, operand))
             {
                 return false;
@@ -247,8 +247,7 @@ public sealed partial class Binding
             if (other is not null)
             {
                 var expected = candidate.Type!.Components[0];
-                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) :
-                    counterpart is not null ? !FitsStructuralPart(counterpart, expected) : !this.IsWaitingPart(other) && !this.IsWaitingCallable(other))
+                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !FitsStructuralPart(counterpart, expected))
                 {
                     continue;
                 }
