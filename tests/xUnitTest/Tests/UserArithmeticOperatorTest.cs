@@ -29,6 +29,21 @@ public class UserArithmeticOperatorTest
         }
     }
 
+    // PLAN G506: a probed operand that bound to nothing and waits for no position or call makes its operator rest at once, so a prefix
+    // chain over a failed operand binds each operand once and records only the failure. Fail-before: unary minus bound such an operand
+    // again under its expected Type, 2^n binds (dev took about 20 s at 26 operators); `+` and `not` take no probe.
+    [Theory]
+    [InlineData("- ")]
+    [InlineData("+ ")]
+    [InlineData("not ")]
+    public void APrefixChainOverAFailedOperandBindsEachOperandOnce(string op)
+    {
+        var source = $"func f(c: i32) -> i32\n    return {string.Concat(Enumerable.Repeat(op, 40))}missing\npublic func main() => ()";
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, Assert.Single(compilation.Binding.Issues).Code);
+    }
+
     [Theory]
     [InlineData("bool")]
     [InlineData("()")]
