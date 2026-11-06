@@ -186,7 +186,7 @@ public sealed partial class Binding
 
             if (generic is not null)
             {
-                if (generic.TypeArguments.Count != CallOwnSlots(function).Count)
+                if (!ExplicitTypeArgumentsFit(function, generic, explicitLengths))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
@@ -195,17 +195,8 @@ public sealed partial class Binding
                 {
                     if (CallOwnSlots(function)[i] is LengthParameterKoto)
                     {
-                        if ((lengths[i] = explicitLengths[i]) is null)
-                        {
-                            return CandidateApplicability.Inapplicable;
-                        }
-
+                        lengths[i] = explicitLengths[i];
                         continue;
-                    }
-
-                    if (explicitLengths[i] is not null)
-                    {
-                        return CandidateApplicability.Inapplicable;
                     }
 
                     arguments[i] = generic.TypeArguments[i].BoundType;

@@ -5660,6 +5660,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Task per hop (a 1.5 MB pool stack and an allocation per hop).
   - O-24: the owner (R4's dialog, 2026-11-06), verbatim 「O-24 は、bでお願いいたす」: the transfer is a named exception of 'Catch
     boundaries'.
+- **R4-M179 A binding's Error Copy proof leaves its match buildable (PLAN G471, G485)** (2026-11-06; R4, design D12: outside
+  R4-M88's owner reservation, since Binding resolved the match; class Major) SPEC 14.8.4, 15.1.6, 23.1.2. Supersedes BU-110's "and
+  its plan Invalid" and `AcquireBinding`'s Coverage write.
+  - Cause: `BoundMatch.Invalid` means a located failure at a Pattern position or a guard, and every other writer pairs with a `Fail`.
+    `AcquireBinding` also set it, with the Coverage `Invalid`, on an Error Copy proof, which was consistent while it failed the
+    binding; BU-110 (a7ed3e0b0) removed that located failure and kept both writes, so their reason no longer holds. `MirBuilder.Match`
+    then built the match Opaque, losing its arms' independent MIR records (G471), and the Coverage hid `NonExhaustiveMatch_Kd` and
+    the unreachable-arm Warnings (G485).
+  - Rule: an Error proof makes the binding Deferred (HIR Failed) only; its plan stays buildable and its coverage stays the Patterns'
+    (14.8.4). `MirBuilder.Bind` derives the Failed binding as a loop's (BU-110). A failed Pattern (`ValidatePatternType`'s late
+    recheck) keeps its Invalid plan and Opaque; a failed guard or arm leaves an Error node (G121, R4-M88).
+  - Records (23.1.2, Q13): additions only, on programs the declaration's failure rejects: the arms' MIR records,
+    `NonExhaustiveMatch_Kd` and `UnreachablePattern_Kd`. No acceptance moves.
+  - Rejected: an `Acquisition`-aware test in `MirBuilder.Match` (a second copy of the rule); a new plan flag (a mode); waiting for
+    G121 (a resolved match is not its case).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9008,13 +9023,31 @@ resumed by R4-M86 (2026-10-20).
     may report a dependent failure, and must not lose an independent one.
   - The rule (ArgumentKinds' contract): a failed part fits every candidate and is no evidence (U1.6d). Only a node's own verdict over
     a failed child is suppressed: a join's DecideRest, BU-78's sites 2-4, and CompleteJoinResults. Every other record of the call is
-    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records.
+    reported: Ambiguous, UnboundTypeArgument, NoApplicable, and an unselected call's part records; beside an unbound failed argument,
+    only the checks SPEC 10.1 makes before inference (the G455 amendment below).
   - An unselected call's held join that its formation judged Conflict still writes its own record (ReportHeldConflicts, the part of
     BU-78's fix (a) that reports, not rests). Without it, an independent TypeMismatch_Kd would be lost (ACRT a1 and a3, f1).
   - Deleted: Binding.ArgumentKinds.FailedFits.cs (FailedFit, its scope, PublishFailedFit, PublishHeldFailures, RestingFailedPart,
     AmbiguityRestingPart, CertainMismatch); PublishJudged, RestJudged, RestOnVerdict, HasOwnCause and FailJudged; IsOwnLength.
   - The done-when (Q13): only an acceptance move, an InternalInvariant_Kd or Language error on a valid program, or a lost independent
     record blocks; dependent records added or removed are counted by class.
+  - Amended (G455, 2026-11-06; unit bu190): a named, method, constructor, requirement or constraint-based value call with an
+    unprepared argument (an unbound failed part; BindCallCore, SelectValueCall) runs only the checks SPEC 10.1 makes before inference,
+    which read no argument's Type, and reports their records: the group's acquisition-shape contracts (the 10.1 preamble, 7.4.4), the
+    explicit Type arguments' own records, and NoApplicableOverload_Kd when no candidate passes step 1 (the count and kinds of the
+    explicit Type arguments, `ExplicitTypeArgumentsFit`, which TryCandidateCore reads too) and step 2 (argument matching:
+    `MapCallArguments`; `MapValueCallArguments` for a constraint-based value call, which passes every argument positionally, 10.1.1).
+    That NoApplicable holds under every repair of the part. Every other outcome rests on the part, as before, in either argument order
+    at named and constraint-based value calls alike. FitArgument keeps its rule-W row for a part that kept its Type (U2.1 r2-3).
+    Records added, each independent: NoApplicableOverload_Kd (arity, a label, the `!` boundary, a default, an excess argument, the
+    explicit Type arguments' count or kind), UnprovenAcquisitionCorrelation_Kd (7.4.4's call contract) and an explicit Type argument's
+    own UnresolvedBinding_Kd. Step 1 judges every kind before a failed Type argument rests, so a call with no unprepared argument
+    reports a later kind misfit too (`pair<Undefined, 3>(5)`, as `pair<3, Undefined>(5)` already did). Not covered (PLAN G500): the checks after step 2 beside the part (another argument's or the result's
+    misfit, Ambiguous, UnboundTypeArgument, an arity misfit beside a failed explicit Type argument, the selected candidate's own
+    records), and a plain value call (BindValueCall), whose count and label checks are the base's other copy of 10.1.1's value-call
+    rule; G494's unit 2 replaces them with `MapValueCallArguments` judged up front. Rejected: judging every candidate with the part a
+    wildcard (option A): later checks read the missing evidence as a rejection (until PLAN G463, `ConstructorType`'s construction-target Origin), and an
+    Unsupported part's dependent UnboundTypeArgument_Kd is a Language error on a valid program (Milestone 41).
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
@@ -9701,8 +9734,10 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
     result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
 
-- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; PLAN G439, unit
-  bu174; Major; R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes BU-103's "`Match` builds an
+- **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; its "and its plan Invalid" and
+  `AcquireBinding`'s Coverage write superseded by R4-M179; PLAN G439, unit bu174; Major;
+  R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes
+  BU-103's "`Match` builds an
   Invalid or Pending plan as Opaque, so `Bind` never takes a Failed binding; a For's plan holds none (its acquisitions are
   `Binding.Sequences`', PLAN's open item)": a loop's plan holds a Failed binding, and `Bind` takes it.
   - Cause: two copies of 15.1.6's rule. `Binding.Sequences` decided a for item's at bind time and took an Error Copy proof as
