@@ -506,10 +506,10 @@ public sealed partial class MirBuildTest
         }
     }
 
-    // SPEC 15.1.6, 14.6.2, 3.5.2 (DECISIONS BU-110): a for item is acquired by the match's rule, so one whose Copy proof is Error fails at its
-    // binding (published Failed; a loop's binding names are declared, not walked, so the declaration's record stands alone) and its local
-    // takes a value derived from that failure, while the loop and its body are built: the body's independent MovedPlace_Kd stays.
-    // Fail-before: the item was moved out of the Subject's payload.
+    // SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2 (DECISIONS BU-110): a for item is acquired by the match's rule, so one whose Copy proof is Error is
+    // published Failed with no record of its own (the declaration's is reported) and its local takes a value derived from that failure,
+    // while the loop and its body are built: the body's independent MovedPlace_Kd stays. Fail-before: the item was moved out of the
+    // Subject's payload.
     [Fact]
     public void AForItemWhoseCopyProofIsErrorIsDerived()
     {

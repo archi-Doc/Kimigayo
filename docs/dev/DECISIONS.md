@@ -9562,19 +9562,24 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a route per consumer (69a9ee98c's payload disjunct; literal elements would need another); leaving the erasure pending
     for the bodies pass (a Closure is bound once, so it is never judged again); a leaf rule for Tuples of leaves (a narrow subset).
 - **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; PLAN G439, unit
-  bu174; Major) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes BU-103's "a For's plan holds none (its acquisitions are
-  `Binding.Sequences`', PLAN's open item)".
+  bu174; Major; R4's consent C-67 for the builder line) SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2. Supersedes BU-103's "`Match` builds an
+  Invalid or Pending plan as Opaque, so `Bind` never takes a Failed binding; a For's plan holds none (its acquisitions are
+  `Binding.Sequences`', PLAN's open item)": a loop's plan holds a Failed binding, and `Bind` takes it.
   - Cause: two copies of 15.1.6's rule. `Binding.Sequences` decided a for item's at bind time and took an Error Copy proof as
     CopyOrMove, so a Move with a valid plan; `CompletePatternAcquisitions` decides a match's after the declaration checks (Deferred,
-    the plan Invalid, `InvalidConstraint` at the binding) and never saw a for's plan, which is no entry of `this.matches`.
+    the plan Invalid) and never saw a for's plan, which is no entry of `this.matches`.
   - Rule: `Binding.AcquireBinding` is the one owner, called for a match's Binding positions and, by `CompleteIterationAcquisitions`
     over `userIterations`, for a loop's, at the same point; the Sequences copy is deleted. Only a match re-checks Pattern Types (a
-    loop writes none). A loop's binding names are declared, not walked, so its failure has no record of its own; the declaration's
-    record stands (23.1.2). `MirBuilder.Bind` gives a Failed binding the derived value `Operand` gives (R4's shape); the loop and its
-    body are built.
+    loop writes none). An Error proof makes the binding Deferred (HIR Failed) and its plan Invalid, and writes no failure on the
+    binding: 15.1.6 gives a binding no Copy requirement, and the proof reads the declaration's failed Constraint (`NominalCopy`),
+    whose record is reported, as BU-103's `=> b` is derived. `MirBuilder.Bind` gives a Failed binding the derived value `Operand`
+    gives (R4's shape); the loop and its body are built.
+  - Records (23.1.2, rule W): the match binding's dependent `InvalidConstraint_Kd` (`.Some(let v)`) is removed; a loop's binding never
+    had one. No acceptance moves.
   - Rejected: building a loop with an Invalid plan Opaque, as `Match` does: it loses the body's independent records (an A1
-    `MovedPlace_Kd`); a match whose only failure is a Deferred binding loses them today (PLAN G471). Deciding at bind time through
-    the shared rule: one rule, two decision times.
+    `MovedPlace_Kd`; PLAN G471 for the match). Deciding at bind time through the shared rule: one rule, two decision times. The
+    binding's own dependent record (G439's review option (a)): longer, and a loop's names are not walked by the pass; a `Fail` on
+    them stayed across an edit and rebind and hid their hover (review 1 B-1).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
