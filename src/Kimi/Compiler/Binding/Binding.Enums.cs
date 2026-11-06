@@ -206,14 +206,17 @@ public sealed partial class Binding
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
+                // SPEC 6.5.2 item 2, 10.8, 10.8.1 (DECISIONS BU-2 U5): a qualifier's explicit argument is kept and the expected Type fills
+                // only the open slots; the result's fit judges the kept argument (a structure or Semantics difference is its Type mismatch,
+                // an Origin-only difference its Origin relation).
                 for (var i = 0; i < slots; i++)
                 {
-                    if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
+                    if (i >= expected.Components.Count)
                     {
                         return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
-                    arguments[i] = expected.Components[i];
+                    arguments[i] ??= expected.Components[i];
                 }
 
                 for (var i = 0; i < Math.Min(originCount, expected.OriginArguments.Count); i++)
@@ -264,9 +267,10 @@ public sealed partial class Binding
             var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
-                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch; a Function
-                // component's failed contract is the construction's contract record, whose fact its walk gives (RecordMismatch).
-                if (!FitsStructurally(result, expected))
+                // SPEC 15.6.1, 10.8: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch, its
+                // pair layers read at the use's scope; a Function component's failed contract is the construction's contract record, whose
+                // fact its walk gives (RecordMismatch).
+                if (!this.FitsStructurallyAt(result, expected, use))
                 {
                     return !this.FitsTypeAt(result, expected, use, out var contract) && contract.IsCondition
                         ? this.RecordMismatch(use, use, result, expected, contract) : this.Fail(use, BindingFailure.TypeMismatch);
