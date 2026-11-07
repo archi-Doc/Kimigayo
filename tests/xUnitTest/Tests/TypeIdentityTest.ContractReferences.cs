@@ -8,6 +8,8 @@ namespace XunitTest;
 // normalized form under all of a declaration's premises, and a Type identical with a proper part of itself is a premise error.
 public partial class TypeIdentityTest
 {
+    private const string PairStruct = "struct Pair\n    public var a: i32 = 1\n    public init() => ()\n";
+
     private const string HasItem = "contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n    public init() => ()\nstruct SrcU\n    Self is HasItem\n    associate HasItem.Item is u8\n    public init() => ()\n";
 
     private const string Iter = "contract Iter<T>\n    func size(self: ref/Self) -> i32\ncontract Seq<T>: Iter<T>\nfunc use<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    return x.size()\n";
@@ -151,6 +153,20 @@ public partial class TypeIdentityTest
     [InlineData("C3", "cyc-contract", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "InvalidConstraint_Kd: Self.Y is Option<Self.X>", Explicit = true)]
     public void ContractReferencesAreIdentifiedByTheirNormalizedForm(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.2.3: a member or element access resolves through the identity of its receiver's Type, from a premise on a projection, a completed binding
+    // or decomposition; a Type parameter with no identity has no member. Binding's records only: the MIR builder's row is the Middle's.
+    [InlineData("guard", "ip-proj", PairStruct + "contract C\n    associate X\nfunc f<T>(s: ref/T.(C).X) -> i32\n    T is C\n    T.(C).X is Pair\n    return s.a\n", "")]
+    [InlineData("guard", "ip-bind", PairStruct + "contract C\n    associate X\nstruct Cfg\n    Self is C\n    associate C.X is Pair\nfunc f(s: ref/Cfg.(C).X) -> i32\n    return s.a\n", "")]
+    [InlineData("C3", "ip-dec", PairStruct + "func f<T, U>(s: ref/U) -> i32\n    T is Option<U>\n    T is Option<Pair>\n    return s.a\n", "", Explicit = true)]
+    [InlineData("C3", "ip-idx", PairStruct + "func f<T, U>(s: ref/U, i: isize) -> i32\n    T is Option<U>\n    T is Option<Array<Pair>>\n    return s[i].a\n", "", Explicit = true)]
+    [InlineData("guard", "ip-none", PairStruct + "func f<T>(s: ref/T) -> i32\n    return s.a\n", "*: return s.a")]
+    [InlineData("guard", "ip-twoc", PairStruct + "func f<T, U>(s: ref/U) -> i32\n    T is Option<Pair>\n    return s.a\n", "*: return s.a")]
+    public void AnAccessResolvesThroughItsReceiversIdentity(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 8.9.1, 4.7.1, 23.1.2: an index key's record shows the conformances it weighed, and a Note states only what the check found:
     // M<SrcI> does conform to UniqIndexable, for Name.

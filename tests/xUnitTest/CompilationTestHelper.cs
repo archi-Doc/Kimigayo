@@ -96,22 +96,22 @@ internal static class CompilationTestHelper
 
     // An acceptance row's verdict (SPEC 8.3, 23.1.2): `records` is empty for a valid program, which has no Error and generates. Otherwise it
     // lists the program's Errors as `Code: source line`, trimmed and separated by ` | `, each pair once: SPEC 23 fixes neither the span inside
-    // a line nor how many records one failed rule gives. `*` for a code leaves the code to the implementation; a last entry `...` leaves
-    // open the records resting on the listed ones.
+    // a line nor how many records one failed rule gives. `*` for a code or a line leaves it to the implementation, `Resource` for a code is
+    // any code of that category, `!Code` says no record has that code, and a last entry `...` leaves open the records resting on the listed
+    // ones.
     internal static void AssertRecordsAtLines(string form, string program, string records)
     {
         var c = MinimalEmissionTest.Analyze(program);
-        var actual = PublishedErrors(c).Select(x => $"{x.Code}: {LineAt(program, x.Span.Start)}").Distinct().ToArray();
-        var expected = records.Split(" | ", StringSplitOptions.RemoveEmptyEntries);
-        var open = expected.LastOrDefault() == "...";
-        expected = open ? expected[..^1] : expected;
-        var found = expected.All(e => actual.Any(a => a == e || (e.StartsWith("*: ", StringComparison.Ordinal) && a.EndsWith(e[1..], StringComparison.Ordinal))));
-        Assert.True(found && (open || actual.Length == expected.Length), $"{form}: expected [{records}], found [{string.Join(" | ", actual)}]");
-        if (expected.Length == 0)
+        AssertLines(form, program, records, PublishedErrors(c));
+        if (records.Length == 0)
         {
             Assert.True(c.Generate(TextWriter.Null), $"{form}: {MinimalEmissionTest.Describe(c)}");
         }
     }
+
+    // The same verdict over Binding's own records, for a rule a later phase's Unsupported_Kd would hide.
+    internal static void AssertBindingRecordsAtLines(string form, string program, string records)
+        => AssertLines(form, program, records, BindingErrors(MinimalEmissionTest.Analyze(program)));
 
     // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsLoanConflict(this DiagnosticCode code)
@@ -131,6 +131,26 @@ internal static class CompilationTestHelper
     {
         var path = node?.CodeContext?.SourceDocument?.Path;
         return path is null ? "?" : path.StartsWith("compiler://", StringComparison.Ordinal) ? Library + path[(path.LastIndexOf('/') + 1)..] : path;
+    }
+
+    private static void AssertLines(string form, string program, string records, TestDiagnostic[] errors)
+    {
+        var actual = errors.Select(x => (x.Code, Line: LineAt(program, x.Span.Start))).Distinct().ToArray();
+        var entries = records.Split(" | ", StringSplitOptions.RemoveEmptyEntries);
+        var expected = entries.Where(static x => x != "..." && !x.StartsWith('!')).ToArray();
+        var named = expected.All(e => actual.Any(a => NamesRecord(e, a.Code, a.Line)));
+        var denied = entries.Where(static x => x.StartsWith('!')).Any(e => actual.Any(a => a.Code == e[1..]));
+        var counted = entries.LastOrDefault() == "..." || actual.Length == expected.Length;
+        Assert.True(named && !denied && counted, $"{form}: expected [{records}], found [{string.Join(" | ", actual.Select(static x => $"{x.Code}: {x.Line}"))}]");
+    }
+
+    private static bool NamesRecord(string entry, string code, string line)
+    {
+        var colon = entry.IndexOf(": ", StringComparison.Ordinal);
+        var (wanted, at) = (entry[..colon], entry[(colon + 2)..]);
+        var category = wanted == "Resource" && Enum.TryParse<DiagnosticCode>(code, out var parsed) && DiagnosticEntries.TryGet(parsed, out var written) &&
+            written.Category == Kimi.Diagnostics.DiagnosticCategory.Resource;
+        return (wanted == code || wanted == "*" || category) && (at == "*" || at == line);
     }
 
     private static string LineAt(string text, int offset)
