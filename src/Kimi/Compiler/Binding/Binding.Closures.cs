@@ -453,8 +453,9 @@ public sealed partial class Binding
             var query = this.visitedParts.Begin(this.storageVersion);
             for (var i = 0; i < plan.Storage.Count; i++)
             {
-                buffer[i] = plan.Storage[i].Environment.Type!;
-                this.CapturedRegions(buffer[i], plan, query);
+                var environment = plan.Storage[i].Environment.Type!;
+                buffer[i] = environment;
+                this.CapturedRegions(environment, plan, query);
             }
 
             plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));

@@ -54,11 +54,11 @@ public sealed class BoundClosure
 
     public BoundType? EnvironmentType { get; internal set; }
 
-    // Each local region of the environment with the meet of its sources as of the literal, where the published result names them: a
-    // capture is a snapshot (SPEC 7.7.2, 15.8.2; PLAN G553). Written with the environment, by this binding; retention reads it.
-    internal List<(BoundOrigin Region, BoundOrigin Sources)> CapturedRegions { get; } = new();
-
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
+
+    // Each local region of the environment with the meet of its sources as of the literal, where the published result names them: a
+    // capture is a snapshot (SPEC 7.7.2, 15.8.2; DECISIONS: G553). Written with the environment, by this binding; retention reads it.
+    internal List<(BoundOrigin Region, BoundOrigin Sources)> CapturedRegions { get; } = new();
 
     // The requirement of every admitted case: Receiver without the captures' bare Reborrows by case (SPEC 7.7.3).
     internal SemanticsKind CaseFreeReceiver { get; set; } = SemanticsKind.Ref;
