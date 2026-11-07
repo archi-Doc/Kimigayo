@@ -1,21 +1,65 @@
 // SPEC 22.2: the standard storage boundary. These Types and operations split standard collection Storage into
 // non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
-// The compiler supplies construction; elements are lent and split by borrowing raw Places, whose range, non-overlap and
-// initialization are this group's unsafe obligations (SPEC 5.2.2).
+// Elements are lent and split by borrowing raw Places, whose range, non-overlap and initialization are this group's
+// unsafe obligations (SPEC 5.2.2).
+// Borrowed results depend on the remainder's source, never on the state borrow or slot. The exclusive variant of each
+// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.4). A remainder's `storage` lies where its Field's
+// Origin states (SPEC 5.7), within what `source` covers. A pointer read from a shared remainder's `storage` has no
+// write authority (SPEC 5.2.1). Array element storage is raw storage (SPEC 3.4); a pointer to it, read from
+// `ArrayRepr.data` or from a remainder's `storage`, has IMPL 21.1.3's `Array<T>` guarantee.
 internal group Storage
     /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
     internal struct RefRemainder<E> {source}
         internal let storage: raw/E during source
-        internal var position: isize
+        internal var position: isize = 0
         internal var count: isize
         internal let loan: Loan<ref/E during source>
+
+        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state:
+        /// `storage` addresses them in what `source` covers, with read authority, and the function that returns this
+        /// remainder states `source` as the parent borrow it was given (SPEC 5.2.1, 15.6.3).
+        internal init(storage: raw/E during source, count: isize)
+            self.storage = storage
+            self.count = count
+            self.loan = Loan<ref/E during source>.init()
 
     /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
     internal struct UniqRemainder<E> {source}
         internal let storage: raw/E during source
-        internal var position: isize
+        internal var position: isize = 0
         internal var count: isize
         internal let loan: Loan<uniq/E during source>
+
+        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state:
+        /// `storage` addresses them in what `source` covers, with read and write authority, and the function that
+        /// returns this remainder states `source` as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
+        internal init(storage: raw/E during source, count: isize)
+            self.storage = storage
+            self.count = count
+            self.loan = Loan<uniq/E during source>.init()
+
+    /// Lends an Array's elements: the pointer has the authority of the path `value` gives (IMPL 21.1.3, SPEC 5.2.1).
+    internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
+        let handle = value@follow@raw@raw/ArrayRepr<E>
+        unsafe => return RefRemainder<E>.init((*handle).data, (*handle).length)
+
+    /// Lends a fixed array's elements: `@raw` of the referent reaches all of them (SPEC 5.2.1).
+    internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a
+        return RefRemainder<E>.init(value@follow@raw@raw/E, value.length)
+
+    /// Transfers an exclusive borrow of an Array to its untaken elements; `ArrayRepr.data` has write authority.
+    internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
+        let handle = value@follow@raw@raw/ArrayRepr<E>
+        unsafe => return UniqRemainder<E>.init((*handle).data, (*handle).length)
+
+    /// Transfers an exclusive borrow of a fixed array to its untaken elements; `@raw` of the referent has its
+    /// authority.
+    internal func borrowStorageUniq<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
+        return UniqRemainder<E>.init(value@follow@raw@raw/E, value.length)
+
+    /// Reborrows an exclusive view: the remainder's pointer and count are the view's own.
+    internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a
+        return UniqRemainder<E>.init(value.storage, value.length)
 
     /// Selects a range from an exclusive capability without copying elements or weakening its Loan.
     internal func sliceUniq<E, R>(state: UniqRemainder<E> during source, range: R) -> UniqSlice<E> during source
@@ -27,20 +71,6 @@ internal group Storage
         remainder.position += selected.start
         remainder.count = selected.length
         return UniqSlice<E>.init(remainder@move)
-
-    /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
-    internal struct OwnedRemainder<E>
-        internal let storage: raw/E during self
-        internal var position: isize
-        internal var count: isize
-        internal var capacity: isize
-
-        drop
-            let storage: raw/E = self.storage
-            while self.count > 0
-                self.count -= 1
-                unsafe => _ = storage[self.position + self.count]@move
-            unsafe => Raw.release(storage)
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
     /// the slot links; it does not own them.
@@ -98,14 +128,6 @@ internal group Storage
                     if storedKey.equals(key) => return link
                 .None => return 0
 
-    /// Transfers the first unreturned element to its new owner and advances the owning remainder.
-    internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
-        require state.count > 0 else => return .None
-        let position = state.position
-        state.position += 1
-        state.count -= 1
-        unsafe => return .Some(state.storage[position]@move)
-
     /// Lends the first untaken element and advances the shared remainder without allocating or invoking user code.
     internal func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
         require state.count > 0 else => return .None
@@ -150,25 +172,28 @@ internal group Storage
             state.link = (slot@raw/isize)[1]
             return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
-    /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, placed at offset 0 and never destroyed by the compiler
-    /// (PLAN G33): its owner destroys what remains of `value` through unsafe element addressing. It takes the stored Type,
-    /// not `<E, length N>`, because only functions have length slots (SPEC 4.4).
+    /// Inline storage for one complete Type `A`, a fixed array `[N of E]` or a consumed `Array<E>`, placed at offset 0
+    /// and never destroyed by the compiler (PLAN G33): its owner destroys what remains of `value` through unsafe
+    /// addressing. It takes the stored Type, not `<E, length N>`, because only functions have length slots (SPEC 4.4).
     internal struct InlineStorage<A>
         internal var value: A
+
+        internal init(value: A) => self.value = value@move
 
     /// The inline elements and destruction responsibility transferred from a fixed array for its unreturned elements
     /// `[position, position + count)` (SPEC 22.2).
     internal struct FixedOwnedRemainder<E, A>
         internal var storage: InlineStorage<A>
-        internal var position: isize
+        internal var position: isize = 0
         internal var count: isize
+
+        internal init(count: isize, value: A)
+            self.count = count
+            self.storage = InlineStorage<A>.init(value@move)
 
         // Unreturned elements are destroyed in reverse index order (SPEC 4.9.7); the storage itself is never destroyed.
         drop
-            let elements = self.storage@raw@raw/E
-            while self.count > 0
-                self.count -= 1
-                unsafe => _ = elements[self.position + self.count]@move
+            unsafe => destroyValues<E>((self.storage@raw@raw/E + self.position)@raw/u8, self.count)
 
     /// Transfers the first unreturned element out of a fixed array's inline storage and advances the owning remainder.
     internal func takeFirst<E, A>(state: uniq/FixedOwnedRemainder<E, A>) -> Option<E>
@@ -241,7 +266,8 @@ internal group Storage
         /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
         /// with the iterator in reverse index order (SPEC 4.9.7).
         public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
-            return FixedArrayOwningIterator<E, [N of E]>.init(ownStorage(self@move))
+            return FixedArrayOwningIterator<E, [N of E]>.init(
+                FixedOwnedRemainder<E, [N of E]>.init(self.length, self@move))
 
         /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
         public func tryGet<E, length N, P>(self: ref/[N of E] during source, index: P) -> Option<ref/E during source>
@@ -346,9 +372,43 @@ internal group Storage
             (*handle).data = memory
             (*handle).capacity = target
 
-    /// Publishes `length` completed elements within the existing allocation; it neither reads nor destroys any element.
+    /// Reduces the capacity toward the length (SPEC 4.9.5), one routine for every element Type, as `growArray` is. A
+    /// failed allocation leaves the handle unchanged; zero-sized elements keep their buffer and only the recorded
+    /// capacity shrinks.
     ///
-    /// - safety: `length` is within the capacity, each `data[i]` of `value`'s `ArrayRepr` below it designates a
-    ///   distinct Place holding a complete value, and the storage holds no other value.
-    internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)
-        unsafe => (*(value@follow@raw@raw/ArrayRepr<E>)).length = length
+    /// - safety: `handle` addresses a live Array whose elements have `stride` bytes each.
+    internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)
+        unsafe
+            let length = (*handle).length
+            if (*handle).capacity <= length
+                return
+            let buffer = (*handle).data
+            if length == 0
+                Raw.release(buffer)
+                (*handle).data = null
+                (*handle).capacity = 0
+                return
+            if stride != 0
+                // `length <= capacity` bounds the product.
+                let bytes = (length@Wrapping<isize> * stride@Wrapping<isize>)@isize
+                let memory = Storage.tryAllocateBytes(bytes)
+                if memory == null
+                    return
+                Storage.transferBytes(memory, buffer, bytes)
+                Raw.release(buffer)
+                (*handle).data = memory
+            (*handle).capacity = length
+
+    /// Destroys an Array whose owner is done with it, the body of its drop glue: the elements from the last, then the
+    /// storage (SPEC 4.9.7, 16.3.2). The handle states no `E`, so an Array as deep as storage allows stays within it.
+    ///
+    /// - safety: `handle` addresses a live Array of `E` that nothing reads or destroys again.
+    internal unsafe func destroyArray<E>(handle: raw/ArrayRepr<u8>)
+        unsafe
+            let storage = (*handle).data
+            destroyValues<E>(storage, (*handle).length)
+            Raw.release(storage)
+
+    /// Reads an Array's `capacity` (SPEC 4.9.5).
+    internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize
+        unsafe => return (*(value@follow@raw@raw/ArrayRepr<E>)).capacity

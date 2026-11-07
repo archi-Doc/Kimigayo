@@ -38,7 +38,7 @@ internal enum IntrinsicWriter : byte
     Create, // makeObj, makeRc, makeArc: Routine's, the factory of the call's target descriptor with its control value (FunctionCodegen.Objects).
     Clone, // clone: Routine's, the runtime's retain of the result handle's counting (FunctionCodegen.Objects).
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
-    Capacity, // capacity: the legacy handle's capacity word through P2b's kernel (FunctionCodegen.Arrays; DECISIONS R5-M121).
+    Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
     Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
     Buffer, // FormatBuffer: an owning interpolation's private buffer, on its frame's region or the heap by its estimate (FunctionCodegen.Interpolation).
     Segment, // FormatSegment: the hint routine given its estimate's hint, then a literal segment's text, the adapter checked (FunctionCodegen.Interpolation).
@@ -75,8 +75,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TryAllocateBytes),
         new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TransferBytes),
         new(IntrinsicId.Stride, IntrinsicTarget.None, LayoutNeed.TypeArguments, IntrinsicWriter.Stride, null),
-        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LayoutNeed.TypeArguments, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
-        new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
+        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LayoutNeed.TypeArguments, IntrinsicWriter.Destroy, null),
         new(IntrinsicId.Abort, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Fail, RuntimeAbi.Abort),
         new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer (R8, PD21).
@@ -101,7 +100,6 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Record, RuntimeAbi.TestValue),
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.TestTempDirectory),
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LayoutNeed.None, IntrinsicWriter.Ensure, null),
-        new(IntrinsicId.Capacity, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Capacity, null),
         new(
             IntrinsicId.FormatBuffer,
             IntrinsicTarget.None,

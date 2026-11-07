@@ -618,6 +618,24 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // SPEC 8.15.3 (R8-A1d): a generic owning iteration's bound is the same gap: Array^61<i32> is an instance, and over Array^62<i32> the storage
+    // nesting is Unsupported_Kd at the requesting call.
+    [Theory]
+    [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n")]
+    [InlineData("    for x in a@move\n        Console.writeLine(\"x\")\n")]
+    public void GenericOwningIterationsBoundIsAGapAtTheRequestingCall(string operation)
+    {
+        foreach (var (depth, admitted) in new[] { (61, true), (62, false) })
+        {
+            var type = string.Concat(Enumerable.Repeat("Array<", depth)) + "i32" + new string('>', depth);
+            var c = MirBuildTest.Compile($"func f<T>(a: Array<T>)\n{operation}public func main() -> ()\n    var a: {type} = []\n    f(a@move)\n    return\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            var program = c.BuildMir();
+            _ = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+            Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "f(a@move)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        }
+    }
+
     // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, HeapBuffer's reserve through BufferWriter or
     // a #LibraryImport function, is the BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a
     // requirement call, and a requirement Item where it is formed and where it is called, whether or not the output calls the function
@@ -1145,56 +1163,44 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
     }
 
-    // K 4.3, 4.5 row 2, X4 (DECISIONS R5-M121): a call of an Array operation targets the LegacyRow item of its function's instance, keyed by
-    // the function and the erased substitution and represented by the collection, as its Item's Value call and its adapter do; its targets
-    // are its row's declared needs: clear's the glue of an element that may need a drop, none over i32; an Array<isize> is another
-    // instance.
+    // K 4.3 (R8-A1d): a call of an Array storage function targets the body of its function's instance, as any call, and no Array operation
+    // has a LegacyRow item left; an Array<isize> is another instance.
     [Fact]
-    public void AnArrayOperationIsItsFunctionInstancesLegacyRow()
+    public void AnArrayStorageFunctionIsItsFunctionInstancesBody()
     {
-        var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
-            "func p(values: uniq/Array<i32>) => values.shrinkToFit()\nfunc w(values: uniq/Array<isize>) => values.shrinkToFit()\n" +
-            "func c(values: uniq/Array<Res>) => values.clear()\nfunc n(values: uniq/Array<i32>) => values.clear()\n" +
-            "func v(values: uniq/Array<i32>)\n    let f = Array<i32>.shrinkToFit\n    f(values)\n" +
-            "func a() -> (uniq/Array<Res>) -> () => Array<Res>.clear\n");
+        var (program, set) = Collect("func p(values: ref/Array<i32>) => values.iterate()\nfunc w(values: ref/Array<isize>) => values.iterate()\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["LegacyRow Array<i32> ArrayShrinkToFit"], AtCalls(program, set, "Fn p"));
-        Assert.Equal(["LegacyRow Array<isize> ArrayShrinkToFit"], AtCalls(program, set, "Fn w"));
-        Assert.Equal(["LegacyRow Array<Res> ArrayClear"], AtCalls(program, set, "Fn c"));
-        Assert.All(RowTargets(program, set, "LegacyRow Array<Res> ArrayClear"), static x => Assert.Equal(["DropGlue Res"], x));
-        Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayClear"));
-        Assert.Equal(["LegacyRow Array<i32> ArrayShrinkToFit"], AtCalls(program, set, "Fn v").Where(static x => x.Length != 0));
-        Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayShrinkToFit"));
-        var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
-        Assert.Equal(["LegacyRow Array<Res> ArrayClear"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
-        Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.LegacyRow), static x => Assert.Equal(-1, x.BodyOrdinal));
+        var labels = set.Items.ToArray().Select(x => Label(program, x)).ToArray();
+        Assert.Equal(2, labels.Count(static x => x.StartsWith("library Fn borrowStorage", StringComparison.Ordinal)));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
-    // G157 (6), X4 (DECISIONS R5-M95, R5-M121): the Array rows that declare ElementGlue, clear's item and an Array's glue (its Drop row), target
-    // exactly the glue of their collection's Element parts that may need a drop, as DropGlue.Parts enumerates them.
+    // SPEC 4.9.7, 16.3.2 (PLAN G126): an Array's destruction reaches its element's glue through the bodies: `clear` and destroyArray each hold
+    // one destroyValues call, which targets the glue of an element that may need a drop and nothing else, and an Array's glue targets the
+    // destroyArray instance over its element, whatever the element.
     [Theory]
     [InlineData("Res", new[] { "DropGlue Res" })]
     [InlineData("string", new[] { "DropGlue string" })]
     [InlineData("i32", new string[0])]
-    public void TheRowsDeclaringElementGlueTargetTheirElementPartsGlue(string element, string[] glue)
+    public void AnArraysDestructionReachesItsElementsGlueThroughItsBodies(string element, string[] glue)
     {
         var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
             $"func c(values: uniq/Array<{element}>) => values.clear()\nfunc d(values: Array<{element}>) => ()\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(glue, Assert.Single(RowTargets(program, set, $"LegacyRow Array<{element}> ArrayClear")));
-        Assert.Equal(glue, Targets(program, set, $"DropGlue Array<{element}>"));
-        Assert.True((LegacyRuntimeHelpers.ArrayRow(ArrayHelperKind.Clear).Needs & HelperNeeds.ElementGlue) != 0);
-        Assert.True((LegacyRuntimeHelpers.ArrayRow(ArrayHelperKind.Drop).Needs & HelperNeeds.ElementGlue) != 0);
+        var clear = set.Items.ToArray().Select(x => Label(program, x)).Single(static x => x.Contains("Fn clear in", StringComparison.Ordinal));
+        Assert.Equal(glue, Targets(program, set, clear).Where(static x => x.StartsWith("DropGlue", StringComparison.Ordinal)));
+        Assert.Equal([$"library Fn destroyArray in group Storage [{element}]"], Targets(program, set, $"DropGlue Array<{element}>"));
+        Assert.Equal(glue, Targets(program, set, $"library Fn destroyArray in group Storage [{element}]").Where(static x => x.StartsWith("DropGlue", StringComparison.Ordinal)));
     }
 
-    // K 4.8, X34 (DECISIONS R5-M121): a LegacyRow item lays out its collection's element, as the Array's glue does: an element whose layout is
-    // oversized (OversizedLayout_Kd), rejected (InvalidCLayout_Kd) or over a limit (the erased Type's one GenerationResourceLimit_Kd) is the
-    // record at the call and no item; the row itself admits (the counterpart, AnArrayOperationIsItsFunctionInstancesLegacyRow).
+    // K 4.8, X34 (DECISIONS R5-M121): an Array operation's body lays out its collection's element, as the Array's glue does: an element whose
+    // layout is oversized (OversizedLayout_Kd), rejected (InvalidCLayout_Kd) or over a limit (the erased Type's one GenerationResourceLimit_Kd)
+    // is the record at the call.
     [Theory]
     [InlineData(Huge, "OversizedLayout_Kd values.clear()")]
     [InlineData("P<()>", "InvalidCLayout_Kd values.clear()")]
     [InlineData("[2147483648 of u8]", "GenerationResourceLimit_Kd values.clear()")]
-    public void ALegacyRowLaysOutItsElement(string element, string records)
+    public void AnArrayOperationsBodyLaysOutItsElement(string element, string records)
     {
         var c = MirBuildTest.Compile(CLayoutP + $"func c(values: uniq/Array<{element}>) => values.clear()\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
@@ -1432,8 +1438,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["ref/Array<i32>", "ref/Bag"], Signature(Item(program, set, "PropertyWitness Bag StorageBorrow")));
         Assert.Empty(program.Records(MirRecordClass.Collection));
         Assert.Equal(
-            ["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
-            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` is one Array aggregate, which targets no routine (DECISIONS R5-M129).
+            ["library Fn growArray in group Storage", "PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
+            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` is one Array aggregate, which targets growArray's body (R8-A1d).
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
@@ -1813,8 +1819,9 @@ public sealed partial class InstanceCollectorTest
     {
         var (program, set) = Collect("func use() -> ()\n    let names: Array<string> = []\n    let counts: Array<i32> = []\n" +
             "    let table: Dictionary<string, Array<i32>> = [:]\n    return\n");
-        Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue Array<string>"));
-        Assert.Empty(Targets(program, set, "DropGlue Array<i32>"));
+        Assert.Equal(["library Fn destroyArray in group Storage [string]"], Targets(program, set, "DropGlue Array<string>"));
+        Assert.Contains("DropGlue string", Targets(program, set, "library Fn destroyArray in group Storage [string]"));
+        Assert.DoesNotContain(Targets(program, set, "library Fn destroyArray in group Storage [i32]"), static x => x.StartsWith("DropGlue", StringComparison.Ordinal));
         const string Clear = "library Fn clearEntries in group DictionaryStorage [string, Array<i32>]";
         Assert.Equal([Clear], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
         Assert.Contains(Calls(program, set, Clear), static x => x.StartsWith("library Fn destroyDictionaryEntries", StringComparison.Ordinal));
@@ -1919,25 +1926,6 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(
             declaration is null ? [] : [(DiagnosticCode.Unsupported_Kd, declaration)],
             c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
-    }
-
-    // K 4.5 row 9: a DestroyValues call is its Type argument's glue in the item's instance when that Type needs a drop. No library call makes
-    // one before R8 (PD21), so the test turns a Raw.allocate call into one.
-    [Fact]
-    public void ADestroyValuesCallIsItsTypesGlue()
-    {
-        var c = MirBuildTest.Compile("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<string>()\nlet q = make<i32>()\nunsafe => Raw.release(p)\n" +
-            "unsafe => Raw.release(q)\n");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var program = c.BuildMir();
-        var make = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "make");
-        var block = Enumerable.Range(0, make.Blocks.Length).Single(b => make.Blocks[b].Terminator is
-            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.RawAllocate } });
-        var call = make.Blocks[block].Terminator;
-        make.Terminate(block, call with { Callee = call.Callee with { Arg = (int)IntrinsicId.DestroyValues } });
-        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
-        Assert.Equal(["DropGlue string"], Targets(program, set, "Fn make [string]"));
-        Assert.Empty(Targets(program, set, "Fn make [i32]"));
     }
 
     // K 4.8, IMPL 21.3.2, DECISIONS R5-M44, R5-M171: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the

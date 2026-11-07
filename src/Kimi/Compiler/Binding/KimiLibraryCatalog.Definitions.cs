@@ -38,7 +38,6 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ClosedRange, "ClosedRange"),
         new(KimiDeclarationId.Slice, "Slice", ManagedRepresentation: true),
         new(KimiDeclarationId.UniqSlice, "UniqSlice", ManagedRepresentation: true),
-        new(KimiDeclarationId.StorageBorrowUniqSlice, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowUniqSlice, Overload: 3),
         new(KimiDeclarationId.Dictionary, "Dictionary", ManagedRepresentation: true),
         new(KimiDeclarationId.Equatable, "Equatable"),
         new(KimiDeclarationId.Comparable, "Comparable"),
@@ -73,15 +72,15 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.MakeRcCyclic, "makeRcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.MakeArcCyclic, "makeArcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.Weak, "Weak", SourceExpected: false, ManagedRepresentation: true),
-        // SPEC 4.9.3, 4.9.5: the Array mutation operations declared inside the Array struct, `clear` and `shrinkToFit` compiler-implemented and
-        // the others Kimigayo bodies; SPEC 4.9.6 gives `reserve`, `append`, `insert`, `pop`, `remove` and `swap` no user-code effect.
+        // SPEC 4.9.3, 4.9.5: the Array mutation operations, Kimigayo bodies declared inside the Array struct; SPEC 4.9.6 gives `reserve`,
+        // `append`, `insert`, `pop`, `remove`, `swap` and `shrinkToFit` no user-code effect and `clear` the destruction of its elements.
         new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArrayInsert, "insertAt", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArrayPop, "pop", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
         new(KimiDeclarationId.ArrayRemove, "removeAt", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
-        new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear, Row: Target),
-        new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
+        new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: Target),
+        new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArraySwap, "swapAt", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         // SPEC 4.9.3, 4.9.5, 22.1: the public constructors are bodiless signatures whose definitions the compiler supplies from the
         // linked internal source functions, with the same parameters and premises and a `Self` result.
@@ -153,25 +152,18 @@ internal static partial class KimiLibraryCatalog
         // the overload index counts the declarations of one Name in source order (Array, Dictionary, fixed array).
         new(KimiDeclarationId.RefRemainder, "RefRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.UniqRemainder, "UniqRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.OwnedRemainder, "OwnedRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageBorrowShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowShared, Overload: 0),
-        new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 0),
-        new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn, Overload: 0),
         // SPEC 22.2: the distinct Dictionary family traverses live entries in insertion order.
         new(KimiDeclarationId.DictionaryRefRemainder, "DictionaryRefRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 1),
+        new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 2),
         new(KimiDeclarationId.DictionaryUniqRemainder, "DictionaryUniqRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageBorrowDictionaryExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionaryExclusive, Overload: 1),
+        new(KimiDeclarationId.StorageBorrowDictionaryExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionaryExclusive, Overload: 3),
         new(KimiDeclarationId.DictionaryOwnedRemainder, "DictionaryOwnedRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageOwnDictionary, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnDictionary, Overload: 1),
+        new(KimiDeclarationId.StorageOwnDictionary, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnDictionary, Overload: 0),
         new(KimiDeclarationId.StorageKeyAt, "keyAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageKeyAt),
         new(KimiDeclarationId.StorageValueAt, "valueAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageValueAt),
         // SPEC 22.2: the fixed-array overloads of the contiguous borrowing remainders.
-        new(KimiDeclarationId.StorageBorrowFixedShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedShared, Overload: 2),
-        new(KimiDeclarationId.StorageBorrowFixedExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedExclusive, Overload: 2),
         // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
         new(KimiDeclarationId.InlineStorage, "InlineStorage", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageOwnFixed, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnFixed, Overload: 2),
         new(KimiDeclarationId.Position, "Position"),
         new(KimiDeclarationId.PositionRange, "PositionRange"),
         new(KimiDeclarationId.Start, "Start"),
@@ -188,6 +180,11 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageTransferBytes, "transferBytes", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageTransferBytes),
         new(KimiDeclarationId.StorageStride, "stride", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageStride),
         new(KimiDeclarationId.StorageGrowArray, "growArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
+        new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageDestroyArray, "destroyArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageArrayCapacity, "arrayCapacity", KimiLibraryContainer.Storage, SourceFunction: true, Row: None),
+        new(KimiDeclarationId.DictionaryStorageCapacity, "capacity", SourceFunction: true, Owner: "DictionaryStorage", Row: None),
         // SPEC 22.5.1: the Kimigayo capacity decisions carry the standard operation's caller context to their failures.
         new(KimiDeclarationId.DictionaryStorageReserveEntries, "reserveEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
@@ -234,7 +231,6 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.FixedArraySliceUniqRange, "sliceUniq", KimiLibraryContainer.FixedArray, SourceFunction: true, CallerLocation: true, Overload: 1),
         new(KimiDeclarationId.SliceSliceRange, "slice", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "Slice", Overload: 1),
         new(KimiDeclarationId.StorageSliceUniq, "sliceUniq", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
-        new(KimiDeclarationId.StorageSetArrayLength, "setArrayLength", KimiLibraryContainer.Storage, SourceFunction: true),
         new(KimiDeclarationId.SliceToArray, "toArray", SourceFunction: true, CallerLocation: true, Owner: "Slice"),
         new(KimiDeclarationId.ArrayAppendCopies, "appendCopies", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         // SPEC 4.9.6: `truncate` destroys its receiver's elements from `length` on; `removeAll` calls `matching`, destroys the removed

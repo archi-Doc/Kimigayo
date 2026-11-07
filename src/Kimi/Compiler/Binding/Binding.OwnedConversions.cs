@@ -138,7 +138,8 @@ public sealed partial class Binding
 
             if (!(this.partPrerequisites.TryGetValue(use, out var part) && part.BindingState == BindingState.Invalid))
             {
-                use.BindingFailure = BindingFailure.Internal;
+                this.ClearFailure(use);
+                this.Fail(use, BindingFailure.Internal);
             }
         }
     }

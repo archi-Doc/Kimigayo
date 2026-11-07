@@ -1,0 +1,104 @@
+// O2 timing corpus (O2Corpus.md): the storage boundary's views the other kernels do not reach: an exclusive `for`,
+// `sliceUniq` and `tryGetPairUniq` over an Array of 1,024 `i32`, and a fixed array's shared and exclusive views. Each part
+// is a function of its own: `main` calls each from two sites, so LLVM's inliner keeps it apart and opt -O2 output reads per
+// part.
+
+// The next state of a linear congruential generator modulo 2^31; its products stay within i64. Callers read bits
+// from 16 up, whose periods are long.
+func next(state: i64) -> i64 => (state * 1103515245 + 12345) & 0x7FFF_FFFF
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible,
+// so a wrong value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+// An exclusive enumeration of the whole Array: each element once, written through its item.
+func exclusiveFor(values: uniq/Array<i32>, mask: i32)
+    for value in values@follow@uniq
+        value@follow = value@follow ^ mask
+
+// A window the state chooses, written through an exclusive view and read back through it.
+func window(values: uniq/Array<i32>, state: uniq/i64) -> i64
+    state@follow = next(state)
+    let start = ((state >> 16) & 511)@isize
+    var view = values.sliceUniq(start..start + 512)
+    var sum: i64 = 0
+    var index: isize = 0
+    while index < view.length
+        view[index] = view[index] ^ (state >> 20)@i32
+        sum += view[index]@i64
+        index += 1
+    return sum
+
+// Pairs of positions the state chooses; equal positions give `None`.
+func pairs(values: uniq/Array<i32>, state: uniq/i64) -> i64
+    var sum: i64 = 0
+    for step in 0..256
+        state@follow = next(state)
+        match values.tryGetPairUniq(first: ((state >> 16) & 1023)@isize, second: ((state >> 22) & 1023)@isize)
+            .Some(let pair)
+                sum += step@i64 * pair.0@follow@i64
+                Kimi.Intrinsics.swap(pair.0, pair.1)
+            .None => sum += 1
+    return sum
+
+// A fixed array's exclusive enumeration.
+func fixedExclusive(values: uniq/[256 of i32], mask: i32)
+    for value in values@follow@uniq
+        value@follow = value@follow ^ mask
+
+// A fixed array's shared enumeration.
+func fixedShared(values: ref/[256 of i32]) -> i64
+    var sum: i64 = 0
+    for value in values
+        sum += value@i64
+    return sum
+
+// A window of a fixed array through an exclusive view.
+func fixedWindow(values: uniq/[256 of i32], state: uniq/i64) -> i64
+    state@follow = next(state)
+    let start = ((state >> 16) & 127)@isize
+    var view = values.sliceUniq(start..start + 128)
+    var sum: i64 = 0
+    var index: isize = 0
+    while index < view.length
+        view[index] = view[index] ^ (state >> 20)@i32
+        sum += view[index]@i64
+        index += 1
+    return sum
+
+public func main()
+    var checksum: i64 = 0
+    var state: i64 = 1
+    var ints = Array<i32>.init(capacity: 1024)
+    for i in 0..1024
+        state = next(state)
+        ints.append((state >> 16)@i32)
+    var fixed: [256 of i32] = [256 of 0]
+    for i in 0..256
+        state = next(state)
+        fixed[i] = (state >> 16)@i32
+
+    exclusiveFor(ints@uniq, 0x5555)
+    for round in 1..131072
+        exclusiveFor(ints@uniq, round@i32)
+    checksum = fold(checksum, window(ints@uniq, state@uniq))
+    for round in 1..262144
+        checksum = fold(checksum, window(ints@uniq, state@uniq) + round@i64)
+    checksum = fold(checksum, pairs(ints@uniq, state@uniq))
+    for round in 1..262144
+        checksum = fold(checksum, pairs(ints@uniq, state@uniq) + round@i64)
+    fixedExclusive(fixed@uniq, 0x5555)
+    for round in 1..524288
+        fixedExclusive(fixed@uniq, round@i32)
+        checksum = fold(checksum, fixedShared(fixed) + round@i64)
+    checksum = fold(checksum, fixedWindow(fixed@uniq, state@uniq))
+    for round in 1..524288
+        checksum = fold(checksum, fixedWindow(fixed@uniq, state@uniq) + round@i64)
+
+    // Every element once more, so a write that broke one no later read saw still changes the line.
+    var sum: i64 = 0
+    for value in ints
+        sum += value@i64
+    Console.writeLine("checksum \(fold(fold(checksum, sum), fixedShared(fixed)))")

@@ -25,6 +25,24 @@ internal sealed partial class ModuleCodegen
     /// <returns>The helper's signature; null after a record at the item's site.</returns>
     internal FunctionAbi? DictionaryDrop(int glue) => this.Dictionary(glue, DictionaryHelperKind.Drop)?.Abi;
 
+    /// <summary>Gets the routine of a LegacyRow item, placeEntry's Place helper (DECISIONS R5-M124), which its calls and its function's
+    /// Item's adapter call.</summary>
+    /// <param name="item">The LegacyRow item.</param>
+    /// <returns>The routine; null after a record at the item's site.</returns>
+    internal FunctionAbi? PlaceRow(int item)
+    {
+        this.Requested(item);
+        var entry = this.set.Items[item];
+        if (LegacyRuntimeHelpers.Row(entry.Key.Body.Def.Decl!.CompilerFunction) is not { InInstance: true } row)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // A LegacyRow item's function runs in its instance (the collector's).
+            return null;
+        }
+
+        this.Request(row.Needs);
+        return this.Dictionary(item, DictionaryHelperKind.Place)?.Abi;
+    }
+
     // The helper of a placeEntry LegacyRow item or of a Dictionary DropGlue item, once per Write, its text written then: kept while its
     // descriptor matches, else made and named after the item (only then, so a warm module allocates nothing). Null after a record.
     private DictionaryHelper? Dictionary(int item, DictionaryHelperKind kind)
@@ -50,8 +68,8 @@ internal sealed partial class ModuleCodegen
             return null; // Recorded.
         }
 
-        var stored = new StoredValue(key, null);
-        var storedValue = new StoredValue(value, null);
+        var stored = new StoredValue(key);
+        var storedValue = new StoredValue(value);
         var helper = this.dictionaries[item] is { } kept && (kept.Kind, kept.Key, kept.Value) == (kind, stored, storedValue) ? kept
             : DictionaryHelper.Create(
                 kind, stored, storedValue, DictionaryEntryLayout.Of(key.Layout, value.Layout), "_" + item.ToString(CultureInfo.InvariantCulture));

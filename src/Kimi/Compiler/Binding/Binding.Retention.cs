@@ -63,7 +63,6 @@ public sealed partial class Binding
     // a Callable bound's, whose raw layers read their kind, RawStepAt: SPEC 5.2.1 caps a layer written in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
     // (RetentionWalk), so each is walked once; and whether a member walk was incomplete (CallRetention.Limit).
     private readonly List<BoundType> retentionErasedScope = new();
-    private readonly HashSet<BoundClosure> retentionCaptured = new(); // The Closure parts read with a captured local region (ClosureEnvironment).
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
     private List<BoundType> retentionScope = new();
@@ -243,7 +242,6 @@ public sealed partial class Binding
         }
 
         this.retentionRawVisits.Clear();
-        this.retentionCaptured.Clear();
         this.retentionPositions.Clear();
         this.retentionLimit = false;
         for (var i = 0; i < inputs.Length; i++)
@@ -532,24 +530,9 @@ public sealed partial class Binding
     }
 
     // Each atom's node, interned before the catalog's walk, so its local-Place premises (R5) reach them; a carrier's hidden Origins outlive
-    // the layer above each of its occurrences (R2, SPEC 15.6.1). Each local region of a Closure part the contract reads reaches the meet of
-    // its sources in source order at the literal (BoundClosure.CapturedRegions; SPEC 7.7.2, 15.3.6, 15.8.2; DECISIONS: G553), the form the
-    // published result names it in, so a position that reaches that meet may hold the capture. A may-fact of this contract's rows, no
-    // relation of the Origins, and no proof reads the edge: a later bound shrinks the solved region below the meet, and the capture may
-    // hold a source outside it. The rows read it as a fit, so they are conservative (the owner's O-51 and O-52; removal R7-O2). Scope: the
-    // edge sits on the region's one node, so it reaches every Closure's occurrence of the region. Tense: a bound the region takes after
-    // the literal, an assignment or a call's argument, need not reach the capture. Order: a literal in a loop or a `defer` runs after
-    // statements below it, so a source assigned there reaches the capture from outside the meet.
+    // the layer above each of its occurrences (R2, SPEC 15.6.1), and a local region reaches the meet of its sources (AddRegionMeet).
     private int[] RetentionNodes(OriginPremiseEnvironment environment)
     {
-        foreach (var closure in this.retentionCaptured)
-        {
-            foreach (var (region, sources) in closure.CapturedRegions)
-            {
-                AddPremiseEdge(environment, this.PremiseNode(environment, region), this.PremiseNode(environment, sources), OriginPremiseRule.Input);
-            }
-        }
-
         var atoms = this.retentionAtoms;
         var nodes = new int[atoms.Count];
         for (var i = 0; i < atoms.Count; i++)
@@ -559,9 +542,39 @@ public sealed partial class Binding
             {
                 AddPremiseEdge(environment, nodes[i], this.PremiseNode(environment, layer), OriginPremiseRule.Input);
             }
+
+            this.AddRegionMeet(environment, atoms[i].Origin);
         }
 
         return nodes;
+    }
+
+    // SPEC 15.3.6, 15.6.4 (DECISIONS: G570): a local region, or one in a meet, is solved over all its bounds, so it reaches the meet of its
+    // sources, read here in the tense of Binding's fit (JudgeLocalRegion): a position reaching that meet may hold a value of the region, and
+    // one naming a source of several cannot. Retention's own edge: its environment is per computation, so no proof reads it.
+    private void AddRegionMeet(OriginPremiseEnvironment environment, BoundOrigin? origin)
+    {
+        for (var i = 0; origin is not null && i < origin.Operands.Count; i++)
+        {
+            this.AddRegionMeet(environment, origin.Operands[i]);
+        }
+
+        if (origin is null || !IsLocalRegion(origin))
+        {
+            return;
+        }
+
+        var owner = origin.Body.Definition?.Declaration?.CodeContext.Compilation.Binding ?? this;
+        if (owner.LocalRegionSources(origin) is { IsEmpty: false } sources)
+        {
+            var meet = sources[0];
+            for (var i = 1; i < sources.Length; i++)
+            {
+                meet = this.Meet(meet, sources[i]);
+            }
+
+            AddPremiseEdge(environment, this.PremiseNode(environment, origin), this.PremiseNode(environment, meet), OriginPremiseRule.Input);
+        }
     }
 
     // An erased signature (the head's contract): the instantiated signature Type and the Binder of its per-call Origins.

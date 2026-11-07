@@ -213,6 +213,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             this.AddEdge(program.StaticInit(body, body.Operands[terminator.Start])!, null); // The validator checks it has one (G191).
         }
+        else if (callee.Arg == (int)IntrinsicId.DestroyValues)
+        {
+            this.Item(cases.Type(callee.Subst!.Types[0]!), Drop); // SPEC 4.9.7: the values of its Type argument.
+        }
     }
 
     private void Function(MirProgram program, in MirCallee call)

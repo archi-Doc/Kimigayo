@@ -12,6 +12,54 @@ namespace XunitTest;
 
 public class InheritedConformanceTest
 {
+    private const string InheritedNamesItsBase = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<B>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        open struct B
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<B>) -> i32 => 1
+        struct D : B
+            public init() => ()
+        func need<T>(t: ref/T, b: ref/Box<B>) -> i32
+            T is C
+            return t.m(b)
+        func use(d: ref/D, b: ref/Box<B>) -> i32 => need(d, b)
+        """;
+
+    private const string InheritedNamedByItsDerived = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<B>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        open struct B
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<B>) -> i32 => 1
+        struct D : B
+            public init() => ()
+            public func n(self: ref/Self, other: ref/Box<D>) -> i32 => 1
+        """;
+
+    private const string InheritedPathFails = """
+        contract C
+            func m(self: ref/Self, other: ref/Self) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        open struct B
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Self) -> i32 => 1
+        struct D : B
+            public init() => ()
+            public func n(self: ref/Self, other: ref/Box<D>) -> i32 => 1
+        """;
+
     private const string LimitOneCall = """
         contract Bumps
             func bump(self: uniq/Self) -> ()
@@ -216,13 +264,20 @@ public class InheritedConformanceTest
     [InlineData(LimitExplicit, "3*InvalidConstraint_Kd 1*Unsupported_Kd")]
     public void ALimitsCauseReachesEveryReaderOfASignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // PLAN G375: a limited signature's answer depends on who asks (Error outside verification, Unknown inside), so none is stored and a body's call
-    // leaves the conformance's Proof record as it was.
+    // PLAN G375: a limited signature's answer depends on who asks, so none is stored. The conformance reads no signature (the owner's O-44), so the
+    // limit's one record stands alone, DECISIONS Q13.
     [Theory]
-    [InlineData(LimitConformance, "1*UnprovenConstraint_Kd 1*Unsupported_Kd")]
-    [InlineData(LimitConformanceTwoCalls, "1*UnprovenConstraint_Kd 1*Unsupported_Kd")]
-    [InlineData(LimitConformanceNoCall, "1*UnprovenConstraint_Kd 1*Unsupported_Kd")]
+    [InlineData(LimitConformance, "1*Unsupported_Kd")]
+    [InlineData(LimitConformanceTwoCalls, "1*Unsupported_Kd")]
+    [InlineData(LimitConformanceNoCall, "1*Unsupported_Kd")]
     public void ALimitedSignaturesAnswerIsNotStored(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // The owner's O-44, SPEC 8.6.2: an inherited conformance's mapping forms no signature either: Box<B> and Box<D> are judged where they are written.
+    [Theory]
+    [InlineData(InheritedNamesItsBase, "clean")]
+    [InlineData(InheritedNamedByItsDerived, "clean")]
+    [InlineData(InheritedPathFails, "1*UnsatisfiedConstraint_Kd")]
+    public void AnInheritedConformanceFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // SPEC 12.7, 23.1.1, 23.1.2: an exclusive implementation reached through a base has no computed ObjectCallCompatible status
     // (OCC-X). Its conformance is one location-only Unsupported_Kd at its declaration: an explicit `Self is C`, or the derived Type's base

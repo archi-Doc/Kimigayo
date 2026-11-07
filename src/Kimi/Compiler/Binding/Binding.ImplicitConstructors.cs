@@ -176,7 +176,7 @@ public sealed partial class Binding
 
         // An invalid base graph, including a cycle, or base clause Constraints that are not Proven leave the decision resting on the
         // base clause, whose own check reports them.
-        var clause = structure.Bases[0];
+        var clause = structure.BaseClause!;
         var constructor = structure.SynthesizedConstructor!;
         var selection = new OmittedBaseSelection(OmittedBaseOutcome.Dependent, Cause: clause);
         this.implicitConstructorDecisions.Add(structure, selection);
@@ -278,7 +278,7 @@ public sealed partial class Binding
             if (this.SelectOmittedBaseConstructor(constructor) != decision ||
                 (decision.Winner is { } winner && constructor.BaseInitializer?.BoundCall is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
             {
-                this.Fail(structure.Bases[0], BindingFailure.Unsupported);
+                this.Fail(structure.BaseClause!, BindingFailure.Unsupported);
             }
         }
     }

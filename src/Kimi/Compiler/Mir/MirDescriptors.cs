@@ -164,14 +164,10 @@ internal static class MirDescriptors
         IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 3, retained: 2), // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Row(MirAccess.None, MirEffect.None, 3),
         IntrinsicId.Stride => Row(MirAccess.None, MirEffect.None, 0),
-        // Capacity: a handle's view.
-        IntrinsicId.ReinterpretLoan => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.ErasedWriter => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
-        IntrinsicId.Capacity => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
-        // No producer until R8-A1c (destroyValues<T>); its row gets the destruction meaning A4 needs with that producer.
-        IntrinsicId.DestroyValues => Row(MirAccess.None, effects: MirEffect.None),
+        IntrinsicId.DestroyValues => Row(MirAccess.None, MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
         IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.FormatInteger128 => Row(MirAccess.None, effects: MirEffect.None),

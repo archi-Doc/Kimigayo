@@ -59,7 +59,7 @@ public sealed partial class Binding
 
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
-        attribute.BindingFailure = BindingFailure.None;
+        this.ClearFailure(attribute);
         attribute.BindingState = BindingState.Unvisited;
         attribute.BoundType = null;
         this.nodes.Add(attribute);
@@ -146,7 +146,7 @@ public sealed partial class Binding
                 // physical Type, and never a declaration carrying an inexpressible ABI attribute.
                 if (IsRuntimeDeclaration(symbol, out var declared) && (name != WindowsProfile.Kernel32Library || declared != signature))
                 {
-                    this.Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
+                    this.Record(attribute, BindingFailure.ConflictingRuntimeSymbol, []);
                 }
 
                 // SPEC 21.2: one final symbol table; same-named declarations share only an equal physical
@@ -156,11 +156,11 @@ public sealed partial class Binding
                     var previous = symbols[symbol];
                     if (previous.Signature != signature)
                     {
-                        this.Fail(attribute, BindingFailure.ConflictingImportSignature);
+                        this.Record(attribute, BindingFailure.ConflictingImportSignature, []);
                     }
                     else if (kind is not null && previous.Kind is not null && previous.Kind != kind)
                     {
-                        this.Fail(attribute, BindingFailure.ConflictingImportSupply);
+                        this.Record(attribute, BindingFailure.ConflictingImportSupply, []);
                     }
                 }
             }
@@ -258,8 +258,8 @@ public sealed partial class Binding
 
     // SPEC 22.6: the signature is one physical code per result and parameter (PhysicalCode), Unit only as the result; it is null
     // when a Type failed to bind or its decision rests on a failed struct, either having its own diagnostic, and when the import
-    // fails. A Type without a C counterpart makes the import an error; otherwise a Type outside the table makes it Unsupported,
-    // located at the first such Type. The attribute keeps one failure (DIAGNOSTICS rule 4), so the error takes precedence.
+    // fails. Each Type without a C counterpart is an error of its own, its ordinal among them its condition (SPEC 23.1.2, DIAGNOSTICS 4.3),
+    // and a Type outside the table makes the import Unsupported beside them, located at the first such Type.
     private string? ImportAbi(AttributeKoto attribute, FunctionKoto function, int ordinal)
     {
         if (ordinal == this.importSignatures.Count)
@@ -270,6 +270,7 @@ public sealed partial class Binding
         var count = function.Parameters.Count + 1;
         Span<char> codes = count <= 64 ? stackalloc char[count] : new char[count];
         var complete = true;
+        ushort invalid = 0;
         Koto? unsupported = null;
         for (var i = 1; i <= count; i++)
         {
@@ -280,8 +281,8 @@ public sealed partial class Binding
             }
             else if ((codes[p] = p == 0 && ReferenceEquals(type, BoundType.Unit) ? 'v' : this.PhysicalCode(type)) == '\0')
             {
-                this.Fail(attribute, BindingFailure.InvalidImportSignature);
-                return null;
+                this.Record(attribute, BindingFailure.InvalidImportSignature, [], invalid++);
+                complete = false;
             }
             else
             {
@@ -292,7 +293,7 @@ public sealed partial class Binding
 
         if (unsupported is not null)
         {
-            this.FailExplained(ref this.unsupportedSpans, attribute, BindingFailure.Unsupported, unsupported.Span);
+            this.RecordLocated(attribute, unsupported.Span);
             return null;
         }
 
@@ -446,7 +447,7 @@ public sealed partial class Binding
 
             // The published facts, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
             var selected = mode == "C" && valid;
-            var unavailable = selected && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0);
+            var unavailable = selected && ((container.Modifier & ModifierKind.Open) != 0 || container.BaseClause is not null || instanceFields == 0);
             var adt = container.BoundSymbol!.Adt ??= new();
             adt.IsCLayout = selected && !unavailable;
             adt.CLayoutUnavailable = unavailable;

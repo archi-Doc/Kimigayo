@@ -76,21 +76,26 @@ public class NativeAllocationAuditTest
     public void TransferRoutineWithoutItsAnchorFails()
         => Assert.Throws<EqualException>(() => Audit("Unanchored", Entries, 2, 288, transferred: 96, transformIr: Unanchor));
 
-    // A renamed growth routine whose body keeps its anchor would leave its copies uncounted beside the transfer routine.
+    // A renamed transfer routine whose body keeps its anchor would leave its copies uncounted: the one routine is gone, so the bound's first
+    // check fails it, as it fails a bound with no routine (BoundWithoutTransferRoutineFails).
     [Fact]
     public void AnchorWithoutItsRoutineFails()
-        => Assert.Throws<EqualException>(() => Audit("Renamed", Entries, 2, 288, transferred: 96, transformIr: Rename));
+    {
+        var failure = Assert.Throws<TrueException>(() => Audit("Renamed", Entries, 2, 288, transferred: 96, transformIr: Rename));
+        Assert.Contains("transfer bound", failure.Message, StringComparison.Ordinal);
+    }
 
     // DECISIONS R5-M145: the byte copy written inline, as MIR code generation wrote it before both generators called one routine, leaves a
     // transferring program's copies uncounted, so even a bound whose minimum is 0 fails instead of passing vacuously, also when the routine
-    // stays defined beside the inline copies (a module that defines the storage byte primitives as a pair).
+    // stays defined beside the inline copies (a module that defines the storage byte primitives as a pair). Without the definition no routine
+    // is left to count, so the bound's first check fails it; with it, the check for the module's calls does.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void AnInlineByteCopyFails(bool defined)
     {
         var failure = Assert.Throws<TrueException>(() => Audit("Inline", Entries, 2, 288, transferred: new(0, 96), transformIr: defined ? InlineCalls : Inline));
-        Assert.Contains("byte copy", failure.Message, StringComparison.Ordinal);
+        Assert.Contains(defined ? "byte copy" : "transfer bound", failure.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -146,7 +151,7 @@ public class NativeAllocationAuditTest
         return inlined;
     }
 
-    // The growth routine under another name with its body unchanged.
+    // The transfer routine under another name with its body unchanged.
     private static string Rename(string ir)
-        => ir.Replace("__kimi_array_grow", "__kimi_array_enlarge", StringComparison.Ordinal);
+        => ir.Replace("__kimi_transfer_bytes", "__kimi_byte_transfer", StringComparison.Ordinal);
 }

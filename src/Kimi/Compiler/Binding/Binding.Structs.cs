@@ -440,7 +440,7 @@ public sealed partial class Binding
     {
         var type = absence.Type;
         var name = DiagnosticTypeName(type);
-        if (absence.Decision is { } decision && type.Symbol?.Declaration is StructKoto { Bases: [var clause, ..] })
+        if (absence.Decision is { } decision && type.Symbol?.Declaration is StructKoto { BaseClause: { } clause })
         {
             // The decision is made once, from the derived declaration, so its Types are the declaration's own.
             var declared = DiagnosticTypeName(this.SelfType(type.Symbol));

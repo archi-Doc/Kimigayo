@@ -6,9 +6,9 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // The publication of Binding's diagnostics (ReportDiagnostics), after the final analysis.
-// - Responsibility: each direct issue reported with the facts its check recorded (ReportIssue; at most one explanation table answers
-//   for a node), each derived issue with its prerequisite keys, the duplicate declaration groups, the non-failing records and SPEC
-//   23.2.2's fallback for an incomplete pass without an Error.
+// - Responsibility: each direct issue reported with the facts its check recorded (ReportProblem or ReportIssue; at most one explanation
+//   table answers for a node's first failure), each derived issue with its prerequisite keys, the duplicate declaration groups, the
+//   non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
 // - Inputs: the latest pass's issues, derived issues and explanation tables. Outputs: the Binding partition's records.
 // - Invariants: invoked after final analysis, not between Mods; each call replaces the partition's records. R7-E5 deletes ReportIssue's chain.
 // - Prohibitions: no failure is decided and no node's binding state is written here.
@@ -79,12 +79,16 @@ public sealed partial class Binding
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
-        if (issue.Failure == BindingFailure.Unsupported)
+        if (issue.Problem >= 0 && this.ReportProblem(issue.Node, issue.Problem))
+        {
+            // Its facts are the record (Binding.Problems).
+        }
+        else if (issue.Failure == BindingFailure.Unsupported)
         {
             // SPEC 23.1.1: a form outside the implemented subset is located only: at the part its check recorded, a function at its
             // signature.
-            var span = this.unsupportedSpans?.TryGetValue(issue.Node, out var part) == true ? part
-                : issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null;
+            var span = this.LocatedPart(issue.Problem) ??
+                (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
             issue.Node.Report(requirement, issue.Code, span: span);
         }
         else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
@@ -418,12 +422,9 @@ public sealed partial class Binding
         {
             this.ReportTake(issue.Node, takeCases, requirement, issue.Code);
         }
-        else if (this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
+        else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {
-            this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
-        {
+            var mismatch = this.Mismatch(issue.Problem);
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });

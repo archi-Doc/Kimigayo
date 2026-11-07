@@ -222,7 +222,7 @@ public sealed partial class Binding
         var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||
-            (IsFixedArrayEntry(subject, entry) && this.FixedArrayWitness(entry) is not null);
+            (WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null);
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {
             return false;
@@ -237,9 +237,9 @@ public sealed partial class Binding
         }
         else
         {
-            ResetSynthetic(call);
-            ResetSynthetic(call.Method);
-            ResetSynthetic(((MemberAccessKoto)call.Method).Right);
+            this.ResetSynthetic(call);
+            this.ResetSynthetic(call.Method);
+            this.ResetSynthetic(((MemberAccessKoto)call.Method).Right);
         }
 
         this.projectionUses.Add((source, subject, entry));
@@ -299,9 +299,9 @@ public sealed partial class Binding
             return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
         }
 
-        if (IsFixedArrayEntry(self, contract))
+        if (WitnessGroup(self, contract.LibraryDeclaration) is { } group)
         {
-            return ReferenceEquals(this.FixedArrayWitness(contract), target);
+            return ReferenceEquals(this.ContractWitness(group, contract), target);
         }
 
         if (self.Symbol is not { } type || !this.conformancesByType.TryGetValue(type, out var identities))
@@ -346,9 +346,9 @@ public sealed partial class Binding
         plan.Receiver.BoundSymbol = symbol;
         Complete(plan.Iterator, iterator);
         Complete(plan.Receiver, iterator);
-        ResetSynthetic(plan.Next);
-        ResetSynthetic(plan.Next.Method);
-        ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
+        this.ResetSynthetic(plan.Next);
+        this.ResetSynthetic(plan.Next.Method);
+        this.ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
         return this.BindCall(plan.Next, plan.Scope, null);
     }
 

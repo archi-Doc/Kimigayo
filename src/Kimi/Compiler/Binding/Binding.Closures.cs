@@ -3,7 +3,7 @@
 // Closure literals (SPEC 7.7, 10.5, 10.8, 15.3.4): an anonymous function bound as a Closure value.
 // - Responsibility: the literal's header against a fixed expected signature (ClosureExpectation restates it over the literal's
 //   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
-//   ClosureResultType); its capture entries, body and result, and the published Signature, EnvironmentType and CapturedRegions
+//   ClosureResultType); its capture entries, body and result, and the published Signature and EnvironmentType
 //   (BindConcreteClosure, by BindClosureHeader, CaptureEntriesFail, BindClosureBody and PublishClosure); a Closure argument bound under
 //   a consultation (BindClosureArgument); for TryCandidate, the one Closure
 //   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers,
@@ -11,11 +11,10 @@
 // - Inputs: the literal, its scope, an expected Type and whether its result is open, the capture sources it looks up; capture
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
-// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType, CapturedRegions,
+// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
 //   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
 // - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
 //   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
-//   no CapturedRegions, which PublishClosure writes with the environment, the moment the published result resolves the same regions, and
 //   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
 //   then (Binding.OriginProof.cs); a header probe binds no parameter, visits no body and restores the enclosing probe on exit.
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
@@ -150,7 +149,7 @@ public sealed partial class Binding
         {
             // An expectation that is no Function Type, such as a Type parameter F under Callable (SPEC 7.2.3), names the
             // anonymous function as found.
-            return this.RecordMismatch(function, function, "an anonymous function", expected, ComparisonFailure.Shape);
+            return this.RecordMismatch(function, function, new(null, MismatchForm.AnonymousFunction), expected, ComparisonFailure.Shape);
         }
 
         var restated = this.ClosureExpectation(function, expected);
@@ -158,8 +157,7 @@ public sealed partial class Binding
         var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
         if (function.Parameters.Count != count)
         {
-            var found = function.Parameters.Count == 1 ? "an anonymous function with 1 parameter"
-                : $"an anonymous function with {function.Parameters.Count} parameters";
+            var found = new MismatchSide(null, MismatchForm.AnonymousFunction, function.Parameters.Count);
             return this.RecordMismatch(function, function, found, expected, ComparisonFailure.Shape);
         }
 
@@ -277,7 +275,6 @@ public sealed partial class Binding
         plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
-        plan.CapturedRegions.Clear();
         var symbol = this.symbols[function];
         plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
@@ -432,7 +429,7 @@ public sealed partial class Binding
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
-            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type));
+            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type, closureBody));
         }
 
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
@@ -450,12 +447,9 @@ public sealed partial class Binding
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
             plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
-            var query = this.visitedParts.Begin(this.storageVersion);
             for (var i = 0; i < plan.Storage.Count; i++)
             {
-                var environment = plan.Storage[i].Environment.Type!;
-                buffer[i] = environment;
-                this.CapturedRegions(environment, plan, query);
+                buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
             plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
@@ -472,50 +466,5 @@ public sealed partial class Binding
 
         this.JudgeOmittedCaptures(function, plan);
         return Complete(function, plan.EnvironmentType);
-    }
-
-    // SPEC 7.7.2, 15.8.2 (DECISIONS: G553): each local region a capture's Type names, a part of it included, with the meet of its sources
-    // in source order, the form the published result resolves it to (BoundClosure.CapturedRegions); a Function Type part keeps its own
-    // Origins.
-    private void CapturedRegions(BoundType type, BoundClosure plan, uint query)
-    {
-        if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
-        {
-            return;
-        }
-
-        this.CapturedRegion(LayerOrigin(type), plan);
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            this.CapturedRegion(type.OriginArguments[i], plan);
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.FirstVisit(type.Components[i], query))
-            {
-                this.CapturedRegions(type.Components[i], plan, query);
-            }
-        }
-    }
-
-    // An Origin of a capture's Type (CapturedRegions): its operands, and a local region with sources (none: the region names itself).
-    private void CapturedRegion(BoundOrigin? origin, BoundClosure plan)
-    {
-        for (var i = 0; origin is not null && i < origin.Operands.Count; i++)
-        {
-            this.CapturedRegion(origin.Operands[i], plan);
-        }
-
-        if (origin is not null && IsLocalRegion(origin) && this.LocalRegionSources(origin) is { IsEmpty: false } sources)
-        {
-            var meet = sources[0];
-            for (var i = 1; i < sources.Length; i++)
-            {
-                meet = this.Meet(meet, sources[i]);
-            }
-
-            plan.CapturedRegions.Add((origin, meet));
-        }
     }
 }

@@ -230,7 +230,7 @@ public sealed partial class Binding
                             }
 
                             // No Mod marker registry exists yet; selection does not recognize an unknown marker.
-                            attribute.BindingFailure = BindingFailure.None;
+                            binding.ClearFailure(attribute);
                             binding.Fail(attribute, BindingFailure.Unsupported, true);
                             binding.nodes.Add(attribute);
                         }
@@ -294,7 +294,7 @@ public sealed partial class Binding
             if (node is AttributeKoto { Kind: AttributeKind.LibraryImport } import && AttributeTarget(import) is FunctionKoto)
             {
                 // SPEC 22.6: the operand names a library and symbol; it is validated, never evaluated.
-                import.BindingFailure = BindingFailure.None;
+                binding.ClearFailure(import);
                 import.BindingState = BindingState.Unvisited;
                 import.BoundType = null;
                 binding.nodes.Add(import);

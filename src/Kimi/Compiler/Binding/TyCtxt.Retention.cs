@@ -6,9 +6,8 @@
 // definition (null: top-level statements).
 // A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
 // by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as its body sees it, its
-// definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit. Its
-// signature names a local region's sources in source order at the literal where its environment keeps the region, so the contract
-// relates the two (BoundClosure.CapturedRegions; DECISIONS: G553).
+// definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit. A local
+// region is one form in signature and environment, and reaches the meet of its sources (Binding.AddRegionMeet; DECISIONS: G570).
 // A destruction retains as a call of each `drop` it runs (SPEC 15.6.4, 16.3.1; DECISIONS BU-47): a `drop`'s contract has its destruction
 // receiver at input 0, though it declares no parameter (Signature numbers none), `uniq/Self` over the layer the Subst's declaring Type
 // names, without an Origin; an erased destruction, of a part whose `drop` the destruction walk cannot see (SPEC 16.3.3), retains as the
@@ -28,10 +27,7 @@
 // arguments; Binding.RawMembers). Storage a Binding failure left Rejected is no limit: its parts that do not substitute hold nothing and
 // the rows that hold whatever they are stay (SPEC 23.1.2; DECISIONS BU-36); in a complete compilation it is a broken contract, an
 // exception, which ends the check as CheckFaulted_Kd.
-// Invariants: one exception to the next sentence, a conservative limit: a Closure part's local region reaches the meet of its sources in
-// source order at the literal for every occurrence of the region in the contract, which is no premise of any body, so a position reaching
-// that meet retains the capture though no body could move it there (the owner's O-51 and O-52, DECISIONS: G553; removal R7-O2). No proof
-// reads that edge. A storage retains an input when the callee's body may move a value of the input there under the premises its body is
+// Invariants: a storage retains an input when the callee's body may move a value of the input there under the premises its body is
 // checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins left as the
 // call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name one abstract
 // carrier. Per storage (SPEC 15.6.4 read as (iii) with (β′), DECISIONS R4-M154): a position retains the input's own value (Value) only

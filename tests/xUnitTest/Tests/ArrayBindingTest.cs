@@ -124,11 +124,34 @@ public class ArrayBindingTest
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nrequire values.length == 0 else => $abort(\"empty\")");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("call void @__kimi_array_init(ptr %", ir);
-        Assert.Contains("call void @__kimi_array_free(ptr %", ir);
-        var module = GeneratedIr.Parse(ir);
-        var calls = module.Function("__kimi_array_free").Instructions.Where(static x => x.Opcode == "call");
-        Assert.Equal([module.Function("__kimi_free")], calls.Select(static x => x.Callee));
+        Assert.Contains("store i64 0, ptr %", ir); // R8-A1d: the aggregate row zeroes the handle's words.
+        Assert.Contains("call void @__kimi_free(ptr %", ir); // R8-A1c: destroyArray's Raw.release.
+    }
+
+    // SPEC 8.15.3 (R8-A1d): a view formed behind a borrow reads no element, so it needs no element layout: `iterate` and `iterateUniq` over an
+    // element that fails its layout are valid, by a call and as a result, and build. The element's first read is the use that needs it.
+    [Theory]
+    [InlineData("Shared", "#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> isize\n    var it = v.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Exclusive", "#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: uniq/Array<Bad>) -> isize\n    var it = v.iterateUniq()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Result", "#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> ArrayIterator<Bad> during v\n    return v.iterate()\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Oversized", "func f(v: ref/Array<[4611686018427387904 of i64]>) -> isize\n    var it = v.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("OversizedExclusive", "func f(v: uniq/Array<[4611686018427387904 of i64]>) -> isize\n    var it = v.iterateUniq()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    public void AViewNeedsNoElementLayout(string name, string source)
+    {
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        ScalarEmissionTest.EmitFixture("ArrayViewNeedsNoLayout" + name, source, string.Empty);
+    }
+
+    // Their invalid counterparts: `next` and `for` read an element, one record at the use, per instance (DECISIONS R8-M2's grouping, R8-A1d).
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> isize\n    var it = v.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", "it.next()")]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> isize\n    for x in v\n        return 1\n    return 0\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", null)]
+    [InlineData("func f(v: ref/Array<[4611686018427387904 of i64]>) -> isize\n    var it = v.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "OversizedLayout_Kd", "it.next()")]
+    public void AnElementsFirstReadNeedsItsLayout(string source, string code, string? at)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(code, record.Code);
+        Assert.True(at is null || source.Substring(record.Span!.Value.Start, record.Span.Value.Length) == at);
     }
 
     // SPEC 4.9.3, 4.9.5: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.
@@ -189,6 +212,33 @@ public class ArrayBindingTest
     public void MovesRelocateWithoutDestruction(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout);
 
+    // SPEC 4.9.5 (R8-A1c): shrinking keeps values, order and length and never rejects: an empty Array releases its storage, a filled one fits it,
+    // a zero-sized element's capacity shrinks without a buffer; `capacity` reads either collection's word.
+    [Theory]
+    [InlineData("ShrinkEmpty", "var values: Array<i64> = []\nvalues.reserve(additional: 8)\nvalues.shrinkToFit()\nrequire values.capacity == 0 else => $abort(\"capacity\")\nvalues.append(1)\nrequire values[0] == 1 else => $abort(\"value\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("ShrinkFilled", "var values: Array<string> = [\"a\", \"b\"]\nvalues.reserve(additional: 8)\nvalues.shrinkToFit()\nrequire values.capacity == 2 and values[1] == \"b\" else => $abort(\"fit\")\nvalues.shrinkToFit()\nConsole.writeLine(\"ok\")")]
+    [InlineData("ShrinkUnits", "var units: Array<()> = [(), ()]\nunits.reserve(additional: 8)\nunits.shrinkToFit()\nrequire units.capacity == 2 and units.length == 2 else => $abort(\"fit\")\nunits.clear()\nunits.shrinkToFit()\nrequire units.capacity == 0 else => $abort(\"empty\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("CapacityDictionary", "var entries: Dictionary<i32, i32> = [:]\nrequire entries.capacity == 0 else => $abort(\"empty\")\nentries.reserve(8)\nrequire entries.capacity >= 8 else => $abort(\"reserved\")\nConsole.writeLine(\"ok\")")]
+    public void ShrinkingAndCapacityKeepTheirGuarantees(string name, string source)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, "ok\n");
+
+    // SPEC 4.9.7, 16.3.2 (R8-A1c): a zero-sized element with a destructor runs each destructor, from clear and from the glue.
+    [Fact]
+    public void ZeroSizedElementsAreDestroyedOneByOne()
+        => ScalarEmissionTest.EmitFixture(
+            "ArrayOperationsDestroyZeroSized",
+            "struct Mark\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nvar marks: Array<Mark> = []\nmarks.append(Mark.init())\nmarks.append(Mark.init())\nmarks.clear()\nConsole.writeLine(\"cleared\")\nmarks.append(Mark.init())",
+            "drop\ndrop\ncleared\ndrop\n");
+
+    // SPEC 4.9.1, 4.9.7 (R8-A1c; 4.9.7's `log.truncate(1)`): truncate destroys from the end in decreasing index order, one by one for a zero-sized
+    // element; at or above the length it changes nothing. A negative length is LibraryAbortContextTest's row.
+    [Theory]
+    [InlineData("TruncateOrder", "struct Logged\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop \\(self.id)\")\nvar log: Array<Logged> = [Logged.init(1), Logged.init(2), Logged.init(3)]\nlog.truncate(1)\nrequire log.length == 1 else => $abort(\"length\")\nConsole.writeLine(\"kept\")", "drop 3\ndrop 2\nkept\ndrop 1\n")]
+    [InlineData("TruncateAtLength", "struct Logged\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop \\(self.id)\")\nvar log: Array<Logged> = [Logged.init(1), Logged.init(2)]\nlet capacity = log.capacity\nlog.truncate(2)\nlog.truncate(3)\nrequire log.length == 2 and log.capacity == capacity else => $abort(\"changed\")\nConsole.writeLine(\"kept\")", "kept\ndrop 2\ndrop 1\n")]
+    [InlineData("TruncateZeroSized", "struct Mark\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nvar marks: Array<Mark> = []\nmarks.append(Mark.init())\nmarks.append(Mark.init())\nmarks.append(Mark.init())\nmarks.truncate(1)\nrequire marks.length == 1 else => $abort(\"length\")\nConsole.writeLine(\"cut\")", "drop\ndrop\ncut\ndrop\n")]
+    public void TruncateDestroysTheTail(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout);
+
     // SPEC 4.9.1, 4.9.3: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
     [Theory]
     [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(-1")]
@@ -208,15 +258,12 @@ public class ArrayBindingTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
-        foreach (var id in new[] { KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit })
+        // R8-A1a to A1c: Kimigayo bodies of the same declaration.
+        foreach (var id in new[]
         {
-            var symbol = c.Library.GetSymbol(id)!;
-            Assert.NotEqual(CompilerFunctionKind.None, symbol.CompilerFunction);
-            Assert.Same(c.Library.DynamicArray.Declaration, symbol.Declaration.Parent);
-        }
-
-        // R8-A1a, A1b: these are Kimigayo bodies of the same declaration.
-        foreach (var id in new[] { KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend, KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove, KimiDeclarationId.ArraySwap })
+            KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend, KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove,
+            KimiDeclarationId.ArraySwap, KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit,
+        })
         {
             var symbol = c.Library.GetSymbol(id)!;
             Assert.Equal(CompilerFunctionKind.None, symbol.CompilerFunction);

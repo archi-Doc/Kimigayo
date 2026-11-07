@@ -69,6 +69,10 @@ public struct Loan<T>
     /// Keeps the dependency of `value`: a `ref` is Copied and a `uniq` transferred. It creates no authority.
     public init(value: T) => ()
 
+    /// Keeps the dependency `T` states, for a view whose parent is not a `T`: an empty one has no element to borrow. It
+    /// creates no authority; the Kimi Kotonoha states `T` from a parent borrow the view's signature names.
+    internal init() => ()
+
 /// The wrapping integer Type over `T` (SPEC 3.1.1): the same representation, order, comparison and formatting as `T`,
 /// with arithmetic that wraps modulo 2ᴺ instead of Aborting.
 ///
@@ -520,3 +524,81 @@ public struct ResolvedRange
     /// Returns an iterator over the positions `start` through `end - 1`.
     public func intoIterator(self: Self) -> RangeIterator<isize>
         return RangeIterator<isize>.unchecked(self.start, self.end)
+
+// SPEC 13.4.1, 22.1: the bodies of string's built-in conformances to Equatable and Comparable. No row of the witness
+// table selects them until R8-S1d2 (Binding.WitnessGroup), so nothing runs them yet; string gains no members.
+internal group StringWitness
+    func equals(self: ref/string, other: ref/string) -> bool
+        unsafe
+            let left = self@follow@raw@raw/Storage.StringRepr
+            let right = other@follow@raw@raw/Storage.StringRepr
+            return StringBytes.equal((*left).data, (*left).length, (*right).data, (*right).length)
+
+    func compare(self: ref/string, other: ref/string) -> i32
+        unsafe
+            let left = self@follow@raw@raw/Storage.StringRepr
+            let right = other@follow@raw@raw/Storage.StringRepr
+            return StringBytes.order((*left).data, (*left).length, (*right).data, (*right).length)
+
+// The byte comparisons of two strings' storage. A string's bytes have no alignment, so whole words are read as byte
+// copies into a local, which O2 folds into one load; no u64 or u32 Place is read at a string's address.
+internal group StringBytes
+    /// Returns whether the `leftLength` bytes at `left` equal the `rightLength` bytes at `right`.
+    ///
+    /// - safety: each range lies within its pointer's provenance and is readable.
+    internal unsafe func equal(left: raw/u8, leftLength: isize, right: raw/u8, rightLength: isize) -> bool
+        unsafe
+            if leftLength != rightLength => return false
+            if leftLength >= 8
+                let last = leftLength - 8
+                var index: isize = 0
+                while index < last
+                    if word(left + index) != word(right + index) => return false
+                    index += 8
+                return word(left + last) == word(right + last)
+            if leftLength >= 4
+                return half(left) == half(right) and half(left + leftLength - 4) == half(right + leftLength - 4)
+            var index: isize = 0
+            while index < leftLength
+                if *(left + index) != *(right + index) => return false
+                index += 1
+            return true
+
+    /// Returns the sign of the order of the two ranges (SPEC 13.4.1): unsigned bytes, the shorter first on a tie.
+    ///
+    /// - safety: each range lies within its pointer's provenance and is readable.
+    internal unsafe func order(left: raw/u8, leftLength: isize, right: raw/u8, rightLength: isize) -> i32
+        unsafe
+            let count = if leftLength < rightLength => leftLength else => rightLength
+            var index: isize = 0
+            while index <= count - 8
+                if word(left + index) != word(right + index) => exit
+                index += 8
+            while index < count
+                let leftByte = *(left + index)
+                let rightByte = *(right + index)
+                if leftByte != rightByte
+                    if leftByte < rightByte => return -1
+                    return 1
+                index += 1
+            if leftLength == rightLength => return 0
+            if leftLength < rightLength => return -1
+            return 1
+
+    /// Returns the 8 bytes at `source` as one value, at any alignment.
+    ///
+    /// - safety: the 8 bytes at `source` lie within its provenance and are readable.
+    unsafe func word(source: raw/u8) -> u64
+        var value: u64 = 0
+        unsafe
+            Storage.transferBytes(value@raw@raw/u8, source, 8)
+        return value
+
+    /// Returns the 4 bytes at `source` as one value, at any alignment.
+    ///
+    /// - safety: the 4 bytes at `source` lie within its provenance and are readable.
+    unsafe func half(source: raw/u8) -> u32
+        var value: u32 = 0
+        unsafe
+            Storage.transferBytes(value@raw@raw/u8, source, 4)
+        return value

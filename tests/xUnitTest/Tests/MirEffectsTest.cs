@@ -113,6 +113,21 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n" +
                 "    public func fill(self: ref/Self, values: uniq/Array<i32>)\n" + body));
 
+    // SPEC 7.2.3, 8.11.3: a default's copy calls its requirement on the call's closed Self. On a Type of the library witness table the witness
+    // is a generic group function, which A4 is given without its arguments (LibraryWitnessGroup.EffectsLimit): a located Limit, never a
+    // decided effect, whose removal accepts these valid programs.
+    [Theory]
+    [InlineData("H.walk(a)")]
+    [InlineData("H.place(b)")]
+    public void ALibraryWitnessInADefaultsCopyIsTheLimit(string call)
+        => Assert.Equal(
+            Expected("Unsupported_Kd Self is Work 1"),
+            Problems("contract Work\n    func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32\n        effect confined\n" +
+                "group H\n    public func take<I>(item: I) -> bool => true\n" +
+                "    public func walk<C>(values: ref/C, seen: bool = H.take(values.iterate())) -> i32\n        C is Iterable\n        return 1\n" +
+                "    public func place<P>(p: P, at: Option<isize> = p.tryResolve(4)) -> i32\n        P is Position\n        return 1\n" +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32 => {call}\n"));
+
     // SPEC 8.13, 8.13.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
     // A function item runs its selection too.
     [Theory]
@@ -177,6 +192,22 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems($"contract Eater\n    func eat<T>(self: ref/Self, item: T)\n{premise}        effect confined\nstruct E\n    Self is Eater\n" +
                 $"    public func eat<T>(self: ref/Self, item: T)\n{premise}        ()\n"));
+
+    // SPEC 4.9.6 (R8-A1d): an owning iterator's destruction, Array or fixed array, destroys its elements through destroyValues, which reports the
+    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not.
+    [Theory]
+    [InlineData("Loud", "Array<Loud> = []", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("i32", "Array<i32> = []", "")]
+    [InlineData("i32", "[1 of i32] = [1]", "")]
+    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string expected)
+    {
+        _ = element;
+        Assert.Equal(
+            Expected(expected),
+            Problems(Loud + "contract Make\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Make\n" +
+                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        let it = a@move.intoIterator()\n        return 0\n"));
+    }
 
     // R4-M6a: a Drop destroys what A2's verdicts leave in the view: a moved value nothing (Elide), a partly moved one its remaining parts
     // (Open: the moved Field's row is Elide, the other Field has none and follows the own bit), a whole one its Type (Keep).

@@ -592,8 +592,7 @@ public partial class LayoutTest
         Assert.Equal(0, value.Layout.FieldOffsets.Length);
     }
 
-    // SPEC 22.2 (DECISIONS R5-M121): borrowStorageUniq over a UniqSlice runs the Array's BorrowStorage helper, which reads the buffer and the
-    // length at an Array handle's words 0 and 8: a UniqSlice's storage and length lie there, its Loan zero-sized.
+    // SPEC 22.2: a UniqSlice's storage and length lie at words 0 and 8, an Array handle's and a SliceRepr's, its Loan zero-sized.
     [Fact]
     public void AUniqSlicesStorageAndLengthLieAtTheArrayHandlesWords()
     {

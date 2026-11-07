@@ -17,10 +17,6 @@ internal enum StorageKernelKind : byte
     /// <summary>StorageKeyAt and StorageValueAt: the address of a key or value inside a validated live slot.</summary>
     EntryAddress,
 
-    /// <summary>StorageBorrowFixedShared and StorageBorrowFixedExclusive: the remainder {storage, position, count} = {first
-    /// element, 0, length} of the borrowed fixed array.</summary>
-    BorrowFixed,
-
     /// <summary>StorageBorrowDictionary and StorageBorrowDictionaryExclusive: the remainder {storage, stride, link, count} =
     /// {slot buffer, entry stride, first link, live count} of the borrowed handle.</summary>
     BorrowDictionary,
@@ -72,7 +68,6 @@ internal static partial class LegacyRuntimeHelpers
             StorageKernelKind.EntryAddress,
             static (TextWriter output, in StorageKernelInput input) => WriteEntryAddress(output, input.Result, input.Source, input.Number),
             HelperNeeds.None),
-        new(StorageKernelKind.BorrowFixed, WriteFixedBorrow, HelperNeeds.None),
         new(StorageKernelKind.BorrowDictionary, WriteDictionaryBorrow, HelperNeeds.None),
         new(StorageKernelKind.OwnDictionary, WriteDictionaryOwn, HelperNeeds.None),
     ];
@@ -84,25 +79,6 @@ internal static partial class LegacyRuntimeHelpers
         => (uint)kind < (uint)StorageKernelRows.Length && StorageKernelRows[(int)kind].Kind == kind
             ? StorageKernelRows[(int)kind]
             : throw new InvalidOperationException("A storage kernel kind has no row.");
-
-    /// <summary>Writes SPEC 4.9.5's <c>capacity</c>: an Array or Dictionary handle stores its capacity at offset 16, an Array's
-    /// after its buffer and length.</summary>
-    /// <param name="output">The function text.</param>
-    /// <param name="handle">The spelling of the handle's address.</param>
-    /// <param name="result">The name of the loaded capacity.</param>
-    /// <param name="id">The number naming the kernel's temporaries.</param>
-    internal static void WriteCapacity(TextWriter output, ReadOnlySpan<char> handle, ReadOnlySpan<char> result, int id)
-    {
-        output.Write("  %seqcapptr");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(handle);
-        output.Write(", i64 16\n  ");
-        output.Write(result);
-        output.Write(" = load i64, ptr %seqcapptr");
-        WriteNumber(output, id);
-        output.Write(", align 8\n");
-    }
 
     /// <summary>Defines the address of a library record's Field at its named layout offset when it needs one: offset 0 is the
     /// record's own address, and a nonzero offset is reached through <c>{name}{id}_{offset}</c>, written here before its use.</summary>
@@ -173,37 +149,6 @@ internal static partial class LegacyRuntimeHelpers
         output.Write(", i64 ");
         WriteNumber(output, offset);
         output.Write('\n');
-    }
-
-    // SPEC 22.2: borrowStorage over a fixed array writes the contiguous remainder {storage, position, count} as the borrowed
-    // array's first element address, 0 and its length.
-    private static void WriteFixedBorrow(TextWriter output, in StorageKernelInput input)
-    {
-        var id = input.Id;
-        DefineField(output, input.Result, "%ffield", id, input.Fields[0]);
-        output.Write("  store ptr ");
-        output.Write(input.Source);
-        output.Write(", ptr ");
-        WriteField(output, input.Result, "%ffield", id, input.Fields[0]);
-        output.Write(", align 8\n  %fpos");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(input.Result);
-        output.Write(", i64 ");
-        WriteNumber(output, input.Fields[1]);
-        output.Write("\n  store i64 0, ptr %fpos");
-        WriteNumber(output, id);
-        output.Write(", align 8\n  %fcount");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(input.Result);
-        output.Write(", i64 ");
-        WriteNumber(output, input.Fields[2]);
-        output.Write("\n  store i64 ");
-        WriteNumber(output, input.Number);
-        output.Write(", ptr %fcount");
-        WriteNumber(output, id);
-        output.Write(", align 8\n");
     }
 
     // SPEC 22.2: borrowStorage over a Dictionary copies the handle's slot buffer, first link and live count into the remainder

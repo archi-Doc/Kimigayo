@@ -166,21 +166,22 @@ public class ConstraintBindingTest
     private const string CopyHolder = "struct K<T>\n    T is Copy\n    public let t: T\n";
     private const string CallableHolder = "struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public let f: F\n    public init(f: F) => self.f = f@move\n";
 
-    // PLAN G375, G556: contract matching computes and reads no kept Proven, so a declaration that fails after the bodies still fails a conformance.
+    // The owner's O-44: a conformance reads no signature's formation, so a declaration that fails after the bodies keeps its own record and fails
+    // no conformance naming it. LateAssociated's goes through the binding's own formation (R7-V5's S3). DECISIONS Q13 for the removed records.
     [Theory]
-    [InlineData(LateClause, "1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateClauseValid, "clean")]
-    [InlineData(LateAfterItsReaders, "1*IncompatibleContractImplementation_Kd 3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateThroughAClosedClause, "1*IncompatibleContractImplementation_Kd 3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateWithUses, "1*IncompatibleContractImplementation_Kd 2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateAssociated, "1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    public void ALateFailureReachesContractMatching(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+    [InlineData(LateAfterItsReaders, "3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateThroughAClosedClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateWithUses, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAssociated, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    public void ALateFailureStaysAtItsDeclaration(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // PLAN G375: a requirement's call is proven under its reference, not as its declaration, so it neither reads nor writes the kept Proven: `P<i32>`'s
     // call must not answer `P<string>`'s.
     [Theory]
     [InlineData(BoundRequirement, "clean")]
-    [InlineData(BoundRequirementNoPremise, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(BoundRequirementNoPremise, "1*NoApplicableOverload_Kd 1*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     public void ARequirementsCallIsOutsideTheKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // PLAN G375: a kept Proven is valid in its pass (Binding.DeclQuery), so an edit that fails the signature's Type is seen by the next pass's call.

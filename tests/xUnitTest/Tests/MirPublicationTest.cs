@@ -137,6 +137,27 @@ public sealed class MirPublicationTest
             Errors(c).Select(static x => (x.Code, x.Text)).Order());
     }
 
+    // R7-E1 (C-103): Binding's fact kinds have no row in the MIR publisher, so a MIR record carrying one is a broken contract.
+    [Theory]
+    [InlineData((byte)ProblemFactKind.Actual)]
+    [InlineData((byte)ProblemFactKind.Expected)]
+    [InlineData((byte)ProblemFactKind.Span)]
+    [InlineData((byte)ProblemFactKind.ActualForm)]
+    [InlineData((byte)ProblemFactKind.ExpectedForm)]
+    [InlineData((byte)ProblemFactKind.Operand)]
+    [InlineData((byte)ProblemFactKind.Terminal)]
+    [InlineData((byte)ProblemFactKind.Constraint)]
+    [InlineData((byte)ProblemFactKind.OriginRecord)]
+    public void AMirRecordCarryingABindingKindIsABrokenContract(byte kind)
+    {
+        var (c, program) = Program(Valid);
+        var (subject, site) = (Site(c, Valid, "return total"), Site(c, Valid, "var total = 0"));
+        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, subject), [new((ProblemFactKind)kind, site)]);
+        Publish(c, program);
+        var error = Assert.Single(Errors(c));
+        Assert.Equal(("InternalInvariant_Kd", "return total"), (error.Code, error.Text));
+    }
+
     // Design 3.3 (DIAGNOSTICS' A6 fact tables): a fact naming a site is a related location with its role and wording.
     [Theory]
     [InlineData((byte)ProblemFactKind.Anchor, "borrow", "borrow that created the loan")]

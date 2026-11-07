@@ -65,10 +65,17 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 "DropGlue": a DropGlue's targets, at its default site, its direct parts in destruction order (DropGlue.Parts): a destructor's
-    // Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue; a Dictionary's, what its legacy Drop row
-    // declares (Entries).
+    // Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue; an Array's, the destroyArray instance over
+    // its element, whose body reaches the element's glue by its own edge; a Dictionary's, what its legacy Drop row declares (Entries).
     private void DestructionTargets(MirProgram program, int item, SourceRef site, BoundType type)
     {
+        if (DropGlue.Row(type) == DropGlueRow.Array)
+        {
+            var destruction = this.types.Declaration(KimiDeclarationId.StorageDestroyArray)!;
+            this.Target(item, this.Declared(program, item, site, destruction, this.types.Synthesized(destruction, null, [type.Components[0]])));
+            return;
+        }
+
         if (DropGlue.Row(type) == DropGlueRow.Dictionary)
         {
             this.Target(item, this.Entries(program, item, site, type));
@@ -87,34 +94,15 @@ internal sealed partial class InstanceCollector
         parts.RemoveRange(start, parts.Count - start);
     }
 
-    // X4 (DECISIONS R5-M121, R5-M124): a LegacyRow item's targets, at its default site, the callee and needs its row declares: the body of
-    // its library callee (placeEntry's append, Declared; a Storage callee is not generic, R5-M27); for ElementGlue (clear), the glue its
-    // helper destroys each element by, of each Element part of its representative Type (DropGlue.Parts) that may need a drop.
-    private void RowTargets(MirProgram program, int item, SourceRef site, BoundType collection)
+    // X4 (DECISIONS R5-M121, R5-M124): a LegacyRow item's target, at its default site, the callee its row declares: the body of its library
+    // callee (placeEntry's append, Declared; a Storage callee is not generic, R5-M27).
+    private void RowTargets(MirProgram program, int item, SourceRef site)
     {
         var row = LegacyRuntimeHelpers.Row(this.Set.Items[item].Key.Body.Def.Decl!.CompilerFunction)!.Value;
         if (row.Callee != DictionaryCallee.None)
         {
-            this.Target(item, this.Declared(program, item, site, row.Callee, null));
+            this.Target(item, this.Declared(program, item, site, this.types.DictionaryStorage(row.Callee), null));
         }
-
-        if ((row.Needs & HelperNeeds.ElementGlue) == 0)
-        {
-            return;
-        }
-
-        var parts = this.parts;
-        var start = parts.Count;
-        DropGlue.Parts(this.types, collection, parts);
-        for (var i = start; i < parts.Count; i++)
-        {
-            if (parts[i].Kind == DropPartKind.Element)
-            {
-                this.Target(item, this.Glue(item, site, parts[i].Type));
-            }
-        }
-
-        parts.RemoveRange(start, parts.Count - start);
     }
 
     // K 4.8, X34: whether a DropGlue's collection element Types are laid out: a collection's own layout is its handle words, and its glue
@@ -148,7 +136,8 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        return this.Declared(program, item, site, row.Entries, this.types.Synthesized(this.types.DictionaryStorage(row.Entries), null, [key, value]));
+        var entries = this.types.DictionaryStorage(row.Entries);
+        return this.Declared(program, item, site, entries, this.types.Synthesized(entries, null, [key, value]));
     }
 
     // R4-M6b, SPEC 16.3.2: the Body of a struct's declared destructor in the struct's instance (TyCtxt.Synthesized), which destroys the

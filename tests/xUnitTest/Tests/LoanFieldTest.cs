@@ -39,6 +39,14 @@ public class LoanFieldTest
     public void ABorrowTypeFormsALoan(string type)
         => Assert.Empty(DiagnosticCorpus.Check("struct Holder {source}\n    let loan: " + type + "\npublic func main() => ()\n").Diagnostics);
 
+    // R8-A1d: Loan's parameterless constructor is internal to the Kimi Kotonoha: a user's call selects nothing.
+    [Fact]
+    public void AUserFormsNoLoanFromNothing()
+    {
+        var source = "struct V {s}\n    let loan: Loan<ref/i32 during s>\n    public init(p: ref/i32 during s) => self.loan = Loan<ref/i32 during s>.init()\npublic func main() => ()\n";
+        Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), Assert.Single(DiagnosticCorpus.Check(source).Diagnostics).Code);
+    }
+
     // An exclusive Loan Field keeps the exclusive Loan of its source.
     [Fact]
     public void AnExclusiveLoanFieldKeepsItsLoan()
