@@ -14,6 +14,10 @@ public class OriginRecoveryTest(ITestOutputHelper output)
 {
     private const string Prelude = "struct View<T> {source}\n    let value: ref/T during source\n";
 
+    // A function over two input Origins with a clause between them (AFunctionReferenceOverAnInvalidOriginContractRestsOnItsCause).
+    private const string PairG = "func g(x: ref/i32 during a, y: ref/i32 during b) -> i32\n    origin ";
+    private const string ZeroBody = "\n    return 0";
+
     [Theory]
     [InlineData("View<i32>{}", "OriginBindingSetName_Kd")]
     [InlineData("View<i32>{static}", "OriginBindingSetName_Kd")]
@@ -90,20 +94,23 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.Equal([source.Contains("origin a = b", StringComparison.Ordinal) ? "OriginRelationOperator_Kd" : "OriginBindingSetTarget_Kd", "TypeMismatch_Kd"], errors.Select(static x => x.Code));
     }
 
-    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G530): a function reference whose structure fits reads the contract its failed clause made
-    // unavailable, so it rests on that clause, as a local initializer, a Tuple element, a join arm or an assignment; a structure that
-    // differs stays its own record, and under a valid clause the reference converts.
+    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G530): a function reference whose structure fits and whose comparison names no fact read
+    // the contract its failed clause made unavailable, so it rests on that clause, as a local initializer, a Tuple element, a join arm or
+    // an assignment; a structure that differs, or an Origin misfit of the contract that no repair of the clause removes (a result or a
+    // parameter against `static`), stays its own record, and under a valid clause the reference converts.
     [Theory]
-    [InlineData("a = b", "let f: (ref/i32, ref/i32) -> i32 = g", "OriginRelationOperator_Kd")]
-    [InlineData("a == c", "let f: (ref/i32, ref/i32) -> i32 = g", "MissingOriginBinding_Kd")]
-    [InlineData("a = b", "let t: ((ref/i32, ref/i32) -> i32, i32) = (g, 1)", "OriginRelationOperator_Kd")]
-    [InlineData("a = b", "let c = true\n    let f: (ref/i32, ref/i32) -> i32 = if c => g else => g", "OriginRelationOperator_Kd")]
-    [InlineData("a = b", "var f: (ref/i32, ref/i32) -> i32 = g\n    f = g", "OriginRelationOperator_Kd")]
-    [InlineData("a = b", "let f: (ref/i64, ref/i32) -> i32 = g", "OriginRelationOperator_Kd TypeMismatch_Kd")]
-    [InlineData("a == b", "let f: (ref/i32, ref/i32) -> i32 = g", "")]
-    public void AFunctionReferenceOverAnInvalidOriginContractRestsOnItsCause(string clause, string use, string codes)
+    [InlineData(PairG + "a = b" + ZeroBody, "let f: (ref/i32, ref/i32) -> i32 = g", "OriginRelationOperator_Kd")]
+    [InlineData(PairG + "a == c" + ZeroBody, "let f: (ref/i32, ref/i32) -> i32 = g", "MissingOriginBinding_Kd")]
+    [InlineData(PairG + "a = b" + ZeroBody, "let t: ((ref/i32, ref/i32) -> i32, i32) = (g, 1)", "OriginRelationOperator_Kd")]
+    [InlineData(PairG + "a = b" + ZeroBody, "let c = true\n    let f: (ref/i32, ref/i32) -> i32 = if c => g else => g", "OriginRelationOperator_Kd")]
+    [InlineData(PairG + "a = b" + ZeroBody, "var f: (ref/i32, ref/i32) -> i32 = g\n    f = g", "OriginRelationOperator_Kd")]
+    [InlineData(PairG + "a = b" + ZeroBody, "let f: (ref/i64, ref/i32) -> i32 = g", "OriginRelationOperator_Kd TypeMismatch_Kd")]
+    [InlineData("func g(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during a\n    origin a = b\n    return x", "let f: (ref/i32, ref/i32) -> ref/i32 during static = g", "OriginRelationOperator_Kd UnprovenOriginContract_Kd")]
+    [InlineData("func g(x: ref/i32 during static, y: ref/i32 during b) -> i32\n    origin b = static" + ZeroBody, "let f: (ref/i32, ref/i32) -> i32 = g", "OriginRelationOperator_Kd UnprovenOriginContract_Kd")]
+    [InlineData(PairG + "a == b" + ZeroBody, "let f: (ref/i32, ref/i32) -> i32 = g", "")]
+    public void AFunctionReferenceOverAnInvalidOriginContractRestsOnItsCause(string declaration, string use, string codes)
     {
-        var c = MinimalEmissionTest.Analyze("func g(x: ref/i32 during a, y: ref/i32 during b) -> i32\n    origin " + clause + "\n    return 0\nfunc h()\n    " + use + "\nlet wrong: i32 = true");
+        var c = MinimalEmissionTest.Analyze(declaration + "\nfunc h()\n    " + use + "\nlet wrong: i32 = true");
         c.Binding.ReportDiagnostics();
         var errors = c.Diagnostics.Finalize(rejected: true).Diagnostics;
         output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span + " " + x.Message)));
