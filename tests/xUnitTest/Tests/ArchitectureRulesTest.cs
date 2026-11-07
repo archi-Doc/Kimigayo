@@ -120,6 +120,8 @@ public class ArchitectureRulesTest
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
+    // R7-N1a (RP6): ResolvePath is the one evaluation of a Type name and PublishPath its one writer, so these entries stay gone.
+    [InlineData("Lookup entries replaced by ResolvePath", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:RootTypeName|LookupImportedType|StopInheritedLookup|SelectTypeCandidate)\b", 0)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
@@ -152,6 +154,10 @@ public class ArchitectureRulesTest
     // names no attribute by string (its two hits are the Kimi.Test group's Name). A Name the compiler reads joins the second pattern.
     [InlineData("Reads of an attribute's Name", "src/Kimi/Compiler", @"\bIdentifierKoto\b", "Parsing/Koto/Expressions/UnaryKoto.cs=2")]
     [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test)""", "KimiLibrary.cs=2")]
+    // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
+    // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
+    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.AssociatedTypes.cs=1;Binding.Diagnostics.cs=1;Binding.FixedArrays.cs=1;Binding.Imports.cs=2;Binding.IntegerPositions.cs=1;Binding.Modules.cs=2;Binding.Qualification.cs=1;Binding.ResolvePath.cs=4")]
+    [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.Imports.cs=1;Binding.ResolvePath.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

@@ -321,7 +321,8 @@ public sealed partial class Binding
         => clause.IsAssociatedConstraint || clause.Left is MemberAccessKoto || this.ContainsProjection(clause.Right, scope);
 
     private bool ContainsProjection(Koto node, BindingScope scope)
-        => node is MemberAccessKoto ? this.TypeName(node, scope, false) is null : (node is UnaryKoto unary && this.ContainsProjection(unary.Operand, scope)) || (node is BinaryKoto binary && (this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope)));
+        => node is MemberAccessKoto ? this.TypeName(node, scope, TypeLookupRole.Any) is null :
+            (node is UnaryKoto unary && this.ContainsProjection(unary.Operand, scope)) || (node is BinaryKoto binary && (this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope)));
 
     // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
     // already judged them.
@@ -384,7 +385,7 @@ public sealed partial class Binding
         }
 
         var bindingScope = this.NodeScope(clause, scope);
-        var symbol = this.TypeName(clause.Left, bindingScope, false);
+        var symbol = this.TypeName(clause.Left, bindingScope, TypeLookupRole.Any);
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var subject = scope.Owner is ContractKoto && AssociatedHead(clause) is OriginApplicationKoto application && UnwrapAssociatedHead(application.Type) is MemberAccessKoto associatedMember
             ? this.BindAssociatedRefinement(clause, application, associatedMember, scope)
@@ -485,7 +486,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    var target = this.TypeName(node, scope, false);
+                    var target = this.TypeName(node, scope, TypeLookupRole.Any);
                     if (target?.Declaration is ContractKoto)
                     {
                         if (target.Intrinsic == IntrinsicKind.Callable)
@@ -705,7 +706,7 @@ public sealed partial class Binding
             this.Missing |= missing;
             this.Invalid |= node.BindingState == BindingState.Invalid;
             // Core lookup excludes groups, but an available group is a definite non-Type.
-            this.Invalid |= missing && binding.TypeName(node, this.Scope, false)?.Kind == BindingSymbolKind.Container;
+            this.Invalid |= missing && binding.TypeName(node, this.Scope, TypeLookupRole.Any)?.Kind == BindingSymbolKind.Container;
             node.VisitChildren(this);
         }
     }

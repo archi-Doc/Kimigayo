@@ -242,7 +242,7 @@ public sealed partial class Binding
             return this.LengthArgumentSymbol(member, scope)?.Kind == BindingSymbolKind.Property;
         }
 
-        return name is not null && this.Lookup(name, scope, syntax, false) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
+        return name is not null && this.Lookup(name, scope, syntax) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
     }
 
     private bool InferLength(BoundType pattern, BoundType actual, Koto binder, BoundLength?[] arguments)
@@ -617,7 +617,7 @@ public sealed partial class Binding
     {
         if (syntax is TypeSemanticsKoto { Type: null } name)
         {
-            return this.Lookup(name.Identifier, scope, syntax, false) is { } symbol ? this.BindReference(syntax, symbol, scope) : null;
+            return this.Lookup(name.Identifier, scope, syntax) is { } symbol ? this.BindReference(syntax, symbol, scope) : null;
         }
 
         if (syntax is MemberAccessKoto member && member.Right is not IdentifierNameKoto)
@@ -639,7 +639,7 @@ public sealed partial class Binding
 
     private BindingSymbol? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
     {
-        if (this.TypeName(member.Left, scope, false) is not { Declaration: GroupKoto } qualifier ||
+        if (this.TypeName(member.Left, scope, TypeLookupRole.Any) is not { Declaration: GroupKoto } qualifier ||
             !this.scopes.TryGetValue(qualifier.Declaration, out var members) || TypeSpelling(member.Right) is not { } name)
         {
             return null;
