@@ -87,13 +87,12 @@ public class SpecializationBindingTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    // A redeclared modifier is the parser's record alone (syntax corpus `specialization-access-modifier`; PLAN G472).
-    [Theory]
-    [InlineData("specialize func find<i32>(value: i32, count: i32 = 1) -> i32 => count")]
-    [InlineData("specialize func find<i32>(! value: i32, count: i32) -> i32 => count")]
-    public void RejectsRedeclaredDefaultsAndBoundaries(string specialization)
+    // SPEC 8.13.2: a redeclared default is the specialization check's IncompatibleContractImplementation_Kd. The parser owns a
+    // redeclared modifier or `!` boundary (syntax corpus `specialization-access-modifier`, `specialization-argument-boundary`).
+    [Fact]
+    public void RejectsRedeclaredDefaults()
     {
-        var c = MinimalEmissionTest.Analyze(Defaults + specialization);
+        var c = MinimalEmissionTest.Analyze(Defaults + "specialize func find<i32>(value: i32, count: i32 = 1) -> i32 => count");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
