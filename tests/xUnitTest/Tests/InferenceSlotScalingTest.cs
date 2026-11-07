@@ -87,7 +87,8 @@ public class InferenceSlotScalingTest
     // The cold rows: from 32 to 512 calls a first Bind's inference work grows by one amount per call (272 lies halfway, so the two steps compare),
     // and its allocation is linear as CallableRegionScalingTest's V16 rows define it: three sizes, each double the one before, within factor 3. That
     // passes a mixed term, an added 4n^2 bytes on all five workloads, so a second series spans the plan's 32 to 512: its sizes each quadruple, so
-    // linear gives 4, and factor 6 keeps V16's headroom. There an added 3n^2 bytes fails `calls` and `parts`; a smaller term passes both series.
+    // linear gives 4, and factor 6 keeps V16's headroom. An added bn^2 bytes then fails one series or the other from about b = 2.1 on `parts`, 2.7 on
+    // `waiting`, 2.9 on `calls`, 4.5 on `joins` and 5.1 on `references`, by arithmetic on dev's bytes; a term below its workload's limit passes both.
     [Theory]
     [InlineData("calls")]
     [InlineData("waiting")]
@@ -108,7 +109,7 @@ public class InferenceSlotScalingTest
 
     // The n = 40 rows (SPEC 10.5.1: inner calls are never resolved once per outer candidate; 10.3): a nested call that waits is checked at the
     // Type its position gives, once, so the count of candidate evaluations at depth 10, 20 and 40 is linear: nested generic calls, an overloaded
-    // call at every level, and a join in every nested call. The count does not read the join walks (labels-log.md, G335), so jn pins the calls
+    // call at every level, and a join in every nested call. No public counter reads the join walks (PLAN G335), so jn pins the calls
     // around its joins only. A unit other than guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and
     // removes the marker. P3 owns "prepare arguments once": dev's PrepareCallArguments probes a Call part again at each completion, so its count
     // at depth d is 734 + 4d + d^2 (id) and 734 + 8d + 3d^2 (ov).

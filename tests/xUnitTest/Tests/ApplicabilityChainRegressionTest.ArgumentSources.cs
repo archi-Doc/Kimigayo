@@ -199,7 +199,7 @@ public partial class ApplicabilityChainRegressionTest
 
     // SPEC 14.9.2, 10.5.1 (PLAN G159): at a fixed parameter, Tuple sources differing in an element's reference layer are valid under either reading
     // of step 2: value-read to the common Type, or no common Type, so the argument waits and each source fits the selected Type. Without a fixed
-    // Type the reading is open (labels-log.md, question 4).
+    // Type the reading is open, so `g(...)` and `let j = ...` have no row here.
     [InlineData("I2", "g159t", FlowSources + "    let y: i64 = 1\n    takeT(if c => (y, x@ref) else => (y, x))\n    return 0\n", "", Explicit = true)]
     [InlineData("I2", "g159tm", FlowSources + "    let y: i64 = 1\n    takeT(if c => (y, x) else => (y, x@ref))\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "g159ta", FlowSources + "    let y: i64 = 1\n    let t: (i64, i64) = if c => (y, x@ref) else => (y, x)\n    return 0\n", "")]
