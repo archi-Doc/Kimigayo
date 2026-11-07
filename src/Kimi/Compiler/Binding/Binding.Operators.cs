@@ -103,32 +103,9 @@ public sealed partial class Binding
                 var decision = this.OperatorApplicabilityOf(unary, operand, null, scope);
                 return decision.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, decision);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
-                if (!this.ValidPropertyWritePath(unary.Operand, scope))
+                if (!this.CheckUpdateDestination(unary, operand, scope))
                 {
-                    return this.FailWrite(unary, unary.Operand);
-                }
-
-                if (operand is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
-                    ReferenceBindingAssignment(unary.Operand) is { } referenceBinding)
-                {
-                    return this.Fail(unary, referenceBinding);
-                }
-
-                if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
-                {
-                    return this.FailWrite(unary, unary.Operand);
-                }
-
-                if (this.HolderPlaceFailure(unary.Operand, HolderAccess.Update, null, unary))
-                {
-                    return null;
-                }
-
-                // SPEC 13.7.1: the result, computed in the read Type, is fitted to a Property's destination Type.
-                if (this.PropertyUpdateDestination(unary.Operand) is { } written &&
-                    !this.FitsValueAt(operand, written, unary, unary.Operand, out var failure))
-                {
-                    return this.FailMismatch(unary, unary.Operand, operand, written, failure);
+                    return this.FailRoute(unary, unary.Operand, operand, null, scope);
                 }
 
                 // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
@@ -178,8 +155,9 @@ public sealed partial class Binding
         if (assignment && left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
         {
-            this.BindNode(binary.Right, scope, left.Components[0]);
-            return this.Fail(binary, referenceBinding);
+            var value = this.BindNode(binary.Right, scope, left.Components[0]);
+            this.Fail(binary, referenceBinding);
+            return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
         }
 
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
@@ -195,7 +173,7 @@ public sealed partial class Binding
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
         if (assignment && left is not null && right is not null && !this.CheckOperatorDestination(binary, left, scope))
         {
-            return null;
+            return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, right, scope);
         }
 
         if (decision.Failure == BindingFailure.None && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
@@ -246,6 +224,52 @@ public sealed partial class Binding
 
         return decision.Failure == BindingFailure.None ? this.CompleteBinary(binary, left, right, scope, decision)
             : this.FailOperator(binary, binary, decision);
+    }
+
+    // SPEC 23.1.2: the route of a compound assignment or update whose destination failed reads neither the destination's authority nor its
+    // Holder, so it stays a verdict, on the read Type: its failure is the node's other problem. A route a fit alone refuses stays with the
+    // mismatch family (E3).
+    private BoundType? FailRoute(Koto operation, Koto destination, BoundType operand, BoundType? right, BindingScope scope)
+    {
+        var route = this.OperatorApplicabilityOf(operation, this.ReadReferent(destination, operand), right, scope);
+        return route.Failure == BindingFailure.None ? null : this.FailOperator(operation, operation, route);
+    }
+
+    private bool CheckUpdateDestination(UnaryKoto unary, BoundType operand, BindingScope scope)
+    {
+        if (!this.ValidPropertyWritePath(unary.Operand, scope))
+        {
+            this.FailWrite(unary, unary.Operand);
+            return false;
+        }
+
+        if (operand is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
+            ReferenceBindingAssignment(unary.Operand) is { } referenceBinding)
+        {
+            this.Fail(unary, referenceBinding);
+            return false;
+        }
+
+        if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
+        {
+            this.FailWrite(unary, unary.Operand);
+            return false;
+        }
+
+        if (this.HolderPlaceFailure(unary.Operand, HolderAccess.Update, null, unary))
+        {
+            return false;
+        }
+
+        // SPEC 13.7.1: the result, computed in the read Type, is fitted to a Property's destination Type.
+        if (this.PropertyUpdateDestination(unary.Operand) is { } written &&
+            !this.FitsValueAt(operand, written, unary, unary.Operand, out var failure))
+        {
+            this.FailMismatch(unary, unary.Operand, operand, written, failure);
+            return false;
+        }
+
+        return true;
     }
 
     private bool CheckOperatorDestination(BinaryKoto binary, BoundType left, BindingScope scope)
