@@ -281,3 +281,27 @@ internal group Storage
             P is Position
             Q is Position
             return Storage.tryGetPairUniq(borrowStorageUniq(self), first: first, second: second)
+
+    /// The one component of an `Array<T>`, under IMPL 21.1.3's Handles, reached by the raw conversion of SPEC 5.4.
+    /// `data` states `self` because the Array owns the storage it addresses (SPEC 5.7).
+    #Layout("C")
+    internal struct ArrayRepr<T>
+        internal var data: raw/T during self
+        internal var length: isize
+        internal var capacity: isize
+
+    /// The one component of a `Slice<T>`, under IMPL 21.1.3's Handles. A Slice owns no elements (SPEC 4.8.1), so `data`
+    /// states no `self`.
+    #Layout("C")
+    internal struct SliceRepr<T>
+        internal var data: raw/T
+        internal var length: isize
+
+    /// The one component of a `string`, under IMPL 21.1.3's Handles. A string owns its bytes only for release kind 1,
+    /// and a literal's are owned by no value (SPEC 3.1.2), so `data` states no `self`. This struct and the runtime's
+    /// `RuntimeAbi.String`, whose hand-written IR reads the same words, are a lasting pair.
+    #Layout("C")
+    internal struct StringRepr
+        internal var data: raw/u8
+        internal var length: isize
+        internal var releaseKind: u8
