@@ -1282,6 +1282,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 6 (2026-11-07, plan §14, DECISIONS Q15): RP11's and §3.2's window rules move to WORKFLOW "Windows" with the owner's size
   (at most five record- or acceptance-moving units, one acceptance mover per area, eight in all); the plan stays 一部取り込み (open),
   nothing frozen.
+- Revision 7 (2026-11-07, plan §14, the R7 restart; the Middle's D-46 and the owner's O-21 「(ii) で決定」): Y2 takes G251 (5) with the
+  explicit SPEC §7.7.3 revision and drops `EffectBounds.PlaceAccess`; Y3 and the Y1–Y5 line drop G233; §5.4 drops X-1a. The plan
+  stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
