@@ -138,7 +138,7 @@ public sealed partial class Binding
             rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
             if (further || !all[i].Equals(recorded))
             {
-                this.RecordFurtherOriginRecord(node, FirstOriginRecord(further), new(all[i] with { At = at, Destination = destination }, null));
+                this.RecordFurtherOriginRecord(node, new(all[i] with { At = at, Destination = destination }, null));
             }
         }
 

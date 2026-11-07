@@ -10,8 +10,9 @@ namespace Kimi.Compiler;
 // - Responsibility: the Origin relation records that one judgment collects (callRelationScratch: a selected call's JudgeCallPosition,
 //   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record or published with its contract
 //   record (FollowsContract; PublishCallRelations); and a node's records beyond its first, Origin relation and Origin contract records
-//   alike, each a problem of the node with its own condition (RecordFurtherOriginRecord, also for RecordOriginFitFailure's other chains;
-//   ReportFurtherOriginRecord); whether a node has a collected record (HasCallRelation).
+//   alike, each a problem of the node with its own condition, published after the node's first record (RecordFurtherOriginRecord, also for
+//   RecordOriginFitFailure's other chains; ReportOriginRecords, ReportFurtherOriginRecords); whether a node has a collected record
+//   (HasCallRelation).
 // - Inputs: OriginRelationFact and OriginContractFact values with their nodes; the node's first record in originRelations or
 //   originContracts.
 // - Outputs: the OriginRelation failure of each collected node and every node's further records.
@@ -29,10 +30,7 @@ public sealed partial class Binding
     // PublishCallRelations).
     private static bool FollowsContract(Koto node) => node.BindingFailure == BindingFailure.OriginContract;
 
-    // The failure of a node's first Origin record, a whole-contract comparison's or a relation's: the requirement of the records beyond it.
-    private static BindingFailure FirstOriginRecord(bool contract) => contract ? BindingFailure.OriginContract : BindingFailure.OriginRelation;
-
-    // A node's first Origin relation or Origin contract record; false when it has neither.
+    // A node's first Origin relation or Origin contract record, then its records beyond the first; false when it has neither.
     private bool ReportOriginRecords(Koto node, DiagnosticCode code, DiagnosticRequirement requirement)
     {
         if (code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd &&
@@ -49,19 +47,29 @@ public sealed partial class Binding
             return false;
         }
 
+        this.ReportFurtherOriginRecords(node, requirement);
         return true;
     }
 
-    // A record of one node beyond the first, by its kind and with its own condition so that it stays an independent problem.
-    private void ReportFurtherOriginRecord(Koto node, in OriginRecord record, in BindingProblem problem)
+    // The records of one node beyond the first, each by its kind and with its own condition so that it stays an independent problem.
+    private void ReportFurtherOriginRecords(Koto node, DiagnosticRequirement requirement)
     {
-        if (record.Relation is { } relation)
+        for (var i = this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
         {
-            ReportOriginRelation(node, relation, problem.Requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
-        }
-        else
-        {
-            ReportOriginContract(node, record.Contract!.Value, problem.Requirement, problem.Code, problem.Condition);
+            if (this.FactOf(i, ProblemFactKind.OriginRecord) is not { } fact)
+            {
+                continue;
+            }
+
+            var problem = this.report.Problem(i);
+            if (this.report.Origin(fact).Relation is { } relation)
+            {
+                ReportOriginRelation(node, relation, requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
+            }
+            else
+            {
+                ReportOriginContract(node, this.report.Origin(fact).Contract!.Value, requirement, problem.Code, problem.Condition);
+            }
         }
     }
 
@@ -86,7 +94,7 @@ public sealed partial class Binding
             var (node, fact) = this.callRelationScratch[i];
             if (FollowsContract(node))
             {
-                this.RecordFurtherOriginRecord(node, FirstOriginRecord(contract: true), new(fact, null));
+                this.RecordFurtherOriginRecord(node, new(fact, null));
                 continue;
             }
 
@@ -102,22 +110,23 @@ public sealed partial class Binding
             }
             else if (this.originRelations?.TryGetValue(node, out var primary) == true && !primary.Equals(fact))
             {
-                this.RecordFurtherOriginRecord(node, FirstOriginRecord(contract: false), new(fact, null));
+                this.RecordFurtherOriginRecord(node, new(fact, null));
             }
         }
 
         this.callRelationScratch.Clear();
     }
 
-    // A record of `node` after its first, of either kind, under the requirement of the node's first record: a problem beside the slot, whose
-    // first failure the check sets. A chain walk, as a list's Contains was: a node's records are its failed chains.
-    private void RecordFurtherOriginRecord(Koto node, BindingFailure first, in OriginRecord record)
+    // A record of `node` after its first, of either kind: a problem beside the slot, whose first failure the check sets. A chain walk, as a
+    // list's Contains was: a node's records are its failed chains.
+    private void RecordFurtherOriginRecord(Koto node, in OriginRecord record)
     {
         var subject = SourceRef.Of(node);
         if (this.report.OriginCondition(subject, record) is not 0 and var condition)
         {
-            var code = record.Relation is { } relation ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginContract_Kd;
-            this.report.Add(new(code, DiagnosticRequirement.Binding(first), subject, condition), [new(ProblemFactKind.OriginRecord, subject, this.report.Keep(record))]);
+            var (code, failure) = record.Relation is { } relation
+                ? (OriginRelationCode(relation), BindingFailure.OriginRelation) : (DiagnosticCode.UnprovenOriginContract_Kd, BindingFailure.OriginContract);
+            this.report.Add(new(code, DiagnosticRequirement.Binding(failure), subject, condition), [new(ProblemFactKind.OriginRecord, subject, this.report.Keep(record))]);
         }
     }
 }

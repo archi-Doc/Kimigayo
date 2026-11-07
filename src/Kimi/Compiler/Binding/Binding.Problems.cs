@@ -198,7 +198,8 @@ public sealed partial class Binding
     }
 
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
-    // its own, however the slot's failure stands.
+    // its own, however the slot's failure stands. An Origin record beyond the first is published with the node's first record, since
+    // Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
     private void CollectProblems(Koto node)
     {
         if (this.report.Count == 0)
@@ -209,7 +210,7 @@ public sealed partial class Binding
         var slot = this.SlotProblem(node);
         for (var i = this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
         {
-            if (i != slot)
+            if (i != slot && this.FactOf(i, ProblemFactKind.OriginRecord) is null)
             {
                 var problem = this.report.Problem(i);
                 this.issues.Add(new(node, problem.Code) { Failure = (BindingFailure)problem.Requirement.Kind, Problem = i });
@@ -260,10 +261,6 @@ public sealed partial class Binding
         if (this.FactOf(index, ProblemFactKind.Operand) is not null)
         {
             this.ReportOperatorOperand(node, index, problem);
-        }
-        else if (this.FactOf(index, ProblemFactKind.OriginRecord) is { } fact)
-        {
-            this.ReportFurtherOriginRecord(node, this.report.Origin(fact), problem);
         }
         else if (this.report.Facts(index).IsEmpty)
         {

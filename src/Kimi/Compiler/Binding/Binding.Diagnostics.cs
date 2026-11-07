@@ -466,7 +466,7 @@ public sealed partial class Binding
         {
             if (facts[i].IsCondition)
             {
-                this.RecordFurtherOriginRecord(node, FirstOriginRecord(failure.IsCondition), new(null, this.ContractFact(at, facts[i], node)));
+                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i], node)));
             }
             else
             {
