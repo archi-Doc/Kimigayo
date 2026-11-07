@@ -127,6 +127,8 @@ public partial class CallableOriginForwardingTest
 
     private const string InvariantSlots = "func inv<T>(s: uniq/T, v: T) -> i32 => 0\nfunc vni<T>(v: T, s: uniq/T) -> i32 => 0\nfunc two<T>(s: uniq/T, t: uniq/T) -> i32 => 0\nfunc k(p: uniq/(ref/i32 during a), q: uniq/(ref/i32 during b), w: ref/i32 during b, n: uniq/i32) -> i32\n";
 
+    private const string ArmsHead = "func k(x: ref/i32, n: i32, y: i64, c: bool) -> i32\n";
+
     private const string HPre = "func h(x: (ref/i32 during b) -> i32, n: i32, b: ref/i32) -> i32 => 0\n";
 
     private const string KPre = "func k(b: ref/i32, c: ref/i32, f: (ref/i32 during c) -> i32) -> i32\n    origin c outlives b\n    return h(f@move, 1, b)\n";
@@ -454,6 +456,18 @@ public partial class CallableOriginForwardingTest
     [InlineData("guard", "inv3n", InvariantSlots + "    origin a outlives b\n    return two(p, q)\n", "*: return two(p, q) | ...")]
     [InlineData("guard", "inv4", InvariantSlots + "    return two(p, n)\n", "NoApplicableOverload_Kd: return two(p, n)")]
     public void ASlotsSolutionIsIndependentOfArgumentOrder(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 23.1.2, 14.9.2 step 4 (PLAN G360): a typed sibling's misfit stands beside a Closure's failed contract, in a `match` (r3b, q3) as in an `if`
+    // (r3i).
+    [InlineData("guard", "r3a", ArmsHead + "    let g: () -> Option<ref/i32 during static> = match n\n        0 => func [] () -> Option<ref/i32 during static> => .None\n        _ => y\n    return 0\n", "TypeMismatch_Kd: *")]
+    [InlineData("I2", "r3b", ArmsHead + "    let g: () -> Option<ref/i32 during static> = match n\n        0 => func [] () -> Option<ref/i32 during x> => .None\n        _ => y\n    return 0\n", "UnprovenOriginContract_Kd: 0 => func [] () -> Option<ref/i32 during x> => .None | TypeMismatch_Kd: *", Explicit = true)]
+    [InlineData("I2", "q3", ArmsHead + "    let g: () -> Option<ref/i32 during static> = match n\n        0 => func [] () -> Option<ref/i32 during x> => .None\n        1 => func [] () -> Option<ref/i32 during static> => .None\n        _ => y\n    return 0\n", "UnprovenOriginContract_Kd: 0 => func [] () -> Option<ref/i32 during x> => .None | TypeMismatch_Kd: *", Explicit = true)]
+    [InlineData("guard", "r3i", ArmsHead + "    let g: () -> Option<ref/i32 during static> = if c => func [] () -> Option<ref/i32 during x> => .None else => y\n    return 0\n", "UnprovenOriginContract_Kd: let g: () -> Option<ref/i32 during static> = if c => func [] () -> Option<ref/i32 during x> => .None else => y | TypeMismatch_Kd: let g: () -> Option<ref/i32 during static> = if c => func [] () -> Option<ref/i32 during x> => .None else => y")]
+    public void ATypedSiblingsMisfitStandsBesideAFailedClosure(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // G216 (a) T2b, U2.1, under DECISIONS R4-M162 (the strict form, superseding the owner's (A) result half): a nested signature's result

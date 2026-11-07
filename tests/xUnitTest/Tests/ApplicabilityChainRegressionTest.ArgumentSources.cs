@@ -22,6 +22,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string NestedCalls = "func inner(x: i32) -> i32 => x\nfunc inner(x: i64) -> i64 => x\nfunc g<T>(v: T) -> i32 => 0\nfunc h2<T>(a: T, b: T) -> i32 => 0\nfunc k() -> i32\n";
 
+    private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
+
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
     // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
     // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
@@ -188,5 +190,31 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "na2", NestedCalls + "    return h2(inner(1), 5@i64)\n", "")]
     [InlineData("guard", "na3", NestedCalls + "    return h2(5@i64, inner(1))\n", "")]
     public void ACommonTypeFormationHasItsVerdict(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 14.9.2, 10.5.1 (PLAN G275 (2)): a held join has one verdict whatever delivers it, a label, an expression body, parentheses, or a Tuple, array
+    // or Dictionary part: valid, beside a misfit (the `t` forms) and over a failed leaf (the `f` forms). h_dict itself waits for the Dictionary
+    // question.
+    [InlineData("guard", "h_lab", HeldDeclarations + "    return f(if c => (label l: if d => identity(1) else => identity(2)) else => 3)\n", "")]
+    [InlineData("guard", "h_do", HeldDeclarations + "    return f(if c => (do => (if d => identity(1) else => identity(2))) else => 3)\n", "")]
+    [InlineData("guard", "h_par", HeldDeclarations + "    return f(((if c => ((if d => identity(1) else => identity(2))) else => 3)))\n", "")]
+    [InlineData("guard", "h_tup", HeldDeclarations + "    return ft(if c => ((if d => identity(1) else => identity(2)), 1) else => (3, 2))\n", "")]
+    [InlineData("guard", "h_arr", HeldDeclarations + "    return fa(if c => [(if d => identity(1) else => identity(2)), 1] else => [3])\n", "")]
+    [InlineData("guard", "h_labt", HeldDeclarations + "    return f(if c => (label l: if d => identity(1) else => identity(2)) else => true)\n", "*: return f(if c => (label l: if d => identity(1) else => identity(2)) else => true) | ...")]
+    [InlineData("guard", "h_dot", HeldDeclarations + "    return f(if c => (do => (if d => identity(1) else => identity(2))) else => true)\n", "*: return f(if c => (do => (if d => identity(1) else => identity(2))) else => true) | ...")]
+    [InlineData("guard", "h_part", HeldDeclarations + "    return f(((if c => ((if d => identity(1) else => identity(2))) else => true)))\n", "*: return f(((if c => ((if d => identity(1) else => identity(2))) else => true))) | ...")]
+    [InlineData("guard", "h_tupt", HeldDeclarations + "    return ft(if c => ((if d => identity(1) else => identity(2)), 1) else => (true, 2))\n", "*: return ft(if c => ((if d => identity(1) else => identity(2)), 1) else => (true, 2)) | ...")]
+    [InlineData("guard", "h_arrt", HeldDeclarations + "    return fa(if c => [(if d => identity(1) else => identity(2)), 1] else => [true])\n", "*: return fa(if c => [(if d => identity(1) else => identity(2)), 1] else => [true]) | ...")]
+    [InlineData("guard", "h_dictt", HeldDeclarations + "    return fd(if c => [\"k\": (if d => identity(1) else => identity(2))] else => [\"k\": true])\n", "*: return fd(if c => [\"k\": (if d => identity(1) else => identity(2))] else => [\"k\": true]) | ...")]
+    [InlineData("guard", "h_labf", HeldDeclarations + "    return f(if c => (label l: if d => identity(1) else => undefinedName) else => 3)\n", "UnresolvedBinding_Kd: return f(if c => (label l: if d => identity(1) else => undefinedName) else => 3) | ...")]
+    [InlineData("guard", "h_dof", HeldDeclarations + "    return f(if c => (do => (if d => identity(1) else => undefinedName)) else => 3)\n", "UnresolvedBinding_Kd: return f(if c => (do => (if d => identity(1) else => undefinedName)) else => 3) | ...")]
+    [InlineData("guard", "h_parf", HeldDeclarations + "    return f(((if c => ((if d => identity(1) else => undefinedName)) else => 3)))\n", "UnresolvedBinding_Kd: return f(((if c => ((if d => identity(1) else => undefinedName)) else => 3))) | ...")]
+    [InlineData("guard", "h_tupf", HeldDeclarations + "    return ft(if c => ((if d => identity(1) else => undefinedName), 1) else => (3, 2))\n", "UnresolvedBinding_Kd: return ft(if c => ((if d => identity(1) else => undefinedName), 1) else => (3, 2)) | ...")]
+    [InlineData("guard", "h_arrf", HeldDeclarations + "    return fa(if c => [(if d => identity(1) else => undefinedName), 1] else => [3])\n", "UnresolvedBinding_Kd: return fa(if c => [(if d => identity(1) else => undefinedName), 1] else => [3]) | ...")]
+    [InlineData("guard", "h_dictf", HeldDeclarations + "    return fd(if c => [\"k\": (if d => identity(1) else => undefinedName)] else => [\"k\": 3])\n", "UnresolvedBinding_Kd: return fd(if c => [\"k\": (if d => identity(1) else => undefinedName)] else => [\"k\": 3]) | ...")]
+    public void AHeldJoinKeepsItsVerdictThroughWhatDeliversIt(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }

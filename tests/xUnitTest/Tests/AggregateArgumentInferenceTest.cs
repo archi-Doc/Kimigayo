@@ -155,4 +155,17 @@ public class AggregateArgumentInferenceTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid);
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 12, 10.2, 4.3.1 (PLAN G361): each element fits the expected element Type on its own, so the record is the misfitting element's, whatever
+    // precedes it.
+    [InlineData("E3", "q12", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        x,\n        y\n    ]\n    return 0\n", "TypeMismatch_Kd: x,", Explicit = true)]
+    [InlineData("E3", "q12f", "func k(x: i32, y: i64) -> i32\n    let a: [2 of i64] = [\n        x,\n        y\n    ]\n    return 0\n", "TypeMismatch_Kd: x,", Explicit = true)]
+    [InlineData("guard", "q12r", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        y,\n        x\n    ]\n    return 0\n", "TypeMismatch_Kd: x")]
+    [InlineData("E3", "q12two", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        x,\n        y,\n        x\n    ]\n    return 0\n", "TypeMismatch_Kd: x, | TypeMismatch_Kd: x", Explicit = true)]
+    [InlineData("guard", "q12ok", "func k(y: i64) -> i32\n    let a: Array<i64> = [\n        1,\n        y\n    ]\n    return 0\n", "")]
+    public void AnElementsMisfitIsRecordedAtThatElement(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }
