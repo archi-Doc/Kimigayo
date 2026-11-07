@@ -126,7 +126,8 @@ public sealed partial class Binding
         {
             var (code, failure) = record.Relation is { } relation
                 ? (OriginRelationCode(relation), BindingFailure.OriginRelation) : (DiagnosticCode.UnprovenOriginContract_Kd, BindingFailure.OriginContract);
-            this.report.Add(new(code, DiagnosticRequirement.Binding(failure), subject, condition), [new(ProblemFactKind.OriginRecord, subject, this.report.Keep(record))]);
+            ProblemFact fact = new(ProblemFactKind.OriginRecord, subject, this.report.Keep(record));
+            this.report.Add(new(code, DiagnosticRequirement.Binding(failure), subject, condition), [fact]);
         }
     }
 }

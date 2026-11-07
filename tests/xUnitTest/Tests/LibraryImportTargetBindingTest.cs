@@ -228,7 +228,8 @@ public class LibraryImportTargetBindingTest
     [Fact]
     public void ASymbolConflictStaysBesideAMissingSupply()
     {
-        var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func first(a: i32) -> i32\n    " + Import + "\n    public unsafe func second(a: i64) -> i32", null);
+        var imports = "    " + Import + "\n    public unsafe func first(a: i32) -> i32\n    " + Import + "\n    public unsafe func second(a: i64) -> i32";
+        var c = AnalyzeImport("group Native\n" + imports, null);
         Assert.Equal(
             ["ConflictingImportSignature_Kd", "MissingNativeRequirement_Kd", "MissingNativeRequirement_Kd"],
             CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order());

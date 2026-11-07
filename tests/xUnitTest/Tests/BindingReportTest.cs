@@ -60,6 +60,22 @@ public sealed class BindingReportTest
         Assert.Same(types[0], report.Value(Assert.Single(report.Facts(first).ToArray())));
     }
 
+    // An Origin record beyond the first takes the condition after its subject's, and a subject has a record once; a retried attempt starts over.
+    [Fact]
+    public void AnOriginRecordIsNumberedOncePerSubject()
+    {
+        var report = new BindingReport();
+        OriginRecord first = new(null, new(null!, "first", null!, null!, false));
+        OriginRecord second = new(null, new(null!, "second", null!, null!, false));
+        Assert.Equal(1, report.OriginCondition(Subject, first));
+        report.Add(Problem(Subject, Mismatch, 1), [new(ProblemFactKind.OriginRecord, Subject, report.Keep(first))]);
+        Assert.Equal(0, report.OriginCondition(Subject, first));
+        Assert.Equal(2, report.OriginCondition(Subject, second));
+        Assert.Equal(1, report.OriginCondition(Other, first));
+        report.Unlink(Subject);
+        Assert.Equal(1, report.OriginCondition(Subject, first));
+    }
+
     [Fact]
     public void ASubjectsProblemsAreInRecordingOrder()
     {

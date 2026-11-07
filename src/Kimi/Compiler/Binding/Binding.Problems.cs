@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 //   facts (ReportProblem, Mismatch, LocatedPart, FactOf).
 // - Inputs: a node, its failure and the facts its check read.
 // - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure; a node's further
-//   issues, each by its own code and condition.
+//   issues, each by its own code and condition. Record is a check's way in; RecordFurtherOriginRecord and a report's defect add a problem
+//   that sets no slot.
 // - Invariants: one way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one way in control:
 //   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem: a pass's
 //   reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves its chain; HirTables.Reset

@@ -20,8 +20,8 @@
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
 // start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept Types,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
-// the subject and as its Value an index in the kept Origin records; a kind that names no value has -1; a problem has at most one fact of each kind but its witness's and its causes,
-// which come last.
+// the subject and as its Value an index in the kept Origin records; a kind that names no value has -1; a problem has at most one fact of
+// each kind but its witness's and its causes, which come last.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
