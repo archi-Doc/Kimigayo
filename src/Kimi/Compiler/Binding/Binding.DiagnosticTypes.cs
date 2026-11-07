@@ -27,6 +27,18 @@ public sealed partial class Binding
         return text.ToString();
     }
 
+    // The adapter's text of a mismatch side's form (SPEC 23.3).
+    private static string FormText(MismatchForm form, int count) => (form, count) switch
+    {
+        (MismatchForm.AnonymousFunction, < 0) => "an anonymous function",
+        (MismatchForm.AnonymousFunction, 1) => "an anonymous function with 1 parameter",
+        (MismatchForm.AnonymousFunction, _) => $"an anonymous function with {count} parameters",
+        (MismatchForm.IntegerLiteral, _) => "integer literal",
+        (MismatchForm.FloatingPointLiteral, _) => "floating-point literal",
+        (MismatchForm.PositionType, _) => "a Type proven Position or PositionRange",
+        _ => throw new ArgumentOutOfRangeException(nameof(form)),
+    };
+
     private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, bool complete)
     {
         if (value is not BoundType type)

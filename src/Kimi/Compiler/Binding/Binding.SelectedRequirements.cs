@@ -21,10 +21,10 @@ public sealed partial class Binding
         callee.BoundSymbol = requirement;
         callee.BoundType = requirement.Type;
         callee.BindingState = BindingState.Resolved;
-        callee.BindingFailure = BindingFailure.None;
+        this.ClearFailure(callee);
         arguments.CopyTo((Koto[])call.ArgumentNodes);
         call.BindingState = BindingState.Unvisited;
-        call.BindingFailure = BindingFailure.None;
+        this.ClearFailure(call);
         call.BoundMeaning = null;
         call.BoundSymbol = null;
         call.CallStorage = callee.RequirementStorage;

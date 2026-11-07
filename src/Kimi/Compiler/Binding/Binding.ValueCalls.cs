@@ -353,7 +353,7 @@ public sealed partial class Binding
 
         if (unsupported)
         {
-            this.FailExplained(ref this.unsupportedSpans, call, BindingFailure.Unsupported, call.Method.Span);
+            this.FailUnsupportedAt(call, call.Method.Span);
             return false;
         }
 

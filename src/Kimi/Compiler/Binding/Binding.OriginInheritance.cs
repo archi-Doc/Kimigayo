@@ -395,7 +395,7 @@ public sealed partial class Binding
                 }
             }
 
-            var visitor = this.propertyTypeVisitor ??= new();
+            var visitor = this.propertyTypeVisitor ??= new(this);
             var start = visitor.Snapshots.Count;
             visitor.Visit(syntax);
             // These preliminary signatures supplied only input structure. Retain

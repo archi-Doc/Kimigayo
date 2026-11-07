@@ -83,8 +83,8 @@ public sealed partial class Binding
         {
             // SPEC 23.1.1: a form outside the implemented subset is located only: at the part its check recorded, a function at its
             // signature.
-            var span = this.unsupportedSpans?.TryGetValue(issue.Node, out var part) == true ? part
-                : issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null;
+            var span = this.LocatedPart(issue.Problem) ??
+                (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
             issue.Node.Report(requirement, issue.Code, span: span);
         }
         else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
@@ -422,8 +422,9 @@ public sealed partial class Binding
         {
             this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
+        else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {
+            var mismatch = this.Mismatch(issue.Problem);
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });

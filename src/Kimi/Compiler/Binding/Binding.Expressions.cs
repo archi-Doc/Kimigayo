@@ -458,8 +458,8 @@ public sealed partial class Binding
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
                     // The Type keeps a generic default's parameter (SPEC 7.2.3).
-                    var found = number.IsInteger ? "integer literal" : "floating-point literal";
-                    return this.RecordMismatch(node, node, found, numberType, ComparisonFailure.Shape);
+                    var found = number.IsInteger ? MismatchForm.IntegerLiteral : MismatchForm.FloatingPointLiteral;
+                    return this.RecordMismatch(node, node, new(null, found), numberType, ComparisonFailure.Shape);
                 }
 
                 return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);

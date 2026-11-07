@@ -126,7 +126,7 @@ public sealed partial class Binding
 
             if (entry is { } written)
             {
-                this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, written.Span);
+                this.FailUnsupportedAt(function, written.Span);
             }
             else
             {
