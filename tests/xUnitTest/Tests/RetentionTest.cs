@@ -328,33 +328,40 @@ public sealed partial class RetentionTest
 
     // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
     // call stores nothing there: phantomOk is valid and x's write is free; its twin stores T, so storedBad's write conflicts while h lives.
-    // Guards of dev's answer at a HeapBuffer, which takes its declared Fields until G-1 judges SPEC 22.9 (G416): a call may store a raw input
-    // there as in a raw Field (heapOk beside slotBad; SPEC 5.2.1: a value moved into raw storage keeps its Loans), and the buffer's own
-    // borrow conflicts (heapBytesBad).
     [Theory]
     [InlineData("phantomOk", "func phantomOk()\n    var x = 1\n    var p = Ph<ref/i32>.init()\n    keep(p@uniq, x@ref)\n    x = 3\n    let k = p@ref\n", "")]
     [InlineData(
         "storedBad",
         "func storedBad()\n    var x = 1\n    var y = 2\n    var h = Hd<ref/i32>.init(y@ref)\n    keepH(h@uniq, x@ref)\n    x = 3\n    let k = h@ref\n",
         "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("heapOk", "func heapOk()\n    var h = Text.heap(8)\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    put(h@uniq, p)\n    x = 2\n    let k = h@ref\n", "ComparisonLoanConflict_Kd x = 2")]
-    [InlineData(
-        "slotBad",
-        "func slotBad()\n    var s = Slot.init()\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    s.put(p)\n    x = 2\n    let k = s@ref\n",
-        "ComparisonLoanConflict_Kd x = 2")]
-    [InlineData(
-        "heapBytesBad",
-        "func heapBytesBad()\n    var h = Text.heap(8)\n    let b = h.bytes()\n    h.clear()\n    let n = b.length\n",
-        "CallActivationConflict_Kd h.clear()")]
     public void ATypeArgumentAFieldLessGenericDoesNotStoreKeepsNoLoan(string name, string form, string expected)
+        => Assert.Equal(expected, name.Length == 0 ? string.Empty : HoldingRecords(form));
+
+    // Guards of dev's answer at a HeapBuffer, which takes its declared Fields until G-1 judges SPEC 22.9 (G416): a call may store a raw input
+    // there as in a raw Field (heapRawKept beside slotBad; SPEC 5.2.1: a value moved into raw storage keeps its Loans), and the buffer's own
+    // borrow conflicts (heapBytesBad).
+    [Theory]
+    [InlineData("func heapRawKept()\n    var h = Text.heap(8)\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    put(h@uniq, p)\n    x = 2\n    let k = h@ref\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func slotBad()\n    var s = Slot.init()\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    s.put(p)\n    x = 2\n    let k = s@ref\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func heapBytesBad()\n    var h = Text.heap(8)\n    let b = h.bytes()\n    h.clear()\n    let n = b.length\n", "CallActivationConflict_Kd h.clear()")]
+    public void AHeapBufferHoldsByItsDeclaredFields(string form, string expected)
+        => Assert.Equal(expected, HoldingRecords(form));
+
+    // SPEC 15.6.4 (G416 C): Start, End, BufferFull and InvalidUtf8 declare no storage, so no borrow forms within them and a result during one
+    // holds no part of it. Dev's false rejection goes; a struct with a Field keeps its conflict.
+    [Theory]
+    [InlineData("End", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("End", "-> Slice<i32> during dst", "w.length", "result {0 Content}", "")]
+    [InlineData("Start", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("BufferFull", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("Text.InvalidUtf8", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("Mark", "-> ref/i32 during dst", "w@follow", "result {0 Value}", "ComparisonLoanConflict_Kd v = m")]
+    public void AnEmptyStructHoldsNothing(string type, string result, string use, string row, string records)
     {
-        Assert.NotEmpty(name);
-        var shapes = Phantom + "    public init() => ()\nstruct Hd<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n" +
-            "func keep(slot: uniq/Ph<ref/i32 during a>, value: ref/i32 during a) => ()\n" +
-            "func keepH(slot: uniq/Hd<ref/i32 during a>, value: ref/i32 during a) => slot.item = value\n" +
-            "func put(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()\n" +
-            "struct Slot\n    var data: raw/u8\n    public init() => self.data = null\n    public func put(self: uniq/Self, p: raw/u8) => self.data = p\n";
-        Assert.Equal(expected, MirBorrowsTest.Records(shapes + form + "public func main() => ()\n"));
+        var form = "struct Mark\n    Self is Copy\n    public var n: i32\n    public init() => self.n = 0\n" +
+            $"func f(dst: ref/{type}) {result} => $abort(\"x\")\n";
+        Assert.Equal(row, Declared(Bind(form), "f"));
+        Assert.Equal(records, MirBorrowsTest.Records(form + $"func g(m: {type})\n    var v = m\n    let w = f(v@ref)\n    v = m\n    let k = {use}\npublic func main() => ()\n"));
     }
 
     // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
@@ -1574,6 +1581,20 @@ public sealed partial class RetentionTest
         }
     }
 
+    // A function's own contract, with no call substitution.
+    internal static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
+
+    // The shapes of a storing call, then a form and `main`: its published Error records.
+    private static string HoldingRecords(string form)
+    {
+        var shapes = Phantom + "    public init() => ()\nstruct Hd<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n" +
+            "func keep(slot: uniq/Ph<ref/i32 during a>, value: ref/i32 during a) => ()\n" +
+            "func keepH(slot: uniq/Hd<ref/i32 during a>, value: ref/i32 during a) => slot.item = value\n" +
+            "func put(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()\n" +
+            "struct Slot\n    var data: raw/u8\n    public init() => self.data = null\n    public func put(self: uniq/Self, p: raw/u8) => self.data = p\n";
+        return MirBorrowsTest.Records(shapes + form + "public func main() => ()\n");
+    }
+
     private static Compilation Bind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -1625,9 +1646,6 @@ public sealed partial class RetentionTest
 
         return null;
     }
-
-    // A function's own contract, with no call substitution.
-    private static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
 
     // Each call of a named callee under its substitution, in its definition, in source order.
     private static string[] Calls(Compilation c, string name)
