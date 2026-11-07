@@ -753,6 +753,10 @@ public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
 {
     /// <summary>Gets the failure that the code reports; its requirement identifies the problem.</summary>
     internal BindingFailure Failure { get; init; }
+
+    /// <summary>Gets the index of the issue's problem in the pass's report, or -1.</summary>
+    [Transitional("R7", Reason = "The bridge from the test surface to Binding's records until Binding.Issues is their list (R7-E5).")]
+    internal int Problem { get; init; } = -1;
 }
 
 /// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>

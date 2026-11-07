@@ -95,7 +95,7 @@ public partial class Compilation
                 case ProblemFactKind.Relation: // A relation without a body, Reason ends or row source.
                 case ProblemFactKind.Cause: // A Binding cause at a node with no resting causes, such as one Binding resolved.
                 case ProblemFactKind.Inlined: // MirReport.Add drops its problem.
-                default: // A kind without a row.
+                default: // A kind without a row, as Binding's kinds are here (C-103).
                     this.Locate(Defect, DiagnosticCode.InternalInvariant_Kd, problem.Subject);
                     return;
             }

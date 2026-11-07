@@ -56,11 +56,11 @@ public class CallConstraintFailureTest
         func use(s: ref/S, b: ref/Box<S>, w: ref/Zed<S>) -> i32 => s.m(b, w)
         """;
 
-    // PLAN G375: an answer other than Proven is computed at each read, in the reader's own scope, at a call, a reference and contract matching.
+    // PLAN G375: an answer other than Proven is computed at each read, in the reader's own scope, at a call and a reference.
     [Theory]
     [InlineData(FailedAtCallAndReference, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(FailedAtMatching, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
-    [InlineData(FailedWithACycle, "1*IncompatibleContractImplementation_Kd 3*InvalidConstraint_Kd 3*UnsatisfiedConstraint_Kd")]
+    [InlineData(FailedAtMatching, "1*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
+    [InlineData(FailedWithACycle, "1*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
     public void AFailedSignatureIsComputedAtEachRead(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Theory]

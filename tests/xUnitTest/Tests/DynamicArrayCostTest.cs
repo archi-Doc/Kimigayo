@@ -148,7 +148,8 @@ public class DynamicArrayCostTest
     {
         var source = "var values: Array<isize> = []\nvalues@uniq.reserve(8)\nvalues@uniq.append(20)\nvalues@uniq.append(22)\nlet previous = values.capacity\nvalues@uniq.shrinkToFit()\nrequire values.length == 2 and values[0] == 20 and values[1] == 22 else => $abort(\"values\")\nrequire values.capacity >= 2 and values.capacity <= previous else => $abort(\"capacity\")\n" +
             (fail ? "require values.capacity == previous else => $abort(\"failed shrink changed capacity\")\n" : string.Empty);
-        // A failed shrink keeps, and releases only, the first storage.
+        // A failed shrink keeps, and releases only, the first storage; a successful one transfers its two elements through the byte copy
+        // the audit counts (R8-A1c: the legacy routine's copy stood outside its anchors).
         NativeAllocationAudit.WriteFixture(
             "DynamicArrayCost" + (fail ? "ShrinkFailure" : "ShrinkSuccess"),
             source,
@@ -156,7 +157,7 @@ public class DynamicArrayCostTest
             fail ? 1 : 2,
             NativeAllocationAudit.Bound.Any,
             failAllocation: fail ? 2 : 0,
-            transferred: 0);
+            transferred: fail ? 0 : 16);
     }
 
     // The storage boundary helpers of the Kimigayo iterators are keyed by layout ids, so warm emission reuses them without

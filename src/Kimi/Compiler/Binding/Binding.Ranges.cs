@@ -46,14 +46,6 @@ public sealed partial class Binding
     /// <returns>Whether the selection is a resolved range selection.</returns>
     internal bool IsResolvedSlice(Koto node) => node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
 
-    private static void ResetSynthetic(Koto node)
-    {
-        node.BindingState = BindingState.Unvisited;
-        node.BoundType = null;
-        node.BoundSymbol = null;
-        node.BindingFailure = BindingFailure.None;
-    }
-
     // SPEC 4.6.1: `^a` whose operand is literal-only (SPEC 12.3).
     private static bool IsLiteralOnlyFromEnd(Koto node) => node is FromEndIndexKoto fromEnd && IsIntegerLiteralOnly(fromEnd.Operand);
 
@@ -100,48 +92,56 @@ public sealed partial class Binding
         _ => false,
     };
 
+    private void ResetSynthetic(Koto node)
+    {
+        node.BindingState = BindingState.Unvisited;
+        node.BoundType = null;
+        node.BoundSymbol = null;
+        this.ClearFailure(node);
+    }
+
     // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
     // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
     private void ResetSyntheticCalls()
     {
         foreach (var call in this.propertyCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.indexerCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.viewRangeCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.rangeCalls.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var call in this.resolvedKeys.Values)
         {
-            ResetSynthetic(call);
+            this.ResetSynthetic(call);
         }
 
         foreach (var projection in this.storageProjections.Values)
         {
-            ResetSynthetic(projection);
+            this.ResetSynthetic(projection);
         }
 
         foreach (var storage in this.propertyUpdateStorage.Values)
         {
-            ResetSynthetic(storage);
+            this.ResetSynthetic(storage);
         }
 
         foreach (var input in this.propertyUpdateInputs.Values)
         {
-            ResetSynthetic(input);
+            this.ResetSynthetic(input);
         }
 
         this.resolvedSlices.Clear();
@@ -224,7 +224,7 @@ public sealed partial class Binding
         var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
         if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
         {
-            this.RecordMismatch(source.Right, source.Right, key, "a Type proven Position or PositionRange", ComparisonFailure.Shape);
+            this.RecordMismatch(source.Right, source.Right, key, new(null, MismatchForm.PositionType), ComparisonFailure.Shape);
             result = Complete(source, null);
             return true;
         }
@@ -282,11 +282,11 @@ public sealed partial class Binding
         var lengthArgument = (MemberAccessKoto)call.ArgumentNodes[1];
         ((SyntheticKoto)generic.Identifier!).Resolve(this.PositionSyntaxMember(range ? "resolvedRange" : "resolved"), null, null);
         ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, key, null);
-        ResetSynthetic(call);
-        ResetSynthetic(generic);
-        ResetSynthetic(lengthArgument);
-        ResetSynthetic(lengthArgument.Left);
-        ResetSynthetic(lengthArgument.Right);
+        this.ResetSynthetic(call);
+        this.ResetSynthetic(generic);
+        this.ResetSynthetic(lengthArgument);
+        this.ResetSynthetic(lengthArgument.Left);
+        this.ResetSynthetic(lengthArgument.Right);
         return this.BindCall(call, scope, null) is null ? null : call;
     }
 
@@ -527,10 +527,10 @@ public sealed partial class Binding
                 ((SyntheticKoto)generic.TypeArguments[1]).Resolve(null, secondType, null);
             }
 
-            ResetSynthetic(generic);
+            this.ResetSynthetic(generic);
         }
 
-        ResetSynthetic(call);
+        this.ResetSynthetic(call);
         return call;
     }
 

@@ -113,6 +113,21 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n" +
                 "    public func fill(self: ref/Self, values: uniq/Array<i32>)\n" + body));
 
+    // SPEC 7.2.3, 8.11.3: a default's copy calls its requirement on the call's closed Self. On a Type of the library witness table the witness
+    // is a generic group function, which A4 is given without its arguments (LibraryWitnessGroup.EffectsLimit): a located Limit, never a
+    // decided effect, whose removal accepts these valid programs.
+    [Theory]
+    [InlineData("H.walk(a)")]
+    [InlineData("H.place(b)")]
+    public void ALibraryWitnessInADefaultsCopyIsTheLimit(string call)
+        => Assert.Equal(
+            Expected("Unsupported_Kd Self is Work 1"),
+            Problems("contract Work\n    func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32\n        effect confined\n" +
+                "group H\n    public func take<I>(item: I) -> bool => true\n" +
+                "    public func walk<C>(values: ref/C, seen: bool = H.take(values.iterate())) -> i32\n        C is Iterable\n        return 1\n" +
+                "    public func place<P>(p: P, at: Option<isize> = p.tryResolve(4)) -> i32\n        P is Position\n        return 1\n" +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32 => {call}\n"));
+
     // SPEC 8.13, 8.13.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
     // A function item runs its selection too.
     [Theory]

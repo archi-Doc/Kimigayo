@@ -52,7 +52,7 @@ internal sealed partial class ModuleCodegen
         /// <summary>The string-comparison routines (LegacyRuntimeHelpers.StringComparisons), for a string comparison (DECISIONS R5-M118).</summary>
         Strings = 16,
 
-        /// <summary>The Array runtime (LegacyRuntimeHelpers.WriteArrayRuntime: the capacity routines), for an Array row that declares it (DECISIONS
+        /// <summary>The Array runtime (LegacyRuntimeHelpers.WriteArrayRuntime: the capacity routine), for an Array row that declares it (DECISIONS
         /// R5-M46, R5-M121).</summary>
         Arrays = 32,
 

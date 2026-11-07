@@ -20,6 +20,20 @@ public partial class KimiLibraryShapeTest
         return c;
     });
 
+    // R8-S1 C1: what a witness group declares for each Contract it serves: the Contract's own requirement by name, with the group's `self`.
+    private static readonly (WitnessMembers Group, KimiDeclarationId Contract, string Header)[] WitnessRequirements =
+    [
+        (WitnessMembers.FixedArray, KimiDeclarationId.Iterable,
+            "public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source"),
+        (WitnessMembers.FixedArray, KimiDeclarationId.UniqIterable,
+            "public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source"),
+        (WitnessMembers.FixedArray, KimiDeclarationId.IntoIterable,
+            "public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>"),
+        (WitnessMembers.IntegerPosition, KimiDeclarationId.Position, "public func tryResolve<I>(self: I, length: isize) -> Option<isize>"),
+        (WitnessMembers.String, KimiDeclarationId.Equatable, "func equals(self: ref/string, other: ref/string) -> bool"),
+        (WitnessMembers.String, KimiDeclarationId.Comparable, "func compare(self: ref/string, other: ref/string) -> i32"),
+    ];
+
     // Code generation and the runtime call these bodiless functions by position: parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
@@ -34,8 +48,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.MakeRc, "public func makeRc<T>(value: T) -> rc/T\nT is ObjectPayload"),
         (KimiDeclarationId.MakeArc, "public func makeArc<T>(value: T) -> arc/T\nT is ObjectPayload"),
         (KimiDeclarationId.Clone, "public func clone<s/T>(value: ref/(s/T)) -> s/T\ns is rc or arc"),
-        (KimiDeclarationId.ArrayClear, "public func clear(self: uniq/Self)"),
-        (KimiDeclarationId.ArrayShrinkToFit, "public func shrinkToFit(self: uniq/Self)"),
         (KimiDeclarationId.ArrayWithCapacity, "public init(! capacity: isize)"),
         (KimiDeclarationId.ArrayRepeating, "public init(! repeating: T, count: isize)\nT is Copy"),
         (KimiDeclarationId.TextFixed, "public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer"),
@@ -84,6 +96,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.StorageTryAllocateBytes, "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
         (KimiDeclarationId.StorageTransferBytes, "internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)"),
         (KimiDeclarationId.StorageStride, "internal func stride<T>() -> isize"),
+        (KimiDeclarationId.StorageDestroyValues, "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
         (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
@@ -126,7 +139,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(196, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(201, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -337,11 +350,12 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(
             [
                 "Replace  -1 0 True -1", "ArrayReserve  -1 -1 False -1", "ArrayAppend  -1 -1 False -1", "ArrayInsert  -1 -1 False -1", "ArrayPop  -1 -1 False -1", "ArrayRemove  -1 -1 False -1",
-                "ArrayClear  -1 0 False -1", "ArraySwap  -1 -1 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
+                "ArrayClear  -1 0 False -1", "ArrayShrinkToFit  -1 -1 False -1", "ArraySwap  -1 -1 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
                 "TextToString format 0 -1 False -1", "TextTryFormat format 0 -1 False -1", "WriterWrite format 1 -1 False -1", "DictionaryReserve  -1 -1 False -1",
                 "DictionaryTryInsert equals 1 -1 False -1", "DictionaryInsertOrReplace equals 1 1 False -1", "DictionaryRemove equals 1 -1 False -1",
                 "DictionaryTryGet equals 1 -1 False -1", "DictionaryClear  -1 0 False -1", "DictionaryShrinkToFit  -1 -1 False -1",
-                "DictionaryIndexUniq equals 1 -1 False -1", "DictionaryStorageFindEntry equals 1 -1 False -1", "ArrayAppendCopies  -1 -1 False -1",
+                "DictionaryIndexUniq equals 1 -1 False -1", "StorageArrayCapacity  -1 -1 False -1", "DictionaryStorageCapacity  -1 -1 False -1",
+                "DictionaryStorageFindEntry equals 1 -1 False -1", "ArrayAppendCopies  -1 -1 False -1",
                 "ArrayTruncate  -1 0 False -1", "ArrayRemoveAll  -1 0 False 1", "ArrayInsertPosition  -1 -1 False -1", "ArrayAppendAll  -1 -1 False -1",
                 "ArrayRemovePosition  -1 -1 False -1", "ArraySwapPositions  -1 -1 False -1", "ArraySwapRemove  -1 -1 False -1", "ArrayReverse  -1 -1 False -1",
             ],
@@ -435,6 +449,12 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.ArrayPop, "public func pop(self: uniq/Self) -> Option<T>")]
     [InlineData(KimiDeclarationId.ArrayRemove, "internal func removeAt(self: uniq/Self, index: isize) -> T")]
     [InlineData(KimiDeclarationId.ArraySwap, "internal func swapAt(self: uniq/Self, first: isize, second: isize)")]
+    [InlineData(KimiDeclarationId.ArrayClear, "public func clear(self: uniq/Self)")]
+    [InlineData(KimiDeclarationId.ArrayShrinkToFit, "public func shrinkToFit(self: uniq/Self)")]
+    [InlineData(KimiDeclarationId.StorageShrinkArray, "internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)")]
+    [InlineData(KimiDeclarationId.StorageDestroyArray, "internal unsafe func destroyArray<E>(handle: raw/ArrayRepr<u8>)")]
+    [InlineData(KimiDeclarationId.StorageArrayCapacity, "internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize")]
+    [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
         => Assert.Equal(header, Line(Library.Value.Library.GetSymbol(id)!.Declaration));
 
@@ -606,6 +626,20 @@ public partial class KimiLibraryShapeTest
         foreach (var (path, initializer) in new[] { ("Text.FixedBuffer", "__kimi_text_fixed"), ("Text.HeapBuffer", "__kimi_text_heap") })
         {
             Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
+        }
+    }
+
+    // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows.
+    [Fact]
+    public void EachWitnessGroupDeclaresItsContractsRequirements()
+    {
+        var library = Library.Value.Library;
+        Assert.Equal(Enum.GetValues<WitnessMembers>(), WitnessRequirements.Select(static x => x.Group).Distinct());
+        foreach (var (group, contract, header) in WitnessRequirements)
+        {
+            var requirement = library.GetSymbol(contract)!.Contract!.OwnRequirement()!;
+            var overloads = Declarations(library.Members(group)!, requirement.Name, true);
+            Assert.Equal(header, Line(Assert.Single(overloads, static x => x is FunctionKoto { IsSpecialization: false })));
         }
     }
 
