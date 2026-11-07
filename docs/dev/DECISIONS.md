@@ -9882,18 +9882,22 @@ resumed by R4-M86 (2026-10-20).
     `BindingFailure` entry); an `@follow` repair (SPEC 23.3 has no such kind; it would hide the read's undecided legality);
     `ArithmeticTerminal` stopping before a raw pointer (two rules for `q * 2`); reporting in `CompleteBinary` (after the wrong fit).
 
-- **BU-117 A shared-name qualifier that neither path completes is a located Unsupported until both paths are evaluated** (2026-11-07;
-  PLAN G481 unit B, G488; Major; a temporary structure) SPEC 9.2, 9.6, 23.1.1; DIAGNOSTICS rule 3.
-  - Rule: where a member access's qualifier names both a Type and a value and neither namespace's path finds the member, the
-    qualifier gets one located Unsupported_Kd and the member rests on it. The verdict needs both complete paths (9.6), but Member's
-    Type path publishes the shared qualifier, which the value path then reads (G488), so neither "missing" nor "ambiguous" can be
-    decided. A Language error there would be a conservative error on a valid form (AGENTS Diagnostics). The class includes invalid
-    programs (d03, d04, d11, s09).
-  - Kept: where both paths find the member, AmbiguousBinding_Kd stays. It is read from the same path, so it is wrong for the valid
-    d12, d13 and s12 (a known limit in G488). The owner's O-32 decides whether the found-both class takes the same Unsupported_Kd.
+- **BU-117 A shared-name qualifier whose paths find the member on neither or both is a located Unsupported until both paths are
+  evaluated** (2026-11-07; PLAN G481 units B and c, G488; Major; a temporary structure; the found-both class by the owner's O-32,
+  verbatim 「(a)」) SPEC 9.2, 9.6, 23.1.1; DIAGNOSTICS rule 3.
+  - Rule: where a member access's qualifier names both a Type and a value named like the Type or group (a parameter, a local or a
+    function), the Type path bound the qualifier, and neither or both namespaces' paths find the member, the qualifier gets one
+    located Unsupported_Kd and the member rests on it. The verdict needs both complete paths (9.6), but Member's Type path publishes
+    the shared qualifier, which the value path then reads (G488), so neither "missing" nor "ambiguous" can be decided. A Language
+    error there would be a conservative error on a valid form (AGENTS Diagnostics): the valid d01 when neither path finds the member,
+    the valid d12, d13, s12, g08 and g10 when both do. The class includes invalid programs (d03, d04, d11 and s09, where both paths
+    fail; d06, d14 and s10, where both succeed).
+  - Where the Type has several bases or a cycle, the access's AmbiguousBinding_Kd becomes the located Unsupported_Kd; the
+    declaration's own error records stay (SPEC 6.2.2; g01, g03, g09).
   - A group qualifier names its group, so no value takes its Type, and the CheckFaulted_Kd crash is gone.
   - Removal stage: R7 N1 (`ResolvePath` evaluates both paths before either publishes).
-  - Rejected: AmbiguousBinding_Kd or UnresolvedBinding_Kd for the found-neither class (a Language error on valid forms, d01).
+  - Rejected: AmbiguousBinding_Kd or UnresolvedBinding_Kd for the found-neither class (a Language error on valid forms, d01);
+    AmbiguousBinding_Kd for the found-both class (O-32 (b), keeping the split: a Language error on the valid d12, d13 and s12).
 
 - **BU-112 Parsing bounds syntax nesting at L = 1,024: `SyntaxNesting` and `NestingLimit_Kd`** (2026-11-06; PLAN G444 U2a, unit
   bu191; Major, G444's design (a) reviewed; the owner (board O-20), verbatim 「推奨どおり承認」: Q1 a new Resource code, Q2 L = 1,024
