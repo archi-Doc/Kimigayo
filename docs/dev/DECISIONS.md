@@ -6627,7 +6627,8 @@ resumed by R4-M86 (2026-10-20).
     table (a side table and a branch in `AddObligation`); judging class 1 only (leaves nested Function Type obligations unjudged);
     judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge (`IsDerived` owns
     derivation). Open: A's `IsDerived` widening for an associated specification's record.
-- **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46; amended by R5-M164) (2026-10-22; designs A′ and B′, design-final
+- **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46, BU-113 (G160-2b's rejected binder cap); amended by R5-M164)
+  (2026-10-22; designs A′ and B′, design-final
   §14 "B′+"; unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one
   slot whose role the Semantics decides (0 B; B′'s +8 B field is not taken). `Origin` never reads a raw layer's; `RawOrigin` only a raw
   layer's. `TyCtxt.Intern`'s one `origin` parameter writes the slot (ruling (a): `Intern` and the constructor were at 10 parameters;
@@ -9840,7 +9841,8 @@ resumed by R4-M86 (2026-10-20).
     rejected EffectBound shape does not apply. `ArchitectureRulesTest`'s "String explanations in Binding failure facts" keeps the one
     left, `UnboundSlotFact.Note` (PLAN G499).
 
-- **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; Major
+- **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; superseded
+  in part by BU-113 (its gate, inputs and Closure-environment route); Major
   without a design review, F's GO; review REVISE B-1, fix round 1; re-check 1 REVISE B-3, fix round 2; re-check 2 B-4, the owner's
   O-23, verbatim 「aでお願いいたす」, a new unit) SPEC 5.2.1 condition 3, 5.7 Authority, Calls. Keeps BU-24's G160-2b: the
   stored-layer reader (`DeclaredStep`, `TyCtxt.RawStep`) is unchanged, and the retention walk of a contract's inputs reads a layer
@@ -9922,6 +9924,64 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a node at depth L + 1 as the cut (its `ErrorKoto` leaves depth L + 1, and a left-deep chain's innermost node gives two
     records); walking the whole module at each document (quadratic in documents); folding the walk into `SyntaxTable.Number` (it runs
     at Bind and would edit syntax there).
+
+- **BU-113 A raw layer steps by its position: the cap reads the declared signature, any other layer its Origin's binder**
+  (2026-11-07; PLAN G487, G493, G501; units bu206-U1 (restructuring, behavior unchanged), bu206-U2 and its fix round 1, one window;
+  Major; design review REVISE B-1–B-3, re-check 1 REVISE B-4, B-5, re-check 2 ACCEPT; implementation review REVISE B-1–B-3, fix
+  round 1; the owner's O-36 (a) 「(a)で決定します。」; M's consent C-92) SPEC 5.2.1 condition 3, 5.7 Authority, Calls, 15.3.4.
+  Supersedes in part BU-108 (its gate, its instantiated inputs and its by-kind route for a Closure's environment) and BU-24's
+  G160-2b (its rejected "signature cap from the Origin atom's binder").
+  - Rule (`Binding.RawStepAt`, the one reader for the storage walk's raw arm and RawContent). A raw layer a contract's walk meets
+    steps, in this order:
+    1. where a declaration writes it (`StorageAt.Written`, BU-58): by `DeclaredStep`;
+    2. in an erased signature (a Function Type's or a Callable bound's): by its kind;
+    3. where the walked signature's declared input or result writes it (`StorageAt.Signature`, `RetentionAtom.Signature`: the declared
+       Type at the position; null inside a Type parameter's image or a Closure's environment): by the cap, the declared layer's Origin
+       over the callee's declared inputs (`TyCtxt.Signature` without the substitution), `x.s` as the slot argument of x's declared
+       Type. Every admitted Semantics case decides the cap (5.2.1, 5.7; the owner's O-36 (a)): a slot's requirement and a pair layer
+       of the callee's own binder are read over every case the declaration admits, never the case a call selects;
+    4. otherwise (a Type argument's layer, a Closure environment's): where its Origin is bound (BinderStep, 5.7 Authority).
+  - BinderStep's domain: an Input or Parameter Origin of a function, read through that function's declared inputs; a Type's own slot,
+    read through its Loan requirement over its declaration's cases. Any other binder steps by its kind: an accessor's Origins (binder
+    `PropertyAccessorKoto` or a Property), a Closure's own Input Origins (no symbol), a destructor, a body-local Place or inference
+    atom, a set, `static`. Those forms are sound but unprobed.
+  - The walked signature: a call's target's declaration (`TyCtxt.Signature(Subst.Target, null, i)`); for a Value call of a Function
+    Item, the item's function's declaration (its signature binds the generic's arguments, SPEC 7), so `let f = g<…>; f(…)` reads g's
+    declared inputs as `g(…)` does (t04i); for a Closure, its own signature.
+  - So a caller's Origin is never counted as the walked signature's (G493, G501). A declaring slot is read as written, whatever the
+    receiver binds it to (G487). A layer whose binder states its Origin only by shared borrows is Shared: v01, v02, v03, a08, r20, b01,
+    t10v and t10w (valid) are accepted. One whose binder states it by `uniq` is Exclusive: s01 and its twins are rejected.
+  - Removes the kind gate on the instantiated Origin, the instantiated statement count, and the by-kind arm for a Closure's
+    environment (t10v, t10w accepted; c01, c02, c04b, d03 and v3–v5 keep their records, since their binders state the Origin by
+    `uniq`).
+    Introduces no binder test of the walked callee (BU-108's rejected O-23 (b)).
+  - Why BU-24 G160-2b's rejection no longer holds: it rejected the binder cap because it "caps body-written Types that SPEC 5.2.1 leaves
+    uncapped". SPEC 5.2.1's revision of 2026-11-06 (da2ee3cf1) judges an Origin "where the Origin is bound" and says "Borrows formed in
+    a body do not count for an Origin the signature binds". A layer a body or a holder writes is decided at step 1 or by the cap before
+    the binder (r27, r27n, r29, r31 keep their records).
+  - A5's reader is unchanged: `TyCtxt.RawStep`/`DeclaredStep` (A5's guard, R4-M147) still reads a Type argument's layer by its kind,
+    as BU-108 kept it. So for one supplied layer, retention answers by its binder and A5's guard by its kind (the paramShared Limit,
+    PLAN G148 (1)'s Open).
+  - Cause of G493: G148 (1)'s route (BU-108, landed in W-42) read the cap over the instantiated inputs. s01, s03, s05, a02, a03, a04,
+    a09, n03, e02 and e03 (invalid) were accepted, though f69d55e12 and ced9522bc reject them (a02 was already accepted on f69d55e12),
+    and t04i through a Function Item.
+  - Rejected:
+    - Revision 1's per-Origin predicate (P1, P2, P3): an Origin cannot tell a signature's layer from a Type argument's (a06, a07 valid).
+    - Option N (a slot-binding admission): a second rule in one gate.
+    - Option W (refuse every Origin the call brings): rejects n01.
+    - G501's "condition 2 stays": as P3.
+    - Revision 2's Limit route: CallRetention.Limit is `OwnershipDepthLimit_Kd`'s bound, and the class is decidable by its binder.
+    - Joining the binder reading at a declared position (Shared when the cap or the binder says so; the implementation review's B-1
+      fix): it accepts M's v2 (invalid: via's layer states HS2's `uniq`-kept slot, which the caller binds to `a`, stated only by `ref`).
+    - The call's selected pair case for the callee's own Origin (dev's instantiated reading; O-36 (b)): t11v (valid by its read-only
+      path) and t11u (invalid) hold the same call contract, and the call's Subst carries no Origin substitution for `a`; accepting
+      t11v so would accept t11u.
+    - A located Unsupported_Kd for the class (fix2-proto-a): Types cannot tell t09c from s01, so it moved the whole G493 family and
+      valid programs (e01, a06, a07, c12, d05) as well.
+  - Limit (STATUS, PLAN G549): a raw pointer valid only by its read-only path, where the binder states its Origin by both `ref` and
+    `uniq` (t09c) or a callee's own pair binder admits `uniq` (t11v), gets a conservative ComparisonLoanConflict_Kd; t11v was accepted
+    on dev (the instantiated pair case) and is the unit's recorded move under O-36 (a). Removed with a per-value raw provenance fact
+    (G148 (1)'s option (a) or (b)).
 
 - **BU-115 A value call completes its waiting parts at their instantiated parameter; a call stopped before its solution, at their
   declared one until rule W** (2026-11-07; PLAN G494 unit 1, unit bu198; Major; a temporary structure) SPEC 10.5.1, 10.5.4, 7.7.4,

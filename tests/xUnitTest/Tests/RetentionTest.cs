@@ -81,6 +81,21 @@ public sealed partial class RetentionTest
     // A holder whose slot an exclusive Loan Field keeps (PLAN G148 (1)'s review B-1: its raw layers stating `s` are exclusive).
     private const string SlotKept = "struct HS {s}\n    let loan: Loan<uniq/(raw/u8) during s>\n";
 
+    // ACallReadsARawLayerByItsPosition's View: its slot kept by a `ref` or a `uniq` Loan, a caller binding it to a `var` local's slot, and
+    // a method relaying a Type argument's layer stating the slot to a generic of a group.
+    private const string ViewRef = "struct View {source}\n    let loan: Loan<ref/(raw/u8) during source>\n    public init(t: ref/(raw/u8) during source) => self.loan = Loan.init(t)\n";
+
+    private const string ViewUniq = "struct View {source}\n    let loan: Loan<uniq/(raw/u8) during source>\n    public init(t: uniq/(raw/u8) during source) => self.loan = Loan.init(t)\n";
+
+    private const string ViewCall = "func caller(r: ref/(raw/u8), v: raw/u8)\n    var vw = View.init(r)\n    var q = r@follow@raw\n    vw.put(q@uniq, v)\n";
+
+    private const string ViewUniqCall = "func caller(r: uniq/(raw/u8), v: raw/u8)\n    var q = r@follow@raw\n    var vw = View.init(r)\n    vw.put(q@uniq, v)\n";
+
+    private const string ViewGet = "func caller(r: ref/(raw/u8), v: raw/u8)\n    var vw = View.init(r)\n    var q = r@follow@raw\n    let p = vw.get(q@uniq, v)\n    return\n";
+
+    private const string ViewRelay = "    public func relay(self: uniq/Self, h: uniq/Wrap<raw/(raw/u8) during source>, v: raw/u8) => Keep.keep(h, v)\n" +
+        "struct Wrap<E>\n    internal var value: E\ngroup Keep\n    public func keep<U>(w: uniq/U, v: raw/u8) => ()\n";
+
     // A slot kept by an exclusive Loan Field (design review A-B3: a raw parameter during `v.source` may store what the Dictionary admits).
     private const string KeptView = "struct View<K, V> {source}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during source>\n" +
         "    public init(d: uniq/Dictionary<K, V> during source) => self.loan = Loan.init(d)\n";
@@ -598,15 +613,39 @@ public sealed partial class RetentionTest
     // DECISIONS R4-M154, Revision 10: a source's fit is the conjunction over the layers of its path, but those the premise catalog's
     // well-formedness relates to the layer above, so a borrow formed through `x`'s raw layer lists one pair per layer the position's
     // closure misses: into `*w`, `p`, `r` (the raw layer's, which no well-formedness relates to `p`) and `a` (none relates it to `r`);
-    // into Box2's `uniq/i32 during a` past x's referent, `p` and `r`.
-    [Fact]
-    public void ASourcesPairsAreOneConjunctionOverItsPath()
+    // into Box2's `uniq/i32 during a` past x's referent, `p` and `r`. x's raw layer is a Type argument's, judged where `r` is bound (SPEC
+    // 5.7 Authority, 5.2.1 condition 3; DECISIONS BU-113): g states `r` by `zr: uniq` (and by `zr: ref` with `zu: uniq`), so f may write
+    // past it; by `zr: ref` alone, a pointer stating `r` has no write authority, and f writes nothing past it (`reached {}`).
+    [Theory]
+    [InlineData("zr: uniq/i32 during r", "reached {0 Content} if {0 Value: p > a & 0 Value: r > a}")]
+    [InlineData("zr: ref/i32 during r", "reached {}")]
+    [InlineData("zr: ref/i32 during r, zu: uniq/i32 during r", "reached {0 Content} if {0 Value: p > a & 0 Value: r > a}")]
+    public void ASourcesPairsAreOneConjunctionOverItsPath(string statements, string reached)
     {
         var c = Bind("struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
             "func f<T, E>(x: T, w: uniq/E) => ()\n" +
-            "func g(zr: ref/i32 during r, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
-        Assert.Equal(["store 0: own {0 Content} if {0 Value: p > r}, reached {0 Content} if {0 Value: p > a & 0 Value: r > a}, store 1: own {1 Content} if {0 Value: p > s & 0 Value: r > s & 0 Value: a > s}, reached {}"], Calls(c, "f"));
+            $"func g({statements}, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
+        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r}}, {reached}, store 1: own {{1 Content}} if {{0 Value: p > s & 0 Value: r > s & 0 Value: a > s}}, reached {{}}"], Calls(c, "f"));
     }
+
+    // SPEC 5.2.1 condition 3, 5.7 Authority (DECISIONS BU-113): a call's contract reads a raw layer by its position. A View method's own
+    // layer (`during source`) is capped by `self`'s `ref`-kept slot, a result layer too, whatever the receiver binds the slot to; a
+    // `uniq`-kept slot is not. In a Type's own body a Type argument's layer stating its slot is judged by that slot's Loan requirement:
+    // `ref` stores nothing past it, `uniq` may. Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
+    // over every case its declaration admits, also under a `ref`-case instance (SPEC 15.3.5).
+    [Theory]
+    [InlineData(ViewRef + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewUniq + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewUniqCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
+    [InlineData(ViewRef + "    public func get(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) -> raw/(raw/u8) during source => null\n" + ViewGet, "get", "result {0 Content, 1 Chain, 2 Value Chain}, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewRef + ViewRelay, "keep", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData(ViewUniq + ViewRelay, "keep", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(
+        PairAnnotationBindingTest.HolderRefUniq + "    public func put(self: uniq/Self, p: raw/(ref/i32 during q) during a, v: ref/i32 during q) => ()\n" +
+        "func g(r: ref/(ref/i32 during q), h: uniq/(Holder<ref/(ref/i32 during q) during r> during o), p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => h.put(p, v)\n",
+        "put",
+        "store 0: own {0 Content, 1 Content}, reached {}, store 1: own {0 Content, 1 Content, 2 Value}, reached {}")]
+    public void ACallReadsARawLayerByItsPosition(string source, string callee, string expected)
+        => Assert.Equal([expected], Calls(Bind(source), callee));
 
     // SPEC 22.2.3, 15.6.3, 8.4: a requirement on the caller's abstract Self is read as the caller's premises make its contract: under
     // `I is Iterator`, `next`'s item is `I.Item`, which names no `step`, so it descends from the receiver's referent (Content) and two

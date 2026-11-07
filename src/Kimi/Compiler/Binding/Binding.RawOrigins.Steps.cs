@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>The authority a raw layer's Origin can keep (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24): an over-approximation that the
-/// safe analyses read and no diagnostic reads (<see cref="Binding.StepOf"/>, <see cref="Binding.StoredStep"/>,
-/// <see cref="Binding.SignatureStep"/>).</summary>
+/// <summary>The authority a raw layer's Origin can keep (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-113): an over-approximation
+/// that the safe analyses read and no diagnostic reads (<see cref="Binding.StepOf"/>, <see cref="Binding.StoredStep"/>,
+/// <see cref="Binding.RawStepAt"/>).</summary>
 internal enum RawStep : byte
 {
     /// <summary>The layer states no Origin: the pointer reaches what its value carries.</summary>
@@ -19,17 +20,18 @@ internal enum RawStep : byte
     Static,
 
     /// <summary>A pointer read from the layer has read authority only: a Field's or Case payload's layer stating a slot whose Loan
-    /// requirement is `ref` in every case its holder selects, or a signature's layer whose Origin only shared input borrows of that
-    /// signature state.</summary>
+    /// requirement is `ref` in every case its holder selects, a layer the walked signature declares whose Origin its declared inputs state
+    /// only by shared borrows and `ref` slots, or a Type argument's layer whose Origin its binder states so.</summary>
     Shared,
 
     /// <summary>Any other Origin: a write through the pointer may be defined.</summary>
     Exclusive,
 }
 
-// Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-41, BU-46; contract in Binding.RawOrigins.cs): the authority a
-// raw layer's Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a signature's layer
-// (SignatureStep) and a layer an instance stores (StoredStep and its members StoredMembers, both over StoredLayer, which reads the
+// Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-41, BU-46, BU-113; contract in Binding.RawOrigins.cs): the
+// authority a raw layer's Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a layer a
+// contract's walk meets by its position (RawStepAt, over SignatureStep and BinderStep) and a layer an instance stores (StoredStep and
+// its members StoredMembers, both over StoredLayer, which reads the
 // instance's kept part and, by WrittenAt, which TyCtxt publishes, the Type its declaration writes there; the step from the layer its
 // declaration states, DeclaredStep, which StoredStep and the hold walk read).
 public sealed partial class Binding
@@ -79,12 +81,36 @@ public sealed partial class Binding
         return Written(written);
     }
 
+    // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-113, superseding BU-108's gate): the step of a raw layer a contract's walk meets, by its
+    // position: a layer a declaration writes (`written`, a Field's or payload's) by DeclaredStep; one of an erased signature (a Function
+    // Type's or a Callable bound's, which SPEC 5.2.1 does not cap) by its kind; one at a position the walked signature declares
+    // (`signature`, the declared Type there) by the cap over the callee's declared inputs, its Origin read as written, which is where the
+    // signature binds it; any other, a Type argument's or a Closure environment's, where its Origin is bound (BinderStep). A declared
+    // layer's binder reading is not joined in: where the declaration states its slot by an exclusive Loan, a caller's shared statement
+    // does not bound the call's write (M's v2).
+    internal RawStep RawStepAt(BoundType layer, BoundType? written, BoundType? holder, BoundType? signature)
+    {
+        if (ReferenceTypes.IsPointer(written))
+        {
+            return this.DeclaredStep(layer, written, holder);
+        }
+
+        if (this.retentionInputs == 0)
+        {
+            return StepOf(OwnedOrigin(layer));
+        }
+
+        return ReferenceTypes.IsPointer(signature) && this.retentionDeclared.Count > 0
+            ? this.SignatureStep(SlotArgument(OwnedOrigin(signature!)), CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1])
+            : this.BinderStep(OwnedOrigin(layer));
+    }
+
     // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): the step of a raw layer written in a signature whose input
-    // Types are `inputs` (a parameter's or the result's, under a call's substitution or not; none for a Function Type's): Shared when some
-    // input states its Origin and every statement of it in the inputs keeps only shared Loans (Statements: the outer Origin of a `ref`,
-    // `objref` or Slice layer or of a pair layer admitting only those, an argument of a slot `ref` in every case its Type selects), since a
-    // pointer read from the layer then has no write authority; raw layers state no borrow, and borrows formed in a body never count. Any
-    // other is its kind (StepOf).
+    // Types are `inputs`, read as that signature declares them (DECISIONS BU-113: the walked callee's or a binder's declared inputs, never
+    // a call's instantiated ones; none for a Function Type's): Shared when some input states its Origin and every statement of it in the
+    // inputs keeps only shared Loans (Statements: the outer Origin of a `ref`, `objref` or Slice layer or of a pair layer admitting only
+    // those, an argument of a slot `ref` in every case its Type selects), since a pointer read from the layer then has no write
+    // authority; raw layers state no borrow, and borrows formed in a body never count. Any other is its kind (StepOf).
     internal RawStep SignatureStep(BoundOrigin? raw, ReadOnlySpan<BoundType> inputs)
     {
         var kept = RawStep.Unstated;
@@ -110,6 +136,12 @@ public sealed partial class Binding
         return layer.RawOrigin is not { } origin || StepOf(origin) != RawStep.Exclusive ||
             (declared is not null && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in instance), members));
     }
+
+    // A raw Origin as its signature writes it (DECISIONS BU-113): `x.s` denotes the slot argument of x's declared Type (the declaration's
+    // own slot for `self.s`, the projection itself for an input whose Type omits it); any other Origin is itself.
+    private static BoundOrigin? SlotArgument(BoundOrigin? origin)
+        => origin is { Kind: OriginKind.Input, TargetSlot: >= 0, Occurrence.BoundType: { } instance } &&
+            (uint)origin.TargetSlot < (uint)instance.OriginArguments.Count ? instance.OriginArguments[origin.TargetSlot] : origin;
 
     // The declared slot a raw Origin names: an Input atom's target slot (a projection `x.s` whose slot argument is omitted) with the
     // Type of the input it projects (`instance`), a declaration's own slot (no instance: its declaration's cases); null for any other.
@@ -139,6 +171,37 @@ public sealed partial class Binding
     // Whether an Origin is `origin` or a meet with it as an operand.
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
+
+    // SPEC 5.7 Authority (DECISIONS BU-113): a raw layer judged where its Origin is bound, "never by the caller's actual borrow": a
+    // function's Input or Parameter Origin by that function's declared inputs (SignatureStep over TyCtxt.Signature, read in
+    // place into retentionBinderInputs), a Type's own slot by its Loan requirement over its declaration's cases; any other (an accessor's
+    // or a Closure's own Origin, which has no declared signature here, a body-local Place or inference atom, a set, `static`) by its kind.
+    private RawStep BinderStep(BoundOrigin? raw)
+    {
+        raw = SlotArgument(raw);
+        if (raw is { Kind: OriginKind.Parameter, Binder: DeclarationContainerKoto } && NamedSlot(raw, out _) is { } slot)
+        {
+            return this.RequirementAt(slot, null).Strongest == LoanRequirement.Ref ? RawStep.Shared : StepOf(raw);
+        }
+
+        if (raw is not { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionKoto { IsDestructor: false, BoundSymbol: { } function } })
+        {
+            return StepOf(raw);
+        }
+
+        var inputs = this.retentionBinderInputs;
+        inputs.Clear();
+        _ = TyCtxt.Signature(function, null, -1, out var count);
+        for (var i = 0; i < count; i++)
+        {
+            if (TyCtxt.Signature(function, null, i, out _) is { } input)
+            {
+                inputs.Add(input);
+            }
+        }
+
+        return this.SignatureStep(raw, CollectionsMarshal.AsSpan(inputs));
+    }
 
     // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」; design-final §15): the step of a raw layer an instance stores (`layer`,
     // in its kept part), capped by the layer its declaration states there (`declared`), whose slot the substitution replaces: Shared when

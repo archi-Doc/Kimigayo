@@ -40,6 +40,14 @@ public sealed partial class Binding
     // The Origins the call's Type arguments, Self and declaring Type bring (Instantiation), reused.
     private readonly HashSet<BoundOrigin> retentionInstantiated = new(ReferenceEqualityComparer.Instance);
 
+    // The walked signature as its declaration writes it (DeclareSignature): its inputs, then its result, each the declared counterpart
+    // the walks pair with an instantiated position (StorageAt.Signature, RetentionAtom.Signature; DECISIONS BU-113); empty for an erased
+    // signature and where the declaration's parameters are not the contract's inputs (a `drop`'s receiver). Reused.
+    private readonly List<BoundType> retentionDeclared = new();
+
+    // A binder's declared inputs while BinderStep reads them (TyCtxt.Signature in place), reused.
+    private readonly List<BoundType> retentionBinderInputs = new();
+
     // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where every raw source's own value may be held, each a
     // carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the computation's own
     // erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
@@ -51,9 +59,8 @@ public sealed partial class Binding
     private readonly HashSet<BoundType> retentionReached = new(ReferenceEqualityComparer.Instance);
 
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
-    // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
-    // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
-    // in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
+    // (RawContent), reused, and how many of them are a callee's own signature inputs (none for an erased signature, a Function Type's or
+    // a Callable bound's, whose raw layers read their kind, RawStepAt: SPEC 5.2.1 caps a layer written in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
     // (RetentionWalk), so each is walked once; and whether a member walk was incomplete (CallRetention.Limit).
     private readonly List<BoundType> retentionErasedScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
@@ -80,6 +87,7 @@ public sealed partial class Binding
     {
         var use = callee.OriginBinder;
         var declaring = types?.Declaring;
+        this.DeclareSignature(types?.Target ?? (callee.ClosureDefinition is null ? callee.BoundSymbol : null), inputs, result);
         var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
         try
         {
@@ -114,6 +122,7 @@ public sealed partial class Binding
     // any abstract part of its outputs may hold each raw source's own value (rule 3, the owner's reading of SPEC 15.6.4; DECISIONS BU-66).
     internal CallRetention RetainsErased(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, Koto? binder)
     {
+        this.retentionDeclared.Clear();
         var environment = this.BeginRetention(use, inputs, result, null, 0);
         try
         {
@@ -237,10 +246,10 @@ public sealed partial class Binding
         this.retentionLimit = false;
         for (var i = 0; i < inputs.Length; i++)
         {
-            this.RetentionInput(inputs[i], i);
+            this.RetentionInput(inputs[i], i, this.SignatureInput(i));
         }
 
-        var atom = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
+        var atom = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null, Signature: this.SignatureResult);
         this.RetentionWalk(result, atom, OriginVariance.Covariant, callable: false);
         return this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of a retention at `{use}` is not ready: it depends on itself (PLAN G74).");
@@ -257,7 +266,45 @@ public sealed partial class Binding
         this.retentionRawSources.Clear();
         this.retentionFills.Clear();
         this.retentionInstantiated.Clear();
+        this.retentionDeclared.Clear();
     }
+
+    // The walked signature as its declaration writes it (retentionDeclared): its function's parameter Types and result without any
+    // substitution (`target`: a call's target, else the callee's own symbol, also for a Value call of a Function Item, whose signature
+    // binds the generic's arguments; SPEC 7), or a Closure's own signature, the inputs and result themselves (`target` null); none where
+    // the declaration's parameters are not the inputs. TyCtxt.Signature reads the declaration in place, so this allocates nothing.
+    private void DeclareSignature(BindingSymbol? target, ReadOnlySpan<BoundType> inputs, BoundType result)
+    {
+        this.retentionDeclared.Clear();
+        if (target is null)
+        {
+            this.retentionDeclared.AddRange(inputs);
+            this.retentionDeclared.Add(result);
+            return;
+        }
+
+        var declared = TyCtxt.Signature(target, null, -1, out var count);
+        for (var i = 0; declared is not null && count == inputs.Length && i < count; i++)
+        {
+            if (TyCtxt.Signature(target, null, i, out _) is not { } input)
+            {
+                this.retentionDeclared.Clear();
+                return;
+            }
+
+            this.retentionDeclared.Add(input);
+        }
+
+        if (declared is not null && count == inputs.Length)
+        {
+            this.retentionDeclared.Add(declared);
+        }
+    }
+
+    // The declared counterpart of input `index` and of the result (retentionDeclared), null for none.
+    private BoundType? SignatureInput(int index) => index >= 0 && index < this.retentionDeclared.Count - 1 ? this.retentionDeclared[index] : null;
+
+    private BoundType? SignatureResult => this.retentionDeclared.Count > 0 ? this.retentionDeclared[^1] : null;
 
     // The Origins a Type of the call's Subst brings (retentionInstantiated; DECISIONS R4-M154, Revision 2): the caller's, whose relations
     // its solved Origins hold, each part once (retentionParts).
@@ -385,11 +432,11 @@ public sealed partial class Binding
         this.retentionPositions.Clear();
         for (var i = 0; !ReferenceEquals(inputs, BoundType.Unit) && i < inputs.Components.Count; i++)
         {
-            this.RetentionInput(inputs.Components[i], i);
+            this.RetentionInput(inputs.Components[i], i, declared: null);
         }
 
         var result = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
-        this.RetentionWalk(signature.Components[1], result, OriginVariance.Covariant, callable: false);
+        this.RetentionWalk(signature.Components[1], result, OriginVariance.Covariant, callable: false); // An erased signature has no declared counterpart.
         this.AddErasedRelations(environment, start, erased.Binder);
         this.ErasedFills(start, raws);
         atoms.RemoveRange(start, atoms.Count - start);
