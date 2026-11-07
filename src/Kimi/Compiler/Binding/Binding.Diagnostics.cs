@@ -24,9 +24,6 @@ public sealed partial class Binding
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
 
-    // SPEC 23.3: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
-    private Dictionary<Koto, (Koto At, object Actual, object Expected)>? mismatches;
-
     // SPEC 15.6.1: the Origin relation that an Origin-only fit failure leaves, at the value that supplies its longer end.
     private Dictionary<Koto, OriginRelationFact>? originRelations;
 
@@ -53,9 +50,6 @@ public sealed partial class Binding
     // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
-
-    // SPEC 23.1.1: the part of an unsupported node that shows the form, such as one capture entry or a callee.
-    private Dictionary<Koto, SourceSpan>? unsupportedSpans;
 
     // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
     // the generic container that declares it (Outer), with the declared and the written counts.
@@ -427,25 +421,25 @@ public sealed partial class Binding
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
     // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
     // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
-    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
+    private BoundType? RecordMismatch(Koto node, Koto at, MismatchSide actual, MismatchSide expected, in ComparisonFailure failure)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch; the
         // erasure recorded it at this value (DECISIONS BU-107), so this reader only checks that an outcome exists.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } owner &&
-            actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
+        if (expected.Type is { Kind: BoundTypeKind.Function } owner &&
+            actual.Type is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
             this.FailOwnedConversion(value, owner, at, node))
         {
             return null;
         }
 
-        var storage = actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
+        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
         if (storage && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
-                : this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
+                : this.RecordComparisonFacts(node, at, actual.Type!, expected.Type!, failure);
         }
 
-        return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+        return this.RecordTypeMismatch(node, at, actual, expected);
     }
 
     // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
@@ -625,7 +619,7 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.caseBinders?.Clear();
-        this.mismatches?.Clear();
+        this.report.Clear();
         this.nameSteps.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();
@@ -633,7 +627,6 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();
-        this.unsupportedSpans?.Clear();
         this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();

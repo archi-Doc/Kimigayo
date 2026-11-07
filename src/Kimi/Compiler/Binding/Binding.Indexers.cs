@@ -262,9 +262,9 @@ public sealed partial class Binding
         else
         {
             // A synthesized node is outside the tree that each Bind resets.
-            ResetSynthetic(call);
-            ResetSynthetic(call.Method);
-            ResetSynthetic(((MemberAccessKoto)call.Method).Right);
+            this.ResetSynthetic(call);
+            this.ResetSynthetic(call.Method);
+            this.ResetSynthetic(((MemberAccessKoto)call.Method).Right);
         }
 
         // SPEC 10.2: a literal key is an unfitted literal that each call fits to ref/Key once; the second synthesized call
@@ -274,10 +274,10 @@ public sealed partial class Binding
         {
             if (key is UnaryKoto prefix)
             {
-                ResetSynthetic(prefix.Operand);
+                this.ResetSynthetic(prefix.Operand);
             }
 
-            ResetSynthetic(key);
+            this.ResetSynthetic(key);
         }
 
         // Like every synthesized call, its own failure is a published fact that the index expression rests on.

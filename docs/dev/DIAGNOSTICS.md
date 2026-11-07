@@ -78,7 +78,7 @@ DiagnosticFact
 - A problem with several subjects is normalized before it is recorded (SPEC §23.1.2).
 - A problem that a later phase reports with a code without facts, such as MIR code generation's `InternalInvariant_Kd` (a broken contract at its site, its only record since R6-check H5's unit G ended gate step 2 and the arena interim, DECISIONS R5-M96's amendment; the instance collector's only after a complete Binding, DECISIONS R5-M151), has its location as its subject (`DiagnosticCollection.ReportLocation`): the reports of two nodes at one location, such as the siblings a transformation synthesizes with its span, are one problem (DECISIONS R5-M65).
 - Values that can change after recording (a rebound call, reused scratch storage) are captured as values; immutable analysis data may be referenced. Prerequisite, evidence and related-location arrays are copied at the recording boundary, including the first report of a problem.
-- Analysis-specific failure enumerations remain; each converts to diagnostics in one place (Binding's `Check` switch, `OwnershipIssue.Code`, the control-flow conversion).
+- Analysis-specific failure enumerations remain; each converts to diagnostics in one place (Binding's `CodeOf` table, `OwnershipIssue.Code`, the control-flow conversion).
 
 ### 4.2. Owner, partitions and error state
 
