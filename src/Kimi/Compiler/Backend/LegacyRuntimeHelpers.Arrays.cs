@@ -9,9 +9,6 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum ArrayHelperKind : byte
 {
-    Clear,
-    Drop,
-
     // SPEC 22.2: the storage boundary over an Array handle and its remainder records.
     BorrowStorage,
     OwnStorage,
@@ -21,12 +18,11 @@ internal enum ArrayHelperKind : byte
 }
 
 /// <summary>What an Array helper's descriptor reads of its function's result, which its item's instance gives (ModuleCodegen.ResultParts;
-/// DECISIONS R5-M121): nothing; or a remainder record's Fields and its storage Field's size (SPEC 22.2), an owned remainder's with its
+/// DECISIONS R5-M121): a remainder record's Fields and its storage Field's size (SPEC 22.2), an owned remainder's with its
 /// capacity, a fixed array's, whose routine is given the array's length.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum ArrayHelperResult : byte
 {
-    None,
     Remainder,
     OwnedRemainder,
     FixedRemainder,
@@ -51,33 +47,31 @@ internal sealed record ArrayHelperRow(
     HelperNeeds Needs,
     ArrayHelperResult Result);
 
-/// <summary>A generated Array helper for one element: its ABI, element descriptor and, for the storage boundary, its remainder record's
-/// Fields.</summary>
+/// <summary>A generated Array helper for one instance: its ABI and its remainder record's Fields.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, StoredValue Element, RemainderFields Fields = default)
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, RemainderFields Fields)
 {
-    /// <summary>Creates the helper of a kind for an element, named by the kind's row prefix and shaped by its row.</summary>
+    /// <summary>Creates the helper of a kind, named by the kind's row prefix and shaped by its row.</summary>
     /// <param name="kind">The helper kind.</param>
-    /// <param name="element">The element descriptor.</param>
-    /// <param name="elementName">The generator's name of the element, which follows the prefix.</param>
+    /// <param name="elementName">The generator's name of the instance, which follows the prefix.</param>
     /// <param name="recordsName">The generator's name of the helper's result and remainder records, or empty.</param>
-    /// <param name="fields">For the storage boundary, the remainder record's Fields.</param>
+    /// <param name="fields">The remainder record's Fields.</param>
     /// <returns>The helper.</returns>
-    internal static ArrayHelper Create(ArrayHelperKind kind, StoredValue element, string elementName, string recordsName, RemainderFields fields)
+    internal static ArrayHelper Create(ArrayHelperKind kind, string elementName, string recordsName, RemainderFields fields)
     {
         var row = LegacyRuntimeHelpers.ArrayRow(kind);
         var abi = row.Shape(string.Concat(row.Prefix, elementName, recordsName), fields);
-        return new(kind, abi, element, fields);
+        return new(kind, abi, fields);
     }
 }
 
-/// <summary>SPEC 4.9.3, 4.9.5, 4.9.7, 4.9.8, 22.2: the Array capacity routines and the per-element Array helpers over the
-/// {buffer, length, capacity} handle (Windows x64 profile).</summary>
+/// <summary>SPEC 4.9.5, 4.9.8, 22.2: the literal's Array growth routine and the per-element Array helpers over the {buffer, length,
+/// capacity} handle (Windows x64 profile).</summary>
 internal static partial class LegacyRuntimeHelpers
 {
-    // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy; grow's
-    // one caller is the literal (FunctionCodegen.ArrayBuffer). A runtime template (LlvmModuleText.ExpandRuntime): each routine's definition
-    // at its marker line, its abort reasons and the zero-sized buffer address at theirs.
+    // SPEC 4.9.5, 4.9.8: the capacity routine, written only for modules that use Arrays so string-only modules keep no memcpy; its one
+    // caller is the literal (FunctionCodegen.ArrayBuffer). A runtime template (LlvmModuleText.ExpandRuntime): the routine's definition at
+    // its marker line, its abort reasons and the zero-sized buffer address at theirs.
     internal const string ArrayRuntimeTemplate = """
         {{__kimi_array_grow}}
         entry:
@@ -134,54 +128,11 @@ internal static partial class LegacyRuntimeHelpers
         done:
           ret void
         }
-        {{__kimi_array_shrink}}
-        entry:
-          ; SPEC 4.9.5: a failed candidate allocation leaves the handle unchanged.
-          %length_ptr = getelementptr i8, ptr %handle, i64 8
-          %length = load i64, ptr %length_ptr, align 8
-          %capacity_ptr = getelementptr i8, ptr %handle, i64 16
-          %capacity = load i64, ptr %capacity_ptr, align 8
-          %fits = icmp sle i64 %capacity, %length
-          br i1 %fits, label %done, label %shrink
-        shrink:
-          %buffer = load ptr, ptr %handle, align 8
-          %empty = icmp eq i64 %length, 0
-          br i1 %empty, label %release, label %sized
-        sized:
-          ; Zero-sized elements keep the substitute buffer; only the recorded capacity shrinks.
-          %zero_sized = icmp eq i64 %stride, 0
-          br i1 %zero_sized, label %fit, label %heap
-        fit:
-          store i64 %length, ptr %capacity_ptr, align 8
-          br label %done
-        heap:
-          %process_heap = call ptr @GetProcessHeap()
-          %no_heap = icmp eq ptr %process_heap, null
-          br i1 %no_heap, label %done, label %try
-        try:
-          %bytes = mul i64 %length, %stride
-          %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %bytes)
-          %failed = icmp eq ptr %memory, null
-          br i1 %failed, label %done, label %move
-        move:
-          call void @llvm.memcpy.p0.p0.i64(ptr %memory, ptr %buffer, i64 %bytes, i1 false)
-          call void @__kimi_free(ptr %buffer, ptr %location, i64 %location_length)
-          store ptr %memory, ptr %handle, align 8
-          store i64 %length, ptr %capacity_ptr, align 8
-          br label %done
-        release:
-          call void @__kimi_free(ptr %buffer, ptr %location, i64 %location_length)
-          store ptr null, ptr %handle, align 8
-          store i64 0, ptr %capacity_ptr, align 8
-          br label %done
-        done:
-          ret void
-        }
 
         """;
 
     /// <summary>The routines whose definitions ArrayRuntimeTemplate splices, each at its one marker line.</summary>
-    internal static readonly FunctionAbi[] ArrayRuntimeDefinitions = [RuntimeAbi.ArrayGrow, RuntimeAbi.ArrayShrink];
+    internal static readonly FunctionAbi[] ArrayRuntimeDefinitions = [RuntimeAbi.ArrayGrow];
 
     private const string ArrayHelperPrologue = """
         entry:
@@ -198,26 +149,9 @@ internal static partial class LegacyRuntimeHelpers
     private static readonly AbiParameter Result = new("ptr", "result", AbiParameterKind.ResultSlot);
 
     // One row per kind, in ArrayHelperKind order (SPEC 4.9.3, 4.9.7, 22.2); a new kind adds a row. A row declares the Array
-    // runtime only when its text copies elements: Clear and Drop destroy elements and release through the main runtime, and
-    // the storage boundary only loads and stores the handle's words.
+    // runtime only when its text copies elements: the storage boundary only loads and stores the handle's words.
     private static readonly ArrayHelperRow[] ArrayRows =
     [
-        new(
-            ArrayHelperKind.Clear,
-            "__kimi_array_clear_",
-            static (name, _) => Located(name, []),
-            ArrayHelperPrologue,
-            WriteArrayClear,
-            HelperNeeds.ElementGlue,
-            ArrayHelperResult.None),
-        new(
-            ArrayHelperKind.Drop,
-            "__kimi_array_drop_",
-            static (name, _) => Located(name, []),
-            ArrayHelperPrologue,
-            WriteArrayClear,
-            HelperNeeds.ElementGlue,
-            ArrayHelperResult.None),
         new(
             ArrayHelperKind.BorrowStorage,
             "__kimi_array_borrow_",
@@ -252,7 +186,7 @@ internal static partial class LegacyRuntimeHelpers
             ? ArrayRows[(int)kind]
             : throw new InvalidOperationException("An Array helper kind has no row.");
 
-    /// <summary>Writes the Array runtime, the capacity routines (SPEC 4.9.5, 4.9.8), which a module holds once when a helper or call of it
+    /// <summary>Writes the Array runtime, the capacity routine (SPEC 4.9.5, 4.9.8), which a module holds once when a helper or call of it
     /// declares it.</summary>
     /// <param name="output">The module text.</param>
     internal static void WriteArrayRuntime(TextWriter output) => output.Write(Texts.ArrayRuntime);
@@ -352,38 +286,6 @@ internal static partial class LegacyRuntimeHelpers
         output.Write(", ptr %");
         output.Write(name);
         output.Write("_slot, align 8\n");
-    }
-
-    // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.9.7).
-    private static void WriteArrayClear(TextWriter output, ArrayHelper helper)
-    {
-        if (helper.Element.NeedsDestruction)
-        {
-            output.Write("""
-                  %buffer = load ptr, ptr %handle, align 8
-                  br label %test
-                test:
-                  %remaining = phi i64 [ %length, %entry ], [ %index, %body ]
-                  %done = icmp eq i64 %remaining, 0
-                  br i1 %done, label %end, label %body
-                body:
-                  %index = sub i64 %remaining, 1
-
-                """);
-            output.Write("  %offset = mul i64 %index, ");
-            WriteNumber(output, helper.Element.Value.Layout.Stride);
-            output.Write("\n  %element = getelementptr i8, ptr %buffer, i64 %offset\n");
-            WriteStoredDestruction(output, helper.Element, "%element");
-            output.Write("  br label %test\nend:\n");
-        }
-
-        output.Write("  store i64 0, ptr %length_ptr, align 8\n");
-        if (helper.Kind == ArrayHelperKind.Drop)
-        {
-            output.Write("  call void @__kimi_array_free(ptr %handle, ptr %location, i64 %location_length)\n");
-        }
-
-        output.Write("  ret void\n");
     }
 
     private static partial class Texts

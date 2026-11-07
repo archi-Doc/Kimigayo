@@ -4167,6 +4167,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the publisher's walk, which R7's inline writes replace. S2's ClosureEffects finder is the second record (R4-M145).
   - Rejected: the publisher's own names (`Consume`, `Take`, `TakeKind`, `Write`) for a lasting component; a second copy of the
     static-storage test (Binding's `IsStatic` serves the rule).
+  - Amended by R7-M6: `IHirUses.Use(child, in operation)` has one route, `ChildAdjust(child, in operation, claimed)`, and `Claims(in op)` is deleted.
 - **R4-M143 A5 reads Binding's referent stores: a 4.6–4.9 operation's receiver store reaches refs(S) alone, with a destruction guard
   (G255 C3)** (superseded in part by R4-M150: the destruction guard, and under BU-67; by R4-M177: refs(S) is W's first step, without
   a holder that only a shared Loan names) (2026-10-26; the combined design's revision 1, items 1, 3, 4, 6, 7, and BU's design review 2
@@ -4262,6 +4263,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Deleted: `Binding.AcquiredByValue`, `ConsumerInput`, `ExplainedUse`; `ReceiverOperation` moved into `ClosureEffects`, its only
     reader. Rejected: a new column or `Flag` for the discard (a second fact for one form; `Result` and `Statement` both change); the
     builder testing Discard Context itself (a syntax decision the ratchet forbids); keeping the builder's ByCase (R5's condition 3).
+  - Amended by R7-M6: the finder takes an operation's use by the same member.
 - **R4-M146 Pooled analysis tables: a Clear costs the entries of the view or body it empties (MirTable; PLAN G136, V16 "per-view
   clearing", 2x-E5)** (2026-10-27; 2x-E5's design with its Revisions 1 and 2; the owner's acceptance of its cost, 2026-10-26: 「2x-E5 の
   +0.5% 程度のコストは受け入れます。再開後に実装を進めてください。」).
@@ -6130,7 +6132,7 @@ resumed by R4-M86 (2026-10-20).
   handle or pair layer a follow selects through (SPEC 13.5.5, 15.6.2), unless that use is of a raw Place, whose capability its path
   does not decide (SPEC 5.2: `*p`, `p[n]`). An operation's need is its target's (`Exclusive`): an exclusive reference or object view,
   or a pair layer admitting one, read from a call receiver's, argument's, Case payload's or writer's adapted or parameter Type (SPEC
-  7.3, 10.2), whatever its adaptation (a PayloadProjection or BaseBorrow states no mode), and from an Adjust that is an exclusive
+  7.3, 10.2), whatever its adaptation (a PayloadProjection or BaseBorrow states no mode: replaced by R7-M6), and from an Adjust that is an exclusive
   borrow, or a Reborrow or pair-case acquisition of a Type that needs it (SPEC 4.7.2, 8.14). The publisher keeps these per consumed
   child (`claims`, by SyntaxId, cleared per module), written where Consume takes the child, the one place the operation is known, and
   read when the child is visited. The plan row's Mode records the choice; `ExpansionPlan` and the builder follow it. `Take`: Binding's
@@ -15669,6 +15671,13 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Plan: RP7 and RP21 end (Q14); RQ6's units run one prototype-first candidate unless the owner instructs otherwise; R8-R1 and
     R8-G1 are Major units under their approved design.
   - Reason: the middle session ran the windows besides its defect stream, and three sessions edited the same documents.
+- **R7-M5 A struct has one base clause, `StructKoto.BaseClause`, read under the binder's role** (2026-11-08; R7-N2a, b; Major; design review) SPEC 6.2.2, 8.7.3, 9.2, 9.4.2, 9.6.
+  - `StructKoto.BaseClause` is a struct's one clause; `.Bases` stays where the container may be an enum or a Contract.
+  - A base clause read as a declaration reads `NoContainer`, the binder's role, at every read.
+  - Moves: `n2`, `n6`, `rn3`, `rn4`, `rn5`, invalid, to `NotObjectPayload_Kd`; `rn7`, `rn8`, valid, to accepted; no test or library program.
+  - N2d, the query with N2c's walk, has its own design: a reader cannot tell a not-ready layer from the end of the chain, and `memberLookupVisiting` ends a recursion `resolvingTypes` does not see.
+  - Rejected: one commit for all three (the role needs no query, while the walk and the query need each other); keeping `Any` at the opt-out or at `DerivesFrom` (a second reading of one clause).
+- **R7-M6 `HirAdjust.ExclusiveMode` (R7-Y3, PLAN G147 (2))** (2026-11-08; Major; the Middle's unit, C-104) BU-8's rule, read once and published: a row an operation gives states its target's mode, whatever its adaptation, so ReferenceRead, BaseBorrow and PayloadProjection have the mode their members lack (SPEC 3.4.3, 9.6.1, 13.5.5). One route, `ChildAdjust(child, in operation, claimed)`, in every record of the uses (the publisher and ClosureEffects' finder), which give equal rows; `Claims(in op)` is deleted. The target decides after a recorded read has given the adaptation: `BoundAdaptation.Type` is what the layers reach, not what the use forms. `HirAdjust.Exclusive` is the reader. A take no operation makes states false: a use in place forms no reference, and StorageProjection never has a mode (SPEC 9.6.1, 11.2.2). The bit is a new representation, not a vocabulary entry: `HirAdaptation` stays at 9. Staged: Y1 deletes `claims`; Y2's `PlaceUse` states a bare take's mode, which folds `(Reborrow, None)`'s two forms and `Claims`' Type clauses. Rejected: the bit on the three members alone with a claim from a list of row forms (the shape BU-8 rejected, and it narrowed the claim of a value child); a target-Type column (8 B a row for one bit); members per mode (a vocabulary change). Amends R4-M142 ('recorded by `IHirUses.Use(child, in operation)`', its `Claims` of an operation) and R4-M145's finder text only in that the finder takes an operation's use by the same member; BU-8 stands but for its parenthesis "(a PayloadProjection or BaseBorrow states no mode)", which this entry replaces. `LendsExclusively` and `HirAdjust.Of`'s Borrow arm still read `ParameterType`, unchanged.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -15753,3 +15762,26 @@ R8-M* and R9-M* by the stage of the recording unit.
     read of the view, else R7, `ComparisonPlan`'s condition). Those valid programs are then accepted, a behavior change with its own tests.
   - R5-M22's sentence "Property, FixedArrayEntry, IntegerPosition, Refused and None give false" reads: "Property, a library witness of a row with
     `EffectsLimit`, Refused and None give false".
+- **R8-M5 `clear`, `shrinkToFit`, the Array glue and `capacity` are Kimigayo bodies; `destroyValues<T>`** (2026-11-07; R8-A1c; plan RP18, RP20, RQ9; G126; on R8-M3)
+  SPEC 4.9.1, 4.9.5, 4.9.6, 4.9.7, 4.9.8, 16.3.2.
+  - Adopted: `Storage.destroyValues<T>` is `IntrinsicId.DestroyValues`' first producer: the values from the last, each by `T`'s glue, in the one
+    counted loop; for a `T` without a glue it writes nothing, so a cleanup-free destruction costs nothing at any optimization level (SPEC 4.9.8).
+    `clear`, `truncate` (SPEC 4.9.8's row names both, and `removeAll` ends in `truncate`) and `Storage.destroyArray<E>` call it. An Array's glue
+    keeps its row and its one target is now the `destroyArray` instance, the form
+    a Dictionary's glue has (R5-M124), so the representation of glue is unchanged. `destroyArray` takes `raw/ArrayRepr<u8>`, which states no
+    `E`: `uniq/Array<E>` at `Array^64<i32>` passes the storage height of 64. `destroyValues` takes `raw/u8` for the same reason. A4 reads it as
+    `Drop T` of its type argument (`MirEffects`), the meaning the descriptor awaited; `clear` keeps `Row: Target`, `shrinkToFit` gains
+    `Row: None`, and `destroyArray` has no MIR caller and no row.
+  - `capacity`: `IntrinsicId.Capacity` is deleted (RP18); the builder calls `Storage.arrayCapacity<E>` or `DictionaryStorage.capacity<K, V>` over the
+    same shared borrow, so A5's read of the Place and every receiver form are unchanged. `BuiltinForm.Capacity` stays Binding's.
+  - `shrinkToFit`: `Storage.shrinkArray`, non-generic over `raw/ArrayRepr<u8>` and a stride, as `growArray` is.
+  - R8-M2's ruling on an element Type's layout failure through a body applies to `clear`, `shrinkToFit` and `truncate`.
+  - Sites still writing this loop by hand: `OwnedRemainder.drop` moves with A1d, `FixedOwnedRemainder.drop` with R1c. `Located` has no Array caller
+    left; A1d, which deletes `LegacyRuntimeHelpers.Dictionaries.cs`, rehomes it.
+  - Counts (RQ9): `CompilerFunctionKind` 70 → 69 (−`ArrayClear`, −`ArrayShrinkToFit`, +`StorageDestroyValues`); `IntrinsicId` 32 → 31;
+    `KimiDeclarationId` 200 → 205, its catalog entries 196 → 201, two counts.
+  - Rejected: the glue writing the loop in the Backend (it keeps reading handle words); a `drop` declared in `Array.kimi` (changes the
+    representation of glue); a Kimigayo element loop (O(n) over a cleanup-free `T` at O0, against SPEC 4.9.8); a MIR Field read in the builder
+    (the builder would learn both representation structs); a library Property for `capacity` (a Binding change for no acceptance gain).
+  - Temporary: `{{__kimi_array_free}}` serves the Dictionary Drop helper alone until K1c; `__kimi_array_grow` and `{{__kimi_array_init}}` the
+    literal until A1d.

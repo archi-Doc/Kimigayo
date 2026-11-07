@@ -25,6 +25,11 @@ group DictionaryStorage
             self.previous = previous
             self.next = next
 
+    /// Reads a Dictionary's `capacity` (SPEC 4.9.5).
+    internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize
+        K is Equatable
+        unsafe => return (*(value@follow@raw@raw/Handle)).capacity
+
     internal func clearEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
         unsafe

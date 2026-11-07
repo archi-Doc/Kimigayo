@@ -544,11 +544,95 @@ public sealed partial class HirFormsTest
         ];
         Assert.Equal(expected, selections);
         var receiver = Reachable(c.Kotonoha).Single(x => x is IndexKoto && Line(x.Span.Start) == "pts[0].mutate()");
-        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow), HirTables.AdjustOf(receiver));
+        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow, ExclusiveMode: true), HirTables.AdjustOf(receiver));
         var shared = MinimalEmissionTest.Analyze(
             Source.Replace("require rcs[0].level() == 2 else => $abort(\"rc\")", "rcs[0].bump()", StringComparison.Ordinal));
         var issue = Assert.Single(shared.Binding.Issues);
         Assert.Equal("rcs[0].bump() NoApplicableOverload_Kd", $"{issue.Node} {issue.Code}");
+
+        static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
+    }
+
+    // SPEC 3.4.3, 7.3.3, 9.6.1, 10.2, 13.5.5 (PLAN G147 (2)): a row an operation gives states its target's mode, whatever its adaptation
+    // (DECISIONS BU-8): a handle's payload, a base and one reference through layers, whatever the layers offer (a recorded read of
+    // exclusive layers at a shared receiver), and a Reborrow. A compound update's getter and setter differ by that mode alone, which the
+    // plan row keeps. A use in place forms no reference: a Field's receiver, an inherited stored Field's
+    // StorageProjection included (SPEC 9.6.1), states no mode, in a read or a write, and the use's capability reaches what it selects
+    // through (ExclusiveUse: the user index below, whose element keeps Binding's recorded read). An exclusive base receiver is still Unsupported_Kd
+    // (InheritedReceiverBindingTest.ProjectedCallsProveSharedReceiversAndRetainExclusiveObligations).
+    [Fact]
+    public void AdaptationsStateTheirModes()
+    {
+        const string Source = """
+            struct Meter
+                public var n: i32 = 0
+                public computed doubled: i32
+                    get() -> i32 => self.n * 2
+                    set(self: uniq/Self, value: i32) -> () => self.n = value / 2
+                public init() => ()
+                public func look(self) -> i32 => self.n
+                public func bump(self: uniq/Self) => self.n += 1
+            open struct Base
+                public var item: i32 = 0
+                public init() => ()
+                public func peek(self) -> i32 => self.item
+            struct Derived : Base
+                public init() => ()
+            struct One<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            func payloads() -> i32
+                var handle = Meter.init()@obj
+                handle.bump()
+                return handle.look()
+            func layers(shared: ref/(ref/Meter during a) during b, exclusive: uniq/(uniq/Meter during a) during b) -> i32
+                exclusive.bump()
+                exclusive.n = shared.look()
+                let r: ref/Meter = shared
+                return exclusive.look() + exclusive.n + r.n
+            func bases(d: uniq/Derived) -> i32
+                d.item = 2
+                return d.peek() + d.item
+            func stored(pairs: uniq/(One<Derived>) during s) -> i32
+                pairs[0].item = 3
+                return pairs[1].item
+            func updates(exclusive: uniq/(uniq/Meter during a) during b)
+                exclusive.doubled += 1
+            func change(value: uniq/Meter) => value.bump()
+            func reborrows(value: uniq/Meter) => change(value)
+
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var start = Source.IndexOf("func payloads", StringComparison.Ordinal);
+        string[] names = ["handle", "shared", "exclusive", "d", "pairs[0]", "pairs[1]"];
+        var adjusted = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && names.Contains(Text(x)) && HirTables.AdjustOf(x).Adaptation != HirAdaptation.None)
+            .Select(x => $"{Line(x.Span.Start)}: {Text(x)} {HirTables.AdjustOf(x).Adaptation} {HirTables.AdjustOf(x).ExclusiveMode}");
+        string[] expected =
+        [
+            "handle.bump(): handle PayloadProjection True", "return handle.look(): handle PayloadProjection False",
+            "exclusive.bump(): exclusive ReferenceRead True", "exclusive.n = shared.look(): exclusive ReferenceRead False",
+            "exclusive.n = shared.look(): shared ReferenceRead False", "let r: ref/Meter = shared: shared ReferenceRead False",
+            "return exclusive.look() + exclusive.n + r.n: exclusive ReferenceRead False", "return exclusive.look() + exclusive.n + r.n: exclusive ReferenceRead False",
+            "d.item = 2: d StorageProjection False", "return d.peek() + d.item: d BaseBorrow False", "return d.peek() + d.item: d StorageProjection False",
+            "pairs[0].item = 3: pairs[0] SharedBorrow False", "return pairs[1].item: pairs[1] SharedBorrow False",
+            "exclusive.doubled += 1: exclusive ReferenceRead True",
+        ];
+        Assert.Equal(expected, adjusted);
+        var updated = Reachable(c.Kotonoha).Single(x => Text(x) == "exclusive" && Line(x.Span.Start) == "exclusive.doubled += 1");
+        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ReferenceRead), HirTables.PlanOf(updated).Adjust);
+        var reborrowed = Reachable(c.Kotonoha).Single(x => Text(x) == "value" && Line(x.Span.Start) == "func reborrows(value: uniq/Meter) => change(value)" && x.Span.Start > Source.IndexOf("change(value)", StringComparison.Ordinal));
+        Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None, ExclusiveMode: true), HirTables.AdjustOf(reborrowed));
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && x.Span.Start >= start).Select(static x => ExpansionPlan.Of(x)!.Value.Second!.Target.Name);
+        Assert.Equal(["indexUniq", "index"], selections);
+
+        static string Text(Koto node) => Source.Substring(node.Span.Start, node.Span.Length);
 
         static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
     }
@@ -616,7 +700,7 @@ public sealed partial class HirFormsTest
         ];
         Assert.Equal(expected, adjusted);
         var element = Reachable(c.Kotonoha).Single(x => Text(x) == "entries[1]" && Line(x.Span.Start) == "entries[1].bump()");
-        Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None), HirTables.AdjustOf(element)); // SPEC 3.4.3: the stored uniq/Point.
+        Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None, ExclusiveMode: true), HirTables.AdjustOf(element)); // SPEC 3.4.3: the stored uniq/Point.
 
         static string Text(Koto node) => Source.Substring(node.Span.Start, node.Span.Length);
 

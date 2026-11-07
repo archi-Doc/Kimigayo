@@ -206,4 +206,9 @@ public enum KimiDeclarationId : byte
     StringRepr,
     StorageStride,
     StorageGrowArray,
+    StorageDestroyValues,
+    StorageShrinkArray,
+    StorageDestroyArray,
+    StorageArrayCapacity,
+    DictionaryStorageCapacity,
 }

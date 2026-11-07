@@ -85,25 +85,6 @@ internal static partial class LegacyRuntimeHelpers
             ? StorageKernelRows[(int)kind]
             : throw new InvalidOperationException("A storage kernel kind has no row.");
 
-    /// <summary>Writes SPEC 4.9.5's <c>capacity</c>: an Array or Dictionary handle stores its capacity at offset 16, an Array's
-    /// after its buffer and length.</summary>
-    /// <param name="output">The function text.</param>
-    /// <param name="handle">The spelling of the handle's address.</param>
-    /// <param name="result">The name of the loaded capacity.</param>
-    /// <param name="id">The number naming the kernel's temporaries.</param>
-    internal static void WriteCapacity(TextWriter output, ReadOnlySpan<char> handle, ReadOnlySpan<char> result, int id)
-    {
-        output.Write("  %seqcapptr");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(handle);
-        output.Write(", i64 16\n  ");
-        output.Write(result);
-        output.Write(" = load i64, ptr %seqcapptr");
-        WriteNumber(output, id);
-        output.Write(", align 8\n");
-    }
-
     /// <summary>Defines the address of a library record's Field at its named layout offset when it needs one: offset 0 is the
     /// record's own address, and a nonzero offset is reached through <c>{name}{id}_{offset}</c>, written here before its use.</summary>
     /// <param name="output">The function text.</param>

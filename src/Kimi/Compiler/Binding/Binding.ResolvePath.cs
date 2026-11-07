@@ -17,7 +17,7 @@ public sealed partial class Binding
     private readonly List<NameStep> nameSteps = new();
 
     // The candidate filters of a Type name's lookup. These are not SPEC 9.2's roles: Any filters nothing and is the only row that reaches
-    // stage 4, at qualifiers and at the other positions (base clauses, Constraint subjects, Contract names) alike; NoContainer drops
+    // stage 4, at qualifiers and at the other positions (Constraint subjects, Contract names) alike; NoContainer drops
     // Containers; Type and Semantics are an adaptation target's two roles (SPEC 13.5.1). Type legality rejects the rest after selection.
     private enum TypeLookupRole : byte
     {

@@ -358,6 +358,21 @@ public static partial class Parser
         }
     }
 
+    // A Condition is a header expression: the indented body after it is the directive's target, never part of it (SPEC 19.1).
+    private static Koto ParseRequiredCompileTimeCondition(ref TokenReader reader)
+    {
+        var previous = reader.IsParsingCompileTimeCondition;
+        reader.IsParsingCompileTimeCondition = true;
+        try
+        {
+            return ParseHeaderExpression(ref reader);
+        }
+        finally
+        {
+            reader.IsParsingCompileTimeCondition = previous;
+        }
+    }
+
     private static void ParseCompileTimeIfPrefix(ref TokenReader reader)
     {
         // Every Condition is validated, including inside excluded syntax (SPEC 19.3).

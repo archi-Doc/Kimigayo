@@ -392,8 +392,7 @@ public sealed partial class Binding
             {
                 if (ReferenceEquals(taken, child))
                 {
-                    this.claimed |= binding.Claims(operation);
-                    this.Use(taken, HirAdjust.Of(operation), UseKind.Acquisition);
+                    this.FixAdjust(taken, binding.ChildAdjust(child, operation, this.claimed), default);
                 }
             }
 

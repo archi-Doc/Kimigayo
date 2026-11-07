@@ -245,22 +245,17 @@ public sealed partial class Binding
                 continue;
             }
 
-            for (var b = 0; b < structure.Bases.Count; b++)
+            if (ReferenceEquals(node, structure.BaseClause))
             {
-                if (ReferenceEquals(node, structure.Bases[b]))
+                if (mode is { } bindingMode)
                 {
-                    if (mode is { } bindingMode)
-                    {
-                        // The normalized base may no longer contain its projection qualifier.
-                        this.RequireConstraint(node, this.CheckTypeConstraints(use.Type, this.scopes[structure]), bindingMode);
-                    }
-                    else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
-                    {
-                        this.Fail(node, BindingFailure.Access);
-                        this.Fail(structure, BindingFailure.Access);
-                    }
-
-                    break;
+                    // The normalized base may no longer contain its projection qualifier.
+                    this.RequireConstraint(node, this.CheckTypeConstraints(use.Type, this.scopes[structure]), bindingMode);
+                }
+                else if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
+                {
+                    this.Fail(node, BindingFailure.Access);
+                    this.Fail(structure, BindingFailure.Access);
                 }
             }
         }
@@ -399,13 +394,12 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (type.Declaration is not StructKoto { Bases.Count: > 0 } structure)
+            if (type.Declaration is not StructKoto { BaseClause: { } syntax } structure)
             {
                 break;
             }
 
-            var syntax = structure.Bases[0];
-            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.Any);
+            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
         }
 
         return false;

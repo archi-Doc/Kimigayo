@@ -82,6 +82,9 @@ internal sealed partial class TyCtxt
     // reserve for an erased writer's destination); null for a Contract that declares none.
     internal BindingSymbol? OwnRequirement(KimiDeclarationId contract) => library.GetSymbol(contract)?.Contract?.OwnRequirement();
 
+    // The library declaration a compiler component reaches by its catalog identity (InstanceCollector: the destroyArray instance).
+    internal BindingSymbol? Declaration(KimiDeclarationId id) => library.GetSymbol(id);
+
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
 
     private void ResetDispatch()

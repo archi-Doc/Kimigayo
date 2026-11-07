@@ -12,6 +12,9 @@ public sealed class StructKoto : DeclarationContainerKoto
 {
     private FunctionKoto? implicitConstructor;
 
+    /// <summary>Gets the one direct base clause (SPEC 6.2.2): the parser keeps the first of a list, and a second fragment's is refused.</summary>
+    internal Koto? BaseClause => this.Bases.Count == 0 ? null : this.Bases[0];
+
     /// <summary>Gets the synthesized constructor once it exists: at once without a base, and for a structure with a base only
     /// after its omitted base clause selects a base constructor (SPEC 6.3.6).</summary>
     internal FunctionKoto? ImplicitConstructor => this.ImplicitConstructorPending ? null : this.SynthesizedConstructor;
