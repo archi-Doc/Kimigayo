@@ -11,6 +11,26 @@ namespace XunitTest;
 /// Indexable&lt;Key&gt; conformance: index for reads and shared borrows, indexUniq for updates and exclusive borrows.</summary>
 public class IndexableContractTest
 {
+    private const string Counting = "struct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    public var uniqCalls: i32 = 0\n" +
+        "    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self\n        self.uniqCalls += 1\n        return self.first@uniq\n";
+
+    private const string SharedSubject = Counting + "func f(v: uniq/Two<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    var total: i32 = 0\n    for x in v[0].0\n" +
+        "        total += x\n    return total\nvar items: Array<i32> = [1, 2]\nvar r = items@ref\nvar t = (r@uniq, 1)\nvar two = Two.init(t@move)\nlet n = f(two@uniq)\n" +
+        "require two.uniqCalls == 0 else => $abort(\"indexUniq ran\")\n";
+
+    private const string CompoundRight = Counting + "struct Vec2\n    Self is Addable<Vec2>\n    associate Addable<Vec2>.Output is Vec2\n    public var x: i32 = 0\n    public init() => ()\n" +
+        "    public func added(self: ref/Self, right: ref/Vec2) -> Vec2 => Vec2.init()\nfunc f(v: uniq/Two<uniq/Vec2 during a>) -> i32\n    var total = Vec2.init()\n    total += v[0]\n    return total.x\n" +
+        "var a = Vec2.init()\nvar two = Two.init(a@uniq)\nlet n = f(two@uniq)\nrequire two.uniqCalls == 0 else => $abort(\"indexUniq ran\")\n";
+
+    // SPEC 14.6.2, 15.1.6, 13.7.2: a read does not run indexUniq, a for's Subject Shared by a stored uniq over ref and a compound assignment's
+    // right side its operator takes by `ref/Vec2`; base's overwritten bare take claimed the element (R7-Y1c).
+    [Fact]
+    public void ASharedSubjectDoesNotRunIndexUniq() => ScalarEmissionTest.EmitFixture("IndexUniqSharedSubject", SharedSubject, string.Empty);
+
+    [Fact]
+    public void ACompoundRightSideDoesNotRunIndexUniq() => ScalarEmissionTest.EmitFixture("IndexUniqCompoundRight", CompoundRight, string.Empty);
+
     private const string Pair =
         "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
         "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +

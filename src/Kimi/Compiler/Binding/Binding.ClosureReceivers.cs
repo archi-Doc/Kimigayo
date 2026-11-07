@@ -356,14 +356,13 @@ public sealed partial class Binding
         private readonly record struct Need(bool Exclusive, bool ByCase, bool? ByValue);
 
         // One child's takes by its consumer, as the Adjust rule gives them and the HIR publisher writes them: the last, the column's, and
-        // the earlier call's that a later one replaces by another (EarlierAdjust, the plan row's), each completed by the claim the
-        // consumer's uses of the child made so far (Claims, R4-M142's `claimed`), under the capability AdjustChildren is given.
+        // the earlier call's that a later one replaces by another (EarlierAdjust, the plan row's), each completed by the claim of those
+        // two rows so far (Claimed, R4-M142's `claimed`).
         private struct ConsumedTakes(Binding binding, Koto child) : IHirUses
         {
             private HirAdjust last;
             private HirAdjust earlier;
             private int call = -1;
-            private bool claimed;
             private bool found;
 
             // Whether either take acquires the child by value; null where the consumer takes no such child.
@@ -382,7 +381,7 @@ public sealed partial class Binding
             {
                 if (ReferenceEquals(taken, child))
                 {
-                    this.FixAdjust(taken, binding.ChildAdjust(child, adaptation, kind, this.claimed), default);
+                    this.FixAdjust(taken, binding.ChildAdjust(child, adaptation, kind, binding.Claimed(child, this.last, this.earlier)), default);
                 }
             }
 
@@ -390,7 +389,7 @@ public sealed partial class Binding
             {
                 if (ReferenceEquals(taken, child))
                 {
-                    this.FixAdjust(taken, binding.ChildAdjust(child, operation, this.claimed), default);
+                    this.FixAdjust(taken, binding.ChildAdjust(child, operation, binding.Claimed(child, this.last, this.earlier)), default);
                 }
             }
 
@@ -400,7 +399,6 @@ public sealed partial class Binding
                 {
                     this.earlier = this.call >= 0 ? EarlierAdjust(this.call, this.last, adjust) : this.earlier;
                     (this.last, this.found) = (adjust, true);
-                    this.claimed |= binding.Claims(child, adjust);
                 }
             }
         }
