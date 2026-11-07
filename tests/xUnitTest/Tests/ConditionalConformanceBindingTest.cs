@@ -9,6 +9,69 @@ namespace XunitTest;
 
 public class ConditionalConformanceBindingTest
 {
+    private const string BlockMemberNamesItsConformance = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S<T>
+            public init() => ()
+            Self is C when T is Copy
+                public func m(self: ref/Self, other: ref/Box<S<T>>) -> i32 => 1
+        func use(s: ref/S<i32>, b: ref/Box<S<i32>>) -> i32 => s.m(b)
+        """;
+
+    private const string MemberOutsideTheBlockLacksTheCondition = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S<T>
+            Self is C when T is Copy
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<S<T>>) -> i32 => 1
+        """;
+
+    private const string ConditionalMemberStatesTheCondition = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S<T>
+            Self is C when T is Copy
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<S<T>>) -> i32
+                T is Copy
+                return 1
+        """;
+
+    private const string RefutedConditionAtAWrittenType = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct N
+            public init() => ()
+        struct S<T>
+            public init() => ()
+            Self is C when T is Copy
+                public func m(self: ref/Self, other: ref/Box<S<T>>) -> i32 => 1
+        func use(b: ref/Box<S<N>>) -> i32 => 1
+        """;
+
+    // The owner's O-44, SPEC 8.8: a member names the conformance its signature needs under the premises it has: P in a block (8.8.1), its own
+    // Constraints as a conditional member (7.5), none outside the block (8.8.2).
+    [Theory]
+    [InlineData(BlockMemberNamesItsConformance, "clean")]
+    [InlineData(MemberOutsideTheBlockLacksTheCondition, "1*UnprovenConstraint_Kd")]
+    [InlineData(ConditionalMemberStatesTheCondition, "clean")]
+    [InlineData(RefutedConditionAtAWrittenType, "1*UnsatisfiedConstraint_Kd")]
+    public void AConditionalImplementationsSignatureUsesItsPremises(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("i32", ConstraintProof.Proven)]
     [InlineData("string", ConstraintProof.Refuted)]

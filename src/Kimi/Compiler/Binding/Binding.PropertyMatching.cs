@@ -25,10 +25,6 @@ public sealed partial class Binding
 
         this.BindHeader(implementation.Symbol);
         var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope);
-        proof = CombineProof(proof, this.ValidateAccessor(requirement.Getter), true);
-        proof = CombineProof(proof, this.ValidateAccessor(requirement.Setter), true);
-        proof = CombineProof(proof, this.ValidateAccessor(implementation.Getter), true);
-        proof = CombineProof(proof, this.ValidateAccessor(implementation.Setter), true);
         if (proof != ConstraintProof.Proven)
         {
             return proof;
@@ -55,6 +51,11 @@ public sealed partial class Binding
         if (!implementation.IsPresent || !AccessCovers(implementation.Property.Symbol, conformance.Type, conformance.Contract, implementation.Access))
         {
             return ConstraintProof.Refuted;
+        }
+
+        if (this.SuppliesNoEvidence(new(requirement), new(implementation)))
+        {
+            return ConstraintProof.Error;
         }
 
         if (requirement.Receiver is not { } receiver || requirement.Result is not { } result)

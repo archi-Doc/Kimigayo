@@ -11,6 +11,94 @@ namespace XunitTest;
 
 public partial class PropertyBindingTest
 {
+    private const string StoredWitnessNamesItsConformance = """
+        contract C
+            property b: ref/Box<Self>
+                get(self: ref/Self) -> ref/Box<Self>
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            public var b: Box<S>
+            public init() => self.b = Box<S>.init()
+        """;
+
+    private const string ComputedWitnessNamesItsConformance = """
+        contract C
+            property b: Box<Self>
+                get() -> Box<Self>
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            public init() => ()
+            public computed b: Box<S>
+                get() -> Box<S> => Box<S>.init()
+        """;
+
+    private const string CopiedWitnessNamesItsConformance = """
+        contract C
+            property b: Box<Self> has get, set
+        struct Box<T>
+            T is C
+            Self is Copy
+            public init() => ()
+        struct S
+            Self is C
+            public var b: Box<S>
+            public init() => self.b = Box<S>.init()
+        """;
+
+    private const string WitnessNamesAContractItsTypeLacks = """
+        contract K
+        contract C
+            property b: ref/Box<S>
+                get(self: ref/Self) -> ref/Box<S>
+        struct Box<T>
+            T is K
+            public init() => ()
+        struct S
+            Self is C
+            public var b: Box<S>
+            public init() => self.b = Box<S>.init()
+        """;
+
+    private const string AccessorOfAFailedProperty = """
+        contract C
+            property w: P
+                get() -> P
+        private struct P
+            public init() => ()
+        public struct S
+            Self is C
+            public init() => ()
+            public computed w: P
+                get() -> P => P.init()
+        func need<T>(t: ref/T) -> i32
+            T is C
+            return 1
+        func use(s: ref/S) -> i32 => need(s)
+        """;
+
+    private const string FailedSetterARequirementDoesNotNeed = """
+        contract C
+            property w: i32 has get
+        private struct P
+            public init() => ()
+        public struct S
+            Self is C
+            public init() => ()
+            public computed w: i32
+                get() -> i32 => 1
+                set(value: P) -> () => ()
+        func need<T>(t: ref/T) -> i32
+            T is C
+            return 1
+        func use(s: ref/S) -> i32 => need(s)
+        """;
+
     // A custom `get` of a projection-typed Field with the standard `set` (AnUpdateReadsItsStandardSideAsTheBodyReadsTheField).
     private const string OutputGetter = """
         struct HQ<S>
@@ -86,6 +174,18 @@ public partial class PropertyBindingTest
     // Computed Properties whose `set` takes another Type than the `get` result (AnUpdateFitsItsResultToItsPublishedDestination).
     private const string ComputedLevel = "struct HG\n    public computed level: i32\n        get() -> i32 => 1\n        set(value: i64) -> () => ()\n";
     private const string ComputedCounter = Counter + "struct HC\n    public computed c: Counter\n        get() -> Counter => Counter.init(1)\n        set(value: i64) -> () => ()\n";
+
+    // The owner's O-44, SPEC 11.9.1: a Property requirement forms no signature either, and one read keeps a failed declaration out of the evidence
+    // (SPEC 8.3.1). DECISIONS Q13: c3b's accessor stops at its failed Property, as one that is no witness does; a setter `has get` does not need is
+    // no evidence of the getter.
+    [Theory]
+    [InlineData(StoredWitnessNamesItsConformance, "clean")]
+    [InlineData(ComputedWitnessNamesItsConformance, "clean")]
+    [InlineData(CopiedWitnessNamesItsConformance, "clean")]
+    [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UninitializedPlace_Kd 9*UnsatisfiedConstraint_Kd")]
+    [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd")]
+    [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
+    public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Theory]
     [InlineData("let", false)]

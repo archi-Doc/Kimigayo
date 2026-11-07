@@ -520,19 +520,15 @@ public sealed partial class Binding
         return pending ? null : true;
     }
 
+    // SPEC 8.3.1: a requirement or an implementation whose declaration failed supplies no evidence, a function's or an accessor's alike.
+    private bool SuppliesNoEvidence(CallableContract requirement, CallableContract implementation)
+        => this.InvalidDeclarationContext(requirement.Binder) || this.InvalidDeclarationContext(implementation.Binder);
+
     private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (requirement.BindingState == BindingState.Invalid || implementation.BindingState == BindingState.Invalid || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
+        if (this.SuppliesNoEvidence(new(requirement), new(implementation)) || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
             return ConstraintProof.Error;
-        }
-
-        // Formation is no compatibility obligation (the owner's O-44): this gate goes at R7-V5 (PLAN G556). Until then it computes and never
-        // reads the SignatureVerdict row, so a declaration that fails late still fails it.
-        var formation = CombineProof(this.FormSignature(requirement), this.FormSignature(implementation), true);
-        if (formation != ConstraintProof.Proven)
-        {
-            return formation;
         }
 
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
