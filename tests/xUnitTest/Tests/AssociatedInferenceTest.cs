@@ -12,6 +12,28 @@ namespace XunitTest;
 
 public class AssociatedInferenceTest
 {
+    private const string PqContracts = "contract P\n    associate X\n    associate Z\n    func x(self: ref/Self) -> Self.X\n    func z(self: ref/Self) -> Self.Z\ncontract Q\n    associate Y\n    associate W\n    func y(self: ref/Self) -> Self.Y\n    func w(self: ref/Self) -> Self.W\n";
+
+    private const string PaFirstField = "struct PA\n    Self is P\n    public func x(self: ref/Self) -> PB.(Q).Y => 0\n    public func z(self: ref/Self) -> i32 => 0\n";
+
+    private const string PbFirstField = "struct PB\n    Self is Q\n    public func y(self: ref/Self) -> i64 => 0\n    public func w(self: ref/Self) -> PA.(P).Z => 0\n";
+
+    private const string PaLastField = "struct PA\n    Self is P\n    public func z(self: ref/Self) -> i32 => 0\n    public func x(self: ref/Self) -> PB.(Q).Y => 0\n";
+
+    private const string PbLastField = "struct PB\n    Self is Q\n    public func w(self: ref/Self) -> PA.(P).Z => 0\n    public func y(self: ref/Self) -> i64 => 0\n";
+
+    private const string AltContracts = "contract DC\n    associate X\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\n";
+
+    private const string AltD = "struct D\n    Self is DC\n    public func a(self: ref/Self) -> i32 => 0\n    public func b(self: ref/Self) -> E.(EC).W => 0\n";
+
+    private const string AltE = "struct E\n    Self is EC\n    public func w(self: ref/Self) -> D.(DC).X => 0\n";
+
+    private const string ChainContracts = "contract HA\n    associate Item\n    associate Other\n    func item(self: ref/Self) -> Self.Item\n    func other(self: ref/Self) -> Self.Other\ncontract HB\n    associate Value\n    func value(self: ref/Self) -> Self.Value\n";
+
+    private const string ChainA = "struct A\n    Self is HA\n    public func item(self: ref/Self) -> i32 => 0\n    public func other(self: ref/Self) -> B.(HB).Value => 0\n";
+
+    private const string ChainB = "struct B\n    Self is HB\n    public func value(self: ref/Self) -> A.(HA).Item => 0\n";
+
     [Theory]
     [InlineData("Self.Item", "i32", "42", "i32")]
     [InlineData("Self.Item", "f32", "1.0", "f32")]
@@ -381,6 +403,29 @@ public class AssociatedInferenceTest
             }
         }));
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.5.5, 8.3.3 Finality: a value inferred for another definition is usable as soon as it is determined, so PA and PB complete each other in
+    // every declaration and requirement order.
+    [InlineData("C4", "pa-first", PqContracts + PaFirstField + PbFirstField, "", Explicit = true)]
+    [InlineData("C4", "pb-first", PqContracts + PbFirstField + PaFirstField, "", Explicit = true)]
+    [InlineData("C4", "pa-swap", PqContracts + PaLastField + PbLastField, "", Explicit = true)]
+    [InlineData("C4", "pb-swap", PqContracts + PbLastField + PaLastField, "", Explicit = true)]
+
+    // SPEC 8.5.5: evidence that needs a value of the current definition held pending supplies none, so D.X is a's i32, and E.W reads the determined D.X,
+    // in both orders.
+    [InlineData("C4", "alt-d", AltContracts + AltD + AltE, "", Explicit = true)]
+    [InlineData("guard", "alt-e", AltContracts + AltE + AltD, "")]
+
+    // SPEC 8.5.5: B.Value is inferred from A.Item, so A.Other has no evidence although the graph is acyclic; the failure's resting records stay open. An
+    // explicit A.Item is a frozen premise (chain-x).
+    [InlineData("guard", "chain-a", ChainContracts + ChainA + ChainB, "AssociatedTypeInferenceFailed_Kd: Self is HA | ...")]
+    [InlineData("guard", "chain-b", ChainContracts + ChainB + ChainA, "AssociatedTypeInferenceFailed_Kd: Self is HA | ...")]
+    [InlineData("guard", "chain-x", ChainContracts + "struct A\n    Self is HA\n    associate HA.Item is i32\n    public func item(self: ref/Self) -> i32 => 0\n    public func other(self: ref/Self) -> B.(HB).Value => 0\n" + ChainB, "")]
+    public void AssociatedValuesFollowTheirEvidenceInEveryOrder(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static Compilation Bound(string source)
     {

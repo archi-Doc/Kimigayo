@@ -22,6 +22,12 @@ public sealed class RecursiveContractTest
 
     private const string Forest = Tree + "contract Forest\n    associate Root is Tree\n";
 
+    private const string Copies = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n";
+
+    private const string Outers = "contract Holder\n    associate Item\ncontract CopyHolder: Holder\n    Self.(Holder).Item is Copy\ncontract Outer\n    associate Inner is Holder\ncontract CopyOuter: Outer\n    Self.(Outer).Inner is CopyHolder\n";
+
+    private const string Walks = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\ncontract Tree\n    associate Child is Tree\n    func child(self: ref/Self) -> Option<Self.Child>\n        effect confined\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\ngroup Trees\n    public func two<T>(node: T)\n        T is Tree\n        match node.child()\n            .Some(let next) => Trees.one(next@move)\n            .None => return\n    public func one<T>(node: T)\n        T is Tree\n        match node.child()\n            .Some(let next) => return\n            .None => return\nstruct Holder<T>\n    T is CopyTree\n    Self is Sink\n    var node: T\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n";
+
     // SPEC 8.3.3: each recursive Contract of the S5 proposal's 2.1, through the premise supply of `T is C` (SPEC 8.3.2): Tree; CopyTree,
     // which refines Tree and constrains its inherited Child; A and B, which supply each other's conformance; Rec, whose refinement
     // constrains Node's unconstrained Child (Node is not recursive); Seq, whose Next conforms to another bound reference of its declaration;
@@ -82,6 +88,31 @@ public sealed class RecursiveContractTest
             }
         }));
     }
+
+    // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
+    // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
+    // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
+    // until that unit lands and removes the marker. `dotnet xUnitTest.dll -class <class> -explicit on` runs all of them.
+    [Theory]
+    // SPEC 8.3.2, 8.5.3: `T is CopyTree` supplies Copy to every projection a query needs, however deep and whatever its spelling, in a non-recursive
+    // Contract too; `T is Tree` supplies none, and a read that leaves its source initialized needs Copy (SPEC 8.15.1).
+    [InlineData("guard", "value1", Copies + "group H\n    public func twice<T>(value: T.(Tree).Child) -> (T.(Tree).Child, T.(Tree).Child)\n        T is CopyTree\n        return (value, value)\n", "")]
+    [InlineData("C2", "value2", Copies + "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is CopyTree\n        return (value, value)\n", "", Explicit = true)]
+    [InlineData("C2", "value4", Copies + "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child)\n        T is CopyTree\n        return (value, value)\n", "", Explicit = true)]
+    [InlineData("C2", "value8", Copies + "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child)\n        T is CopyTree\n        return (value, value)\n", "", Explicit = true)]
+    [InlineData("guard", "value2n", Copies + "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is Tree\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
+    [InlineData("guard", "value2hint", Copies + "group H\n    public func twice<T>(hint: ref/T.(Tree).Child.(CopyTree).Child, value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is CopyTree\n        return (value, value)\n", "")]
+    [InlineData("C2", "nonrec", Outers + "func inspect<T>(value: T.(Outer).Inner.(Holder).Item) -> i32\n    T is CopyOuter\n    let a = value\n    let b = value\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "nonrecn", Outers + "func inspect<T>(value: T.(Outer).Inner.(Holder).Item) -> i32\n    T is Outer\n    let a = value\n    let b = value\n    return 0\n", "TransferRequired_Kd: let a = value | TransferRequired_Kd: let b = value")]
+
+    // SPEC 15.6.4: a widened effect conflicts as an unknown call does, even where the caller's premises would classify every effect it replaces.
+    [InlineData("guard", "s5two", Walks + "        Trees.two(self.node)\n        return .Ok(())\n", "IncompatibleContractImplementation_Kd: Self is Sink")]
+    [InlineData("guard", "s5one", Walks + "        Trees.one(self.node)\n        return .Ok(())\n", "IncompatibleContractImplementation_Kd: Self is Sink")]
+
+    // SPEC 8.11.3, 8.3.2: the callee's own premises prove every destroyed Type Copy, whatever the projection's spelling.
+    [InlineData("C2", "a4h", Copies + "group H\n    public func h<T>(t: T.(Tree).Child.(Tree).Child)\n        T is CopyTree\n        ()\ncontract Visit\n    func visit(self: ref/Self)\n        effect confined\nstruct W<U>\n    U is CopyTree\n    U is Copy\n    U.(Tree).Child is U\n    Self is Visit\n    let node: U\n    public func visit(self: ref/Self)\n        H.h<U>(self.node)\n", "", Explicit = true)]
+    public void CopyReachesAProjectionWhateverItsSpelling(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static Compilation Bind(string source)
     {

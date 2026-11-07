@@ -1285,6 +1285,24 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 7 (2026-11-07, plan §14, the R7 restart; the Middle's D-46 and the owner's O-21 「(ii) で決定」): Y2 takes G251 (5) with the
   explicit SPEC §7.7.3 revision and drops `EffectBounds.PlaceAccess`; Y3 and the Y1–Y5 line drop G233; §5.4 drops X-1a. The plan
   stays 一部取り込み (open), nothing frozen.
+- Revision 8 (2026-11-07, plan §14, the R7 restart; the Front's D-47): phases A and B become one queue, since H5, H10, H12 and H14 are
+  passed; I3, D1 and D3 state where they stand; G416 joins the Front's lane; the Position Rows links point to `draft/Changes/`. No
+  unit's rule changed. The plan stays 一部取り込み (open), nothing frozen.
+- Revision 9 (2026-11-07, plan §14; the owner's request to check the plan against dev, verbatim 「精査して、今後の作業に支障がある箇所があれば、
+  Implementation Planを修正してください。」): the position, arrangement, order, gates and unit states follow dev `efe7f0b6c`; the Full and Owner
+  labels became Major; §5.1 and §5.4 follow each issue's state; the mir ledger's rows go. No unit's rule changed. The plan stays 一部取り込み
+  (open), nothing frozen.
+- Revision 10 (2026-11-07, plan §14; the Front's D-49): §5.1 names the units revision 9 left open. The plan stays 一部取り込み (open), nothing
+  frozen.
+- Revision 11 (2026-11-07, plan §14; the Middle's D-51): §5.4 and §7.1 follow PLAN G396 and the A5 oracle's new place. Nothing frozen.
+- Revision 12 (2026-11-07, plan §14; the owner's O-39 and O-40, verbatim 「(a) GO」 and 「(a) walk を恒久の部品として残す」): the HIR publisher stays; Y1 shrinks; G339 goes ahead with
+  G338. Nothing frozen.
+- Revision 13 (2026-11-07, plan §14; the owner's O-42, verbatim 「O-42はaで決定します」): §5.1 gains N7. Nothing frozen; SPEC 8.2.1 registers when it lands.
+- Revision 14 (2026-11-07, plan §14; the owner's O-44, verbatim 「(a) 有効とする」): §5.1 gains V5. Nothing frozen.
+- Revision 15 (2026-11-07, plan §14; the Back's D-60): R8-S1's first stop and split. Nothing frozen.
+- Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
+  R8-M1). Nothing frozen.
+- Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 

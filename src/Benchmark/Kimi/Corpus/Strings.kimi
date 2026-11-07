@@ -1,0 +1,185 @@
+// O2 timing corpus (O2Corpus.md): string comparison over heap and Static strings with long common prefixes, string
+// destruction through both release kinds, and built-in integer formatting. Each part is a function of its own: `main`
+// calls each from two sites, so LLVM's inliner keeps it apart and opt -O2 output reads per part.
+
+// The next state of a linear congruential generator modulo 2^31; its products stay within i64. Callers read bits
+// from 16 up, whose periods are long.
+func next(state: i64) -> i64 => (state * 1103515245 + 12345) & 0x7FFF_FFFF
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible,
+// so a wrong value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+// A string of `length` digits built by integer formatting: the last digit is `last`, those before it are the same in
+// every string up to the 12th and come from `group` after it.
+func built(length: i64, group: i64, last: i64) -> string
+    var text = ""
+    var state = group
+    for position in 0..length
+        state = next(state)
+        var digit = (state >> 16) & 7
+        if position < 12 => digit = position % 10
+        if position == length - 1 => digit = last
+        text = "\(text)\(digit)"
+    return text@move
+
+// One round: `==`/`!=` over all pairs of the strings, `<`/`>=` over all pairs of every second one, an insertion sort by
+// `<`, a block against Static strings held in an Array and one against direct literals. `shift` turns the pairs each
+// round, so none repeats a result the optimizer could keep, and `!=` and `>=` read other pairs than `==` and `<`, whose
+// negations they would otherwise be.
+func comparison(strings: ref/Array<string>, literals: ref/Array<string>, order: uniq/Array<isize>, state: uniq/i64) -> i64
+    state@follow = next(state)
+    let shift = ((state >> 16) & 63)@isize
+    var sum: i64 = 0
+    for a in 0..strings.length
+        for b in 0..strings.length
+            if strings[a] == strings[(b + shift) & 63]
+                sum += (a * 64 + b)@i64
+            if strings[a] != strings[(b + shift + 1) & 63]
+                sum ^= (a * 64 + b)@i64 << 12
+    for a in 0..strings.length / 2
+        for b in 0..strings.length / 2
+            if strings[a * 2] < strings[(b * 2 + shift) & 63]
+                sum += (a * 32 + b)@i64 * 3
+            if strings[a * 2] >= strings[(b * 2 + shift + 2) & 63]
+                sum ^= (a * 32 + b)@i64 << 16
+
+    // A shuffle of the indices, then the sort through them: the strings stay in place.
+    var last = order.length - 1
+    while last > 0
+        state@follow = next(state)
+        order.swap(last, (state >> 16)@isize % (last + 1))
+        last -= 1
+    var placed: isize = 1
+    while placed < order.length
+        var j = placed
+        while j > 0 and strings[order[j]] < strings[order[j - 1]]
+            order.swap(j, j - 1)
+            j -= 1
+        placed += 1
+    for k in 0..order.length
+        sum += k@i64 * order[k]@i64
+
+    for a in 0..literals.length
+        for b in 0..strings.length
+            if literals[a] == strings[(b + shift) & 63]
+                sum += (a * 64 + b)@i64 * 5
+            if strings[b] < literals[a]
+                sum ^= (a * 64 + b)@i64 << 20
+
+    // A direct literal's length is known at compile time, a shape the Array-held strings above never take: at O2 its
+    // `==` is no memcmp call. Strings 8 to 11 and 20 to 23 have the literals' lengths, so each `==` compares bytes.
+    for a in 0..strings.length * 8
+        let text = strings[(a + shift) & 63]@ref
+        if text < "01238"
+            sum += a@i64 * 7
+        if text < "0123456789018"
+            sum ^= a@i64 << 8
+        if strings[8 + ((a + shift) & 3)] == "01238"
+            sum += a@i64 * 11
+        if strings[20 + ((a + shift) & 3)] == "0123456789018"
+            sum ^= a@i64 << 18
+    return sum
+
+// One round: heap strings, with Static ones among them, end in `held`'s `clear`, in `scoped`'s scope exit and as a
+// value moved out by `pop`.
+func destruction(held: uniq/Array<string>, state: uniq/i64) -> i64
+    var scoped = Array<string>.init(capacity: 160)
+    for i in 0..128
+        state@follow = next(state)
+        held.append(Text.toString(state))
+        scoped.append("scoped \(state)")
+        if i & 3 == 0
+            held.append("a Static string among heap strings")
+            scoped.append("another Static string")
+    var sum = held.length@i64 + scoped.length@i64 * 3
+    for i in 0..held.length
+        sum += Text.utf8(held[i]).length@i64 + Text.utf8(scoped[i]).length@i64 * 7
+    match held.pop()
+        .Some(let text) => sum += Text.utf8(text).length@i64 * 5
+        .None => $abort("held is empty")
+    held.clear()
+    return sum
+
+// Writes `value` into the cleared `buffer` and returns the written length plus the last byte.
+func written<T>(buffer: uniq/Text.FixedBuffer, value: T) -> i64
+    T is Utf8Format
+    buffer.clear()
+    var writer = Text.writer(buffer)
+    match $tryWrite(writer@uniq, "\(value)")
+        .Ok(_) => ()
+        .Err(_) => $abort("buffer full")
+    return buffer.length@i64 + buffer.bytes()[buffer.length - 1]@i64
+
+// One round: values of 1 to 18 digits in each integer Type that holds them, 19 digits and more, the extremes and one
+// `Text.toString`.
+func formatting(buffer: uniq/Text.FixedBuffer, state: uniq/i64) -> i64
+    var sum: i64 = 0
+    var limit: i64 = 1
+    var wide: i64 = 0
+    var sign: i64 = 1
+    for digits in 1..19
+        limit *= 10
+        let high = next(state)
+        state@follow = next(high)
+        wide = (high << 32) ^ state
+        sign = 1 - 2 * ((state >> 20) & 1)
+        let value = wide % limit * sign
+        sum += written(buffer, value)
+        sum += written(buffer, (wide % limit)@u64)
+        if digits <= 9 => sum += written(buffer, value@i32)
+        if digits <= 4 => sum += written(buffer, value@i16)
+        if digits <= 2 => sum += written(buffer, value@i8)
+    sum += written(buffer, wide * sign)
+    sum += written(buffer, wide@u64 * 2 + 1)
+    sum += written(buffer, 0@i64)
+    sum += written(buffer, 1@i32)
+    sum += written(buffer, -1@i16)
+    sum += written(buffer, 127@i8)
+    sum += written(buffer, -128@i8)
+    sum += written(buffer, 32767@i16)
+    sum += written(buffer, -32768@i16)
+    sum += written(buffer, 2147483647@i32)
+    sum += written(buffer, -2147483648@i32)
+    sum += written(buffer, 9223372036854775807@i64)
+    sum += written(buffer, -9223372036854775808@i64)
+    sum += written(buffer, 18446744073709551615@u64)
+    sum += Text.utf8(Text.toString((wide & 0x7FFF_FFFF)@i32)).length@i64
+    return sum
+
+public func main()
+    var checksum: i64 = 0
+    var state: i64 = 1
+
+    // Groups of four of one length, 0 to 40 bytes: two equal strings and two differing from them only in the last byte.
+    var strings: Array<string> = []
+    for i in 0..64
+        let group = (i / 4)@i64
+        var last: i64 = 8
+        if i & 3 == 2 => last = 9
+        if i & 3 == 3 => last = 7
+        strings.append(built(group * 8 / 3, group + 1, last))
+    let literals: Array<string> = [
+        "", "zero", "01234567", "012345678901", "0123456789013", "0123456789019999", "01234567890123456789",
+        "012345678901234567890123",
+    ]
+    var order: Array<isize> = []
+    for i in 0..strings.length
+        order.append(i)
+    checksum = fold(checksum, comparison(strings, literals, order@uniq, state@uniq))
+    for round in 1..4096
+        checksum = fold(checksum, comparison(strings, literals, order@uniq, state@uniq) + round@i64)
+
+    var held: Array<string> = []
+    checksum = fold(checksum, destruction(held@uniq, state@uniq))
+    for round in 1..8192
+        checksum = fold(checksum, destruction(held@uniq, state@uniq) + round@i64)
+
+    var bytes = [32 of 0@u8]
+    var buffer = Text.fixed(bytes@uniq)
+    checksum = fold(checksum, formatting(buffer@uniq, state@uniq))
+    for round in 1..65536
+        checksum = fold(checksum, formatting(buffer@uniq, state@uniq) + round@i64)
+    Console.writeLine("checksum \(checksum)")

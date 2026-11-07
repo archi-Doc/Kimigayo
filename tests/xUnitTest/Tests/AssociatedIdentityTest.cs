@@ -13,6 +13,8 @@ namespace XunitTest;
 
 public class AssociatedIdentityTest(ITestOutputHelper output)
 {
+    private const string StoredElement = "contract Source\n    associate Element\nstruct Src\n    Self is Source\n    associate Source.Element is i32\nstruct W<S>\n    S is Source\n    public let e: S.Element\n";
+
     private const string CyclicBaseA = "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
     private const string CyclicBaseG = "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n";
     private const string ConditionalInit = "struct HC<S>\n    S is Addable<S>\n    public var x: S.Output\n    public var y: S\n    public init(a: S)\n        S is PrimitiveInteger\n";
@@ -367,6 +369,16 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         Assert.Equal(mismatch.Length == 0 ? [] : [$"TypeMismatch_Kd {mismatch}"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}".Split('\n')[0]));
         Assert.Equal(problems, c.Problems.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}".Split('\n')[0]));
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.2.3 Projections: an instance's stored projection is its binding, substituted.
+    [InlineData("guard", "g187", StoredElement + "func g(w: W<Src>) -> i32 => w.e\n", "")]
+    [InlineData("guard", "g187r", StoredElement + "func g(w: ref/W<Src>) -> i32\n    let v: i32 = w.e\n    return v\n", "")]
+    [InlineData("guard", "g187n", StoredElement + "func g(w: W<Src>) -> u8 => w.e\n", "TypeMismatch_Kd: func g(w: W<Src>) -> u8 => w.e")]
+    public void AnInstancesStoredProjectionIsItsBinding(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static string Declarations(string parents) => """
         contract C<E>
