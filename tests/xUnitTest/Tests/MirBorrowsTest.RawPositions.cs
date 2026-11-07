@@ -176,8 +176,10 @@ public sealed partial class MirBorrowsTest
     // (v02 and r20 erred before), and b01's body-formed `uniq` borrow during `a` does not count (5.2.1). s02, s04 and e01 are guards.
     // A generic's Function Item has that generic's declared signature, so s01 through `let f = g<…>` errs too (t04i, accepted before;
     // t04v valid). A Closure environment's layer is judged by its binder as well: `ref` alone keeps t10v and t10w valid (they erred
-    // before). put's own pair binder `s/T during a` admits `uniq`, so its layer is not capped whatever case the call selects: t11u, whose
-    // pointer comes from `u: uniq`, errs (accepted before), as t11i does.
+    // before). put's own pair binder `s/T during a` admits `uniq`, so its layer is not capped whatever case the call selects (every
+    // admitted Semantics case decides the cap, SPEC 5.2.1, 5.7; the owner's O-36 (a)): t11u, whose pointer comes from `u: uniq`, errs
+    // (accepted before), as t11i does. t11v errs too, though it is valid only by its read-only path (SPEC 5.2.1, the t09c class); a
+    // recorded limit under the owner's O-36 (a), removed when a per-value raw provenance fact exists (G148 (1)).
     [Fact]
     public void ATypeArgumentsLayerIsJudgedWhereItsOriginIsBound()
         => Assert.Equal(
@@ -185,6 +187,7 @@ public sealed partial class MirBorrowsTest
                 "s01: z = 5", "s02: z = 5", "s03: z = 5", "s04: z = 5",
                 "s05: z = 5", "a02: z = 5", "a03: z = 5", "a03: let vw: ViewA03 during a = ViewA03.init(r)",
                 "e02: var z = 3", "e03: var z = 3", "x04: z = 5", "t04i: z = 5", "t11u: z = 5", "t11i: z = 5", "t11i: var q = u@follow@raw",
+                "t11v: z = 5",
             ],
             Problems("""
                 func putAny<U, V>(t: uniq/U, v: V) => ()
@@ -373,6 +376,15 @@ public sealed partial class MirBorrowsTest
                     let w = z@ref
                     var q = u@follow@raw
                     putT11i(u, q@uniq, w@raw@raw/u8)
+                    z = 5
+                func putT11v<s/T>(x: s/T during a, p: uniq/(raw/(raw/u8) during a), v: raw/u8)
+                    s is ref or uniq
+                    return
+                func t11v(r: ref/(raw/u8))
+                    var z = 3
+                    let w = z@ref
+                    var q = r@follow@raw
+                    putT11v(r, q@uniq, w@raw@raw/u8)
                     z = 5
                 """));
 
