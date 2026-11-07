@@ -105,7 +105,8 @@ public sealed class HirColumnsTest
     // Pattern plan, an expansion the calls it names), and every parsed node in the tree has an Op, a selected symbol its Res (the prepared
     // slot exactly where the parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated
     // node its completion; every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a
-    // call that takes them, unless Binding recorded one at the node itself, and a Pattern binding its acquisition; the erasure an
+    // call that takes them, unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a row states the mode of
+    // the target of an operation taking the child, which only such a row states and no shared member's contradicts; the erasure an
     // operation's quality states is the one the column applies (DECISIONS BU-83): an erasing value operation's Source holds exactly one
     // ErasedType node, itself or below its groups, which takes the Erasure, and no other operation's Source holds one; a closure has
     // its environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a
@@ -116,6 +117,7 @@ public sealed class HirColumnsTest
         var binding = module.Compilation.Binding;
         var problems = new List<string>();
         var operations = new Dictionary<Koto, HashSet<HirAdaptation>>(ReferenceEqualityComparer.Instance);
+        var modes = new Dictionary<Koto, HashSet<bool>>(ReferenceEqualityComparer.Instance);
         void Expect(Koto source, HirAdaptation adaptation)
         {
             if (!binding.TryGetAdaptation(source, out _))
@@ -139,7 +141,11 @@ public sealed class HirColumnsTest
             }
 
             Expect(source, erasing && HirTables.ErasedType(source) is not null ? HirAdaptation.Erasure : HirAdjust.Of(operation));
+            ExpectMode(source, operation);
         }
+
+        void ExpectMode(Koto source, in BoundArgumentOperation operation)
+            => (modes.TryGetValue(source, out var targets) ? targets : modes[source] = []).Add(binding.Exclusive(operation.AdaptedType ?? operation.ParameterType));
 
         bool Parsed(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId <= table.ParsedCount;
         foreach (var node in table.Hir.Broken ?? [])
@@ -290,6 +296,14 @@ public sealed class HirColumnsTest
                 }
             }
 
+            if (BoundEnumConstruction.Of(node) is { } construction)
+            {
+                foreach (ref readonly var payload in construction.PayloadOperations)
+                {
+                    ExpectMode(payload.Source!, payload);
+                }
+            }
+
             if (node is MatchKoto match && binding.TryGetMatch(match, out var plan))
             {
                 foreach (var position in plan!.Positions)
@@ -299,6 +313,23 @@ public sealed class HirColumnsTest
                         problems.Add($"{where} binds {position.Source.Span.Start} {position.Acquisition} as {HirTables.AdjustOf(position.Source)}");
                     }
                 }
+            }
+        }
+
+        foreach (var node in Reachable(module))
+        {
+            // A $tryWrite's writer is the one operation a test cannot name here: its macro's formatting plan keeps it.
+            if (Parsed(node) && HirTables.AdjustOf(node) is { ExclusiveMode: true } stated && ((!modes.ContainsKey(node) && node.Parent is not { Parent: MacroKoto }) || stated.Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ReferentRead))
+            {
+                problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} states a mode no operation gave it: {stated}");
+            }
+        }
+
+        foreach (var (source, targets) in modes)
+        {
+            if (Parsed(source) && HirTables.Op(source) != HirOp.Error && HirTables.AdjustOf(source) is var adjust && !targets.Contains(adjust.ExclusiveMode))
+            {
+                problems.Add($"{source.CodeContext.SourceDocument?.Path}:{source.Span.Start} {source.Akind} takes {adjust} for a target's mode {string.Join(',', targets)}");
             }
         }
 
