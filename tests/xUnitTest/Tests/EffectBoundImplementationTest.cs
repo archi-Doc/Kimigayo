@@ -11,6 +11,10 @@ namespace XunitTest;
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
 public partial class EffectBoundImplementationTest
 {
+    private const string StableSources = "contract Source\n    func take(self: uniq/Self) -> i32\ncontract StableSource: Source\n    effect Source.take confined\n";
+
+    private const string TakingCursor = "struct Cursor<T>\n    T is C\n    Self is Step\n    var inner: T\n    public func step(self: uniq/Self)\n        var item = self.inner.get()\n        _ = item.take()\n";
+
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n" +
         "group Metrics\n    public var puts: isize = 0\n    public func record() => Metrics.puts += 1\n";
 
@@ -250,6 +254,17 @@ public partial class EffectBoundImplementationTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Equal(0, allocated);
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.11.3, 8.3.2, 8.5.4: a Contract's bound reaches an associated Type that a premise makes conform, for every Origin argument of its family;
+    // without the bound the conformance is rejected at its Self clause.
+    [InlineData("C7", "g234", StableSources + "contract C\n    associate Item(s) is StableSource and Copy\n    func get(self: uniq/Self during s) -> Self.Item(s)\n        effect confined\n" + Step + TakingCursor, "", Explicit = true)]
+    [InlineData("guard", "g234p", StableSources + "contract C\n    associate Item is StableSource and Copy\n    func get(self: uniq/Self) -> Self.Item\n        effect confined\n" + Step + TakingCursor, "")]
+    [InlineData("guard", "g234n", StableSources + "contract C\n    associate Item(s) is Source and Copy\n    func get(self: uniq/Self during s) -> Self.Item(s)\n        effect confined\n" + Step + TakingCursor, "IncompatibleContractImplementation_Kd: Self is Step")]
+    public void ABoundReachesAnAssociatedFamily(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // R6-check H3b T40: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges an effect bound where Binding did. Binding
     // completes; a violated bound refuses the program with A4's IncompatibleContractImplementation_Kd at the conformance's `Self is C`
