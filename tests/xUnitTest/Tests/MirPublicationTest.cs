@@ -144,6 +144,10 @@ public sealed class MirPublicationTest
     [InlineData((byte)ProblemFactKind.Span)]
     [InlineData((byte)ProblemFactKind.ActualForm)]
     [InlineData((byte)ProblemFactKind.ExpectedForm)]
+    [InlineData((byte)ProblemFactKind.Operand)]
+    [InlineData((byte)ProblemFactKind.Terminal)]
+    [InlineData((byte)ProblemFactKind.Constraint)]
+    [InlineData((byte)ProblemFactKind.OriginRecord)]
     public void AMirRecordCarryingABindingKindIsABrokenContract(byte kind)
     {
         var (c, program) = Program(Valid);

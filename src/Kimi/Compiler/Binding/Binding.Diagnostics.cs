@@ -634,7 +634,6 @@ public sealed partial class Binding
         this.callableConstraints?.Clear();
         this.clauseConstraints?.Clear();
         this.pendingJudgments?.Clear();
-        this.operatorOperands?.Clear();
         this.arithmeticConformanceFailures?.Clear();
         this.arithmeticSelectionFailures?.Clear();
         this.arithmeticDirectionFailures?.Clear();

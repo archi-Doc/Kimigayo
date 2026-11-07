@@ -17,9 +17,11 @@
 // problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
 // the site (A3's guessed sites, R5-M186; 2g-1's), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
 // in BindingReport's kept Types, an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
-// byte, an anonymous function's parameter count plus one, 0 for none, and a Span fact its subject and as its Value the located part,
-// start << 32 | length; a kind that names no value has -1; a problem has at most one fact of each kind but its witness's and its causes,
-// which come last.
+// byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
+// start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept Types,
+// a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
+// the subject and as its Value an index in the kept Origin records; a kind that names no value has -1; a problem has at most one fact of
+// each kind but its witness's and its causes, which come last.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -31,7 +33,8 @@ namespace Kimi.Compiler;
 /// default copy an A1 or A2 Language problem was found in (R4-M69), the default's operation of a Loan problem a body owns inside a copy
 /// (R4-M97), the declaration of the static Field a Call's or Drop's effects met, by what decided it (R4-M92), an Origin problem's last
 /// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), a problem this one is caused only by (rule W,
-/// R4-M132), or, for Binding, the syntax that shows a mismatch with one of its two sides or the subject with its located part (R7-E1).</summary>
+/// R4-M132), or, for Binding, the syntax that shows a mismatch with one of its two sides, the subject with its located part, a failed operator's
+/// operand, judged Type or proposition, or a further Origin record (R7-E1).</summary>
 internal enum ProblemFactKind : byte
 {
     Anchor,
@@ -53,12 +56,16 @@ internal enum ProblemFactKind : byte
     Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).
     ActualForm, // Binding: as Actual, for a side that is no Type (Value, a MismatchForm row and its count).
     ExpectedForm, // Binding: as Expected, the same.
+    Operand, // Binding: the syntax an operator failed at, its operand's Type (Value, an index in BindingReport's kept Types; SPEC 13).
+    Terminal, // Binding: the same syntax, the Type the operator judged (Value, the same).
+    Constraint, // Binding: the same syntax, the proposition a failed operator needs (Value, an index in the kept propositions).
+    OriginRecord, // Binding: the subject, one of its Origin records beyond the first (Value, an index in the kept Origin records; SPEC 15.6.1).
 }
 
 /// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>
 /// <param name="Kind">What the site is.</param>
 /// <param name="Site">The syntax.</param>
 /// <param name="Value">A Relation fact's row index in the body's C1-F4 view, -1 for a containment edge; a storage limit's bytes, byte limit or
-/// arena; a Cause's problem index (in Merged's facts, its merged problem's); a kept Type's index; a form's row and count; a located part; -1
+/// arena; a Cause's problem index (in Merged's facts, its merged problem's); a kept value's index; a form's row and count; a located part; -1
 /// for a kind that names no value.</param>
 internal readonly record struct ProblemFact(ProblemFactKind Kind, SourceRef Site, long Value = -1);
