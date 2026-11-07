@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // Raw Origins, steps (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-41, BU-46, BU-113; contract in Binding.RawOrigins.cs): the
 // authority a raw layer's Origin can keep, which retention and the TyCtxt views read after Binding: by its kind (StepOf), a layer a
 // contract's walk meets by its position (RawStepAt, over SignatureStep and BinderStep) and a layer an instance stores (StoredStep and
-// its members StoredMembers, both over StoredLayer, which reads the
+// its members StoredMembers by a Holdings read's key, StoredStep over StoredLayer, which reads the
 // instance's kept part and, by WrittenAt, which TyCtxt publishes, the Type its declaration writes there; the step from the layer its
 // declaration states, DeclaredStep, which StoredStep and the hold walk read).
 public sealed partial class Binding
@@ -28,7 +28,7 @@ public sealed partial class Binding
 
     // SPEC 5.7 Calls ("for self, the holding value's Type"; the owner's Q2 (a)): what a `during self` layer of a stored part admits past
     // it besides its pointee, the one reading of it retention's storage walk and fits (Binding.Retention.Storage.cs) and A5's holding walk
-    // (MirTypes.Holding, through TyCtxt) read: the holding instance's Type arguments by their actual Types (`arguments`), or, where the
+    // (Binding.Holdings) read: the holding instance's Type arguments by their actual Types (`arguments`), or, where the
     // instance has an Origin argument, the write fact instead (true): any value at each of them.
     internal static bool SelfAdmitted(BoundType? holder, out IReadOnlyList<BoundType> arguments)
     {
@@ -103,16 +103,14 @@ public sealed partial class Binding
     internal HoldStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
         => this.DeclaredStep(this.StoredLayer(instance, part, positions, out var declared), declared, instance);
 
-    // RawMembers of the raw layer an instance stores (StoredLayer): its Origin under the instance's substitution, within the instance, so
+    // RawMembers of a raw layer an instance stores, by a Holdings read's key (`written` the Type its declaration writes there, a raw layer's
+    // where it states one): its Origin under the instance's substitution, within the instance, so
     // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. False when the
     // walk is incomplete (RawMembers), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: that Origin belongs to
     // the borrows of the scope that wrote the Type (an input's, a body local's), not to the instance's, and a call may store through it.
-    internal bool StoredMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
-    {
-        var layer = this.StoredLayer(instance, part, positions, out var declared);
-        return layer.RawOrigin is not { } origin || StepOf(origin) != HoldStep.Exclusive ||
-            (declared is not null && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in instance), members));
-    }
+    internal bool StoredMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
+        => layer.RawOrigin is not { } origin || StepOf(origin) != HoldStep.Exclusive ||
+            (ReferenceTypes.IsPointer(written) && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in holder), members));
 
     // A raw Origin as its signature writes it (DECISIONS BU-113): `x.s` denotes the slot argument of x's declared Type (the declaration's
     // own slot for `self.s`, the projection itself for an input whose Type omits it); any other Origin is itself.

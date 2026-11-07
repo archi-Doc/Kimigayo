@@ -3,13 +3,12 @@
 namespace Kimi.Compiler;
 
 // A5's views of the raw layers an instance stores (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-39, BU-41, BU-46; R4's constraint
-// 2): the authority such a layer's Origin can keep (StoredStep, which A5 and MirTypes.Holding read), the borrows it belongs to (RawMembers)
+// 2): the authority such a layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers)
 // and whether a declaration states it without an Origin (RawStated), with the stored parts through which a walk reaches the instance
 // storing it (StoredParts), for G148 (1)'s per-part guard (R4-M76), read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs,
 // .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); the Type a declaration writes at a stored part's inline positions
-// (WrittenAt, DECISIONS BU-58), for A5's walks over them; what a `during self` layer admits past its pointee (SelfAdmitted,
-// Binding's one reading forwarded, which MirTypes.Holding reads); and whether a Type states Unstated (StatesUnstated), which only a kept
-// part does (MirValidator's Local row).
+// (WrittenAt, DECISIONS BU-58), for A5's walks over them; and whether a Type states Unstated (StatesUnstated), which only a kept part
+// does (MirValidator's Local row).
 internal sealed partial class TyCtxt
 {
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
@@ -60,11 +59,6 @@ internal sealed partial class TyCtxt
     // RawMembers appends nothing. Reads the declaration only, O(|positions|), total; allocates nothing.
     internal static BoundType? WrittenAt(BoundType instance, int part, ReadOnlySpan<int> positions) => Binding.WrittenAt(instance, part, positions, out _);
 
-    // SPEC 5.7 Calls (the owner's Q2 (a)): what a `during self` layer of a stored part admits past it besides its pointee, Binding's one
-    // reading (Binding.SelfAdmitted): the holding instance's Type arguments by their actual Types, or the write fact where it has an Origin
-    // argument (true).
-    internal static bool SelfAdmitted(BoundType holder, out IReadOnlyList<BoundType> arguments) => Binding.SelfAdmitted(holder, out arguments);
-
     // SPEC 5.2.1 condition 3 (design-final §15, R4's conditions; the owner's 「Loan 要求で上限 (推奨)」): the step of a raw layer an instance
     // stores, the one reader of one: a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component,
     // then the inline positions (a Tuple's component, a fixed array's element). Shared when the declaration states the layer with a slot
@@ -77,16 +71,17 @@ internal sealed partial class TyCtxt
     // StoredParts, the holder's (DECISIONS BU-41). A path that ends at no raw layer is a broken contract.
     internal HoldStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions) => binding.StoredStep(instance, part, positions);
 
-    // SPEC 5.7 Origins, Calls (G160-4's (3a); DECISIONS BU-24): the borrows the Origin of the raw layer an instance stores (positions as
-    // for StoredStep) belongs to, appended to `members`: its Origin under the instance's substitution, within the instance, so its members
+    // SPEC 5.7 Origins, Calls (G160-4's (3a); DECISIONS BU-24): the borrows the Origin of a raw layer a holder stores belongs to, by the key
+    // of the Holdings read that met it (the layer, the Type its declaration writes there, the holding instance), appended to `members`: its
+    // Origin under the instance's substitution, within the instance, so its members
     // are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. Each member is the scope
     // Type it is found at, the referent its borrow admits (a slot keeper's under the Type binding the slot) and whether it may keep an
     // exclusive Loan. Total: false when the members are incomplete (a keeper cycle that changes its Type arguments, or a keeper Binding's
     // storage instantiation does not complete), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: its borrows
     // are the scope's that wrote the Type (a pair slot's states none). One read of the kept part and one walk of each (slot, owner Type)
     // the bound slots' keepers reach.
-    internal bool RawMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
-        => binding.StoredMembers(instance, part, positions, members);
+    internal bool RawMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
+        => binding.StoredMembers(layer, written, holder, members);
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24, BU-41, BU-46; G148 (1)): a struct's or enum's stored parts under its substitution with
     // the raw Origins it gives, `self` as Holder and Unstated on each raw layer its declaration writes without `during` (RawStated), by the
