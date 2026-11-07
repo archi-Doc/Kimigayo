@@ -97,8 +97,8 @@ internal static class CompilationTestHelper
     // An acceptance row's verdict (SPEC 8.3, 23.1.2): `records` is empty for a valid program, which has no Error and generates. Otherwise it
     // lists the program's Errors as `Code: source line`, trimmed and separated by ` | `, each pair once: SPEC 23 fixes neither the span inside
     // a line nor how many records one failed rule gives. `*` for a code or a line leaves it to the implementation, `Resource` for a code is
-    // any code of that category, `!Code` says no record has that code, and a last entry `...` leaves open the records resting on the listed
-    // ones.
+    // any code of that category, and a last entry `...` leaves open the records resting on the listed ones. Neither wildcard admits
+    // Unsupported_Kd (the form is valid, SPEC 23.1.1) or InternalInvariant_Kd (a defect): an entry must name them.
     internal static void AssertRecordsAtLines(string form, string program, string records)
     {
         var c = MinimalEmissionTest.Analyze(program);
@@ -137,11 +137,11 @@ internal static class CompilationTestHelper
     {
         var actual = errors.Select(x => (x.Code, Line: LineAt(program, x.Span.Start))).Distinct().ToArray();
         var entries = records.Split(" | ", StringSplitOptions.RemoveEmptyEntries);
-        var expected = entries.Where(static x => x != "..." && !x.StartsWith('!')).ToArray();
+        var expected = entries.Where(static x => x != "...").ToArray();
         var named = expected.All(e => actual.Any(a => NamesRecord(e, a.Code, a.Line)));
-        var denied = entries.Where(static x => x.StartsWith('!')).Any(e => actual.Any(a => a.Code == e[1..]));
+        var unnamed = actual.Any(a => a.Code is nameof(DiagnosticCode.Unsupported_Kd) or nameof(DiagnosticCode.InternalInvariant_Kd) && !expected.Any(e => e.StartsWith($"{a.Code}: ", StringComparison.Ordinal)));
         var counted = entries.LastOrDefault() == "..." || actual.Length == expected.Length;
-        Assert.True(named && !denied && counted, $"{form}: expected [{records}], found [{string.Join(" | ", actual.Select(static x => $"{x.Code}: {x.Line}"))}]");
+        Assert.True(named && !unnamed && counted, $"{form}: expected [{records}], found [{string.Join(" | ", actual.Select(static x => $"{x.Code}: {x.Line}"))}]");
     }
 
     private static bool NamesRecord(string entry, string code, string line)

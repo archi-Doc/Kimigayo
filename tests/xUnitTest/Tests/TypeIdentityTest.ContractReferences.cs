@@ -168,7 +168,7 @@ public partial class TypeIdentityTest
     public void AnAccessResolvesThroughItsReceiversIdentity(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertBindingRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
-    // SPEC 8.9.1, 4.7.1, 23.1.2: an index key's record shows the conformances it weighed, and a Note states only what the check found:
+    // SPEC 8.9.1, 4.7.1, 23.1.2: an index key's record shows each conformance it weighed, and a Note states only what the check found:
     // M<SrcI> does conform to UniqIndexable, for Name.
     [Theory]
     [InlineData("C3", "x2", "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "AmbiguousBinding_Kd", "Indexable<", null, Explicit = true)]
@@ -178,7 +178,7 @@ public partial class TypeIdentityTest
     {
         var c = MinimalEmissionTest.Analyze(program + "()");
         var record = CompilationTestHelper.PublishedErrors(c).Single(x => x.Code == code);
-        Assert.True(named is null || record.Explanation.Contains(named, StringComparison.Ordinal), $"{form} [{unit}]: {record.Explanation}");
+        Assert.True(named is null || record.Explanation.Split(named).Length > 2, $"{form} [{unit}]: {record.Explanation}");
         Assert.True(denied is null || !record.Explanation.Contains(denied, StringComparison.Ordinal), $"{form} [{unit}]: {record.Explanation}");
     }
 }

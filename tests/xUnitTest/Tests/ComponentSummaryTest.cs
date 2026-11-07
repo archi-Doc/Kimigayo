@@ -278,7 +278,7 @@ public class ComponentSummaryTest
     // SPEC 8.3.2, 8.3.3 Limits (DECISIONS BU-22): an exact refutation in another operand decides, for a call's check, a function reference and a
     // conformance's verification; alone, the limit stays the stored Type's located Unsupported_Kd (the n twins). g207-conf2 is the refutation without
     // the limit.
-    [InlineData("guard", "g207-call", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<Plain>>(x@move)\n", "UnsatisfiedConstraint_Kd: two<TreeNode<U>, OnlyCopy<Plain>>(x@move) | !Unsupported_Kd | ...")]
+    [InlineData("guard", "g207-call", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<Plain>>(x@move)\n", "UnsatisfiedConstraint_Kd: two<TreeNode<U>, OnlyCopy<Plain>>(x@move) | ...")]
     [InlineData("guard", "g207-calln", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<i32>>(x@move)\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
     [InlineData("C5", "g207-ref", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<Plain>>\n    ()\n", "UnsatisfiedConstraint_Kd: let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<Plain>>", Explicit = true)]
     [InlineData("guard", "g207-refn", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<i32>>\n    ()\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
@@ -296,6 +296,17 @@ public class ComponentSummaryTest
     [InlineData("guard", "g208n", "contract Deep\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "UnprovenConstraint_Kd: need(x@move)")]
     public void LimitsAndStoredProjectionsHaveTheirVerdicts(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // A row's wildcards never admit a located Unsupported_Kd, which says the form is valid (SPEC 23.1.1); only an entry naming the code does.
+    [Theory]
+    [InlineData("*: let kids: Array<TreeNode<T.(Tree).Child>>", false)]
+    [InlineData("*: * | ...", false)]
+    [InlineData("Unsupported_Kd: * | ...", true)]
+    public void AWildcardNeverAdmitsAnUnsupportedRecord(string records, bool admitted)
+    {
+        const string Program = SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<i32>>(x@move)\n()";
+        Assert.Equal(admitted, Record.Exception(() => CompilationTestHelper.AssertRecordsAtLines("wildcard", Program, records)) is null);
+    }
 
     private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(f => f.Name == name);
 

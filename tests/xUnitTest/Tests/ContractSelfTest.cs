@@ -121,7 +121,13 @@ public class ContractSelfTest
     // `k` (stale3).
     [InlineData("guard", "stale0", "contract D<U>\n    associate N\ncontract C\n    associate X is D<i32>\nfunc needs<V, W>(v: ref/V)\n    V is D<W>\n    ()\nfunc probe<T>(value: ref/T.(C).X)\n    T is C\n    needs<T.(C).X, i32>(value)\n", "")]
     [InlineData("guard", "stale3", "contract K\n    func k(self: ref/Self) -> i32\ncontract D<U>\n    U is K\ncontract C: K\n    associate X is D<Self>\nfunc probe<T>(value: ref/T.(C).X) -> i32\n    T is C\n    return value.k()\n", "*: return value.k()")]
-    [InlineData("guard", "h6", "contract E\ncontract D<U>\n    U is E\n    associate N is D<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
+
+    // SPEC 8.3.3 Expanding recursion: D<U>'s reference to D passes U inside a projection's Contract argument, an expanding pass on a one-Contract
+    // cycle, so D is a Language error whatever the limits; records of the uses resting on it stay open. The same argument passed to a Contract
+    // that refers to none has no cycle (h6f), and a flat pass is a valid recursive Contract (h6u).
+    [InlineData("C2", "h6", "contract E\ncontract D<U>\n    U is E\n    associate N is D<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "InvalidConstraint_Kd: associate N is D<Self.(D<U>).M> | ...", Explicit = true)]
+    [InlineData("guard", "h6f", "contract E\ncontract F<W>\ncontract D<U>\n    U is E\n    associate N is F<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
+    [InlineData("guard", "h6u", "contract E\ncontract D<U>\n    U is E\n    associate N is D<U>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
 
     // SPEC 8.4, 8.3.1: `F<Self>` proves a clause on `Self`, and does not prove one on `Self.X` (cs1bad, whose resting records stay open).
     [InlineData("C2", "cs1", "contract F<W>\ncontract D<U>\n    associate N is F<U>\ncontract G<Z, W>\n    Z is F<W>\ncontract C\n    associate X is D<Self>\n    associate Q is G<Self.X.(D<Self>).N, Self>\n", "", Explicit = true)]
