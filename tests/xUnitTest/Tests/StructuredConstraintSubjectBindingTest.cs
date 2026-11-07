@@ -45,6 +45,30 @@ public class StructuredConstraintSubjectBindingTest
         Assert.Equal(clause[..clause.LastIndexOf(" is ", StringComparison.Ordinal)], record.Text);
     }
 
+    // SPEC F.5, F.6: an AssociatedTypeReference is a subject with or without a leading `::`, whose qualifier may be a constructed Type, in a
+    // clause and in a condition. Binding still fails to resolve a root-headed projection, on the base too (F's open issue O4), so this
+    // pins the syntax verdict only: rooted and unrooted get the same one.
+    [Theory]
+    [InlineData("Y.(C).A")]
+    [InlineData("W<Y>.(C).A")]
+    [InlineData("W<Y>.C.A")]
+    [InlineData("G.V<Y>.(C).A")]
+    [InlineData("Q.(L).Item(a)")]
+    [InlineData("Q.L.Item(a)")]
+    [InlineData("W<Y>.Inner")]
+    public void AnAssociatedTypeReferenceIsASubjectRootedOrNot(string subject)
+    {
+        const string head = "contract C\n    associate A\ncontract L\n    associate Item(step)\ncontract K\nstruct Y\nstruct W<T>\ngroup G\n    struct V<T>\nstruct Q\n";
+        foreach (var path in new[] { subject, "::" + subject })
+        {
+            foreach (var clause in new[] { "struct S<Z>\n    origin a\n    " + path + " is K\n", "struct S<Z>\n    Self is K when " + path + " is K\n" })
+            {
+                var c = MinimalEmissionTest.Analyze(head + clause);
+                Assert.DoesNotContain(TestDiagnostics.Of(c, "Hello.kimi"), static x => x.Code == nameof(DiagnosticCode.ExpectedSyntax_Kd));
+            }
+        }
+    }
+
     [Theory]
     [InlineData("struct")]
     [InlineData("enum")]

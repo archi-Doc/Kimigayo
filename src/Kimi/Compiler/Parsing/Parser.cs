@@ -2217,10 +2217,11 @@ CloseParameters:
         var lastError = reader.Diagnostic.LastError;
         var simple = HasSimpleConstraintSubject(ref reader);
         var subject = simple ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
-        if (!simple && !IsConstraintSubject(subject) && !ReportedSince(ref reader, lastError, out _))
+        if (!simple && !IsConstraintSubject(subject) && !ReportedSince(ref reader, lastError, out _) && subject.Expected(SyntaxForm.Constraint) is { } rejected)
         {
-            // The owner's O-42 (a): a constructed Type is no subject, and the Constraint rests on this Error. A failed Type has its own.
-            subject.Expected(SyntaxForm.Constraint);
+            // The owner's O-42 (a): a constructed Type is no subject. The Constraint rests on this Error, and its requirement stays
+            // independent (BindConstraint); a failed Type has its own Error.
+            reader.CodeContext.RecordRecovery(subject, rejected);
         }
 
         return FinishConstraint(ref reader, subject, lastError, finishLine);
@@ -2237,20 +2238,30 @@ CloseParameters:
     }
 
     // SPEC F.6's ConstraintSubject, over what HasSimpleConstraintSubject leaves to the Type path: a Type with no Type arguments (a primitive
-    // Type, or a Name no `is` follows) or an AssociatedTypeReference, whose qualifier may be any Type, ending in a Name with its Origins.
+    // Type, or a Name no `is` follows) or an AssociatedTypeReference, rooted or not, whose qualifier may be a constructed Type, ending in a
+    // Name with its Origins.
     private static bool IsConstraintSubject(Koto type)
     {
-        if (type is TypeSemanticsKoto { Type: null, HasOrigin: false })
+        var rooted = false;
+        while (true)
         {
-            return true;
+            if (type is TypeSemanticsKoto { IsTransparentWrapper: true, HasOrigin: false, Type: { } inner })
+            {
+                type = inner;
+            }
+            else if (type is SyntaxFormKoto { Akind: KotoKind.RootName } root)
+            {
+                rooted = true;
+                type = root.Operands[0];
+            }
+            else
+            {
+                break;
+            }
         }
 
-        while (type is TypeSemanticsKoto { IsTransparentWrapper: true, HasOrigin: false, Type: { } inner })
-        {
-            type = inner;
-        }
-
-        return (type is OriginApplicationKoto application ? application.Type : type) is MemberAccessKoto { Right: TypeSemanticsKoto { Type: null } };
+        return type is TypeSemanticsKoto { Type: null, HasOrigin: false } name ? !rooted || name.IsNamedType :
+            (type is OriginApplicationKoto application ? application.Type : type) is MemberAccessKoto { Right: TypeSemanticsKoto { Type: null } };
     }
 
     // The keys are compared as values; comparing with the nullable key would box it for every Constraint after an Error.

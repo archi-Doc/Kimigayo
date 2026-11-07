@@ -226,36 +226,39 @@ public class ErasureOwnedDiagnosticTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
-    // SPEC 8.2.3, 8.3.3 (DECISIONS BU-22): a step resolved through an identity premise is no re-entry; the walk reads it and ends at an
-    // associated Type of a premise conformance that nothing in scope proves Owned, so the capture's record is independent (SPEC 15.2.3,
-    // 23.1.2) of the two at inspect's signature, whose premises inspect cannot prove. Two levels and 140 give the same records; both
-    // were InternalInvariant_Kd at the closure. The row with one conformance fewer (S is Invalid) pins a dependent UnprovenConstraint_Kd at
-    // the closure: an interim the owner approved under PLAN G354 (3), removed (leaving S's records and the pair at inspect's signature)
-    // with G354 (3)'s settle for Unknown Owned verdicts on a context that fails by the prologue. The steps go through Type parameters: a
-    // constructed Type is no subject (the owner's O-42 (a)).
+    // SPEC 8.2.3, 8.3.3 (DECISIONS BU-22): a step resolved through an identity premise is no re-entry: W<Yi>'s conformance is a hop to
+    // Yi.(Has2).Out, whose identity premise the walk reads and goes on, here 2 and 140 levels of constructed roots (they were
+    // InternalInvariant_Kd at the closure). The walk ends at an associated Type of a premise conformance that nothing in scope proves
+    // Owned, so the capture's record is independent (SPEC 15.2.3, 23.1.2) of the two at inspect's signature, whose premises inspect cannot
+    // prove. The row with one conformance fewer (S is Invalid) pins a dependent UnprovenConstraint_Kd at the closure: an interim the owner
+    // approved under PLAN G354 (3), removed with G354 (3)'s settle for Unknown Owned verdicts on a context that fails by the prologue.
     [Theory]
     [InlineData(2, 3, "UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
     [InlineData(140, 141, "UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
-    [InlineData(2, 2, "InvalidConstraint_Kd struct | InvalidConstraint_Kd Y0.(Has2).Out | InvalidConstraint_Kd Y1.(Has2).Out | UnprovenConstraint_Kd PH<Y2> | PrerequisiteUnavailable_Kd let p: PH<Y0> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<Y0> | InvalidConstraint_Kd PH<Y0> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
+    [InlineData(2, 2, "InvalidConstraint_Kd struct | InvalidConstraint_Kd Y0.(Has2).Out | InvalidConstraint_Kd Y1.(Has2).Out | UnprovenConstraint_Kd PH<W<Y2>> | InvalidConstraint_Kd W<Y2> | InvalidConstraint_Kd W<Y2> | PrerequisiteUnavailable_Kd let p: PH<W<Y0>> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<W<Y0>> | InvalidConstraint_Kd PH<W<Y0>> | InvalidConstraint_Kd W<Y0> | InvalidConstraint_Kd W<Y0> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
     public void AnIdentityStepIsWalkedNotTestedForReEntry(int identities, int conformances, string records)
     {
         var parameters = string.Join(", ", Enumerable.Range(0, identities + 1).Select(static i => "Y" + i));
-        var source = "contract Has2\n    associate Out\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S<" + parameters + ">\n" +
+        var source = "contract Has2\n    associate Out\nstruct W<X>\n    X is Has2\n    Self is Has2\n    associate Has2.Out is X.(Has2).Out\n    let x: X\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S<" + parameters + ">\n" +
             string.Concat(Enumerable.Range(0, conformances).Select(static i => $"    Y{i} is Has2\n")) +
-            string.Concat(Enumerable.Range(0, identities).Select(static i => $"    Y{i}.(Has2).Out is PH<Y{i + 1}>\n")) +
-            "    let p: PH<Y0>\nfunc inspect<" + parameters + ">(a: S<" + parameters + ">) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n" + Main + "    return\n";
+            string.Concat(Enumerable.Range(0, identities).Select(static i => $"    Y{i}.(Has2).Out is PH<W<Y{i + 1}>>\n")) +
+            "    let p: PH<W<Y0>>\nfunc inspect<" + parameters + ">(a: S<" + parameters + ">) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n" + Main + "    return\n";
         Assert.Equal(records.Replace("S<Y>", "S<" + parameters + ">", StringComparison.Ordinal), string.Join(" | ", Records(source)));
     }
 
-    // SPEC 8.2.3, 8.3.3 (DECISIONS BU-22, BU-76): in a chain mixing identity and conformance steps, the steps tested for re-entry are
-    // those its hops resolved. mx1 resolves Z.(Has2).Out by identity and tests Q<PH<V>>.(K).B, then Q<i32>.(K).B, which is not deeper:
-    // valid, as its twin (it was InternalInvariant_Kd at the closure). n4: an outer identity over an inner conformance has no hops and its
-    // finite chain is walked untested. mx2-ctl reaches a deep root through one identity level.
+    // SPEC 8.2.3, 8.3.3 (DECISIONS BU-22, BU-76): the steps tested for re-entry are those a chain's hops resolved. mx1 resolves
+    // A1<Y>.(Has2).Out by a hop and tests Q<PH<A2<Y>>>.(K).B, then Q<i32>.(K).B, which is not deeper: valid, as its twin (it was
+    // InternalInvariant_Kd at the closure). n4: an inner conformance at the end of a chain. mx2's hop step Q<H<...<i32>>>.(K).B is deeper
+    // and no hop clause fails: no SPEC 8.3.3 record, so the use rests on the stored Type's located Unsupported_Kd until PLAN G369's exact
+    // re-entry test (it was InternalInvariant_Kd at the closure); mx2-identity reaches the same through an identity premise on a Type
+    // parameter; mx2-ctl reaches that root through one level.
     [Theory]
-    [InlineData("mx1", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Z, V>\n    Z is Has2\n    V is Has2\n    Z is Owned\n    V is Owned\n    Z.(Has2).Out is Q<PH<V>>\n    V.(Has2).Out is Q<i32>\n    let p: PH<Z>\n    func inspect(a: S<Z, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
-    [InlineData("mx1-twin", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Z>\n    Z is Has2\n    Z is Owned\n    Z.(Has2).Out is Q<i32>\n    let p: PH<Z>\n    func inspect(a: S<Z>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
-    [InlineData("n4", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Z>\n    Z is Has2\n    Z is Owned\n    Z.(Has2).Out is K\n    Z.(Has2).Out.(K).B is i32\n    let p: PH<Z>\n    func inspect(a: S<Z>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
-    [InlineData("mx2-ctl", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S<Z>\n    Z is Has2\n    Z is Owned\n    Z.(Has2).Out is Q<H<H<H<H<H<H<H<H<i32>>>>>>>>>\n    let p: PH<Z>\n    func inspect(a: S<Z>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("mx1", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct A2<Y>\n    Self is Has2\n    associate Has2.Out is Q<i32>\n    let y: Y\nstruct A1<Y>\n    Self is Has2\n    associate Has2.Out is Q<PH<A2<Y>>>\n    let y: Y\nstruct S<Y>\n    Y is Owned\n    let p: PH<A1<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("mx1-twin", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct A1<Y>\n    Self is Has2\n    associate Has2.Out is Q<i32>\n    let y: Y\nstruct S<Y>\n    Y is Owned\n    let p: PH<A1<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("n4", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Hk<X>\n    Self is K\n    associate K.B is i32\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct A1<Y>\n    Self is Has2\n    associate Has2.Out is Hk<Y>\n    let y: Y\nstruct S<Y>\n    Y is Owned\n    let p: PH<A1<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("mx2", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct A2<Y>\n    Self is Has2\n    associate Has2.Out is Q<H<H<H<H<H<H<H<H<i32>>>>>>>>>\n    let y: Y\nstruct A1<Y>\n    Self is Has2\n    associate Has2.Out is Q<PH<A2<Y>>>\n    let y: Y\nstruct S<Y>\n    Y is Owned\n    let p: PH<A1<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "Unsupported_Kd PH<A1<Y>>")]
+    [InlineData("mx2-identity", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct W<X>\n    X is Has2\n    Self is Has2\n    associate Has2.Out is X.(Has2).Out\n    let x: X\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S<Y, V>\n    Y is Has2\n    V is Has2\n    Y is Owned\n    V is Owned\n    Y.(Has2).Out is PH<W<W<V>>>\n    V.(Has2).Out is Owned\n    let p: PH<W<Y>>\n    func inspect(a: S<Y, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "Unsupported_Kd PH<W<Y>>")]
+    [InlineData("mx2-ctl", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct A1<Y>\n    Self is Has2\n    associate Has2.Out is Q<H<H<H<H<H<H<H<H<i32>>>>>>>>>\n    let y: Y\nstruct S<Y>\n    Y is Owned\n    let p: PH<A1<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
     public void AMixedChainTestsTheStepsItsHopsResolved(string id, string declarations, string records)
         => Assert.Equal((id, records), (id, string.Join(" | ", Records(declarations + "\n" + Main + "    return\n"))));
 
