@@ -2,13 +2,15 @@
 
 // The published closure definition (C2; ClosureDef, plan 5.3; DECISIONS R4-M126, R4-M145).
 // - Responsibility: what a binding of an anonymous function publishes: each capture's source and environment binding (Storage), the
-//   environment Type, the signature, the evaluating body, whether the body infers the result (InfersResult), and the call receiver
+//   environment Type, each local region the environment names with the meet of its sources in source order (CapturedRegions), the
+//   signature, the evaluating body, whether the body infers the result (InfersResult), and the call receiver
 //   facts (SPEC 7.7.3): the strongest requirement over every admitted case (Receiver), the requirement every case has
 //   (CaseFreeReceiver), each capture whose acquisition by value Reborrows by case (BoundCapture.BareReborrows), the first Exclusive
 //   cause, and whether this binding has classified them (Classified).
-// - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, EvaluatingBody, InfersResult and the resets),
+// - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, CapturedRegions, EvaluatingBody, InfersResult and the resets),
 //   Binding.Captures (Storage), Binding.ClosureReceivers (the receiver facts).
-// - Outputs: InfersResult for Binding's discard rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
+// - Outputs: CapturedRegions for retention's premise graph (Binding.RetentionNodes), its only reader; InfersResult for Binding's discard
+//   rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
 //   reader (value calls, candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a
 //   view of one admitted case, that case's
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
@@ -22,7 +24,8 @@
 //   that definition while the literal's creation is Resolved and null when the creation failed: only a reader that asks whether the
 //   creation at its position succeeded reads it (control flow's created closure).
 // - Invariants: Receiver is CaseFreeReceiver raised to Exclusive when a capture has BareReborrows, so Consuming never depends on a
-//   case; the receiver facts are the current binding's exactly when Classified; a failed creation keeps its definition.
+//   case; the receiver facts are the current binding's exactly when Classified; a failed creation keeps its definition; CapturedRegions
+//   is the current binding's, written with EnvironmentType, so its sources are those the published result resolved (DECISIONS: G553).
 // - Prohibitions: only ClosureEffects classifies the receiver facts, which the binding resets; no reader re-derives a receiver from the body.
 
 using Kimi.Compiler.Parsing;
@@ -52,6 +55,11 @@ public sealed class BoundClosure
     public BoundType? EnvironmentType { get; internal set; }
 
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
+
+    // Each local region of the environment with the meet of its sources in source order at the literal, the form the published result
+    // names it in (SPEC 7.7.2, 15.8.2; DECISIONS: G553). In a loop or a `defer` the capture may hold a source outside that meet. Written
+    // with the environment, by this binding; retention reads it.
+    internal List<(BoundOrigin Region, BoundOrigin Sources)> CapturedRegions { get; } = new();
 
     // The requirement of every admitted case: Receiver without the captures' bare Reborrows by case (SPEC 7.7.3).
     internal SemanticsKind CaseFreeReceiver { get; set; } = SemanticsKind.Ref;

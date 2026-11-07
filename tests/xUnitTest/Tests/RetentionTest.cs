@@ -184,6 +184,30 @@ public sealed partial class RetentionTest
     public void DeclaredRelationsDecideTheResult(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 15.8.2, 7.7.2, PLAN G553: a Closure over a `var` local reads as one over a `let` binding or a stated Origin: its environment keeps
+    // the local region, which reaches the meet of its sources as of the literal, what its signature names, so a source assigned after the
+    // capture is neither's. An exclusive capture's result keeps the receiver's own value, a shared one's what a read through the receiver
+    // carries, tied.
+    [Theory]
+    [InlineData("func f(value: uniq/i32 during q)\n    var v = value@move\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during q)\n    let v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during q)\n    var v: uniq/i32 during q = value@move\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during p, other: uniq/i32 during q)\n    var v = value@move\n    var h = func [v] () => v\n    _ = h()\n    v = other@move\n", "result {0 Value}")]
+    [InlineData("func f(value: ref/i32 during q)\n    var v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Content}")]
+    [InlineData("func f(value: ref/i32 during q)\n    let v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Content}")]
+    public void ACapturedLocalRegionReadsAsItsSources(string source, string expected)
+        => Assert.Equal([expected], ValueCalls(Bind(source)));
+
+    // PLAN G553: a generic callee's Callable input is such a Closure too: `R` takes the Closure's published result, which reaches its region.
+    [Fact]
+    public void ACallableInputReadsItsCapturedRegion()
+        => Assert.Equal(
+            ["result {0 Content}"],
+            Calls(
+                Bind("func apply<F, R>(f: ref/F) -> R\n    F is Callable<() -> R>\n    return f()\nfunc t()\n    var x: i32 = 1\n    var r = x@ref\n" +
+                    "    let get = func [r] () => r\n    let v: ref/i32 during r = apply(get@ref)\n"),
+                "apply"));
+
     // SPEC 15.6.4, 15.6.1, 15.3.4: a nested function or closure is read under the premises its body is checked under, its enclosing
     // function's included: an input's well-formedness (c outlives o) there makes `value` reach the result, through a direct call, a
     // Closure called by its declared signature (C8; its parameter after its call receiver at input 0, DECISIONS R4-M148) and an enclosing

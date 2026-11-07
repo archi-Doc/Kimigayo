@@ -2,7 +2,7 @@
 
 // Owns the record of a problem a MIR analysis finds (A6; DECISIONS R4-M3a, R4-M57, R5-M23, R4-M71), of a construction or collection
 // record (R6-check H3-1), and its Reason, the relation an Origin problem names (2a0-D D18, DECISIONS R4-M113); its related sites are
-// MirFact values (MirFact.cs).
+// ProblemFact values (Core/ProblemFact.cs).
 // Input: the values a recording rule gives: its code, the requirement it judged, its subject, the body it found it in, the Semantics case
 // views that have it and, for an Origin problem, its relation. Output: MirProblem values, which MirReport keeps (the Reason in its key), Core's
 // publisher (`Compilation.Publication`) publishes and the test MIR side (`MirTargetSide.MirSide`) reads.

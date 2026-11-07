@@ -240,7 +240,8 @@ public sealed partial class MirOriginsTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.Equal(expected, Found(program).Select(x => $"{x.Problem.Code} {Line(c, x.Problem.Subject)}" +
-            string.Concat(program.Problems.Facts(x.Index).ToArray().Where(static f => f.Kind == MirFactKind.Anchor).Select(f => $" <- {Line(c, f.Site)}"))));
+            string.Concat(
+                program.Problems.Facts(x.Index).ToArray().Where(static f => f.Kind == ProblemFactKind.Anchor).Select(f => $" <- {Line(c, f.Site)}"))));
     }
 
     // 2a0-D §3: the builder's own Refs, a synthesized input's borrow, an update's writeback reservation and a selection's raw pointer,

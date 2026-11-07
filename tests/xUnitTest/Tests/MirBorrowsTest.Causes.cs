@@ -266,12 +266,12 @@ public sealed partial class MirBorrowsTest
             for (var i = 0; i < all.Length; i++)
             {
                 var facts = program.Problems.Facts(i).ToArray();
-                foreach (var cause in facts.Where(static x => x.Kind == MirFactKind.Cause))
+                foreach (var cause in facts.Where(static x => x.Kind == ProblemFactKind.Cause))
                 {
                     var named = all[cause.Value];
                     Assert.Equal((DiagnosticCode.UnsatisfiedOriginRelation_Kd, all[i].Body, cause.Site), (named.Code, named.Body, named.Subject));
-                    var anchor = program.Problems.Facts((int)cause.Value).ToArray().Single(static x => x.Kind == MirFactKind.Anchor);
-                    if (anchor != facts.Single(static x => x.Kind == MirFactKind.Anchor))
+                    var anchor = program.Problems.Facts((int)cause.Value).ToArray().Single(static x => x.Kind == ProblemFactKind.Anchor);
+                    if (anchor != facts.Single(static x => x.Kind == ProblemFactKind.Anchor))
                     {
                         shared.Add(name);
                     }
@@ -420,12 +420,12 @@ public sealed partial class MirBorrowsTest
 
     // The problems rule W derived, with Cause facts (their tail).
     private static int[] DerivedProblems(MirProgram program)
-        => [.. Enumerable.Range(0, program.Problems.All.Length).Where(x => program.Problems.Facts(x) is [.., { Kind: MirFactKind.Cause }])];
+        => [.. Enumerable.Range(0, program.Problems.All.Length).Where(x => program.Problems.Facts(x) is [.., { Kind: ProblemFactKind.Cause }])];
 
     // A problem's causes' subjects, after " <- ", none for a direct problem.
     private static string Causes(Compilation c, MirProgram program, int problem)
     {
-        var causes = program.Problems.Facts(problem).ToArray().Where(static x => x.Kind == MirFactKind.Cause).Select(x => Line(c, x.Site)).ToArray();
+        var causes = program.Problems.Facts(problem).ToArray().Where(static x => x.Kind == ProblemFactKind.Cause).Select(x => Line(c, x.Site)).ToArray();
         return causes.Length == 0 ? string.Empty : " <- " + string.Join("; ", causes);
     }
 }

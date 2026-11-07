@@ -84,8 +84,8 @@ public sealed class MirPublicationTest
             var (step, zero) = (Site(c, Valid, "total += value"), Site(c, Valid, "0"));
             program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, subject));
             program.Problems.Add(Found(DiagnosticCode.Unsupported_Kd, Limit, located));
-            program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, step), [new(MirFactKind.Cause, subject, 0)]);
-            program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, zero), [new(MirFactKind.Cause, located, 1)]);
+            program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, step), [new(ProblemFactKind.Cause, subject, 0)]);
+            program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, zero), [new(ProblemFactKind.Cause, located, 1)]);
             for (var i = causes ? 0 : 2; i < program.Problems.Merged.Length; i++)
             {
                 c.Publish(program, i);
@@ -108,8 +108,8 @@ public sealed class MirPublicationTest
         c.Binding.ReportDiagnostics();
         var program = new MirProgram();
         var (failed, resolved) = (Site(c, Source, "missing"), Site(c, Source, "1"));
-        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, Source, "let a = 1")), [new(MirFactKind.Cause, failed, -1)]);
-        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, Source, "return missing")), [new(MirFactKind.Cause, resolved, -1)]);
+        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, Source, "let a = 1")), [new(ProblemFactKind.Cause, failed, -1)]);
+        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, Source, "return missing")), [new(ProblemFactKind.Cause, resolved, -1)]);
         Publish(c, program);
         Assert.Equal(
             [("InternalInvariant_Kd", "return missing"), ("UnresolvedBinding_Kd", "missing")],
@@ -127,10 +127,10 @@ public sealed class MirPublicationTest
         var anchor = Site(c, Valid, "var total = 0");
         var defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
         program.Problems.Add(Found(DiagnosticCode.InternalInvariant_Kd, defect, Site(c, Valid, "return total")));
-        program.Problems.Add(Found(DiagnosticCode.Unsupported_Kd, Limit, Site(c, Valid, "return total")), [new(MirFactKind.Anchor, anchor)]);
-        program.Problems.Add(Found(DiagnosticCode.OwnershipDepthLimit_Kd, Depth, Site(c, Valid, "total += value")), [new(MirFactKind.Cause, anchor, 0)]);
+        program.Problems.Add(Found(DiagnosticCode.Unsupported_Kd, Limit, Site(c, Valid, "return total")), [new(ProblemFactKind.Anchor, anchor)]);
+        program.Problems.Add(Found(DiagnosticCode.OwnershipDepthLimit_Kd, Depth, Site(c, Valid, "total += value")), [new(ProblemFactKind.Cause, anchor, 0)]);
         var zero = Site(c, Valid, "0");
-        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, zero), [new((MirFactKind)byte.MaxValue, anchor)]);
+        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, zero), [new((ProblemFactKind)byte.MaxValue, anchor)]);
         Publish(c, program);
         Assert.Equal(
             [("InternalInvariant_Kd", "0"), ("InternalInvariant_Kd", "return total"), ("InternalInvariant_Kd", "total += value")],
@@ -139,19 +139,19 @@ public sealed class MirPublicationTest
 
     // Design 3.3 (DIAGNOSTICS' A6 fact tables): a fact naming a site is a related location with its role and wording.
     [Theory]
-    [InlineData((byte)MirFactKind.Anchor, "borrow", "borrow that created the loan")]
-    [InlineData((byte)MirFactKind.Use, "loan", "later use of the value retaining the conflicting loan")]
-    [InlineData((byte)MirFactKind.Store, "loan", "value retaining the conflicting loan")]
-    [InlineData((byte)MirFactKind.Reservation, "reservation", "conflicting exclusive call reservation")]
-    [InlineData((byte)MirFactKind.Evaluated, "default", "the default this call omits, evaluated here, does this")]
-    [InlineData((byte)MirFactKind.EffectRead, "declaration", "the call or destruction may read this static")]
-    [InlineData((byte)MirFactKind.EffectWrite, "declaration", "the call or destruction may write this static")]
-    [InlineData((byte)MirFactKind.EffectUnknown, "declaration", "the call's or destruction's effects are unknown, so they may access this static")]
+    [InlineData((byte)ProblemFactKind.Anchor, "borrow", "borrow that created the loan")]
+    [InlineData((byte)ProblemFactKind.Use, "loan", "later use of the value retaining the conflicting loan")]
+    [InlineData((byte)ProblemFactKind.Store, "loan", "value retaining the conflicting loan")]
+    [InlineData((byte)ProblemFactKind.Reservation, "reservation", "conflicting exclusive call reservation")]
+    [InlineData((byte)ProblemFactKind.Evaluated, "default", "the default this call omits, evaluated here, does this")]
+    [InlineData((byte)ProblemFactKind.EffectRead, "declaration", "the call or destruction may read this static")]
+    [InlineData((byte)ProblemFactKind.EffectWrite, "declaration", "the call or destruction may write this static")]
+    [InlineData((byte)ProblemFactKind.EffectUnknown, "declaration", "the call's or destruction's effects are unknown, so they may access this static")]
     public void ASiteFactIsARelatedLocation(byte kind, string role, string label)
     {
         var (c, program) = Program(Valid);
         var (subject, site) = (Site(c, Valid, "return total"), Site(c, Valid, "var total = 0"));
-        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, subject), [new((MirFactKind)kind, site)]);
+        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, subject), [new((ProblemFactKind)kind, site)]);
         Publish(c, program);
         var record = Assert.Single(Records(c));
         Assert.Equal(nameof(DiagnosticCode.MovedPlace_Kd), record.Code);
@@ -167,7 +167,8 @@ public sealed class MirPublicationTest
         var body = Site(c, Valid, "return total");
         var problem = Found(DiagnosticCode.OwnershipStorageLimit_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit), body);
         var table = (long)MirStorageTable.Loans;
-        program.Problems.Add(problem, [new(MirFactKind.Required, body, 4096), new(MirFactKind.Limit, body, 1024), new(MirFactKind.Table, body, table)]);
+        program.Problems.Add(
+            problem, [new(ProblemFactKind.Required, body, 4096), new(ProblemFactKind.Limit, body, 1024), new(ProblemFactKind.Table, body, table)]);
         Publish(c, program);
         var record = Assert.Single(Records(c));
         Assert.Equal(nameof(DiagnosticCode.OwnershipStorageLimit_Kd), record.Code);
@@ -185,7 +186,7 @@ public sealed class MirPublicationTest
         var refuted = Index(program, DiagnosticCode.UnsatisfiedOriginRelation_Kd);
         var problem = program.Problems.All[program.Problems.Members(refuted)[0]];
         var edge = Site(c, Source, "let local: i32 = 1");
-        program.Problems.Add(problem with { Subject = edge }, [new(MirFactKind.Relation, edge, -1)]);
+        program.Problems.Add(problem with { Subject = edge }, [new(ProblemFactKind.Relation, edge, -1)]);
         c.Publish(program, refuted);
         c.Publish(program, program.Problems.Merged.Length - 1);
         Assert.Equal(
@@ -256,7 +257,7 @@ public sealed class MirPublicationTest
         var program = new MirProgram();
         var at = Node(c, source, site);
         Assert.Equal(sited, c.Binding.FailureCauses(at) is not null);
-        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, source, subject)), [new(MirFactKind.Cause, SourceRef.Of(at), -1)]);
+        program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, source, subject)), [new(ProblemFactKind.Cause, SourceRef.Of(at), -1)]);
         Publish(c, program);
         var added = Errors(c).Where(static x => x.Code is nameof(DiagnosticCode.InternalInvariant_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
         (string, string?)[] expected = sited ? [] : [(nameof(DiagnosticCode.InternalInvariant_Kd), subject)];
@@ -281,7 +282,7 @@ public sealed class MirPublicationTest
         c.Binding.ReportDiagnostics();
         var program = c.BuildMir();
         var merged = Index(program, DiagnosticCode.RequireFallthrough_Kd);
-        Assert.All(program.Problems.MergedFacts(merged).ToArray(), static x => Assert.Equal((MirFactKind.Cause, -1L), (x.Kind, x.Value)));
+        Assert.All(program.Problems.MergedFacts(merged).ToArray(), static x => Assert.Equal((ProblemFactKind.Cause, -1L), (x.Kind, x.Value)));
         c.Publish(program, merged);
         var derived = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.ControlFlow, DiagnosticPartition.ControlFlow).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.PrerequisiteUnavailable_Kd), derived.Code);

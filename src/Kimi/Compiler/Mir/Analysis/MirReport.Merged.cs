@@ -28,7 +28,7 @@ internal sealed partial class MirReport
     private readonly List<(int Start, int Count)> memberSpans = []; // Each merged problem's members.
     private readonly List<int> members = []; // The merged problems' members, by index in All.
     private readonly List<int> owners = []; // Each problem's merged problem.
-    private readonly List<MirFact> mergedFacts = [];
+    private readonly List<ProblemFact> mergedFacts = [];
     private readonly List<(int Start, int Count)> factSpans = []; // Each merged problem's facts.
     private bool isMerged; // Whether the view reflects All; an Add or a Clear resets it.
 
@@ -55,7 +55,7 @@ internal sealed partial class MirReport
     /// members' causes once each, each Value an index in <see cref="Merged"/> (-1 kept).</summary>
     /// <param name="merged">The merged problem's index in <see cref="Merged"/>.</param>
     /// <returns>Its facts.</returns>
-    internal ReadOnlySpan<MirFact> MergedFacts(int merged)
+    internal ReadOnlySpan<ProblemFact> MergedFacts(int merged)
     {
         this.MergeAll();
         return CollectionsMarshal.AsSpan(this.mergedFacts).Slice(this.factSpans[merged].Start, this.factSpans[merged].Count);
