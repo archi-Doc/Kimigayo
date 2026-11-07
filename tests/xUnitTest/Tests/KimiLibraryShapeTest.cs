@@ -20,6 +20,20 @@ public partial class KimiLibraryShapeTest
         return c;
     });
 
+    // R8-S1 C1: what a witness group declares for each Contract it serves: the Contract's own requirement by name, with the group's `self`.
+    private static readonly (WitnessMembers Group, KimiDeclarationId Contract, string Header)[] WitnessRequirements =
+    [
+        (WitnessMembers.FixedArray, KimiDeclarationId.Iterable,
+            "public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source"),
+        (WitnessMembers.FixedArray, KimiDeclarationId.UniqIterable,
+            "public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source"),
+        (WitnessMembers.FixedArray, KimiDeclarationId.IntoIterable,
+            "public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>"),
+        (WitnessMembers.IntegerPosition, KimiDeclarationId.Position, "public func tryResolve<I>(self: I, length: isize) -> Option<isize>"),
+        (WitnessMembers.String, KimiDeclarationId.Equatable, "func equals(self: ref/string, other: ref/string) -> bool"),
+        (WitnessMembers.String, KimiDeclarationId.Comparable, "func compare(self: ref/string, other: ref/string) -> i32"),
+    ];
+
     // Code generation and the runtime call these bodiless functions by position: parameter order,
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
@@ -606,6 +620,20 @@ public partial class KimiLibraryShapeTest
         foreach (var (path, initializer) in new[] { ("Text.FixedBuffer", "__kimi_text_fixed"), ("Text.HeapBuffer", "__kimi_text_heap") })
         {
             Assert.Contains($"%buffer = alloca [{Layout(path).Layout.Size} x i8], align 8\n  %writer = alloca [{writer.Size} x i8], align 8\n  %result = alloca i32, align 4\n  call void @{initializer}(", ir, StringComparison.Ordinal);
+        }
+    }
+
+    // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows.
+    [Fact]
+    public void EachWitnessGroupDeclaresItsContractsRequirements()
+    {
+        var library = Library.Value.Library;
+        Assert.Equal(Enum.GetValues<WitnessMembers>(), WitnessRequirements.Select(static x => x.Group).Distinct());
+        foreach (var (group, contract, header) in WitnessRequirements)
+        {
+            var requirement = library.GetSymbol(contract)!.Contract!.OwnRequirement()!;
+            var overloads = Declarations(library.Members(group)!, requirement.Name, true);
+            Assert.Equal(header, Line(Assert.Single(overloads, static x => x is FunctionKoto { IsSpecialization: false })));
         }
     }
 

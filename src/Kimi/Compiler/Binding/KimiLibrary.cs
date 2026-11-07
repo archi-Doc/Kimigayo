@@ -58,6 +58,7 @@ public sealed partial class KimiLibrary
         var rawScope = FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) is DeclarationContainerKoto raw ? new BindingScope(raw) { Parent = this.Scope } : this.Scope;
         this.FixedArrayMembers = (storageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
         this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
+        this.StringWitnessMembers = FindDeclaration(this.Kotonoha.RootKoto, "StringWitness", false) as DeclarationContainerKoto;
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
         var entries = KimiLibraryCatalog.Entries;
         this.symbols = new BindingSymbol?[entries.Length];
@@ -249,6 +250,10 @@ public sealed partial class KimiLibrary
     /// Position (SPEC 4.6.1); integers gain no members from it.</summary>
     internal DeclarationContainerKoto? IntegerPositionMembers { get; }
 
+    /// <summary>Gets the internal Kimi group whose receiver functions are string's comparison bodies (SPEC 13.4.1), which no row of the
+    /// witness table selects until R8-S1d2; string gains no members from it.</summary>
+    internal DeclarationContainerKoto? StringWitnessMembers { get; }
+
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
     /// built-in Type, a group of the witness table.</summary>
     /// <param name="owner">A declaration container.</param>
@@ -262,6 +267,7 @@ public sealed partial class KimiLibrary
     {
         WitnessMembers.FixedArray => this.FixedArrayMembers,
         WitnessMembers.IntegerPosition => this.IntegerPositionMembers,
+        WitnessMembers.String => this.StringWitnessMembers,
         _ => throw new InvalidOperationException($"The group {members} has no declaration."),
     };
 
