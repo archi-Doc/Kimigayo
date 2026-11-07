@@ -50,6 +50,17 @@ public class AdaptationTargetBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
+    // SPEC 13.5.1: each role fixes its own stage, so the Type role's ambiguity is reported and the pair binder is still the target it selects.
+    [Fact]
+    public void AnAmbiguousTypeRoleStandsBesideTheSelectedBinder()
+    {
+        const string Source = "alias A\nalias B\ngroup A\n    public struct s\ngroup B\n    public struct s\nfunc f<s/T>(v: s/T) -> ()\n    let w = v@s\n    return ()";
+        var c = CompilationTestHelper.Parse(Source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+    }
+
     [Fact]
     public void ACompleteSemanticsTargetDoesNotCompeteWithTheTypeRole()
     {

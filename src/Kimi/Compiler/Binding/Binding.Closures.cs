@@ -309,7 +309,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var source = this.Lookup(capture.Name, scope.Parent!, function, false);
+                var source = this.Lookup(capture.Name, scope.Parent!, function);
                 if (source is not null && Receiver(source) is not null)
                 {
                     // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under

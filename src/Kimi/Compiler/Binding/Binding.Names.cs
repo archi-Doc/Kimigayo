@@ -50,7 +50,7 @@ public sealed partial class Binding
 
     private BoundType? BindName(IdentifierNameKoto node, BindingScope scope)
     {
-        var symbol = this.Lookup(node.IdentifierName, scope, node, false);
+        var symbol = this.Lookup(node.IdentifierName, scope, node);
         if (symbol is null)
         {
             return this.Fail(node, BindingFailure.MissingName, true);

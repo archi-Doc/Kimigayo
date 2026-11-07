@@ -311,7 +311,7 @@ public sealed partial class Binding
 
         if (path is MemberAccessKoto member)
         {
-            var qualifier = this.TypeName(member.Left, scope, false);
+            var qualifier = this.TypeName(member.Left, scope, TypeLookupRole.Any);
             if (qualifier?.Declaration is DeclarationContainerKoto container && !container.IsRoot)
             {
                 environment = this.BindContainerQualifier(member.Left, qualifier, scope, context);
