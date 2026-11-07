@@ -94,6 +94,25 @@ internal static class CompilationTestHelper
         return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
     }
 
+    // An acceptance row's verdict (SPEC 8.3, 23.1.2): `records` is empty for a valid program, which has no Error and generates. Otherwise it
+    // lists the program's Errors as `Code: source line`, trimmed and separated by ` | `, each pair once: SPEC 23 fixes neither the span inside
+    // a line nor how many records one failed rule gives. `*` for a code leaves the code to the implementation; a last entry `...` leaves
+    // open the records resting on the listed ones.
+    internal static void AssertRecordsAtLines(string form, string program, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(program);
+        var actual = PublishedErrors(c).Select(x => $"{x.Code}: {LineAt(program, x.Span.Start)}").Distinct().ToArray();
+        var expected = records.Split(" | ", StringSplitOptions.RemoveEmptyEntries);
+        var open = expected.LastOrDefault() == "...";
+        expected = open ? expected[..^1] : expected;
+        var found = expected.All(e => actual.Any(a => a == e || (e.StartsWith("*: ", StringComparison.Ordinal) && a.EndsWith(e[1..], StringComparison.Ordinal))));
+        Assert.True(found && (open || actual.Length == expected.Length), $"{form}: expected [{records}], found [{string.Join(" | ", actual)}]");
+        if (expected.Length == 0)
+        {
+            Assert.True(c.Generate(TextWriter.Null), $"{form}: {MinimalEmissionTest.Describe(c)}");
+        }
+    }
+
     // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsLoanConflict(this DiagnosticCode code)
         => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;
@@ -112,5 +131,12 @@ internal static class CompilationTestHelper
     {
         var path = node?.CodeContext?.SourceDocument?.Path;
         return path is null ? "?" : path.StartsWith("compiler://", StringComparison.Ordinal) ? Library + path[(path.LastIndexOf('/') + 1)..] : path;
+    }
+
+    private static string LineAt(string text, int offset)
+    {
+        var start = text.LastIndexOf('\n', Math.Max(offset - 1, 0)) + 1;
+        var end = text.IndexOf('\n', offset);
+        return text[start..(end < 0 ? text.Length : end)].Trim();
     }
 }
