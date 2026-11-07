@@ -577,6 +577,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.
 - **R2b-D2** The HIR publisher runs lazily, at most once per Binding pass. R7 writes the columns inline and deletes it. Refined by BU-81: eager at the end of each Final pass.
+  - Superseded in part by R7-M7: the HIR publisher walk stays a lasting component; R7 writes no column inline.
 - **R2b-D3** The declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`,
   `AvailableBounds`) are built by their first reader (R4, R5).
 - **R2b-D5** `BoundMatch` and `BoundClosure` keep their names (the plan's PatternPlan and ClosureDef) until R6.
@@ -9150,6 +9151,7 @@ resumed by R4-M86 (2026-10-20).
     Bind-only callers (tests, hover without analysis) pay one publication per Final pass.
   - `PublishSites` is deleted: its failure of the loop's needed sites is `FailNeededSites` after the loop, and the counting records
     and counts each such Use once, as it does the prologue's.
+  - Superseded in part by R7-M7: the HIR publisher walk stays a lasting component.
 - **BU-83 Rule E: an erasure is its node's only implicit adaptation** (2026-11-03; PLAN G341, scheduled by the owner after G216 (a)'s
   joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」)
   - The defect: a value call (U1) or a Case payload (U2) that received a stored Copy Closure at a Function parameter was
@@ -15678,6 +15680,23 @@ R8-M* and R9-M* by the stage of the recording unit.
   - N2d, the query with N2c's walk, has its own design: a reader cannot tell a not-ready layer from the end of the chain, and `memberLookupVisiting` ends a recursion `resolvingTypes` does not see.
   - Rejected: one commit for all three (the role needs no query, while the walk and the query need each other); keeping `Any` at the opt-out or at `DerivesFrom` (a second reading of one clause).
 - **R7-M6 `HirAdjust.ExclusiveMode` (R7-Y3, PLAN G147 (2))** (2026-11-08; Major; the Middle's unit, C-104) BU-8's rule, read once and published: a row an operation gives states its target's mode, whatever its adaptation, so ReferenceRead, BaseBorrow and PayloadProjection have the mode their members lack (SPEC 3.4.3, 9.6.1, 13.5.5). One route, `ChildAdjust(child, in operation, claimed)`, in every record of the uses (the publisher and ClosureEffects' finder), which give equal rows; `Claims(in op)` is deleted. The target decides after a recorded read has given the adaptation: `BoundAdaptation.Type` is what the layers reach, not what the use forms. `HirAdjust.Exclusive` is the reader. A take no operation makes states false: a use in place forms no reference, and StorageProjection never has a mode (SPEC 9.6.1, 11.2.2). The bit is a new representation, not a vocabulary entry: `HirAdaptation` stays at 9. Staged: Y1 deletes `claims`; Y2's `PlaceUse` states a bare take's mode, which folds `(Reborrow, None)`'s two forms and `Claims`' Type clauses. Rejected: the bit on the three members alone with a claim from a list of row forms (the shape BU-8 rejected, and it narrowed the claim of a value child); a target-Type column (8 B a row for one bit); members per mode (a vocabulary change). Amends R4-M142 ('recorded by `IHirUses.Use(child, in operation)`', its `Claims` of an operation) and R4-M145's finder text only in that the finder takes an operation's use by the same member; BU-8 stands but for its parenthesis "(a PayloadProjection or BaseBorrow states no mode)", which this entry replaces. `LendsExclusively` and `HirAdjust.Of`'s Borrow arm still read `ParameterType`, unchanged.
+- **R7-M7 The HIR publisher walk stays a lasting component** (owner, 2026-11-07, O-40, verbatim 「(a) walk を恒久の部品として残す」; plan R7 Y1, §10.1
+  item 2, X1). Supersedes R2b-D2's "R7 writes the columns inline and deletes it" and BU-81's "R7 writes inline". The publication and version contract is
+  unchanged.
+  - Reason: R7-Y1's prototype (`proto/r7-y1`) found every column has an inline form that agrees with the walk (129.3M rows over 13,100 Final passes; a
+    run stopped before every class finished), but the walk's state moves rather than disappears: about +400/-400 by the prototype's parts, against the
+    plan's +150/-400, with about 10 write sites in the Binder's hot path, a per-node slot fact and a settle list as a second route through the row writer.
+    The speed gain was not measured; about 2 % of warm Bind is publication and only its traversal would go.
+  - Outcome: `HirPublisher`, `HirPosition` and the walk's state lose `[Transitional("R7")]`, and `HirPublisher` leaves R7's zero-reference rows. R7-Y1
+    becomes the parts that stand alone: the walk's inputs explicit, `RowUses` the publisher's record (`PublisherUses` deleted, `AdjustChildren` takes
+    `exclusive`), and Res a read of the symbol (`HirTables.ResOf`), no column.
+  - Rejected: the inline form; a flat loop over the nodes (a walk by another name, no gain); leaving the walk Transitional until R7's exit; **the lint walk
+    reading the Completion column**: the column is `Unset` where the walk does not evaluate (a definition whose parts are not published, a subtree under an
+    Error), and the lints report independent records there (SPEC 23.1.2: `FunctionFallthrough_Kd`, `DiscardedTail_Kd`), so the lint walk keeps its
+    `StructuralCompletion`. The plan's "the lint walk reads columns" is withdrawn.
+  - A parameter read in a later default of a definition the walk does not evaluate now reads PreparedParam where the stack gave Param. No reader in the
+    compiler distinguishes there: `PreparedRoot` is reached only from a row H1 judges. Rejected programs only.
+  - **A change to the owner's chosen text.** O-40 (a)'s option named "lints reading Completion" and "claims per consumer" among the parts that land. R7-Y1 drops the first, since independent records would be lost (SPEC 23.1.2), and R7-Y1c replaces the second by deleting `claims`. The Middle told the owner on 2026-11-08.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
