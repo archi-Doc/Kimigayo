@@ -108,8 +108,16 @@ internal enum HirCompletion : byte
 /// are the one conversion from Binding's acquisition vocabularies.</summary>
 /// <param name="Acquire">What happens to the child's own value or Place.</param>
 /// <param name="Adaptation">The implicit adaptation that gives the parent another Type.</param>
-internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adaptation)
+/// <param name="ExclusiveMode">Whether the operation that takes the child needs exclusive capability of it: its target's mode, whatever
+/// its adaptation (SPEC 4.7.1, 7.3, 10.2; DECISIONS BU-8), which <see cref="HirAdaptation.ReferenceRead"/>,
+/// <see cref="HirAdaptation.BaseBorrow"/> and <see cref="HirAdaptation.PayloadProjection"/> do not state (SPEC 3.4.3, 9.6.1, 13.5.5).
+/// False for a take no operation makes: a use in place forms no reference, and its consumer's use decides its capability (SPEC 3.4.3,
+/// 4.7.1).</param>
+internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adaptation, bool ExclusiveMode = false)
 {
+    /// <summary>Gets a value indicating whether this take is exclusive by its operation's target or by an exclusive borrow.</summary>
+    internal bool Exclusive => this.ExclusiveMode || this.Adaptation == HirAdaptation.ExclusiveBorrow;
+
     // A Pattern binding (SPEC 15.1.6): Copied, or borrowed in the mode its path grants; an owned part whose Copy is not proven is
     // transferred, which an instance whose Type is Copy performs as a Copy. One whose Pattern Type check failed (None) or whose Copy proof
     // is Error (Deferred) failed (SPEC 23.1.2; DECISIONS BU-103).
@@ -132,7 +140,8 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
         _ => new(HirAcquire.None, acquisition == CaptureAcquisition.SharedSlotBorrow ? HirAdaptation.SharedBorrow : HirAdaptation.ExclusiveBorrow),
     };
 
-    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Semantics and the referent,
+    // The adaptation of a call's argument, receiver or payload operation (SPEC 7.3, 10.2), whose target gives the row its mode (the rule's
+    // ChildAdjust, as a recorded read may take the adaptation's place); a Reborrow in the same mode keeps the Semantics and the referent,
     // the bare acquisition, its Origin being Binding's name, the Type the consumer expects (DECISIONS BU-27), and an explicit borrow is the
     // reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1). A value operation adapts nothing:
     // where an erasure is applied is the ErasedType column's, at the node Binding erased, which the Adjust rule reads (ChildAdjust, a
@@ -206,11 +215,11 @@ internal enum HirAdaptation : byte
 {
     None,
     ReferentRead, // The Scalar the reference layers end in is read (SPEC 3.5.3).
-    ReferenceRead, // One reference, in the destination's mode, to the referent the layers reach (SPEC 3.4.3, 10.2).
+    ReferenceRead, // One reference, in its row's mode, to the referent the layers reach (SPEC 3.4.3, 10.2); in place, the layers followed.
     SharedBorrow,
     ExclusiveBorrow,
-    BaseBorrow, // A borrow of the base a projected receiver's path selects (SPEC 7.3).
-    PayloadProjection, // A shared borrow of an object handle's payload (SPEC 13.5.5).
-    StorageProjection, // The receiver's base that declares the selected stored Field.
+    BaseBorrow, // A borrow, in its row's mode, of the base a projected receiver's path selects (SPEC 7.3, 9.6.1).
+    PayloadProjection, // A borrow, in its row's mode, of an object handle's payload (SPEC 13.5.5).
+    StorageProjection, // The receiver's base that declares the selected stored Field, in place: no reference, so no mode (SPEC 9.6.1).
     Erasure, // A closure or function item erased to its Function Type (SPEC 10.2).
 }
