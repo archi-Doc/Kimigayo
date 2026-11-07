@@ -484,7 +484,7 @@ public sealed partial class Binding
             return;
         }
 
-        this.CapturedRegion(type.Origin ?? type.RawOrigin, plan);
+        this.CapturedRegion(LayerOrigin(type), plan);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
             this.CapturedRegion(type.OriginArguments[i], plan);
