@@ -9,85 +9,59 @@ namespace XunitTest;
 
 public class StructuredConstraintSubjectBindingTest
 {
+    // The owner's O-42 (a), SPEC F.6's ConstraintSubject: a constructed Type is no subject. One syntax record at the subject, on which the
+    // clause rests, so the declaration reports nothing else.
     [Theory]
     [InlineData("() is Copy")]
+    [InlineData("() is ()")]
     [InlineData("(i32, bool) is Copy")]
+    [InlineData("(i32, string) is Copy")]
     [InlineData("[2 of i32] is Copy")]
+    [InlineData("[2 of i32] is [3 of i32]")]
+    [InlineData("[2 of string] is not Copy")]
     [InlineData("Box<i32> is Copy")]
-    [InlineData("ref/i32 during static is Copy")]
-    [InlineData("((i32)) is Copy")]
     [InlineData("Box<Box<i32>> is Copy")]
     [InlineData("Box<[2 of i32]> is Copy")]
     [InlineData("Box<[(8 / 2) of i32]> is Copy")]
-    [InlineData("([2 of i32], Box<i32>) is Copy")]
-    [InlineData("raw/i32 is Copy")]
-    [InlineData("() is ()")]
-    [InlineData("[2 of string] is not Copy")]
-    public void StructuredClosedSubjectsReachTheirProof(string clause)
-    {
-        var c = MinimalEmissionTest.Analyze(Source(clause));
-        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(c.Bind().IsComplete);
-        var restored = CompilationTestHelper.Reload(c);
-        Assert.True(restored.Bind().IsComplete);
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            c.Kotonoha.RootKoto.UnparseAll(ref builder);
-            var written = MinimalEmissionTest.Analyze(builder.ToString());
-            Assert.Empty(TestDiagnostics.Of(written, "Hello.kimi"));
-            Assert.True(written.Binding.Result.IsComplete, MinimalEmissionTest.Describe(written));
-        }
-        finally
-        {
-            builder.Dispose();
-        }
-    }
-
-    [Theory]
     [InlineData("Box<string> is Box<string>")]
     [InlineData("Box<string> is Copy or Owned")]
-    [InlineData("(i32, string) is Copy")]
-    [InlineData("[2 of i32] is [3 of i32]")]
+    [InlineData("([2 of i32], Box<i32>) is Copy")]
+    [InlineData("ref/i32 during static is Copy")]
     [InlineData("ref/i32 during static is i32")]
-    public void InvalidFormationAndRefutedProofsRejectTheOwner(string clause)
+    [InlineData("raw/i32 is Copy")]
+    [InlineData("((i32)) is Copy")]
+    [InlineData("((Self)) is Copy")]
+    [InlineData("() -> i32 is Owned")]
+    [InlineData("(i32) -> bool is (i32,) -> bool")]
+    [InlineData("((i32) -> bool) is not Copy")]
+    [InlineData("[2 of (i32) -> bool] is not Copy")]
+    [InlineData("Box<i32>.Item<i32> is Copy")]
+    [InlineData("Box<i32>.(Copy) is Copy")]
+    public void AConstructedTypeIsNoSubject(string clause)
     {
         var c = MinimalEmissionTest.Analyze(Source(clause));
-        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Target(c).StateOf());
-        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
+        var record = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Equal(clause[..clause.LastIndexOf(" is ", StringComparison.Ordinal)], record.Text);
     }
 
     [Theory]
-    [InlineData("(i32, bool) is Copy")]
-    [InlineData("Box<i32> is Copy")]
-    public void EnumRegionsShareCompleteTypeSubjectParsing(string clause)
+    [InlineData("struct")]
+    [InlineData("enum")]
+    [InlineData("contract")]
+    public void EveryRegionRejectsAConstructedSubject(string kind)
     {
-        var c = MinimalEmissionTest.Analyze(Source(clause).Replace("struct Target", "enum Target", StringComparison.Ordinal) + "\n    A");
-        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var c = MinimalEmissionTest.Analyze(Source("Box<i32> is Copy").Replace("struct Target", kind + " Target", StringComparison.Ordinal) + (kind == "enum" ? "\n    A" : string.Empty));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), Assert.Single(TestDiagnostics.Of(c, "Hello.kimi")).Code);
     }
 
     [Fact]
     public void AssociateRemainsAContextualTypeNameInAConstructedSubject()
     {
         var c = MinimalEmissionTest.Analyze(Source("Box<i32> is Copy").Replace("Box", "associate", StringComparison.Ordinal));
-        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-    }
-
-    [Theory]
-    [InlineData("[2 of Hidden] is Owned")]
-    [InlineData("(Hidden, i32) is Owned")]
-    [InlineData("Box<Hidden> is Copy")]
-    public void NestedClosedSubjectsRetainApiDomains(string clause)
-    {
-        var c = MinimalEmissionTest.Analyze("internal struct Hidden\n    Self is Copy\n" + Source(clause));
-        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        var record = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Equal("associate<i32>", record.Text);
     }
 
     [Theory]
@@ -123,24 +97,6 @@ public class StructuredConstraintSubjectBindingTest
         var c = MinimalEmissionTest.Analyze(Source(clause));
         Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
     }
-
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmStructuredSubjectChecksAllocateNothing()
-    {
-        var c = MinimalEmissionTest.Analyze(Source("([2 of i32], Box<i32>) is Copy"));
-        Assert.True(c.Bind().IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            if (!c.Bind().IsComplete)
-            {
-                throw new InvalidOperationException("Structured constraint failed.");
-            }
-        }));
-    }
-
-    private static DeclarationContainerKoto Target(Compilation c)
-        => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
 
     private static string Source(string clause)
         => "public struct Box<T>\n    T is Copy\n    Self is Copy\n    let value: T\npublic struct Target\n    " + clause;

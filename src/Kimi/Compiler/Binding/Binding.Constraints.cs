@@ -71,15 +71,7 @@ public sealed partial class Binding
     }
 
     private static bool IsSelfConstraint(IsKoto clause)
-    {
-        var subject = clause.Left;
-        while (subject is ParenthesizedTypeKoto parentheses)
-        {
-            subject = parentheses.Type;
-        }
-
-        return subject is IdentifierNameKoto { IdentifierName: "Self" } or TypeSemanticsKoto { Type: null, Identifier: "Self", OriginName: null, OriginExpression: null, OriginArguments: null };
-    }
+        => clause.Left is IdentifierNameKoto { IdentifierName: "Self" } or TypeSemanticsKoto { Type: null, Identifier: "Self", OriginName: null, OriginExpression: null, OriginArguments: null };
 
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
