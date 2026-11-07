@@ -268,6 +268,42 @@ public sealed partial class RetentionTest
     public void ExclusiveInputsAreStores(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 4.9, 15.6.4 (G416 row 9): `(K, V)` is a Dictionary's stored entry, so a borrow of it or a Slice of them holds within the Dictionary,
+    // and clearing it under a live one conflicts; dev's acceptance was the false one. Each valid twin uses it first.
+    [Theory]
+    [InlineData("-> ref/(i32, i64) during d", "let k = r@follow\n    d.clear()", "result {0 Value}", "")]
+    [InlineData("-> ref/(i32, i64) during d", "d.clear()\n    let k = r@follow", "result {0 Value}", "CallActivationConflict_Kd d.clear()")]
+    [InlineData("-> Slice<(i32, i64)> during d", "let k = r.length\n    d.clear()", "result {0 Value}", "")]
+    [InlineData("-> Slice<(i32, i64)> during d", "d.clear()\n    let k = r.length", "result {0 Value}", "CallActivationConflict_Kd d.clear()")]
+    public void ADictionarysEntryHoldsWithinIt(string result, string use, string row, string records)
+    {
+        var entry = $"func entry(d: ref/Dictionary<i32, i64>) {result} => $abort(\"x\")\n";
+        Assert.Equal(row, Declared(Bind(entry), "entry"));
+        var form = entry + $"func g()\n    var d: Dictionary<i32, i64> = [:]\n    let r = entry(d@ref)\n    {use}\npublic func main() => ()\n";
+        Assert.Equal(records, MirBorrowsTest.Records(form));
+    }
+
+    // SPEC 15.6.4 (G416 row 9, review B2): the bound counts entries, so a Dictionary level, two entries, spends no more of it than dev's 32
+    // levels, n = 17 and 32 keeping dev's conflict, and n = 33 past it as on dev. A Tuple level is one: n = 33 to 64 now reach a part dev gave up
+    // on, a named move in the sound direction, which retains more.
+    [Theory]
+    [InlineData("Dictionary<i32, ", ">", 16, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("Dictionary<i32, ", ">", 17, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("Dictionary<i32, ", ">", 32, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("Dictionary<i32, ", ">", 33, "")]
+    [InlineData("(i32, ", ")", 32, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("(i32, ", ")", 33, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("(i32, ", ")", 62, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("(i32, ", ")", 64, "ComparisonLoanConflict_Kd x = 3")]
+    public void TheBoundCountsEntries(string open, string close, int levels, string records)
+    {
+        var nest = string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels));
+        var form = $"func make(x: ref/i32 during q) -> {nest} => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: {nest}) => ()\n" +
+            "func g()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n    x = 3\n    let k = slot@follow\n" +
+            "public func main() => ()\n";
+        Assert.Equal(records, MirBorrowsTest.Records(form));
+    }
+
     // SPEC 5.2.1, 15.6.4 (G416 review B1): a raw layer's pointee is walked with no key of the layer, so a slot's cap steps only the layer its
     // declaration states there, and a raw pointee below it stays stated by the Type: rule A keeps what a stored value brings (BU-1), and the
     // twin's write conflicts while h lives.
