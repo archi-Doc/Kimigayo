@@ -165,18 +165,22 @@ public class ContainerNestingTest
     }
 
     // SPEC 9.6 (PLAN G488): a qualifier naming both a Type and a parameter or local needs both namespaces' complete paths before either
-    // publishes (R7 N1). Where both found the member, SPEC 9.6's ambiguity decides; where neither did, the value path read the Type
-    // path's binding, so the form is one located Unsupported_Kd at the qualifier, not a Language error from one path. A group qualifier
-    // is never taken as a value (that ended the check in Layout). The valid form without the Type binds.
+    // publishes (R7 N1). The value path read the Type path's binding, so where neither path or both found the member, the form is one
+    // located Unsupported_Kd at the qualifier (the owner's decision O-32 (a)), never a Language error from one path: the valid Type-only
+    // (`group T`, `T.one()`) and value-only (`T: T`) forms among them. A group qualifier is never taken as a value (that ended the check
+    // in Layout). The valid form without the Type binds.
     [Theory]
     [InlineData("struct T\n    public group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
-    [InlineData("struct T\n    public group G\n        public let n: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "AmbiguousBinding_Kd T.G.n")]
+    [InlineData("struct T\n    public group G\n        public let n: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
     [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T")]
     [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f() -> i32\n    let T = V.init()\n    return T.G.n\n", "Unsupported_Kd T")]
     [InlineData("struct T\n    public let k: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
-    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "AmbiguousBinding_Kd T.G")]
+    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
+    [InlineData("group T\n    public let n: i32 = 1\n", "func f(T: V) -> i32 => T.n\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n", "func f(T: T) -> i32 => T.n\n", "Unsupported_Kd T")]
     [InlineData("", "func f(T: V) -> i32 => T.G.n\n", "")]
-    public void AQualifierOfBothNamespacesNeverTakesATypeAsAValue(string type, string use, string records)
+    public void AQualifierOfBothNamespacesIsUnsupported(string type, string use, string records)
     {
         var c = CompilationTestHelper.Parse(type + "struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\n" + use);
         Assert.Equal(records.Length == 0, c.Bind().IsComplete);

@@ -229,6 +229,17 @@ public sealed partial class Binding
             }
         }
 
+        if (valuePossible && qualified is not null && (typeMember is null) == (valueMember is null))
+        {
+            // SPEC 9.6: a qualifier of both namespaces follows each namespace's complete path before one is selected, but the value path
+            // read the Type path's binding of the shared node, so neither finding no member nor both paths finding it decides the form.
+            // Until both paths are evaluated before either publishes (PLAN G488, R7 N1), it is outside the implemented subset, at the
+            // qualifier; the member consulted it, so its own Unsupported, and the Type path's access or missing name, rest on it.
+            this.Fail(member.Left, BindingFailure.Unsupported);
+            this.Fail(member, BindingFailure.Unsupported);
+            return null;
+        }
+
         if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
         {
             this.Fail(member, BindingFailure.Ambiguous, true);
@@ -236,18 +247,6 @@ public sealed partial class Binding
         }
 
         var selected = typeMember ?? valueMember;
-        if (selected is null && valuePossible && qualified is not null)
-        {
-            // SPEC 9.6: a qualifier of both namespaces follows each namespace's complete path before one is selected, but the value path
-            // read the Type path's binding of the shared node, so finding no member does not decide the form (a valid value path may
-            // exist; both found is SPEC 9.6's ambiguity above). Until both paths are evaluated before either publishes (PLAN G488, R7
-            // N1), it is outside the implemented subset,
-            // at the qualifier; the member consulted it, so its own Unsupported, and the Type path's access or missing name, rest on it.
-            this.Fail(member.Left, BindingFailure.Unsupported);
-            this.Fail(member, BindingFailure.Unsupported);
-            return null;
-        }
-
         if (selected is null && (typeSelection.Hidden ?? valueSelection.Hidden) is { } hidden)
         {
             member.BoundSymbol = hidden;
