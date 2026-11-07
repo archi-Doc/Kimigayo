@@ -421,6 +421,10 @@ public sealed partial class Binding
         if (failure != BindingFailure.UnprovenConstraint)
         {
             (this.formationCauses ??= new(ReferenceEqualityComparer.Instance))[obligation.Use] = causes;
+            if ((causes & TypeRoleCause.Role) != 0)
+            {
+                this.Record(obligation.Use, BindingFailure.UnprovenConstraint, []);
+            }
         }
     }
 
