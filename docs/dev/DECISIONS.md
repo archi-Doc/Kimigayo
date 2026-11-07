@@ -9682,6 +9682,12 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the row at contract matching (five dependent record moves at a reader R7-V5 deletes); settled verdicts (B1, B2); `declarationFailed`
     (a bool for one commit); a `SourceStates` publication; a verdict epoch (BU-105); the reporting check as the only judge (it runs after every
     reader); a header-state guard without a reproducer; a flag steering `RevalidateImplicitConstructors`' read (a symptom fix).
+- **BU-122 A Type name resolves by one pure evaluation and one writer: `ResolvePath`, `PublishPath`** (2026-11-07; R7-N1a; Major; design review) SPEC 9.5, 9.6, 9.7, 13.5.1.
+  - Rule: `ResolvePath(syntax, scope, role, arity)` returns a `ResolvedPath`, writes nothing on the use's nodes or in a table keyed by them, and reads no state a publication writes; it may force a declaration query, whose facts and records are that declaration's. A stage reports by returning: `Selected`, `Unresolved`, `Ambiguous`, `QualificationStop` with its facts. `PublishPath` alone writes, once, from the `nameSteps` stack. One path stands above a mark, but for an adaptation target, which compares two roles and replays both lookups' steps; a role's ambiguity there stands beside the other's selection. `TypeName` is the two together.
+  - `TypeLookupRole` takes `core` as a row: `Any`, `NoContainer`, `Type`, `Semantics`. They are today's filters, not SPEC 9.2's roles, and `Any` alone reaches stage 4.
+  - Removes `RootTypeName`, `SelectTypeCandidate`, `StopInheritedLookup`, `LookupImportedType` and `Lookup`'s Type branch. `ResolveRootPath` keeps a member step of its own until the `::` unit.
+  - Behavior-preserving. b, c, d, e and f are separate designs; G488 and BU-117 stay open.
+  - Rejected: N0's patch (stages publish); snapshot and undo; a `publish` flag; a per-use memo (a Koto-keyed table); recursion on the left instead of the stack (O(depth²)); SPEC's names on the rows (they are not its contracts).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
