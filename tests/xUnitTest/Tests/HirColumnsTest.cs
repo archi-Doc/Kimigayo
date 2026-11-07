@@ -7,9 +7,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The published HIR columns (docs/dev/COMPILER_ARCHITECTURE.md, R2b) over the Kimi library and every milestone program:
-/// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
-/// prepared slot, every jump its target, every evaluated node its completion and its Place, every consumed child its Adjust, every
-/// match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration, every body
+/// every node of the tree has an Op, every call Op its call, every jump its target, every evaluated node its completion and its Place,
+/// every consumed child its Adjust, every match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration, every body
 /// its pair binders and every call target its disposition; a Final pass publishes them itself and allocates nothing again.</summary>
 public sealed class HirColumnsTest
 {
@@ -111,6 +110,47 @@ public sealed class HirColumnsTest
     // ErasedType node, itself or below its groups, which takes the Erasure, and no other operation's Source holds one; a closure has
     // its environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a
     // built-in witness (a Shim), and an Abort or Fail call diverges.
+    // SPEC 7.2.3: Res is a read of the symbol (HirTables.ResOf): a parameter's read walks its parents up to its function and no further, so
+    // the work of a publish's reads grows with the reads, each bounded by its depth below the function, not with what surrounds the function.
+    [Fact]
+    public void AParameterReadWalksOnlyToItsFunction()
+    {
+        var few = Walked(reads: 40, nesting: 0);
+        Assert.Equal(2 * few, Walked(reads: 80, nesting: 0));
+        Assert.Equal(few, Walked(reads: 40, nesting: 12));
+
+        static long Walked(int reads, int nesting)
+        {
+            var text = new System.Text.StringBuilder();
+            for (var i = 0; i < nesting; i++)
+            {
+                text.Append(' ', 4 * i).Append("func outer() -> ()\n");
+            }
+
+            var indent = new string(' ', 4 * nesting);
+            text.Append(indent).Append("func f(a: i32) -> isize\n").Append(indent).Append("    let t: Array<i32> = ").Append('(', 100).Append('[')
+                .AppendJoin(", ", Enumerable.Repeat("a", reads)).Append(']').Append(')', 100).Append('\n').Append(indent).Append("    return t.length\n");
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", text.ToString()));
+            c.Bind();
+            HirTables.Publish(c);
+            var work = 0L;
+            var found = 0;
+            foreach (var node in Reachable(c.Kotonoha))
+            {
+                if (node is IdentifierNameKoto && HirTables.ResOf(node) == HirRes.Param)
+                {
+                    Assert.False(DefaultParameters.InLaterDefault(node, HirTables.Symbol(node)!, out var walked));
+                    (work, found) = (work + walked, found + 1);
+                }
+            }
+
+            Assert.Equal(reads, found);
+            return work;
+        }
+    }
+
     internal static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
@@ -166,12 +206,6 @@ public sealed class HirColumnsTest
             if (op == HirOp.Unset)
             {
                 problems.Add(where);
-            }
-
-            if (node.SymbolOf() is { } symbol &&
-                (HirTables.ResOf(node) == HirRes.None || (HirTables.ResOf(node) == HirRes.PreparedParam) != DefaultParameters.InLaterDefault(node, symbol)))
-            {
-                problems.Add($"{where} {symbol.Kind} {HirTables.ResOf(node)}");
             }
 
             if (op is HirOp.Jump or HirOp.Continue && !HoldsItsTarget((JumpKoto)node))

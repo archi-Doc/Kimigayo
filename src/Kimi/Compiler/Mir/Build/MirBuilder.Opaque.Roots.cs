@@ -9,7 +9,7 @@ namespace Kimi.Compiler.Mir;
 //   node's kept operands, evaluated first in syntax order as their Places and never acquired (KeptOperands), then the locals, parameters,
 //   environment bindings and statics the rest of the node's syntax names or a Closure in it captures (Roots), a part located already
 //   named by its Place's root.
-// - Inputs: the node; the published Op, Res, Adjust and symbols; the Places the builder has bound or located.
+// - Inputs: the node; the published Op and Adjust, each node's Res and symbol; the Places the builder has bound or located.
 // - Outputs: roots, the root list Site reads, or the root of a part built already (SiteRoots(MirPlace?)); Defaults names a default's earlier
 //   slots; the kept operands' MIR.
 // - Invariants: each root once; a kept operand is evaluated once, before the site, and its syntax's roots are not named again, also
