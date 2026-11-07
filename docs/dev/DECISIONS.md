@@ -15655,3 +15655,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     helper on an Abort path needs a `CallerLocation` catalog row until G1). `IntrinsicId` is unchanged.
   - Rejected: a generic `growArray<T>` (one routine per element Type); an intrinsic for growth (expressible; the unit's O2 A/B shows no need).
   - Temporary: `__kimi_array_grow` stays for Insert, Place and the literal until A1b.
+- **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
+  SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
+  - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
+    the tail one element at a time, the direction chosen so each move lands in the slot the previous step vacated: each single move is
+    disjoint, so no operation needs an overlap contract. `swapAt` exchanges through `Kimi.Intrinsics.swap`, the exchange's one owner, after
+    its equal-position shortcut. `insertAt`, `removeAt` and `swapAt` take `CallerLocation`; `pop` has no Abort path.
+    All four keep `Row: None`, `swapAt` gaining it (SPEC 4.9.6).
+  - RP20 for `CompilerFunctionKind.ArrayInsert`, `ArrayPop`, `ArrayRemove` and `ArraySwap` is implemented by removal (no RP6 row, as in R8-M2).
+    `ArrayHelperKind.Place`, already unreachable, goes with them.
+  - R8-M2's ruling on an element Type's layout failure through a body applies to these four.
+  - Counts (RQ9): `CompilerFunctionKind` 74 → 70; `KimiDeclarationId` and `IntrinsicId` unchanged.
+  - Rejected: `transferBytes` allowing overlap (`memmove`; reverses R5-M18 for a contract its other callers do not need); `transferBytes` per
+    element (raw byte arithmetic, and it would enter `NativeAllocationAudit`'s transferred bytes). An overlapping `moveBytes` (PLAN10 §5.8) is
+    not taken and `transferBytes`' no-overlap contract stands: the element loop beats the legacy `memmove` (T-26, the `ArrayMoves` kernel: B/A
+    0.410, aligned 0.390, 16 matched-address pairs 0.389 to 0.391 against A=A 0.999 to 1.001; every other kernel within A=A or code placement).
+  - O0: `insertAt` and `removeAt` hold elements on the stack, so 150,000-byte elements exhaust it at O0, which the base does not; 300,000-byte
+    elements exhaust both; O2 is no worse. O0 corpus times are not recorded yet; `ArrayMoves`' single O0 runs were 0.68 s on A, 4.61 s on B.
+  - Temporary: `__kimi_array_grow`'s one remaining caller is the literal (`FunctionCodegen.ArrayBuffer`), until R8-A1d deletes
+    `LegacyRuntimeHelpers.Arrays.cs`, with A1's literal path deciding its form; this supersedes R8-M2's "until A1b".

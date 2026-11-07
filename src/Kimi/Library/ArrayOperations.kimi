@@ -1,6 +1,5 @@
 // Signatures implemented by the compiler; loaded into Kimi.Array<T> (SPEC 4.9.3, 4.9.5).
-// The receiver is reserved exclusively before later arguments (SPEC 4.9.6). The internal isize operations check their
-// positions; the public position entries in Array.kimi resolve a position before calling them.
+// The receiver is reserved exclusively before later arguments (SPEC 4.9.6).
 /// Creates an empty Array whose capacity is at least `capacity`; a negative argument aborts and zero allocates nothing.
 ///
 /// The compiler supplies this constructor's definition from `initCapacity` (SPEC 4.9.5, 22.1).
@@ -10,9 +9,5 @@ public init(! capacity: isize)
 /// The compiler supplies this constructor's definition from `initRepeating` (SPEC 4.9.5, 22.1).
 public init(! repeating: T, count: isize)
     T is Copy
-internal func insertAt(self: uniq/Self, index: isize, value: T)
-public func pop(self: uniq/Self) -> Option<T>
-internal func removeAt(self: uniq/Self, index: isize) -> T
 public func clear(self: uniq/Self)
-internal func swapAt(self: uniq/Self, first: isize, second: isize)
 public func shrinkToFit(self: uniq/Self)
