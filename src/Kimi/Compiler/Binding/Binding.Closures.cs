@@ -475,7 +475,7 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.2, 15.8.2 (DECISIONS: G553): each local region a capture's Type names, a part of it included, with the meet of its sources
-    // now, at the literal, the moment the published result resolves them (BoundClosure.CapturedRegions); a Function Type part keeps its own
+    // in source order, the form the published result resolves it to (BoundClosure.CapturedRegions); a Function Type part keeps its own
     // Origins.
     private void CapturedRegions(BoundType type, BoundClosure plan, uint query)
     {

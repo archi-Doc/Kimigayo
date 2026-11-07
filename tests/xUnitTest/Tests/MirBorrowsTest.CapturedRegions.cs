@@ -98,8 +98,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("func f() -> ()\n    var x: i32 = 1\n    var v = x@uniq\n    var h = func [v@move] () => v@move\n    let r = h@move()\n    r@follow = 1\n    x = 5\n" + Main)]
     public void ACapturedRegionConflictsWithNothingLive(string source) => MirTargetSide.Check(source);
 
-    // SPEC 7.7.2, 15.3.6, 15.6.4 (the consent review's B1): a capture is a snapshot whose local region is the meet of its sources as of the
-    // literal, and a meet outlives what all its sources do, so a result naming one source of several cannot hold the capture and keeps
+    // SPEC 7.7.2, 15.3.6, 15.6.4 (the consent review's B1): a capture is a snapshot; with no loop or `defer` around the literal it holds the
+    // meet of the sources above it, and a meet outlives what all its sources do, so a result naming one source of several cannot hold it and keeps
     // none of its Loans: a source added after the capture, one before it, either order of a replaced source, two parameters' exclusive
     // references, `static` beside a local Borrow, a Closure that reads its capture, a Consuming call, a Closure over a Closure, one in a Field.
     [Theory]
@@ -115,16 +115,19 @@ public sealed partial class MirBorrowsTest
     [InlineData(See + "struct H<F>\n    public var f: F\n    public init(f: F)\n        self.f = f@move\nfunc f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let h = H.init(func [r] (p: ref/i32 during q) -> ref/i32 during q => p)\n    let v = h.f(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
     public void AResultNamingOneSourceCannotHoldTheCapture(string source) => MirTargetSide.Check(source);
 
-    // A recorded conservative limit (the owner's O-51, verbatim 「全部 (a)」; the root fix with R7-O2's local slot regions): these three are
-    // valid and clean on the base, and shape C rejects them. The region's edge is a may-fact on its one node, which the rows read as a fit:
-    // (k2, O-51, R7-O2) one Closure's meet reaches another Closure's occurrence of the region (SPEC 7.7.2: each capture is its own snapshot);
-    // (v7, O-51, R7-O2) a position naming the meet as of the literal where the region, solved over a later bound, could not hold the capture
-    // (SPEC 15.3.6); (v7u, O-51, R7-O2) its exclusive form. R7-O2 turns these into accepted rows; until then each is this record, here.
-    // The class, widened by the owner's O-52 (verbatim 「a」; the same root fix): the meet is in source order, and a literal in a loop or a
-    // `defer` runs after statements below it, so a source assigned there reaches the literal missing from the meet, and the result, which
-    // only passes its parameter through, reads as holding the capture that does hold it, valid on either reading of `v7`: (z57, O-51, O-52,
-    // R7-O2) a `while`, where a position over a parameter can hold no local Borrow (SPEC 15.6.5); (z64, O-51, O-52, R7-O2) a `for`; (z34,
-    // O-51, O-52, R7-O2) a position over a local; (z67, O-51, O-52, R7-O2) a `defer`.
+    // A recorded conservative limit (the owner's O-51, verbatim 「全部 (a)」, and O-52, verbatim 「a」; the root fix with R7-O2's local slot
+    // regions): valid and clean on the base, and shape C rejects them. The region's edge is a may-fact on its one node, which the rows read as
+    // a fit. Every form has the region in a Closure's environment, a result or store position reaching the meet of its sources in source
+    // order, and a Loan the position's own value does not carry, read through the receiver. These rows name the classes; the class is wider.
+    // Scope, two Closure parts of the region in one contract, in or out of a loop, the position reaching one's meet: (k2, O-51, R7-O2) one
+    // Closure's meet reaches another Closure's occurrence of the region (SPEC 7.7.2: each capture is its own snapshot). Tense, a bound the
+    // region takes after the literal, an assignment or a call's argument to a `during r` parameter, that never reaches the capture: (v7,
+    // O-51, R7-O2) a position naming the meet where the region, solved over that bound, could not hold the capture (SPEC 15.3.6); (v7u, O-51,
+    // R7-O2) its exclusive form. Order, valid on either reading of `v7`: a literal in a `while`, `for`, `loop` or a `defer`, nested or under an
+    // `if`, runs after statements below it, so a bound assigned there reaches the capture from outside the meet, over a parameter, a local or
+    // a store position, a shared or an exclusive capture: (z57, O-51, O-52, R7-O2) a `while`, a position over a parameter holding no local
+    // Borrow (SPEC 15.6.5); (z64, O-51, O-52, R7-O2) a `for`; (z34, O-51, O-52, R7-O2) a position over a local; (z67, O-51, O-52, R7-O2) a
+    // `defer`. R7-O2 turns these into accepted rows; until then each is this record, here.
     [Theory]
     [InlineData(See + "func both<A, B, T>(x: ref/A, y: ref/B, t: T) -> T\n    return t@move\nfunc t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = a@ref\n    var r = s\n    let c1 = func [r] () => r\n    r = b@ref\n    let c2 = func [r] () => r\n    let v = both(c1@ref, c2@ref, s)\n    b = 3\n    see(v)\n" + Main, "b = 3", null)]
     [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var c: i32 = 3\n    let s = a@ref\n    let w = b@ref\n    var r = s\n    let h = func [r, w] (p: ref/i32 during s) -> ref/i32 during s => p\n    let v = h(s)\n    r = c@ref\n    b = 3\n    see(v)\n    see(r)\n" + Main, "b = 3", null)]
@@ -136,10 +139,10 @@ public sealed partial class MirBorrowsTest
     public void ACapturedRegionsMeetIsAConservativeLimit(string source, string context, string? subject)
         => MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(context, subject)));
 
-    // Not this unit's limit: a hole it leaves as dev has it, the other direction of the same root (PLAN G570; the owner's O-52, verbatim 「a」;
-    // removal R7-O2). `ResolveLocalResultOrigins` publishes the result in source order too, so `q`, which reaches the literal on the next
-    // iteration, never reaches the Origin check, and z50 is accepted. SPEC 15.6.5 gives it the record its control has, `out = r` with no
-    // Closure, which this row states. It fails by design, so it is Explicit until R7-O2, its expectation unchanged: no row pins the acceptance.
+    // Not this unit's limit: a hole it leaves as dev has it, the other direction of the same root (PLAN G570; the owner's O-52, verbatim 「a」).
+    // `ResolveLocalResultOrigins` publishes the result in source order too, so `q`, which reaches the literal on the next iteration, never
+    // reaches the Origin check, and z50 is accepted. SPEC 15.6.5 gives it the record its control has, `out = r` with no Closure, which this
+    // row states. It fails by design, so it is Explicit until G570 closes it, its expectation unchanged: no row pins the acceptance.
     [Fact(Explicit = true)]
     public void ALaterSourceReachesTheOriginCheckPendingG570()
         => MirTargetSide.Check(
