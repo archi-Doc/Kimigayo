@@ -9,6 +9,41 @@ namespace XunitTest;
 
 public class FunctionTypeConstraintBindingTest
 {
+    private const string NestedCalledTwice = """
+        struct Box<T>
+            T is Owned
+            public init() => ()
+        func outer() -> i32
+            func inner(b: ref/Box<i32>) -> i32 => 1
+            let b = Box<i32>.init()
+            let x = inner(b@ref)
+            let y = inner(b@ref)
+            return x + y
+        """;
+
+    private const string NestedInAGenericBody = """
+        contract C
+            func m(self: ref/Self) -> i32
+        struct S
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self) -> i32 => 1
+        struct Box<T>
+            T is C
+            public init() => ()
+        func outer<T>(t: ref/T) -> i32
+            T is C
+            func inner(b: ref/Box<S>) -> i32 => 1
+            let b = Box<S>.init()
+            return inner(b@ref) + inner(b@ref) + t.m()
+        """;
+
+    // PLAN G375: a nested named function's header binds with its enclosing body, and a demand covers it.
+    [Theory]
+    [InlineData(NestedCalledTwice, "clean")]
+    [InlineData(NestedInAGenericBody, "clean")]
+    public void ANestedFunctionsSignatureIsDemanded(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("() -> i32", "Owned", true)]
     [InlineData("(i32) -> bool", "not Copy", true)]
