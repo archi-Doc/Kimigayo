@@ -27,9 +27,9 @@ public sealed partial class Binding
     };
 
     // SPEC 5.7 Calls ("for self, the holding value's Type"; the owner's Q2 (a)): what a `during self` layer of a stored part admits past
-    // it besides its pointee, the one reading of it retention's storage walk and fits (Binding.Retention.Storage.cs) and A5's holding walk
-    // (Binding.Holdings) read: the holding instance's Type arguments by their actual Types (`arguments`), or, where the
-    // instance has an Origin argument, the write fact instead (true): any value at each of them.
+    // it besides its pointee, the one reading of it, which RawHoldings publishes to every reader as row 13's entries: the holding instance's
+    // Type arguments by their actual Types (`arguments`), or, where the instance has an Origin argument, the write fact instead (true): any
+    // value at each of them.
     internal static bool SelfAdmitted(BoundType? holder, out IReadOnlyList<BoundType> arguments)
     {
         var write = holder is { OriginArguments.Count: > 0 };

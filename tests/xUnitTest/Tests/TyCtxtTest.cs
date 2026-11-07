@@ -1741,10 +1741,6 @@ public sealed partial class TyCtxtTest
 
     // The raw layer an instance stores at a part and inline positions, as StoredStep reads it: its kept part (an enum Case's payload Tuple),
     // then per position a Tuple's component or a fixed array's element.
-    // RawMembers of the raw layer an instance stores at a part and inline positions, by the key a Holdings read gives it.
-    private static bool MembersAt(TyCtxt types, BoundType instance, int part, int[] positions, List<RawMember> members)
-        => types.RawMembers(KeptLayer(types, instance, part, positions), TyCtxt.WrittenAt(instance, part, positions), instance, members);
-
     private static BoundType KeptLayer(TyCtxt types, BoundType instance, int part, int[] positions)
     {
         var layer = types.StoredParts(instance, out _)[part]!;
@@ -1755,6 +1751,10 @@ public sealed partial class TyCtxtTest
 
         return layer;
     }
+
+    // RawMembers of the raw layer an instance stores at a part and inline positions, by the key a Holdings read gives it.
+    private static bool MembersAt(TyCtxt types, BoundType instance, int part, int[] positions, List<RawMember> members)
+        => types.RawMembers(KeptLayer(types, instance, part, positions), TyCtxt.WrittenAt(instance, part, positions), instance, members);
 
     // The compilation of DeclaredSource and its `probe`'s parameter Types by name.
     private static (Compilation C, Dictionary<string, BoundType> Parameters) DeclaredLayers()

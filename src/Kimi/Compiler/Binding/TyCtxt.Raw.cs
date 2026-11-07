@@ -77,14 +77,15 @@ internal sealed partial class TyCtxt
     // Type it is found at, the referent its borrow admits (a slot keeper's under the Type binding the slot) and whether it may keep an
     // exclusive Loan. Total: false when the members are incomplete (a keeper cycle that changes its Type arguments, or a keeper Binding's
     // storage instantiation does not complete), and for a layer a Type slot's argument supplies whose Origin steps Exclusive: its borrows
-    // are the scope's that wrote the Type (a pair slot's states none). One read of the kept part and one walk of each (slot, owner Type)
-    // the bound slots' keepers reach.
+    // are the scope's that wrote the Type (a pair slot's states none). One walk of each (slot, owner Type) the bound slots' keepers reach.
+    // The key is the caller's: a `layer` that is no raw layer answers true with no members, where StoredStep's path query throws; Holdings
+    // publishes a Members entry only at a raw layer, so its reader cannot pass one.
     internal bool RawMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
         => binding.StoredMembers(layer, written, holder, members);
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24, BU-41, BU-46): a struct's or enum's stored parts under its substitution with
     // the raw Origins it gives, `self` as Holder and Unstated on each raw layer its declaration writes without `during` (RawStated), by the
-    // `part` StoredStep and RawMembers take (a struct's Fields, an enum's Case payload Tuples), its base in `parent`; empty for any other
+    // `part` StoredStep takes (a struct's Fields, an enum's Case payload Tuples), its base in `parent`; empty for any other
     // Type. AdtDef's FieldType, CaseTypes and Base are these WithoutRawOrigins, null exactly where they are. A walk reaches through them
     // the instance that stores a raw layer as the holding value's substitution makes it, and reads that layer only through StoredStep and
     // RawMembers on that instance and RawStated on the layer, never its Origin otherwise, so no premise, obligation or row names Holder or
