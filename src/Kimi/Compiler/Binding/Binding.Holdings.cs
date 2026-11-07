@@ -7,13 +7,13 @@ namespace Kimi.Compiler;
 // The storage a value of a Type holds, SPEC 3.3.4's table (G416's unit S writes it; fact.md rows 1-21) one level at a time (DECISIONS BU-41, BU-46, BU-58, BU-91).
 // Responsibility: the one reading of a held part's step, flags and stater, each row a value of Hold.
 // Inputs: the Type and, for a stored part, the Type its declaration writes there and the holding instance (the keys a reader's memo holds).
-// Outputs: a run appended to the caller's list, in stack order; false at Binding's Limit (a struct's or enum's storage past its limits, a
-// Closure's environment that does not substitute).
+// Outputs: a run appended to the caller's list, in stack order; false at Binding's Limit (a struct's or enum's storage past its limits),
+// whose entries stay published: a reader with a bound of its own reads them, a fold reads false first.
 // Invariants: total, every form has a row and an unlisted form one Unsupported entry; a function of (type, written, holder) only, so each
 // reader's memo stays sound (R4-M151); O(entries); allocates nothing when warm. A stored raw layer's step is DeclaredStep's, the one
 // function StoredStep's path query reads, so the per-level and per-path answers cannot disagree.
 // Must not: decide a fit, a row, a Loan or a write fact; read a call's argument, a solved Origin, the premise closure or a signature's
-// scope (a signature layer's cap and a supplied layer's binder step stay RawStepAt's, the cap of a contract's walk, DECISIONS BU-113);
+// scope (an output fold steps every raw layer by RawStepAt, the cap of a contract's walk, DECISIONS BU-113);
 // read a raw Origin itself. No reader tests `Semantics`, `Kind`, `IsAbstract` or a layer's Origin to decide a step, a flag or a stater.
 
 /// <summary>A held part's path kind and its access (SPEC 15.6.2, 5.2.1 condition 3, 5.7; DECISIONS BU-24, BU-113). The five values
@@ -139,7 +139,7 @@ public sealed partial class Binding
                 this.RawHoldings(type, pointee, written, holder, into);
                 return true;
             case BoundTypeKind.Semantics when type.Components is [var referent]:
-                Layer(type.Semantics, referent, HoldFlags.None, into);
+                Layer(type.Semantics, referent, HoldFlags.None, holder, into);
                 return true;
             case BoundTypeKind.Tuple:
                 InlineParts(type, written, holder, HoldFlags.None, into);
@@ -148,32 +148,27 @@ public sealed partial class Binding
                 InlineParts(type, written, holder, type is { LengthExpression: null, Length: 1 } ? HoldFlags.None : HoldFlags.Repeated, into);
                 return true;
             case BoundTypeKind.Closure:
-                if (this.types.ClosureEnvironment(type) is not { } environment)
-                {
-                    return false;
-                }
-
-                InlineParts(environment, written, holder, HoldFlags.None, into);
+                InlineParts(type, null, null, HoldFlags.None, into); // A function of the given Type; a fold asks with the body's environment.
                 return true;
             case BoundTypeKind.Function:
                 into.Add(new(null, HoldStep.Erased, HoldContent.Nothing, HoldFlags.None, null, null)); // Owned at U5 (G416 D6).
                 return true;
             case BoundTypeKind.Slice when type.Components is [var elements]:
-                Layer(SemanticsKind.Ref, elements, HoldFlags.Repeated, into);
+                Layer(SemanticsKind.Ref, elements, HoldFlags.Repeated, null, into);
                 return true;
             case BoundTypeKind.Array when type.Components is [var element]:
-                into.Add(new(element, HoldStep.Own, HoldContent.Its, HoldFlags.Repeated, null, null));
+                into.Add(new(element, HoldStep.Own, HoldContent.Its, HoldFlags.Repeated, null, holder));
                 return true;
             case BoundTypeKind.Dictionary when type.Components is [var key, var value]:
-                into.Add(new(this.types.Tuple([key, value]), HoldStep.Own, HoldContent.Its, HoldFlags.Repeated, null, null));
+                into.Add(new(this.types.Tuple([key, value]), HoldStep.Own, HoldContent.Its, HoldFlags.Repeated, null, holder));
                 return true;
             case BoundTypeKind.Primitive when TyCtxt.CoreContent(type) is { } content:
-                into.Add(new(content, HoldStep.Own, HoldContent.Its, HoldFlags.Repeated, null, null));
+                into.Add(new(content, HoldStep.Own, HoldContent.Its, HoldFlags.Repeated, null, holder));
                 return true;
             case BoundTypeKind.Primitive or BoundTypeKind.Range or BoundTypeKind.FunctionItem:
                 return true;
             case BoundTypeKind.Nominal or BoundTypeKind.Constructed:
-                return this.NominalHoldings(type, into);
+                return this.NominalHoldings(type, holder, into);
             default:
                 into.Add(new(type, HoldStep.Unsupported, HoldContent.Nothing, HoldFlags.None, written, holder));
                 return true;
@@ -182,7 +177,7 @@ public sealed partial class Binding
 
     // SPEC 8.1.1, 3.3.1: a layer's entry by its Semantics (a pair layer's case by the same table), the reference and view partition.
     // An object view of an abstract or open Target adds the remainder at U5 (G416 §0).
-    private static void Layer(SemanticsKind semantics, BoundType target, HoldFlags flags, List<Hold> into)
+    private static void Layer(SemanticsKind semantics, BoundType target, HoldFlags flags, BoundType? holder, List<Hold> into)
     {
         var (step, marks) = semantics switch
         {
@@ -194,7 +189,7 @@ public sealed partial class Binding
             SemanticsKind.Raw => (HoldStep.Exclusive, HoldFlags.Raw), // A pair's raw case, unstepped until U3b: not Holds' Members.
             _ => (HoldStep.Unsupported, HoldFlags.None),
         };
-        into.Add(new(target, step, HoldContent.Its, marks | flags, null, null));
+        into.Add(new(target, step, HoldContent.Its, marks | flags, null, holder));
     }
 
     // A Tuple's components, a fixed array's element, a Closure's environment bindings: each at the value's own address, by the Type the
@@ -215,7 +210,7 @@ public sealed partial class Binding
         {
             if ((admitted & semantics.ToMask()) != 0)
             {
-                Layer(semantics, target, HoldFlags.None, into);
+                Layer(semantics, target, HoldFlags.None, null, into);
             }
         }
     }
@@ -253,13 +248,12 @@ public sealed partial class Binding
         }
     }
 
-    // A nominal Type: a UniqSlice as a view; HeapBuffer by SPEC 22.9 (its declared Fields are not read); a struct's or enum's Type arguments
-    // (SPEC 15.3.5: a dependency, no Places), base, Fields and every substituted Case's payloads, in the instance's kept parts.
-    private bool NominalHoldings(BoundType type, List<Hold> into)
+    // A nominal Type: a UniqSlice as a view; HeapBuffer by SPEC 22.9 (its declared Fields are not read); else a struct or enum.
+    private bool NominalHoldings(BoundType type, BoundType? holder, List<Hold> into)
     {
         if (type is { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice, Components: [var elements], OriginArguments: [_] })
         {
-            Layer(SemanticsKind.Uniq, elements, HoldFlags.Repeated, into);
+            Layer(SemanticsKind.Uniq, elements, HoldFlags.Repeated, null, into);
             return true;
         }
 
@@ -275,14 +269,17 @@ public sealed partial class Binding
             return true;
         }
 
-        if (!this.Readable(type, this.PrepareTypeStorage(type)))
-        {
-            return false;
-        }
+        return this.StoredHoldings(type, holder, into);
+    }
 
+    // A struct's or enum's Type arguments (SPEC 15.3.5: a dependency, no Places), base, Fields and every substituted Case's payloads, in the
+    // instance's kept parts, each holding through the Type its declaration writes there.
+    private bool StoredHoldings(BoundType type, BoundType? holder, List<Hold> into)
+    {
+        var readable = this.Readable(type, this.PrepareTypeStorage(type));
         for (var i = 0; i < type.Components.Count; i++)
         {
-            into.Add(new(type.Components[i], HoldStep.Loan, HoldContent.Its, HoldFlags.None, null, null));
+            into.Add(new(type.Components[i], HoldStep.Loan, HoldContent.Its, HoldFlags.None, null, holder));
         }
 
         var (stored, adt) = (this.Instance(type), type.Symbol!.Adt!);
@@ -304,7 +301,7 @@ public sealed partial class Binding
             }
         }
 
-        return true;
+        return readable;
 
         static void Stored(BoundType? part, BoundType? written, BoundType holder, List<Hold> into)
             => into.Add(new(part, HoldStep.Inline, part is null ? HoldContent.Any : HoldContent.Its, HoldFlags.None, written, holder));

@@ -22,7 +22,7 @@ public sealed partial class TyCtxtTest
         "func probe<T, P>(i: i32, unit: (), tuple: (i32, bool), two: [2 of i32], one: [1 of i32], plain: Plain, cell: Cell, empty: Empty<bool>,\n" +
         "    generic: Generic<bool>, ref: ref/Plain, uniq: uniq/Plain, slice: Slice<i32>, uniqSlice: UniqSlice<i32>, obj: obj/Plain, rc: rc/Plain,\n" +
         "    arc: arc/Plain, array: Array<i32>, dictionary: Dictionary<i32, i32>, text: string, bare: raw/u8, stated: raw/u8 during static,\n" +
-        "    parameter: T, projection: P.(Iterator).Item, function: (i32) -> i32, heap: Text.HeapBuffer, selfOnly: SelfOnly<bool>, x: uniq/i32,\n" +
+        "    parameter: T, projection: P.(Iterator).Item, function: (i32) -> i32, heap: Text.HeapBuffer, start: Start, selfOnly: SelfOnly<bool>, x: uniq/i32,\n" +
         "    selfOrigin: SelfOrigin during x, refSlot: RefSlot during x, uniqSlot: UniqSlot during x) -> ()\n    P is Iterator\n    return ()\n" +
         "func pairs<a/A, b/B, c/C>(all: a/A, some: b/B, rawOnly: c/C) -> ()\n    b is owner or uniq\n    c is raw\n    return ()\n" +
         "public func main() => ()\n";
@@ -55,6 +55,7 @@ public sealed partial class TyCtxtTest
     [InlineData("projection", "P.Item Abstract Premised")]
     [InlineData("function", "- Erased Nothing")]
     [InlineData("heap", "u8 Own Its Repeated")]
+    [InlineData("start", "")]
     public void EachFormHoldsItsRowsEntries(string parameter, string entries)
     {
         var (c, p) = HoldingsLayers();
@@ -114,6 +115,18 @@ public sealed partial class TyCtxtTest
         var closure = LocalTypes(c).First(static x => x is { Kind: BoundTypeKind.Closure })!;
         Assert.Equal("raw/u8 Inline Its", Shown(Entries(c, closure, null, null)));
         Assert.Equal("u8 Address Its Raw", Shown(Entries(c, closure.Components[0], null, null)));
+    }
+
+    // A growing Type is at Binding's Limit from its first level: the accessor answers false and its entries stay published, for a reader with
+    // a bound of its own (A5); a fold reads false first.
+    [Fact]
+    public void AStorageLimitStillPublishesItsEntries()
+    {
+        var c = MinimalEmissionTest.Analyze("struct N<X>\n    public var next: raw/N<(X, X)>\nfunc probe(n: N<i32>) -> ()\n    return ()\npublic func main() => ()\n");
+        var n = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        var into = new List<Hold>();
+        Assert.False(c.Types.Holdings(n, null, null, into));
+        Assert.Equal("i32 Loan Its; raw/N<(i32, i32)> Inline Its written holder", Shown(into));
     }
 
     // Q2's condition 2 over the corpus: at every raw layer an instance of the library and the milestones stores, the accessor's step is the
