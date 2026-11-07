@@ -620,6 +620,7 @@ public sealed partial class Binding
     {
         this.caseBinders?.Clear();
         this.report.Clear();
+        this.nameSteps.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();
         this.ResetOriginRecords();
@@ -672,7 +673,7 @@ public sealed partial class Binding
         {
             MemberAccessKoto member when this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement => true,
             MemberAccessKoto member => TypeSpelling(member.Right) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Intrinsics, spelled) &&
-                ReferenceEquals(this.TypeName(member.Left, scope, false)?.Declaration, this.Library.Intrinsics),
+                ReferenceEquals(this.TypeName(member.Left, scope, TypeLookupRole.Any)?.Declaration, this.Library.Intrinsics),
             _ => TypeSpelling(name) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Root, spelled),
         };
         return limit ? BindingFailure.Unsupported : missing;
@@ -705,7 +706,7 @@ public sealed partial class Binding
             return inner;
         }
 
-        if (this.TypeName(member.Left, scope, false) is not { } qualifier || !this.scopes.TryGetValue(qualifier.Declaration, out var members) ||
+        if (this.TypeName(member.Left, scope, TypeLookupRole.Any) is not { } qualifier || !this.scopes.TryGetValue(qualifier.Declaration, out var members) ||
             TypeSpelling(member.Right) is not { } name)
         {
             return null;

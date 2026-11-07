@@ -41,7 +41,7 @@ public sealed partial class Binding
             }
 
             var syntax = declaration.Bases[0];
-            if (!complete && this.TypeName(syntax, this.scopes[declaration], false)?.Declaration is not StructKoto)
+            if (!complete && this.TypeName(syntax, this.scopes[declaration], TypeLookupRole.Any)?.Declaration is not StructKoto)
             {
                 this.inheritedConformanceStates[type] = 0;
                 return;

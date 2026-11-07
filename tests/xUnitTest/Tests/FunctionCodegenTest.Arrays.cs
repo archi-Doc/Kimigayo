@@ -115,9 +115,9 @@ public sealed partial class FunctionCodegenTest
     public void ArrayProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
-    // SPEC 4.9.3 (DECISIONS R5-M121): each operation calls the helper of its LegacyRow item, or its body (`append`, `reserve`; R8-A1a), with the
-    // handle, its operands at their slots (an element by value, a string by its storage, a zero-sized one not at all), its result slot and the
-    // call's location; `append`'s body grows through `growArray` by the element's stride.
+    // SPEC 4.9.3 (DECISIONS R5-M121): each operation calls the helper of its LegacyRow item, or its body (R8-A1a, A1b), with the handle, its
+    // operands at their slots (an element by value, a string by its storage, a zero-sized one not at all), its result slot and the call's
+    // location; `append`'s body grows through `growArray` by the element's stride.
     [Fact]
     public void ArrayOperationsCallTheHelperOfTheirInstance()
     {
@@ -145,11 +145,11 @@ public sealed partial class FunctionCodegenTest
         var take = Assert.Single(FunctionsOf(ir, c, "arTake"));
         var pop = Assert.Single(CallsOf(take));
         Assert.Equal("internal void (ptr, ptr)", pop.Callee!.Signature);
-        Assert.Same(take.Parameters[0], pop.Operands[1]); // Its result slot is the caller's.
+        Assert.Same(take.Parameters[0], pop.Operands[0]); // Its result slot is the caller's, first in a body's signature.
         Assert.Contains(pop.Callee.Instructions, static x => x.Shape == "store i32 1, ptr %, align 4"); // None's tag.
 
-        var removes = FunctionsOf(ir, c, "remove").SelectMany(CallsOf).Select(static x => x.Callee!.Signature).Where(static x => x.Contains("(ptr, i64", StringComparison.Ordinal));
-        Assert.Equal(["internal i32 (ptr, i64, ptr, i64)", "internal void (ptr, i64, ptr, i64)", "internal void (ptr, i64, ptr, ptr, i64)"], removes.Distinct().Order(StringComparer.Ordinal));
+        var removes = FunctionsOf(ir, c, "remove").SelectMany(CallsOf).Select(static x => x.Callee!.Signature).Where(static x => x.EndsWith("ptr, i64, ptr, i64)", StringComparison.Ordinal));
+        Assert.Equal(["internal i32 (ptr, i64, ptr, i64)", "internal void (ptr, i64, ptr, i64)", "internal void (ptr, ptr, i64, ptr, i64)"], removes.Distinct().Order(StringComparer.Ordinal));
         Assert.Contains(FunctionsOf(ir, c, "insert").SelectMany(CallsOf), static x => x.Callee!.Signature == "internal void (ptr, i64, i32, ptr, i64)");
         Assert.Contains(FunctionsOf(ir, c, "swap").SelectMany(CallsOf), static x => x.Callee!.Signature == "internal void (ptr, i64, i64, ptr, i64)");
 
