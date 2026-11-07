@@ -43,7 +43,7 @@ public sealed partial class Binding
         }
         else if (callee is IdentifierNameKoto name)
         {
-            group = this.Lookup(name.IdentifierName, scope, name, false);
+            group = this.Lookup(name.IdentifierName, scope, name);
         }
         else if (callee is MemberAccessKoto member && member.Right is not NumberLiteralKoto)
         {
@@ -192,7 +192,7 @@ public sealed partial class Binding
                         argumentName = UnwrapTypeSyntax(parentheses.Type);
                     }
 
-                    if (isLength && this.TypeName(argumentName, scope, false) is not null)
+                    if (isLength && this.TypeName(argumentName, scope, TypeLookupRole.Any) is not null)
                     {
                         var typeSlot = false;
                         var lengthSlot = false;

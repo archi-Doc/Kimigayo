@@ -31,10 +31,12 @@ public class GenericConstraintCertificateBindingTest
     }
 
     [Theory]
-    [InlineData("func accept(self: ref/Self, value: Box<string>)", "public func accept(self: ref/Self, value: Box<string>) => ()")]
-    [InlineData("property value: Box<string> has get, set", "public var value: Box<string>")]
-    [InlineData("func accept(self: ref/Self, value: Box<string>) -> Box<string>", "public func accept(self: ref/Self, value: Box<string>) -> Box<string> => value")]
-    public void InvalidGenericSignatureCannotCertifyWitness(string requirement, string implementation)
+    // The owner's O-44: a conformance reads no signature's formation, so a function's holds beside the failed Type, which keeps its record where it is
+    // written. A Property's certificate fails its declaration, and a failed declaration supplies no evidence (SPEC 8.3.1).
+    [InlineData("func accept(self: ref/Self, value: Box<string>)", "public func accept(self: ref/Self, value: Box<string>) => ()", true)]
+    [InlineData("property value: Box<string> has get, set", "public var value: Box<string>", false)]
+    [InlineData("func accept(self: ref/Self, value: Box<string>) -> Box<string>", "public func accept(self: ref/Self, value: Box<string>) -> Box<string> => value", true)]
+    public void InvalidGenericSignatureFailsWhereItIsWritten(string requirement, string implementation, bool conforms)
     {
         var source = "public struct Box<T>\n    T is i32\n    Self is Copy\npublic contract C\n    " + requirement + "\npublic struct S\n    Self is C\n    " + implementation;
         var valid = MinimalEmissionTest.Analyze(source.Replace("Box<string>", "Box<i32>", StringComparison.Ordinal));
@@ -45,9 +47,9 @@ public class GenericConstraintCertificateBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)?.IsVerified ?? false);
+        Assert.Equal(conforms, c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)?.IsVerified ?? false);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)?.IsVerified ?? false);
+        Assert.Equal(conforms, c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)?.IsVerified ?? false);
     }
 
     [Theory]

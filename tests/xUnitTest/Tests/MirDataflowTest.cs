@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Diagnostics;
 using Xunit;
@@ -68,8 +69,8 @@ public sealed class MirDataflowTest
         Assert.Equal(new MirProblem(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, 0b11), report.All[1]);
         Assert.Equal(
             [
-                new MirFact(MirFactKind.Required, body.Source, words * 8), new(MirFactKind.Limit, body.Source, 64L * 1024 * 1024),
-                new(MirFactKind.Table, body.Source, (long)MirStorageTable.Origins),
+                new ProblemFact(ProblemFactKind.Required, body.Source, words * 8), new(ProblemFactKind.Limit, body.Source, 64L * 1024 * 1024),
+                new(ProblemFactKind.Table, body.Source, (long)MirStorageTable.Origins),
             ],
             report.Facts(1).ToArray());
         Assert.Equal("Origins over", Limit(report, 1));
@@ -79,8 +80,9 @@ public sealed class MirDataflowTest
     internal static string Limit(MirReport report, int problem)
     {
         var facts = report.Facts(problem).ToArray();
-        var (required, limit) = (facts.Single(static x => x.Kind == MirFactKind.Required).Value, facts.Single(static x => x.Kind == MirFactKind.Limit).Value);
-        return $"{(MirStorageTable)facts.Single(static x => x.Kind == MirFactKind.Table).Value} {(required > limit ? "over" : "within")}";
+        var (required, limit) =
+            (facts.Single(static x => x.Kind == ProblemFactKind.Required).Value, facts.Single(static x => x.Kind == ProblemFactKind.Limit).Value);
+        return $"{(MirStorageTable)facts.Single(static x => x.Kind == ProblemFactKind.Table).Value} {(required > limit ? "over" : "within")}";
     }
 
     private static int Words(MirBody body) => (body.Locals.Length + 63) >> 6;

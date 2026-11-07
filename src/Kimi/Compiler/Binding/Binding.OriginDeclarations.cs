@@ -375,7 +375,7 @@ public sealed partial class Binding
             return known;
         }
 
-        var symbol = this.TypeName(syntax, scope, false);
+        var symbol = this.TypeName(syntax, scope, TypeLookupRole.Any);
         return symbol?.Declaration is GroupKoto
             ? this.BindContainerQualifier(syntax, symbol, scope, this.TypeContext(syntax, scope))
             : this.BindType(syntax, scope);

@@ -571,10 +571,10 @@ internal sealed partial class MirOrigins
                 }
 
                 var start = this.pendingFacts.Count;
-                this.pendingFacts.Add(new(MirFactKind.Relation, this.edgeSites[edge], this.edgeRows[edge]));
+                this.pendingFacts.Add(new(ProblemFactKind.Relation, this.edgeSites[edge], this.edgeRows[edge]));
                 if (source < this.anchorCount && this.anchors[source] >= 0)
                 {
-                    this.pendingFacts.Add(new(MirFactKind.Anchor, this.refs[this.anchors[source]].Site));
+                    this.pendingFacts.Add(new(ProblemFactKind.Anchor, this.refs[this.anchors[source]].Site));
                 }
 
                 var reason = new MirReason(atoms[source].Atom, atoms[this.heads[edge]].Atom, Equality: false);
@@ -595,7 +595,7 @@ internal sealed partial class MirOrigins
 
         var atoms = this.slice.Atoms;
         var start = this.pendingFacts.Count;
-        this.pendingFacts.Add(new(MirFactKind.Relation, site, row));
+        this.pendingFacts.Add(new(ProblemFactKind.Relation, site, row));
         var reason = new MirReason(atoms[source].Atom, atoms[target].Atom, Equality: false);
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
         this.pending.Add(new(DiagnosticCode.UnprovenOriginRelation_Kd, requirement, site, reason, this.classViews, start, 1));

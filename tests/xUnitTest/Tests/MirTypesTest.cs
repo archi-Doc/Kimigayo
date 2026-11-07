@@ -11,7 +11,7 @@ namespace XunitTest;
 /// <summary>The Type facts A5 reads (docs/dev/DECISIONS.md R4-M36, R4-M73, R4-M147): which values may hold a Loan and what a call may write past them
 /// (<see cref="MirTypes.HoldsLoans"/>), what destructions may observe of what they hold (<see cref="MirTypes.Observation"/>), and the
 /// callables a value hands a callee (TyCtxt.HandedCallables, R4-M154), over the parameter Types of one function.</summary>
-public sealed class MirTypesTest(ITestOutputHelper output)
+public sealed partial class MirTypesTest(ITestOutputHelper output)
 {
     private const string Types = "struct Plain\n    var n: i32\nstruct Holder {a}\n    let r: ref/i32 during a\n" +
         "struct Logger {sink}\n    let out: uniq/i32 during sink\n    drop\n        _ = self.out@follow\n" +
@@ -41,7 +41,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
                 ("borrow", true), ("borrows", true), ("tuple", true), ("fixed", true), ("table", true), ("option", true),
                 ("holder", true), ("handle", true), ("slice", true), ("view", true), ("loan", true), ("iterator", true), ("action", true),
                 ("layer", true), ("nest", true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], out _))).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], [], out _))).ToArray());
     }
 
     // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4, 15.3.5; DECISIONS R4-M73, R4-M147, R4-M170): a call may write past a value that may hold, past no
@@ -85,7 +85,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], out var writes);
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], [], out var writes);
             return writes;
         }
     }
@@ -112,7 +112,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], out var writes);
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], [], out var writes);
             return writes;
         }
 
@@ -132,7 +132,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         var walked = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             [("x", MirWrites.Through), ("deepFirst", MirWrites.Through), ("shallowFirst", MirWrites.Through)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, walked, [], out var writes) ? writes : MirWrites.None)).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, walked, [], [], out var writes) ? writes : MirWrites.None)).ToArray());
 
         static string Nested(string inner, int levels) => new string('(', levels) + inner + string.Concat(Enumerable.Repeat(", i32)", levels));
     }
@@ -165,7 +165,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
 
         string Guard(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, walked, [], out var writes);
+            _ = MirTypes.HoldsLoans(type, c.Types, walked, [], [], out var writes);
             return writes.ToString();
         }
 
@@ -210,7 +210,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal(
             ["Through", "None", "None", "no Loan", "Named", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
-                .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], out var writes) ? $"{writes}" : "no Loan").ToArray());
+                .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], [], out var writes) ? $"{writes}" : "no Loan").ToArray());
     }
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147, BU-41): a raw layer a holder stores at any depth below it is read on the instance holding it,
@@ -252,7 +252,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, out var writes);
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, [], out var writes);
             return writes;
         }
     }
@@ -302,7 +302,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, out var writes);
+            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, [], out var writes);
             return writes;
         }
     }
@@ -374,7 +374,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(pairs, seen));
         Assert.True(MirTypes.Observation(pairs, c.Types, body.Key.Decl, new(ReferenceEqualityComparer.Instance)).IsNone);
-        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(), [], out _));
+        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(), [], [], out _));
     }
 
     // V16 (DECISIONS R4-M153's revision 3): an outcome walk enters a Type again only where it meets it shallower than before (MirDepths),
@@ -414,7 +414,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         {
             foreach (var local in body.Locals.ToArray())
             {
-                var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], out _);
+                var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], [], out _);
                 var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
                 var observation = MirTypes.Observation(local.Type, c.Types, body.Key.Decl, entered);

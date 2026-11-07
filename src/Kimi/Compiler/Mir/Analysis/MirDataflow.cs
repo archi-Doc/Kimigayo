@@ -181,11 +181,11 @@ internal sealed class MirDataflow(MirReach reach)
     internal static int StorageLimit(MirReport report, MirBody body, ulong views, MirStorageTable table, long words)
     {
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
-        ReadOnlySpan<MirFact> facts =
+        ReadOnlySpan<ProblemFact> facts =
         [
-            new(MirFactKind.Required, body.Source, words * sizeof(ulong)),
-            new(MirFactKind.Limit, body.Source, ByteLimit),
-            new(MirFactKind.Table, body.Source, (long)table),
+            new(ProblemFactKind.Required, body.Source, words * sizeof(ulong)),
+            new(ProblemFactKind.Limit, body.Source, ByteLimit),
+            new(ProblemFactKind.Table, body.Source, (long)table),
         ];
         return report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, views), facts);
     }

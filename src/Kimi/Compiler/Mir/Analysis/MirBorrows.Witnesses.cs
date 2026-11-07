@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 // Must not record a problem or decide which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
-    private MirFact[] facts = new MirFact[5]; // The facts Facts builds for one problem, then its causes (MirBorrows.Causes' CauseFacts).
+    private ProblemFact[] facts = new ProblemFact[5]; // The facts Facts builds for one problem, then its causes (MirBorrows.Causes' CauseFacts).
 
     // A conflict's code (A3 5's A6 table, row 1 for every access): a Loan found in its reservation holder, as the access sees it (a call's
     // effect rows see a reservation it activates unique, W6, R4-M92), is a reservation conflict, else the check's code.
@@ -73,22 +73,22 @@ internal sealed partial class MirBorrows
     // value it takes, a transit value's or E's store, or none (None: a destruction's own hold, which no value carries); the reservation's
     // anchor; the static Field an effect met (R4-M92); and last, inside an inline default copy, the default's operation, at the omitting
     // call (D13), which is then the subject.
-    private (SourceRef Subject, int Count) Facts(SourceRef anchor, int via, MirLocation at, int reservation, MirFact? effect)
+    private (SourceRef Subject, int Count) Facts(SourceRef anchor, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
         var (operation, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
         SourceRef? witness = via == None ? null : operation;
-        var kind = via > Escaped || via == Taken ? MirFactKind.Use : MirFactKind.Store;
+        var kind = via > Escaped || via == Taken ? ProblemFactKind.Use : ProblemFactKind.Store;
         if (via > Escaped)
         {
             witness = this.NextUse(via, from);
             if (witness is null && this.HolderLocal(via) != 0)
             {
-                (witness, kind) = (this.Declaration(via), MirFactKind.Store);
+                (witness, kind) = (this.Declaration(via), ProblemFactKind.Store);
             }
         }
 
         var count = 0;
-        this.facts[count++] = new(MirFactKind.Anchor, anchor);
+        this.facts[count++] = new(ProblemFactKind.Anchor, anchor);
         if (witness is { } site)
         {
             this.facts[count++] = new(kind, site);
@@ -96,7 +96,7 @@ internal sealed partial class MirBorrows
 
         if (reservation >= 0)
         {
-            this.facts[count++] = new(MirFactKind.Reservation, this.Site(reservation));
+            this.facts[count++] = new(ProblemFactKind.Reservation, this.Site(reservation));
         }
 
         if (effect is { } met)
@@ -107,7 +107,7 @@ internal sealed partial class MirBorrows
         var call = this.body.OmittingCall(this.Source(at).Scope);
         if (call is not null)
         {
-            this.facts[count++] = new(MirFactKind.Evaluated, operation);
+            this.facts[count++] = new(ProblemFactKind.Evaluated, operation);
         }
 
         return (call ?? operation, count);

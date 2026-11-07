@@ -27,7 +27,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     private BoundType[] pairScratch = [];
 
     // SPEC 3.1.2 (DECISIONS R4-M154, r2.2): the stored content of a built-in Core Type, whose layout is hidden, the one fact such a Type
-    // publishes to retention's walks (Binding.HeldParts, read for the positions and the sources alike): a `string`'s value holds its text's
+    // publishes to retention's walks (Binding.Holdings, read for the positions and the sources alike): a `string`'s value holds its text's
     // bytes, elements of Type `u8`, by value, as a fixed array holds its elements; every other Core holds none (null). Never "holds any".
     internal static BoundType? CoreContent(BoundType type) => ReferenceEquals(type, BoundType.String) ? BoundType.Primitives["u8"] : null;
 

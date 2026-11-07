@@ -378,7 +378,7 @@ public sealed partial class MirBorrowsTest
             program.Problems.All.ToArray().Select((x, i) => (x, i))
                 .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
                 .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)
-                    .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
+                    .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown))}"));
     }
 
     // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems's rows that need a live static Loan, on rooted bodies (SPEC 23.1.2,

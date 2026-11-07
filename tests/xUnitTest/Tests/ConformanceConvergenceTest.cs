@@ -45,12 +45,321 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         func use(s: ref/S, b: ref/Box<S>, p: ref/Pack<S>) -> i32 => s.m(b) + s.k(p)
         """;
 
-    // PLAN G556, the owner's O-44: a6's form is valid. These rows pin today's records, not validity: R7-V5 removes contract matching's formation gate and
-    // moves them, and it labels the second program itself.
+    private const string ImplementationDeclaredBeforeItsContract = """
+        func use(s: ref/S, b: ref/Box<S>) -> i32 => s.m(b)
+        struct S
+            public func m(self: ref/Self, other: ref/Box<S>) -> i32 => 1
+            public init() => ()
+            Self is C
+        struct Box<T>
+            T is C
+            public init() => ()
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        """;
+
+    private const string ConcreteCycle = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<S>) -> i32
+        contract K
+            func k(self: ref/Self, other: ref/Pack<S>) -> i32
+        struct Box<T>
+            T is K
+            public init() => ()
+        struct Pack<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            Self is K
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<S>) -> i32 => 1
+            public func k(self: ref/Self, other: ref/Pack<S>) -> i32 => 1
+        func use(s: ref/S, b: ref/Box<S>, p: ref/Pack<S>) -> i32 => s.m(b) + s.k(p)
+        """;
+
+    private const string ConcreteCycleDeclaredBackwards = """
+        func use(s: ref/S, b: ref/Box<S>, p: ref/Pack<S>) -> i32 => s.m(b) + s.k(p)
+        struct S
+            public func k(self: ref/Self, other: ref/Pack<S>) -> i32 => 1
+            public func m(self: ref/Self, other: ref/Box<S>) -> i32 => 1
+            public init() => ()
+            Self is K
+            Self is C
+        struct Pack<T>
+            T is C
+            public init() => ()
+        struct Box<T>
+            T is K
+            public init() => ()
+        contract K
+            func k(self: ref/Self, other: ref/Pack<S>) -> i32
+        contract C
+            func m(self: ref/Self, other: ref/Box<S>) -> i32
+        """;
+
+    private const string ImplementationNamesAContractItsTypeLacks = """
+        contract K
+        contract C
+            func m(self: ref/Self, other: ref/Box<S>) -> i32
+        struct Box<T>
+            T is K
+            public init() => ()
+        struct S
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<S>) -> i32 => 1
+        """;
+
+    private const string ResultMismatchBesideASignature = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<S>) -> bool => true
+        """;
+
+    private const string ReceiverShapesKeepTheSignature = """
+        contract C
+            func m(self: ref/Self, x: i32) -> i32
+        struct S
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, x: i32) -> i32 => 1
+            public func m(self: uniq/Self, x: string) -> i32 => 2
+        func need<T>(t: ref/T) -> i32
+            T is C
+            return t.m(1)
+        func use(s: ref/S) -> i32 => need(s)
+        """;
+
+    private const string CaseLimitKeepsTheSignature = """
+        contract C
+            func m<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(self: ref/Self, p: a/A, q: b/B, r: c/C, u: d/D, v: e/E, w: g/G, y: h/H) -> i32
+                a is owner or uniq
+                b is owner or uniq
+                c is owner or uniq
+                d is owner or uniq
+                e is owner or uniq
+                g is owner or uniq
+                h is owner or uniq
+        struct S
+            Self is C
+            public init() => ()
+            public func m<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(self: ref/Self, p: a/A, q: b/B, r: c/C, u: d/D, v: e/E, w: g/G, y: h/H) -> i32
+                a is owner or uniq
+                b is owner or uniq
+                c is owner or uniq
+                d is owner or uniq
+                e is owner or uniq
+                g is owner or uniq
+                h is owner or uniq
+                return 1
+        """;
+
+    private const string BindingNamesItsConformance = """
+        contract C
+            associate Item
+            func get(self: ref/Self, other: ref/Self.Item) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            associate C.Item is Box<S>
+            public init() => ()
+            public func get(self: ref/Self, other: ref/Box<S>) -> i32 => 1
+        """;
+
+    private const string InferredBindingNamesItsConformance = """
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            public init() => ()
+            public func get(self: ref/Self) -> Box<S> => Box<S>.init()
+        """;
+
+    private const string SignatureSpellsItsBinding = """
+        contract C
+            associate Item
+            func get(self: ref/Self, other: ref/Self.Item) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            associate C.Item is Box<S>
+            public init() => ()
+            public func get(self: ref/Self, other: ref/Self.Item) -> i32 => 1
+        """;
+
+    private const string BindingsNameEachOthersConformance = """
+        contract C
+            associate Item
+        contract K
+            associate Item2
+        struct Box<T>
+            T is K
+            public init() => ()
+        struct Pack<T>
+            T is C
+            public init() => ()
+        struct U
+            Self is C
+            associate C.Item is Box<V>
+        struct V
+            Self is K
+            associate K.Item2 is Pack<U>
+        """;
+
+    private const string InlineCycleDirect = """
+        contract C
+            associate Item
+        struct Box<T>
+            T is C
+            public var next: T.(C).Item
+        struct S
+            Self is C
+            associate C.Item is Box<S>
+        """;
+
+    private const string InlineCycleThroughOption = """
+        contract C
+            associate Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+        struct S
+            Self is C
+            associate C.Item is Box<S>
+        func use(b: ref/Box<S>) -> i32 => 1
+        """;
+
+    private const string InlineCycleWithAValue = """
+        contract C
+            associate Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+            public init() => self.next = .None
+        struct S
+            Self is C
+            associate C.Item is Box<S>
+        let b = Box<S>.init()
+        Console.writeLine("ok")
+        """;
+
+    private const string InlineCycleInferred = """
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+        struct S
+            Self is C
+            public func get(self: ref/Self) -> Box<S> => $abort("x")
+        """;
+
+    private const string InlineCycleInTupleAndArray = """
+        contract C
+            associate Item
+        struct Box<T>
+            T is C
+            public var next: [2 of Option<T.(C).Item>]
+        struct S
+            Self is C
+            associate C.Item is (i32, Box<S>)
+        """;
+
+    private const string InlineCycleThroughTwoTypes = """
+        contract C
+            associate Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+        struct S
+            Self is C
+            associate C.Item is Box<R>
+        struct R
+            Self is C
+            associate C.Item is Box<S>
+        """;
+
+    private const string InlineCycleThroughAnotherContract = """
+        contract K
+            associate Y
+        struct Box<T>
+            T is K
+            public var next: Option<T.(K).Y>
+        struct S
+            Self is K
+            associate K.Y is Box<S>
+        func use(b: ref/Box<S>) -> i32 => 1
+        """;
+
+    private const string InlineCycleGrowing = """
+        contract Has2
+            associate Out
+        struct W<X>
+            Self is Has2
+            associate Has2.Out is PH<W<(X, X)>>
+        struct PH<T>
+            T is Has2
+            let v: T.(Has2).Out
+        """;
+
+    // The owner's O-44, SPEC 8.6.3, 8.3.2: a conformance forms no signature, so each Type is judged where it is written, after the conformance holds, in
+    // any declaration order (8.3.3). The second program stays invalid at its own requirements: Box<Self> in C needs Self is K, which C does not supply
+    // (7.5, 8.15.1). The last two are DECISIONS Q13's: the conformance's record went with the gate (k1) or names the true cause (m3).
     [Theory]
-    [InlineData(ImplementationNamesItsConformance, "2*InvalidConstraint_Kd 2*UnprovenConstraint_Kd")]
-    [InlineData(ImplementationsNameEachOthersConformance, "1*IncompatibleContractImplementation_Kd 4*InvalidConstraint_Kd 5*UnprovenConstraint_Kd")]
-    public void ConformanceCyclesThroughASignatureKeepTheirRecordsUntilV5(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+    [InlineData(ImplementationNamesItsConformance, "clean")]
+    [InlineData(ImplementationsNameEachOthersConformance, "2*UnprovenConstraint_Kd")]
+    [InlineData(ImplementationDeclaredBeforeItsContract, "1*DeclarationOrderWarning_Kd")]
+    [InlineData(ConcreteCycle, "clean")]
+    [InlineData(ConcreteCycleDeclaredBackwards, "1*DeclarationOrderWarning_Kd")]
+    [InlineData(ImplementationNamesAContractItsTypeLacks, "2*UnsatisfiedConstraint_Kd")]
+    [InlineData(ResultMismatchBesideASignature, "1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd")]
+    public void AConformanceFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // SPEC 8.3.1, DECISIONS Q13: a declaration that failed but keeps its signature supplies evidence, and its own record stays (SuppliesNoEvidence).
+    [Theory]
+    [InlineData(ReceiverShapesKeepTheSignature, "2*ReceiverShapeMismatch_Kd")]
+    [InlineData(CaseLimitKeepsTheSignature, "1*OwnershipCaseLimit_Kd")]
+    public void AFailureThatKeepsTheSignatureFailsNoConformance(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // The owner's O-54 (a) makes these valid. VerifyConformance still forms a binding's Type, so they keep their Proof records until S3's unit (R7-V5b),
+    // which turns these rows clean.
+    [Theory]
+    [InlineData(BindingNamesItsConformance, "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(InferredBindingNamesItsConformance, "4*InvalidConstraint_Kd 2*UnprovenConstraint_Kd")]
+    [InlineData(SignatureSpellsItsBinding, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(BindingsNameEachOthersConformance, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    public void ABindingNamingItsConformanceKeepsItsRecordsUntilS3(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // SPEC 6.2, DECISIONS BU-65: a cycle of binding nodes alone is its conformance's error, and VerifyConformance's formation of a binding is that error's
+    // only judge. Removing it (S3, R7-V5b) leaves these invalid programs clean or gives them a Resource record, so each row asserts its records:
+    // S3's unit gives the cycle a judge of its own first, and only then may they change, to another Language record.
+    [Theory]
+    [InlineData(InlineCycleDirect, "Library", "1*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(InlineCycleWithAValue, "Application", "2*InvalidConstraint_Kd 2*UnprovenConstraint_Kd")]
+    [InlineData(InlineCycleInferred, "Library", "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(InlineCycleInTupleAndArray, "Library", "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(InlineCycleThroughTwoTypes, "Library", "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(InlineCycleGrowing, "Library", "1*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
+    public void ABindingOnlyInlineCycleIsItsConformancesError(string source, string outputKind, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source, outputKind));
 
     [Theory]
     [InlineData("i32", "", true)]
