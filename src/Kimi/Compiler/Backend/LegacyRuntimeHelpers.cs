@@ -8,8 +8,8 @@
 // the storage-boundary kernels written inline in their caller's body with their library record Field addressing
 // (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
 // the ones every call reads). MIR code generation writes the helpers through this static component (promoted, never copied).
-// Input: helper records built from FunctionAbi, ValueLowering and StoredValue (drop routine name); the compiled ABIs of the DictionaryStorage functions a Dictionary
-// helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
+// Input: helper records built from FunctionAbi, ValueLowering and StoredValue (drop routine name); the compiled ABIs of the
+// DictionaryStorage functions a Dictionary helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
 // formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
 // an owning interpolation's literal bytes and values' bounds, summed by its estimate (FormatEstimate); the runtime templates
 // (.ll.in); for
@@ -137,8 +137,8 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     /// item, a type-driven item the collector lays out; every other row reads none.</summary>
     internal LayoutNeed Need => this.Updates || this.DictionaryKernel ? LayoutNeed.TypeArguments : LayoutNeed.None;
 
-    /// <summary>Gets the runtime needs a row declares (X4; DECISIONS R5-M46, R5-M121, R5-M124, R5-M128): an Array helper kind's row's,
-    /// placeEntry's Place row's, or the formatting runtime for a formatting routine, the need every formatting row declares (FormattingRow;
+    /// <summary>Gets the runtime needs a row declares (X4; DECISIONS R5-M46, R5-M124, R5-M128): placeEntry's Place row's, or the
+    /// formatting runtime for a formatting routine, the need every formatting row declares (FormattingRow;
     /// DECISIONS R5-M30).</summary>
     internal HelperNeeds Needs => this switch
     {
@@ -148,7 +148,7 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     };
 
     /// <summary>Gets the library callee a row in its function's instance declares (X4, F2c; DECISIONS R5-M124): placeEntry's, its Place row's
-    /// Storage callee, append; None for every other row, since no Array helper calls one.</summary>
+    /// Storage callee, append; None for every other row.</summary>
     internal DictionaryCallee Callee
         => this.Writer == LegacyWriter.Place ? LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Place).Storage : DictionaryCallee.None;
 }

@@ -173,8 +173,8 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // PD8, R5-M46 (DECISIONS R5-M124): the Dictionary helpers precede every definition, each written once, with the Array runtime only where
-    // placeEntry's row declares it, so a module that only destroys a Dictionary has none; a module whose bodies shrink one defines the storage
+    // PD8, R5-M46 (DECISIONS R5-M124): the Dictionary helpers precede every definition, each written once, with the memory declarations
+    // placeEntry's row declares, so a module that only destroys a Dictionary has no Place helper; a module whose bodies shrink one defines the storage
     // byte primitives once (DECISIONS R5-M145).
     [Fact]
     public void DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare()

@@ -1,12 +1,12 @@
 // SPEC 22.2: the standard storage boundary. These Types and operations split standard collection Storage into
 // non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
-// Elements are lent and split by borrowing raw Places, whose range, non-overlap and initialization are this group's unsafe
-// obligations (SPEC 5.2.2).
+// Elements are lent and split by borrowing raw Places, whose range, non-overlap and initialization are this group's
+// unsafe obligations (SPEC 5.2.2).
 // Borrowed results depend on the remainder's source, never on the state borrow or slot. The exclusive variant of each
 // borrowing operation has its own Name, borrowStorageUniq (SPEC 7.4). A remainder's `storage` lies where its Field's
-// Origin states (SPEC 5.7), within what `source` covers. A pointer read from a shared remainder's `storage` has no write
-// authority (SPEC 5.2.1). Array element storage is raw storage (SPEC 3.4); a pointer to it, read from `ArrayRepr.data` or
-// from a remainder's `storage`, has IMPL 21.1.3's `Array<T>` guarantee.
+// Origin states (SPEC 5.7), within what `source` covers. A pointer read from a shared remainder's `storage` has no
+// write authority (SPEC 5.2.1). Array element storage is raw storage (SPEC 3.4); a pointer to it, read from
+// `ArrayRepr.data` or from a remainder's `storage`, has IMPL 21.1.3's `Array<T>` guarantee.
 internal group Storage
     /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
     internal struct RefRemainder<E> {source}
@@ -15,9 +15,9 @@ internal group Storage
         internal var count: isize
         internal let loan: Loan<ref/E during source>
 
-        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state: `storage`
-        /// addresses them in what `source` covers, with read authority, and the function that returns this remainder
-        /// states `source` as the parent borrow it was given (SPEC 5.2.1, 15.6.3).
+        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state:
+        /// `storage` addresses them in what `source` covers, with read authority, and the function that returns this
+        /// remainder states `source` as the parent borrow it was given (SPEC 5.2.1, 15.6.3).
         internal init(storage: raw/E during source, count: isize)
             self.storage = storage
             self.count = count
@@ -30,9 +30,9 @@ internal group Storage
         internal var count: isize
         internal let loan: Loan<uniq/E during source>
 
-        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state: `storage`
-        /// addresses them in what `source` covers, with read and write authority, and the function that returns this
-        /// remainder states `source` as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
+        /// Starts at the first of `count` elements. The caller's obligations, which the signature cannot state:
+        /// `storage` addresses them in what `source` covers, with read and write authority, and the function that
+        /// returns this remainder states `source` as the parent borrow it transfers (SPEC 5.2.1, 15.6.3).
         internal init(storage: raw/E during source, count: isize)
             self.storage = storage
             self.count = count
@@ -172,9 +172,9 @@ internal group Storage
             state.link = (slot@raw/isize)[1]
             return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
-    /// Inline storage for one complete Type `A`, a fixed array `[N of E]` or a consumed `Array<E>`, placed at offset 0 and
-    /// never destroyed by the compiler (PLAN G33): its owner destroys what remains of `value` through unsafe addressing.
-    /// It takes the stored Type, not `<E, length N>`, because only functions have length slots (SPEC 4.4).
+    /// Inline storage for one complete Type `A`, a fixed array `[N of E]` or a consumed `Array<E>`, placed at offset 0
+    /// and never destroyed by the compiler (PLAN G33): its owner destroys what remains of `value` through unsafe
+    /// addressing. It takes the stored Type, not `<E, length N>`, because only functions have length slots (SPEC 4.4).
     internal struct InlineStorage<A>
         internal var value: A
 
@@ -266,7 +266,8 @@ internal group Storage
         /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
         /// with the iterator in reverse index order (SPEC 4.9.7).
         public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
-            return FixedArrayOwningIterator<E, [N of E]>.init(FixedOwnedRemainder<E, [N of E]>.init(self.length, self@move))
+            return FixedArrayOwningIterator<E, [N of E]>.init(
+                FixedOwnedRemainder<E, [N of E]>.init(self.length, self@move))
 
         /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
         public func tryGet<E, length N, P>(self: ref/[N of E] during source, index: P) -> Option<ref/E during source>

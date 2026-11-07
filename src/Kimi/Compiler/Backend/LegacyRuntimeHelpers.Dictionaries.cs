@@ -82,7 +82,7 @@ internal static partial class LegacyRuntimeHelpers
     internal const DictionaryCallee Construction = DictionaryCallee.Initialize;
 
     // One row per kind, in DictionaryHelperKind order; a new kind adds a row. Place copies its key and value through the memory
-    // declarations of the Array runtime, and Drop releases through the main runtime.
+    // declarations, and Drop releases through the main runtime.
     // The handle a Value at slot 0 (IMPL 21.3.1), as the internal convention's kinds and logical indices place it.
     private static readonly AbiParameter Handle = new("ptr", "handle", AbiParameterKind.Value, 0);
 

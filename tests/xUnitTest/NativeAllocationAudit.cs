@@ -24,7 +24,7 @@ internal static class NativeAllocationAudit
         "memcmp", "memcpy", "memmove", "memset", "__chkstk",
     ];
 
-    // Each count lies in its bound at process exit; transferred, when given, bounds the bytes the transfer routines copy.
+    // Each count lies in its bound at process exit; transferred, when given, bounds the bytes the transfer routine copies.
     internal static void WriteFixture(
         string name,
         string source,
@@ -56,7 +56,7 @@ internal static class NativeAllocationAudit
         ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
         if (transferred is not null)
         {
-            // A bound with neither routine would count nothing, and a program whose bodies transfer bytes counts them only through calls
+            // A bound without the routine would count nothing, and a program whose bodies transfer bytes counts them only through calls
             // of its module's byte copy: a module that writes its transfers in any other form, with or without the routine defined (the
             // storage byte primitives are defined as a pair), fails here instead of passing a bound vacuously.
             var copies = ir.Contains(RuntimeAbi.TransferBytes.Name, StringComparison.Ordinal);

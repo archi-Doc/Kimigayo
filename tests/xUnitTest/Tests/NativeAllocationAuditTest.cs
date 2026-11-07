@@ -76,7 +76,8 @@ public class NativeAllocationAuditTest
     public void TransferRoutineWithoutItsAnchorFails()
         => Assert.Throws<EqualException>(() => Audit("Unanchored", Entries, 2, 288, transferred: 96, transformIr: Unanchor));
 
-    // A renamed transfer routine whose body keeps its anchor would leave its copies uncounted: its bound finds no routine to count.
+    // A renamed transfer routine whose body keeps its anchor would leave its copies uncounted: the one routine is gone, so the bound's first
+    // check fails it, as it fails a bound with no routine (BoundWithoutTransferRoutineFails).
     [Fact]
     public void AnchorWithoutItsRoutineFails()
     {
@@ -86,7 +87,8 @@ public class NativeAllocationAuditTest
 
     // DECISIONS R5-M145: the byte copy written inline, as MIR code generation wrote it before both generators called one routine, leaves a
     // transferring program's copies uncounted, so even a bound whose minimum is 0 fails instead of passing vacuously, also when the routine
-    // stays defined beside the inline copies (a module that defines the storage byte primitives as a pair).
+    // stays defined beside the inline copies (a module that defines the storage byte primitives as a pair). Without the definition no routine
+    // is left to count, so the bound's first check fails it; with it, the check for the module's calls does.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

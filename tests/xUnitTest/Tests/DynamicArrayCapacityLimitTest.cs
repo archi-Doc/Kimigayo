@@ -89,18 +89,6 @@ public class DynamicArrayCapacityLimitTest
     public void CleanupFreeTruncateDoesNotWalkTheElements()
         => ScalarEmissionTest.EmitFixture("DynamicArrayCapacityConstantTruncate", FullArray("u8", long.MaxValue) + "values.truncate(1)\nrequire values.length == 1 else => $abort(\"length\")\nConsole.writeLine(\"ok\")", "ok\n");
 
-    internal static string RuntimeIr()
-    {
-        var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = [1]\nvalues@uniq.append(2)");
-        var ir = CompilationTestHelper.WriteIr(compilation);
-        return ir;
-    }
-
-    // The one Array helper of a kind the module defines, by its kind's prefix: its name is its generator's (the old one names it by its
-    // element, MIR code generation by its item; DECISIONS R5-M121), so the probe calls it whichever wrote the module.
-    internal static string Helper(string ir, string prefix)
-        => Assert.Single(Regex.Matches(ir, @"(?m)^define internal void @(" + Regex.Escape(prefix) + @"[A-Za-z0-9_]+)\(").Cast<Match>()).Groups[1].Value;
-
     internal static string ReplaceDefinition(string ir, string name, string replacement)
     {
         var pattern = @"(?ms)^define[^\n]*@" + Regex.Escape(name) + @"\([^\n]*\n.*?^\}";

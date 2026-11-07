@@ -32,7 +32,14 @@ internal sealed partial class ModuleCodegen
     internal FunctionAbi? PlaceRow(int item)
     {
         this.Requested(item);
-        this.Request(LegacyRuntimeHelpers.Row(this.set.Items[item].Key.Body.Def.Decl!.CompilerFunction)!.Value.Needs);
+        var entry = this.set.Items[item];
+        if (LegacyRuntimeHelpers.Row(entry.Key.Body.Def.Decl!.CompilerFunction) is not { InInstance: true } row)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // A LegacyRow item's function runs in its instance (the collector's).
+            return null;
+        }
+
+        this.Request(row.Needs);
         return this.Dictionary(item, DictionaryHelperKind.Place)?.Abi;
     }
 

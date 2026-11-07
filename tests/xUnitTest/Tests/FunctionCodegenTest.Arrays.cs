@@ -7,11 +7,10 @@ using Xunit;
 
 namespace XunitTest;
 
-// The Array family of MIR code generation (R5 C8d; SPEC 4.3, 4.5, 4.9.3, 4.9.5, 4.9.7, 7.7.4, 16.3.2, 22.2; DECISIONS R5-M121): each operation
-// and storage kind calls its LegacyRow item's routine (P1b's helper of its kind over the element, or a capacity routine given the element's
-// stride) with the call's operands by slot, its result slot and location, at a direct call, an Item's Value call and an adapter's entry;
-// `append` and `reserve` are Kimigayo bodies (R8-A1a), called the same way; an Array from none and capacity are written in
-// place; an Array's glue calls its Drop helper, which destroys the elements by their glue; natively.
+// The Array family of MIR code generation (R5 C8d; SPEC 4.3, 4.5, 4.9.3, 4.9.5, 4.9.7, 7.7.4, 16.3.2, 22.2): each operation and storage
+// function is a Kimigayo body (R8-A1a to A1d) called with the call's operands by slot, its result slot and location, at a direct call, an
+// Item's Value call and an adapter's entry; an Array from none and an Array literal's handle are written in place; an Array's glue calls
+// destroyArray's instance, which destroys the elements by their glue; natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library over Arrays of i32, a 16-byte struct, a drop-needing struct, a 24-byte Copy struct, string and Unit: the eight operations, the
@@ -115,11 +114,10 @@ public sealed partial class FunctionCodegenTest
     public void ArrayProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
-    // SPEC 4.9.3 (DECISIONS R5-M121): each operation calls the helper of its LegacyRow item, or its body (R8-A1a, A1b), with the handle, its
-    // operands at their slots (an element by value, a string by its storage, a zero-sized one not at all), its result slot and the call's
+    // SPEC 4.9.3: each operation calls its body (R8-A1a, A1b) with the handle, its operands at their slots (an element by value, a string by its storage, a zero-sized one not at all), its result slot and the call's
     // location; `append`'s body grows through `growArray` by the element's stride.
     [Fact]
-    public void ArrayOperationsCallTheHelperOfTheirInstance()
+    public void ArrayOperationsCallTheBodyOfTheirInstance()
     {
         var c = Analyze(Arrays, OutputKind.Library);
         var text = Generate(c);
