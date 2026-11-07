@@ -89,7 +89,7 @@ public sealed partial class Binding
         // The current language has one inline base. The bound limits invalid cycles too.
         for (var depth = 0; structure.BaseClause is { } syntax && depth <= this.nodes.Count; depth++)
         {
-            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.Any);
+            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
             if (type is null)
             {
                 return null;

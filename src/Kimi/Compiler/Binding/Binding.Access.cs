@@ -403,7 +403,7 @@ public sealed partial class Binding
                 break;
             }
 
-            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.Any);
+            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
         }
 
         return false;

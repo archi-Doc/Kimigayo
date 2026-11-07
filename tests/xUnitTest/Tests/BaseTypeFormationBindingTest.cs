@@ -8,6 +8,20 @@ namespace XunitTest;
 
 public class BaseTypeFormationBindingTest
 {
+    // SPEC 9.2, 9.4.2 (R7-N2b): before a base clause is bound, every read of it as a declaration takes its binder's role, so a nearer group
+    // leaves the struct: a protected member of the base is seen from the derived struct at a Constraint, which binds first.
+    [Theory]
+    [InlineData("alias Outer\ngroup Outer\n    public open struct G\n        protected struct P\n            public init() => ()\n        public init() => ()\ncontract K<T>\ngroup Box\n    group G\n    struct D: G\n        public init() => ()\n        struct E\n            Self is K<Outer.G.P>\n")]
+    [InlineData("alias Outer\ngroup Outer\n    public open struct G\n        protected struct P\n            public init() => ()\n        public init() => ()\ncontract K<T>\ngroup Box\n    group G\n    struct D: G\n        Self is K<Outer.G.P>\n        public init() => ()\n")]
+    [InlineData("alias Outer\ngroup Outer\n    public open struct G\n        protected struct P\n            public init() => ()\n        public init() => ()\ncontract K<T>\ngroup Box\n    struct D: G\n        public init() => ()\n        struct E\n            Self is K<Outer.G.P>\n")]
+    [InlineData("alias G1\ngroup G1\n    public open struct Kimi\n        protected func p(self) -> i32 => 1\n        public init() => ()\nstruct D: Kimi\n    public init() => ()\n    func g(self) -> i32 => self.p()\n")]
+    [InlineData("contract HasItem\n    associate Item\nopen struct G\n    Self is HasItem\n    associate HasItem.Item is i32\n    public init() => ()\ncontract K<T>\ngroup Box\n    group G\n    struct D: G\n        Self is K<D.(HasItem).Item>\n        public init() => ()\n")]
+    public void AnUnboundClauseReadsItsBindersRole(string source)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
     [Theory]
     [InlineData("open struct B\n#Test\nstruct S: B", "InvalidTestDefinition_Kd")]
     [InlineData("struct B\n#Test\nstruct S: B", "InvalidTestDefinition_Kd,InvalidTypeFormation_Kd,InvalidTypeFormation_Kd")]

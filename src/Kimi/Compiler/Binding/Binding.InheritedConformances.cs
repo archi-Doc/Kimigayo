@@ -40,7 +40,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (!complete && this.TypeName(syntax, this.scopes[declaration], TypeLookupRole.Any)?.Declaration is not StructKoto)
+            if (!complete && this.TypeName(syntax, this.scopes[declaration], TypeLookupRole.NoContainer)?.Declaration is not StructKoto)
             {
                 this.inheritedConformanceStates[type] = 0;
                 return;
