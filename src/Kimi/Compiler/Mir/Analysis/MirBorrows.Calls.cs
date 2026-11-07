@@ -14,7 +14,8 @@ namespace Kimi.Compiler.Mir;
 // any argument's (ER-closure-stores; SPEC 15.8.2, DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a per-output
 // membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) the store reaches
 // W's first step alone (Referents; R4-M143), and the destruction the operation's published row lists is composed at the call
-// after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264).
+// after its rows (SPEC 4.9.6, 15.6.4; MirBorrows.Destructions' Destroying, PLAN G264). A store through a raw parameter's stated layer
+// also writes the storage its Origin covers (Cover, PLAN G338), and with the `null` literal for its argument only that (NullLiteral).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
@@ -96,9 +97,11 @@ internal sealed partial class MirBorrows
 
         foreach (var written in this.planned is null ? default : this.planned.Writes)
         {
+            this.Cover(callee, written.Output, this.planned!.Result.Kinds.Length);
             this.Keep(state, call, written, checks);
         }
 
+        this.covering.Clear();
         this.Destroying(state, call, checks);
 
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
@@ -117,14 +120,24 @@ internal sealed partial class MirBorrows
     }
 
     // The store through one output: W from its argument's value (at a referent store, its first step alone; R4-M143), each holder taking its
-    // storage's record (Received). A Drop's drops store through the same path (MirBorrows.Destructions).
+    // storage's record (Received). With covering inputs (Cover), W from theirs too; a `null` argument then has no first step of its own, a
+    // fact of the operand, which no write can change (PLAN G338). A Drop's drops store through the same path (MirBorrows.Destructions).
     private void Keep(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
     {
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
         var input = this.TypeOf(this.Input(call, position));
         BoundType? referent = this.wCount > 0 && input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
-        this.Referents(this.argValues[position]);
+        if (this.covering.Count > 0 && this.NullLiteral(this.Input(call, position)))
+        {
+            this.BeginWalk();
+            this.CoveredSteps();
+        }
+        else
+        {
+            this.Referents(this.argValues[position]);
+        }
+
         var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position]);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;

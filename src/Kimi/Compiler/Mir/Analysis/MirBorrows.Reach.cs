@@ -269,8 +269,18 @@ internal sealed partial class MirBorrows
 
     // W's first step (A3 E14) into the targets, each holder once, at a new W walk: the holders S's direct Loans not shared and addresses
     // name, and E where S carries Φ_E or no direct Loan at all, a shared one counting (SPEC 15.6.4 item 1: never a holder that only a
-    // shared Loan names; DECISIONS R4-M177). A referent store's whole reach (MirBorrows.Calls).
+    // shared Loan names; DECISIONS R4-M177). A referent store's whole reach (MirBorrows.Calls). Through a stated layer with covering inputs
+    // (PLAN G338), also each one's first step. An empty set is no `null`: it says that no source A5 tracks gave the value, and A5 tracks no
+    // scalar written through a raw pointer, so E stays (only Keep's `null` literal has no first step of its own).
     private void Referents(int set)
+    {
+        this.BeginWalk();
+        this.FirstStep(set);
+        this.CoveredSteps();
+    }
+
+    // Begins a W walk.
+    private void BeginWalk()
     {
         MirDataflow.Grow(ref this.writing, this.holderCount);
         MirDataflow.Grow(ref this.writingKind, this.holderCount);
@@ -278,6 +288,20 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.writingPlace, this.holderCount);
         this.walks++;
         this.targets.Clear();
+    }
+
+    // Each covering input's first step (SPEC 5.2.1, 5.7's table: what a stated layer addresses is what its Origin covers; PLAN G338).
+    private void CoveredSteps()
+    {
+        foreach (var input in this.covering)
+        {
+            this.FirstStep(this.argValues[input]);
+        }
+    }
+
+    // W's first step from one set (Referents).
+    private void FirstStep(int set)
+    {
         var (direct, escaped) = (false, false);
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
@@ -313,6 +337,11 @@ internal sealed partial class MirBorrows
     private (bool Limit, bool Deep) Writes(ulong[] state, int set)
     {
         this.Write(set, ViaRoot, MirWrites.Through); // The kinds of the first step's holders, which Referents put in the targets.
+        foreach (var input in this.covering)
+        {
+            this.Write(this.argValues[input], ViaRoot, MirWrites.Through);
+        }
+
         var limited = false;
         this.Step(); // Written is idempotent, so a Shared id stepped from again writes nothing more.
         for (var i = 0; i < this.targets.Count; i++)

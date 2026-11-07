@@ -82,7 +82,10 @@ internal static partial class LegacyRuntimeHelpers
     internal const DictionaryCallee Construction = DictionaryCallee.Initialize;
 
     // One row per kind, in DictionaryHelperKind order; a new kind adds a row. Place copies its key and value through the memory
-    // declarations of the Array runtime, and Drop releases through the main runtime.
+    // declarations, and Drop releases through the main runtime.
+    // The handle a Value at slot 0 (IMPL 21.3.1), as the internal convention's kinds and logical indices place it.
+    private static readonly AbiParameter Handle = new("ptr", "handle", AbiParameterKind.Value, 0);
+
     private static readonly DictionaryHelperRow[] DictionaryRows =
     [
         new(
@@ -91,7 +94,7 @@ internal static partial class LegacyRuntimeHelpers
             static (output, helper, _, append) => WriteEntryPlacement(output, helper, append!),
             DictionaryCallee.None,
             DictionaryCallee.Append,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.Memory),
         new(
             DictionaryHelperKind.Drop,
             static (suffix, _, _) => Located("__kimi_dictionary_drop" + suffix, []),
@@ -151,4 +154,13 @@ internal static partial class LegacyRuntimeHelpers
 
         output.Write("  call void @__kimi_array_free(ptr %handle, ptr %location, i64 %location_length)\n  ret void\n");
     }
+
+    // A signature without a result: the handle, the leading parameters and the caller's location (SPEC 22.5.1).
+    private static FunctionAbi Located(string name, ReadOnlySpan<AbiParameter> leading)
+        => new(name, RuntimeAbi.Unit.ComputationType, [Handle, .. leading, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
+
+    // A stored-value argument of a helper that moves it in at its call's slot: a scalar by value, another value by address (SPEC 21.3.1).
+    private static AbiParameter Argument(in StoredValue value, string name, int slot) => value.IsScalar
+        ? new(value.Value.ComputationType, name, AbiParameterKind.Value, slot)
+        : new("ptr", name, AbiParameterKind.OwnedSlot, slot);
 }

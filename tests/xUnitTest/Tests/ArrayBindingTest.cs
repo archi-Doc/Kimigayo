@@ -124,8 +124,34 @@ public class ArrayBindingTest
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nrequire values.length == 0 else => $abort(\"empty\")");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("call void @__kimi_array_init(ptr %", ir);
+        Assert.Contains("store i64 0, ptr %", ir); // R8-A1d: the aggregate row zeroes the handle's words.
         Assert.Contains("call void @__kimi_free(ptr %", ir); // R8-A1c: destroyArray's Raw.release.
+    }
+
+    // SPEC 8.15.3 (R8-A1d): a view formed behind a borrow reads no element, so it needs no element layout: `iterate` and `iterateUniq` over an
+    // element that fails its layout are valid, by a call and as a result, and build. The element's first read is the use that needs it.
+    [Theory]
+    [InlineData("Shared", "#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> isize\n    var it = v.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Exclusive", "#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: uniq/Array<Bad>) -> isize\n    var it = v.iterateUniq()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Result", "#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> ArrayIterator<Bad> during v\n    return v.iterate()\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Oversized", "func f(v: ref/Array<[4611686018427387904 of i64]>) -> isize\n    var it = v.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("OversizedExclusive", "func f(v: uniq/Array<[4611686018427387904 of i64]>) -> isize\n    var it = v.iterateUniq()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    public void AViewNeedsNoElementLayout(string name, string source)
+    {
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        ScalarEmissionTest.EmitFixture("ArrayViewNeedsNoLayout" + name, source, string.Empty);
+    }
+
+    // Their invalid counterparts: `next` and `for` read an element, one record at the use, per instance (DECISIONS R8-M2's grouping, R8-A1d).
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> isize\n    var it = v.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", "it.next()")]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    public var nothing: ()\n    public var value: i32\nfunc f(v: ref/Array<Bad>) -> isize\n    for x in v\n        return 1\n    return 0\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", null)]
+    [InlineData("func f(v: ref/Array<[4611686018427387904 of i64]>) -> isize\n    var it = v.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "OversizedLayout_Kd", "it.next()")]
+    public void AnElementsFirstReadNeedsItsLayout(string source, string code, string? at)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(code, record.Code);
+        Assert.True(at is null || source.Substring(record.Span!.Value.Start, record.Span.Value.Length) == at);
     }
 
     // SPEC 4.9.3, 4.9.5: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.

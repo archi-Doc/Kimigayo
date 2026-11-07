@@ -72,8 +72,7 @@ internal sealed partial class InstanceCollector
         if (DropGlue.Row(type) == DropGlueRow.Array)
         {
             var destruction = this.types.Declaration(KimiDeclarationId.StorageDestroyArray)!;
-            var body = program[new(destruction, MirBodyKind.Fn)];
-            this.Target(item, body is null ? -1 : this.Admit(item, site, body, this.types.Synthesized(destruction, null, [type.Components[0]])));
+            this.Target(item, this.Declared(program, item, site, destruction, this.types.Synthesized(destruction, null, [type.Components[0]])));
             return;
         }
 
@@ -102,7 +101,7 @@ internal sealed partial class InstanceCollector
         var row = LegacyRuntimeHelpers.Row(this.Set.Items[item].Key.Body.Def.Decl!.CompilerFunction)!.Value;
         if (row.Callee != DictionaryCallee.None)
         {
-            this.Target(item, this.Declared(program, item, site, row.Callee, null));
+            this.Target(item, this.Declared(program, item, site, this.types.DictionaryStorage(row.Callee), null));
         }
     }
 
@@ -137,7 +136,8 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        return this.Declared(program, item, site, row.Entries, this.types.Synthesized(this.types.DictionaryStorage(row.Entries), null, [key, value]));
+        var entries = this.types.DictionaryStorage(row.Entries);
+        return this.Declared(program, item, site, entries, this.types.Synthesized(entries, null, [key, value]));
     }
 
     // R4-M6b, SPEC 16.3.2: the Body of a struct's declared destructor in the struct's instance (TyCtxt.Synthesized), which destroys the

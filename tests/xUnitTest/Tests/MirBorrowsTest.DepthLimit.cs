@@ -45,6 +45,36 @@ public sealed partial class MirBorrowsTest
 
         """;
 
+    // SPEC 8.15.3, IMPL 21.3.2 (R8-A1d): owning iteration's storage-height bound, one operation per program: the last accepted depth of an Array's
+    // and a fixed array's nest, and one deeper the located resource records. An exceeded limit is no invalid program; the bound is where the
+    // compiler-supplied boundary held it.
+    [Theory]
+    [InlineData("    for x in a@move\n        Console.writeLine(\"x\")\n", false, 61, 3)]
+    [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n", false, 61, 4)]
+    [InlineData("    var it = a@move.intoIterator()\n    Console.writeLine(\"x\")\n", false, 62, 3)]
+    [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n", true, 60, 4)]
+    [InlineData("    var it = a@move.intoIterator()\n    Console.writeLine(\"x\")\n", true, 61, 3)]
+    public void OwningIterationsBoundIsLocated(string operation, bool inline, int last, int line)
+    {
+        Assert.Empty(DiagnosticCorpus.Check(Program(last)).Diagnostics);
+        var source = Program(last + 1);
+        var rejected = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Contains(rejected, static x => x.Code == DepthLimit);
+        Assert.Contains(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+        Assert.All(rejected, x => Assert.Equal(line, source.AsSpan(0, x.Span!.Value.Start).Count('\n') + 1));
+
+        string Program(int depth)
+        {
+            var (type, value) = ("i32", "1");
+            for (var i = 0; i < depth; i++)
+            {
+                (type, value) = inline ? ($"[1 of {type}]", $"[{value}]") : ($"Array<{type}>", "[]");
+            }
+
+            return $"public func main()\n    var a: {type} = {value}\n{operation}";
+        }
+    }
+
     // The program of AnUnclassifiedDestructionOrCallIsUnsupported.
     private const string UnclassifiedPin = "func deep(n: Nest<ref/i32 during a>)\n    let r = n@ref\nfunc unborrowed(n: Nest<ref/i32 during a>)\n    let r = 1\n" +
         "func made()\n    var y = 1\n    let n = Nest<ref/i32>.init(value: y@ref)\nfunc unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n";
