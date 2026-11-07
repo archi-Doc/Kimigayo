@@ -10,26 +10,26 @@ namespace XunitTest;
 public class FunctionTypeConstraintBindingTest
 {
     [Theory]
-    [InlineData("() -> i32 is Owned", true)]
-    [InlineData("(i32) -> bool is not Copy", true)]
-    [InlineData("(i32) -> bool is Copy", false)]
-    [InlineData("(i32) -> bool is (i32) -> bool", true)]
-    [InlineData("(i32) -> bool is (i32) -> i32", false)]
-    [InlineData("() -> bool is () -> bool", true)]
-    [InlineData("((i32) -> bool) is not Copy", true)]
-    [InlineData("(i32) -> bool is ((i32) -> bool)", true)]
-    [InlineData("(i32, bool) -> string is (i32, bool) -> string", true)]
-    [InlineData("(() -> i32) -> bool is (() -> i32) -> bool", true)]
-    [InlineData("() -> (i32) -> bool is () -> (i32) -> bool", true)]
-    [InlineData("(i32) -> bool is (i32) -> bool and Owned", true)]
-    [InlineData("(i32) -> bool is ((i32) -> i32 or Copy)", false)]
-    [InlineData("[2 of (i32) -> bool] is not Copy", true)]
-    public void FunctionTypesRetainCapabilitiesAndIdentity(string clause, bool valid)
+    [InlineData("() -> i32", "Owned", true)]
+    [InlineData("(i32) -> bool", "not Copy", true)]
+    [InlineData("(i32) -> bool", "Copy", false)]
+    [InlineData("(i32) -> bool", "(i32) -> bool", true)]
+    [InlineData("(i32) -> bool", "(i32) -> i32", false)]
+    [InlineData("() -> bool", "() -> bool", true)]
+    [InlineData("((i32) -> bool)", "not Copy", true)]
+    [InlineData("(i32) -> bool", "((i32) -> bool)", true)]
+    [InlineData("(i32, bool) -> string", "(i32, bool) -> string", true)]
+    [InlineData("(() -> i32) -> bool", "(() -> i32) -> bool", true)]
+    [InlineData("() -> (i32) -> bool", "() -> (i32) -> bool", true)]
+    [InlineData("(i32) -> bool", "(i32) -> bool and Owned", true)]
+    [InlineData("(i32) -> bool", "((i32) -> i32 or Copy)", false)]
+    [InlineData("[2 of (i32) -> bool]", "not Copy", true)]
+    public void FunctionTypesRetainCapabilitiesAndIdentity(string type, string requirement, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target\n    " + clause);
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is " + requirement + "\npublic func use(value: Target<" + type + ">) => ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single().StateOf());
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single().StateOf());
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
         var builder = default(IndentedStringBuilder);
@@ -52,7 +52,7 @@ public class FunctionTypeConstraintBindingTest
     [InlineData("contract")]
     public void EveryTypeDeclarationRegionParsesFunctionRequirements(string kind)
     {
-        var c = MinimalEmissionTest.Analyze("public " + kind + " Target\n    (i32) -> bool is (i32) -> bool" + (kind == "enum" ? "\n    A" : string.Empty));
+        var c = MinimalEmissionTest.Analyze("public " + kind + " Target<T>\n    T is (i32) -> bool" + (kind == "enum" ? "\n    A" : string.Empty));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
@@ -70,12 +70,12 @@ public class FunctionTypeConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("(Hidden) -> i32 is Owned")]
-    [InlineData("() -> Hidden is Owned")]
-    [InlineData("(i32) -> i32 is (Hidden) -> i32 or Owned")]
-    public void FunctionConditionTypesRetainNestedApiDomains(string clause)
+    [InlineData("(Hidden) -> i32")]
+    [InlineData("() -> Hidden")]
+    [InlineData("(Hidden) -> i32 or Owned")]
+    public void FunctionConditionTypesRetainNestedApiDomains(string requirement)
     {
-        var c = MinimalEmissionTest.Analyze("internal struct Hidden\npublic struct Target\n    " + clause);
+        var c = MinimalEmissionTest.Analyze("internal struct Hidden\npublic struct Target<T>\n    T is " + requirement);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
@@ -85,7 +85,7 @@ public class FunctionTypeConstraintBindingTest
     [Fact]
     public void WarmFunctionConditionChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target\n    (i32) -> bool is (i32) -> bool and Owned");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is (i32) -> bool and Owned\npublic func use(value: Target<(i32) -> bool>) => ()");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

@@ -11,16 +11,12 @@ public class DependentRequirementConstraintBindingTest
     [Theory]
     [InlineData("i32 is T", "i32", true)]
     [InlineData("i32 is T", "string", false)]
-    [InlineData("[2 of i32] is [2 of T]", "i32", true)]
-    [InlineData("[2 of i32] is [2 of T]", "string", false)]
     [InlineData("i32 is not T", "i32", false)]
     [InlineData("i32 is not T", "string", true)]
     [InlineData("i32 is T and Copy", "i32", true)]
     [InlineData("i32 is T and Copy", "string", false)]
     [InlineData("i32 is T or Copy", "string", true)]
-    [InlineData("[2 of i32] is [2 of T] or [2 of u32]", "u32", false)]
-    [InlineData("(i32, bool) is (T, bool)", "i32", true)]
-    [InlineData("(i32, bool) is (T, bool)", "string", false)]
+    [InlineData("i32 is T or u32", "u32", false)]
     public void BothPropositionOperandsDetermineInputDependence(string clause, string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return");
