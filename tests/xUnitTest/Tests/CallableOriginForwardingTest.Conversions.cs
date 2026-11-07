@@ -121,6 +121,12 @@ public partial class CallableOriginForwardingTest
 
     private const string PairFG = "func pair<T>(x: T, y: T) -> i32 => 0\nfunc k(a: ref/i32, b: ref/i32, c: ref/i32, f: " + FnB + ", g: " + FnC + ") -> i32\n";
 
+    private const string PairFgh = "func pair<T>(x: T, y: T) -> i32 => 0\nfunc tri<T>(x: T, y: T, z: T) -> i32 => 0\nfunc k(a: ref/i32, b: ref/i32, c: ref/i32, f: ((ref/(ref/i32 during b) during a) -> i32) -> i32, g: ((ref/(ref/i32 during c) during a) -> i32) -> i32, h: ((ref/(ref/i32 during c) during a) -> i32) -> i32) -> i32\n    origin c outlives b\n";
+
+    private const string SolveDeclarations = "func ord<T>(a: T, b: (T, i32)) -> i32 => 0\nfunc dro<T>(b: (T, i32), a: T) -> i32 => 0\nfunc identity<T>(v: T) -> T => v@move\nfunc k(x: i64, f: bool) -> i32\n";
+
+    private const string InvariantSlots = "func inv<T>(s: uniq/T, v: T) -> i32 => 0\nfunc vni<T>(v: T, s: uniq/T) -> i32 => 0\nfunc two<T>(s: uniq/T, t: uniq/T) -> i32 => 0\nfunc k(p: uniq/(ref/i32 during a), q: uniq/(ref/i32 during b), w: ref/i32 during b, n: uniq/i32) -> i32\n";
+
     private const string HPre = "func h(x: (ref/i32 during b) -> i32, n: i32, b: ref/i32) -> i32 => 0\n";
 
     private const string KPre = "func k(b: ref/i32, c: ref/i32, f: (ref/i32 during c) -> i32) -> i32\n    origin c outlives b\n    return h(f@move, 1, b)\n";
@@ -418,6 +424,37 @@ public partial class CallableOriginForwardingTest
     [InlineData("slot1cba", PairFG + CBA + "    return pair(f@move, g@move)\n", "")]
     public void ApplicabilityJudgesOnlyTheStructuralPart(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
+    // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
+    // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
+    // until that unit lands and removes the marker. `dotnet xUnitTest.dll -class <class> -explicit only` runs those.
+    [Theory]
+    // SPEC 10.8 (PLAN G378): the solution is the meet of the covariant bindings whatever the argument order. slot1cba is the first order. g378n: slot1's
+    // clauses leave the fit unproven in this order too.
+    [InlineData("I3", "g378a", PairFgh + "    origin b outlives a\n    return pair(g@move, f@move)\n", "", Explicit = true)]
+    [InlineData("I3", "g378b", PairFgh + "    origin b outlives a\n    return tri(g@move, h@move, f@move)\n", "", Explicit = true)]
+    [InlineData("I3", "g378c", PairFgh + "    origin b outlives a\n    return tri(g@move, f@move, h@move)\n", "", Explicit = true)]
+    [InlineData("guard", "g378n", PairFgh + "    return pair(g@move, f@move)\n", "UnprovenOriginContract_Kd: return pair(g@move, f@move)")]
+
+    // SPEC 10.8, 10.5.4: arguments are processed together, in any order; conflicting structure evidence rejects in either order.
+    [InlineData("guard", "ord1", SolveDeclarations + "    return ord(x, (identity(1), 2))\n", "")]
+    [InlineData("guard", "ord2", SolveDeclarations + "    return dro((identity(1), 2), x)\n", "")]
+    [InlineData("guard", "ord3", SolveDeclarations + "    return ord(1, (x, 2))\n", "")]
+    [InlineData("guard", "ord1n", SolveDeclarations + "    return ord(x, (f, 2))\n", "NoApplicableOverload_Kd: return ord(x, (f, 2))")]
+    [InlineData("guard", "ord2n", SolveDeclarations + "    return dro((f, 2), x)\n", "NoApplicableOverload_Kd: return dro((f, 2), x)")]
+
+    // SPEC 10.8: a binding at an invariant position is the solution whatever the argument order; an Origin failure is a record after selection, a
+    // structure disagreement rejects the candidate.
+    [InlineData("guard", "inv1", InvariantSlots + "    origin b outlives a\n    return inv(p, w)\n", "")]
+    [InlineData("guard", "inv2", InvariantSlots + "    origin b outlives a\n    return vni(w, p)\n", "")]
+    [InlineData("guard", "inv1n", InvariantSlots + "    return inv(p, w)\n", "UnprovenOriginRelation_Kd: return inv(p, w)")]
+    [InlineData("guard", "inv2n", InvariantSlots + "    return vni(w, p)\n", "UnprovenOriginRelation_Kd: return vni(w, p)")]
+    [InlineData("guard", "inv3", InvariantSlots + "    origin a outlives b\n    origin b outlives a\n    return two(p, q)\n", "")]
+    [InlineData("guard", "inv3n", InvariantSlots + "    origin a outlives b\n    return two(p, q)\n", "*: return two(p, q) | ...")]
+    [InlineData("guard", "inv4", InvariantSlots + "    return two(p, n)\n", "NoApplicableOverload_Kd: return two(p, n)")]
+    public void ASlotsSolutionIsIndependentOfArgumentOrder(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // G216 (a) T2b, U2.1, under DECISIONS R4-M162 (the strict form, superseding the owner's (A) result half): a nested signature's result
     // relating a per-call Origin to `static` beyond its inputs is recorded where it is written, never at a value call (SPEC 15.3.4,

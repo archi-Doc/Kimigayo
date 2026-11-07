@@ -14,6 +14,10 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 {
     private const string Len = "func len(n: ref/i32) -> i32 => n@follow\n";
 
+    private const string WrapDeclarations = "func identity<T>(value: T) -> T => value@move\nfunc wrap<T>(v: T) -> Option<T> => .Some(v@move)\nfunc wrap2<T>(v: (T, i32)) -> Option<T> => .None\nfunc twice(v: i64) -> i64 => v\nfunc show(value: i32) -> () => ()\nfunc show<T>(value: T) -> () => ()\nfunc k() -> i32\n";
+
+    private const string NeverDeclarations = "func stopAt(x: i32) -> Never => $abort(\"stop\")\nfunc stopB(x: bool) -> Never => $abort(\"stop\")\nfunc h(f: (i32) -> i32) -> i32 => f(1)\nfunc cb<F>(f: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return f(1)\n";
+
     // A closure whose result borrows its hidden environment receiver (SPEC 8.10, 7.7.4).
     private const string EnvironmentClosure = "public func main() -> ()\n    let values: Array<i32> = [11, 22]\n    let c = func [values@move] () => values@ref\n";
 
@@ -572,6 +576,39 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
+
+    // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
+    // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
+    // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
+    // until that unit lands and removes the marker. `dotnet xUnitTest.dll -class <class> -explicit only` runs those.
+    [Theory]
+    // SPEC 10.5.3, 10.5.1, 10.8 (PLAN G152): a reference that needs S waits, and the expected result gives its position S; without S it is an error. One
+    // that does not need S is independently typable (g152i).
+    [InlineData("I2", "g152o", WrapDeclarations + "    let o: Option<(i64) -> i64> = wrap(identity)\n    return 0\n", "", Explicit = true)]
+    [InlineData("I2", "g152ov", WrapDeclarations + "    let o: Option<(i32) -> ()> = wrap(show)\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "g152t", WrapDeclarations + "    let o: Option<(i64) -> i64> = wrap2((identity, 1))\n    return 0\n", "")]
+    [InlineData("guard", "g152on", WrapDeclarations + "    let o = wrap(identity)\n    return 0\n", "*: let o = wrap(identity) | ...")]
+    [InlineData("guard", "g152tn", WrapDeclarations + "    let o = wrap2((identity, 1))\n    return 0\n", "*: let o = wrap2((identity, 1)) | ...")]
+    [InlineData("guard", "g152bad", WrapDeclarations + "    let o: Option<(i64) -> bool> = wrap(identity)\n    return 0\n", "*: let o: Option<(i64) -> bool> = wrap(identity) | ...")]
+    [InlineData("guard", "g152i", WrapDeclarations + "    let o = wrap(twice)\n    return 0\n", "")]
+
+    // SPEC 10.7 (PLAN G159 (3)): an implementation result R fits Q when R <: Q or R is Never, for erasure and Callable alike; it does not bridge a
+    // parameter (n3b...) and a common Function Type relates only by subtyping (n3sub, SPEC 3.8).
+    [InlineData("guard", "n3item", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = stopAt\n    return 0\n", "")]
+    [InlineData("I3", "n3arg", NeverDeclarations + "func k() -> i32\n    return h(stopAt)\n", "", Explicit = true)]
+    [InlineData("I3", "n3cl", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = func [] (x: i32) -> Never => $abort(\"no\")\n    return 0\n", "", Explicit = true)]
+    [InlineData("I3", "n3cla", NeverDeclarations + "func k() -> i32\n    return h(func [] (x: i32) -> Never => $abort(\"no\"))\n", "", Explicit = true)]
+    [InlineData("I3", "n3cb", NeverDeclarations + "func k() -> i32\n    return cb(stopAt)\n", "", Explicit = true)]
+    [InlineData("I3", "n3cbv", NeverDeclarations + "func k() -> i32\n    let c = func [] (x: i32) -> Never => $abort(\"no\")\n    return cb(c)\n", "", Explicit = true)]
+    [InlineData("I3", "n3cbl", NeverDeclarations + "func k() -> i32\n    return cb(func [] (x: i32) -> Never => $abort(\"no\"))\n", "", Explicit = true)]
+    [InlineData("guard", "n3b", NeverDeclarations + "func k() -> i32\n    return h(stopB)\n", "*: return h(stopB) | ...")]
+    [InlineData("guard", "n3bl", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = stopB\n    return 0\n", "*: let f: (i32) -> i32 = stopB | ...")]
+    [InlineData("guard", "n3bc", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = func [] (x: bool) -> Never => $abort(\"no\")\n    return 0\n", "*: let f: (i32) -> i32 = func [] (x: bool) -> Never => $abort(\"no\") | ...")]
+    [InlineData("guard", "n3cbb", NeverDeclarations + "func k() -> i32\n    return cb(stopB)\n", "*: return cb(stopB) | ...")]
+    [InlineData("guard", "n3sub", NeverDeclarations + "func f(handler: (i32) -> Never) -> i32\n    let g: (i32) -> i32 = handler@move\n    return 0\n", "*: let g: (i32) -> i32 = handler@move | ...")]
+    [InlineData("guard", "n3suba", NeverDeclarations + "func f(handler: (i32) -> Never) -> i32\n    return h(handler@move)\n", "*: return h(handler@move) | ...")]
+    public void AReferencesAndANeverResultsFitFollowSignatureCompatibility(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
 }
