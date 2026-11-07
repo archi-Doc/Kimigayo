@@ -569,7 +569,6 @@ public sealed partial class Binding
         if (!complete)
         {
             this.retentionLimit = true;
-            this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
             return Holding.None;
         }
 
@@ -600,7 +599,7 @@ public sealed partial class Binding
         var below = lent || (output == CallRetention.ResultOutput && refers);
         if (type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice)
         {
-            _ = this.StoredHoldings(type, holder, this.retentionHeld); // Its Fields' own kinds, which a view's entry does not state.
+            this.retentionLimit |= !this.StoredHoldings(type, holder, this.retentionHeld); // Its raw Field, for rule A's raw sources until U3b reads entries.
             run.End = this.retentionHeld.Count;
         }
 

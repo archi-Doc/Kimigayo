@@ -151,7 +151,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var run = this.HeldRun(position, written, holder, out _);
+        var run = this.BodyRun(position, written, holder, out _);
         var borrows = false;
         if (this.Referent(run, out _) is { } target)
         {
@@ -193,7 +193,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var run = this.HeldRun(storage, null, null, out _);
+        var run = this.BodyRun(storage, null, null, out _);
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {

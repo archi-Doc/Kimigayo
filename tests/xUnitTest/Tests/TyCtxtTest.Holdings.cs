@@ -117,6 +117,18 @@ public sealed partial class TyCtxtTest
         Assert.Equal("u8 Address Its Raw", Shown(Entries(c, closure.Components[0], null, null)));
     }
 
+    // A growing Type is at Binding's Limit from its first level: the accessor answers false and its entries stay published, for a reader with
+    // a bound of its own (A5); a fold reads false first.
+    [Fact]
+    public void AStorageLimitStillPublishesItsEntries()
+    {
+        var c = MinimalEmissionTest.Analyze("struct N<X>\n    public var next: raw/N<(X, X)>\nfunc probe(n: N<i32>) -> ()\n    return ()\npublic func main() => ()\n");
+        var n = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        var into = new List<Hold>();
+        Assert.False(c.Types.Holdings(n, null, null, into));
+        Assert.Equal("i32 Loan Its; raw/N<(i32, i32)> Inline Its written holder", Shown(into));
+    }
+
     // Q2's condition 2 over the corpus: at every raw layer an instance of the library and the milestones stores, the accessor's step is the
     // path query's (a Tuple's and a fixed array's inline positions included), `Any` exactly where a declaration wrote it, every struct's or
     // enum's stored parts are its entries in order, and no reachable form lacks a row.

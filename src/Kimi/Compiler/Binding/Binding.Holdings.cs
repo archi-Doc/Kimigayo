@@ -7,13 +7,13 @@ namespace Kimi.Compiler;
 // The storage a value of a Type holds, SPEC 3.3.4's table (G416's unit S writes it; fact.md rows 1-21) one level at a time (DECISIONS BU-41, BU-46, BU-58, BU-91).
 // Responsibility: the one reading of a held part's step, flags and stater, each row a value of Hold.
 // Inputs: the Type and, for a stored part, the Type its declaration writes there and the holding instance (the keys a reader's memo holds).
-// Outputs: a run appended to the caller's list, in stack order; false at Binding's Limit (a struct's or enum's storage past its limits, a
-// Closure's environment that does not substitute).
+// Outputs: a run appended to the caller's list, in stack order; false at Binding's Limit (a struct's or enum's storage past its limits),
+// whose entries stay published: a reader with a bound of its own reads them, a fold reads false first.
 // Invariants: total, every form has a row and an unlisted form one Unsupported entry; a function of (type, written, holder) only, so each
 // reader's memo stays sound (R4-M151); O(entries); allocates nothing when warm. A stored raw layer's step is DeclaredStep's, the one
 // function StoredStep's path query reads, so the per-level and per-path answers cannot disagree.
 // Must not: decide a fit, a row, a Loan or a write fact; read a call's argument, a solved Origin, the premise closure or a signature's
-// scope (a signature layer's cap and a supplied layer's binder step stay RawStepAt's, the cap of a contract's walk, DECISIONS BU-113);
+// scope (an output fold steps every raw layer by RawStepAt, the cap of a contract's walk, DECISIONS BU-113);
 // read a raw Origin itself. No reader tests `Semantics`, `Kind`, `IsAbstract` or a layer's Origin to decide a step, a flag or a stater.
 
 /// <summary>A held part's path kind and its access (SPEC 15.6.2, 5.2.1 condition 3, 5.7; DECISIONS BU-24, BU-113). The five values
@@ -148,12 +148,7 @@ public sealed partial class Binding
                 InlineParts(type, written, holder, type is { LengthExpression: null, Length: 1 } ? HoldFlags.None : HoldFlags.Repeated, into);
                 return true;
             case BoundTypeKind.Closure:
-                if (this.types.ClosureEnvironment(type) is not { } environment)
-                {
-                    return false;
-                }
-
-                InlineParts(environment, written, holder, HoldFlags.None, into);
+                InlineParts(type, null, null, HoldFlags.None, into); // A function of the given Type; a fold asks with the body's environment.
                 return true;
             case BoundTypeKind.Function:
                 into.Add(new(null, HoldStep.Erased, HoldContent.Nothing, HoldFlags.None, null, null)); // Owned at U5 (G416 D6).
@@ -281,11 +276,7 @@ public sealed partial class Binding
     // instance's kept parts, each holding through the Type its declaration writes there.
     private bool StoredHoldings(BoundType type, BoundType? holder, List<Hold> into)
     {
-        if (!this.Readable(type, this.PrepareTypeStorage(type)))
-        {
-            return false;
-        }
-
+        var readable = this.Readable(type, this.PrepareTypeStorage(type));
         for (var i = 0; i < type.Components.Count; i++)
         {
             into.Add(new(type.Components[i], HoldStep.Loan, HoldContent.Its, HoldFlags.None, null, holder));
@@ -310,7 +301,7 @@ public sealed partial class Binding
             }
         }
 
-        return true;
+        return readable;
 
         static void Stored(BoundType? part, BoundType? written, BoundType holder, List<Hold> into)
             => into.Add(new(part, HoldStep.Inline, part is null ? HoldContent.Any : HoldContent.Its, HoldFlags.None, written, holder));

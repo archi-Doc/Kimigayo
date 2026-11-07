@@ -138,7 +138,7 @@ public sealed partial class Binding
             }
         }
 
-        var run = this.HeldRun(type, at.Written, at.Holder, out var complete);
+        var run = this.BodyRun(type, at.Written, at.Holder, out var complete);
         this.retentionLimit |= !complete && at.Storage != NoStorage;
         var layer = source ? this.Source(environment, type, at, run) : -1;
         this.Reach(environment, type, at, run, targets, layer);
@@ -311,7 +311,8 @@ public sealed partial class Binding
             if (this.ByValue(type, part))
             {
                 var signature = paired ? this.retentionHeld[declared.Start + i - run.Start].Part : null;
-                var below = at with { Written = part.Written, Holder = part.Holder, Depth = at.Depth + 1, Captured = captured, Signature = signature };
+                var holder = type.Kind == BoundTypeKind.Closure ? at.Holder : part.Holder; // A binding lies in the storage holding the Closure.
+                var below = at with { Written = part.Written, Holder = holder, Depth = at.Depth + 1, Captured = captured, Signature = signature };
                 this.StorageWalk(environment, part.Part, below);
             }
             else if (part.Step == HoldStep.Loan)
@@ -323,9 +324,9 @@ public sealed partial class Binding
         this.retentionHeld.RemoveRange(declared.Start, declared.End - declared.Start);
         for (var i = run.Start; at.Storage == NoStorage && i < run.End; i++)
         {
-            if (this.retentionHeld[i] is { Part: { } stored, Holder: { } holder } part && ReferenceEquals(holder, type) && ReferenceTypes.IsPointer(part.Written))
+            if (this.retentionHeld[i] is { Part: { } stored, Holder: { } owner } part && ReferenceEquals(owner, type) && ReferenceTypes.IsPointer(part.Written))
             {
-                this.SelfContent(environment, stored, part.Written, holder, at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured });
+                this.SelfContent(environment, stored, part.Written, owner, at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured });
             }
         }
     }
@@ -617,13 +618,18 @@ public sealed partial class Binding
     private int CarrierNode(OriginPremiseEnvironment environment, BoundType carrier)
         => this.AtomNode(environment, new(CallRetention.ResultOutput, null, Writable: false, null, carrier, null));
 
-    // A Type's entries (Holdings) as a run on retentionHeld, a stack: its caller reads it and removes it. False at Binding's Limit.
+    // A Type's entries (Holdings) as a run on retentionHeld, a stack: its caller reads it and removes it. At Binding's Limit, none, and false.
     private HeldRange HeldRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
     {
         var start = this.retentionHeld.Count;
         complete = this.Holdings(type, written, holder, this.retentionHeld);
+        this.retentionHeld.RemoveRange(start, complete ? 0 : this.retentionHeld.Count - start);
         return new(start, this.retentionHeld.Count);
     }
+
+    // HeldRun of a value a contract reads, a Closure's as its body sees it (ClosureEnvironment).
+    private HeldRange BodyRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
+        => this.HeldRun(type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type, written, holder, out complete);
 
     // Whether a value of a Type has an entry at its own address or past an own step: no dereference, raw step, or erased or abstract part.
     // A Type argument has no address (SPEC 15.3.5), but a Loan<T>'s until U3a (G416 D4; row 10).

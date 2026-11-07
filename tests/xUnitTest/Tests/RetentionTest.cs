@@ -268,18 +268,31 @@ public sealed partial class RetentionTest
 
     // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
     // call stores nothing there: phantomOk is valid and x's write is free; its twin stores T, so storedBad's write conflicts while h lives.
+    // SPEC 22.9 (row 20): a HeapBuffer holds UTF-8 bytes, so a call stores no raw input there (heapOk, valid); a raw Field does, and a value
+    // moved into raw storage keeps its Loans (SPEC 5.2.1, slotBad, invalid); the buffer's own borrow still conflicts (heapBytesBad, invalid).
     [Theory]
     [InlineData("phantomOk", "func phantomOk()\n    var x = 1\n    var p = Ph<ref/i32>.init()\n    keep(p@uniq, x@ref)\n    x = 3\n    let k = p@ref\n", "")]
     [InlineData(
         "storedBad",
         "func storedBad()\n    var x = 1\n    var y = 2\n    var h = Hd<ref/i32>.init(y@ref)\n    keepH(h@uniq, x@ref)\n    x = 3\n    let k = h@ref\n",
         "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("heapOk", "func heapOk()\n    var h = Text.heap(8)\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    put(h@uniq, p)\n    x = 2\n    let k = h@ref\n", "")]
+    [InlineData(
+        "slotBad",
+        "func slotBad()\n    var s = Slot.init()\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    s.put(p)\n    x = 2\n    let k = s@ref\n",
+        "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData(
+        "heapBytesBad",
+        "func heapBytesBad()\n    var h = Text.heap(8)\n    let b = h.bytes()\n    h.clear()\n    let n = b.length\n",
+        "CallActivationConflict_Kd h.clear()")]
     public void ATypeArgumentAFieldLessGenericDoesNotStoreKeepsNoLoan(string name, string form, string expected)
     {
         Assert.NotEmpty(name);
         var shapes = Phantom + "    public init() => ()\nstruct Hd<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n" +
             "func keep(slot: uniq/Ph<ref/i32 during a>, value: ref/i32 during a) => ()\n" +
-            "func keepH(slot: uniq/Hd<ref/i32 during a>, value: ref/i32 during a) => slot.item = value\n";
+            "func keepH(slot: uniq/Hd<ref/i32 during a>, value: ref/i32 during a) => slot.item = value\n" +
+            "func put(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()\n" +
+            "struct Slot\n    var data: raw/u8\n    public init() => self.data = null\n    public func put(self: uniq/Self, p: raw/u8) => self.data = p\n";
         Assert.Equal(expected, MirBorrowsTest.Records(shapes + form + "public func main() => ()\n"));
     }
 
