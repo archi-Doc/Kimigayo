@@ -16,8 +16,8 @@
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
 // problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
 // the site (A3's guessed sites, R5-M186; 2g-1's), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
-// in BindingReport's kept Types, an ActualForm or ExpectedForm fact the same syntax and as its Value a MismatchForm row and, above its byte,
-// an anonymous function's parameter count plus one, 0 for none, and a Span fact its subject and as its Value the located part,
+// in BindingReport's kept Types, an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
+// byte, an anonymous function's parameter count plus one, 0 for none, and a Span fact its subject and as its Value the located part,
 // start << 32 | length; a kind that names no value has -1; a problem has at most one fact of each kind but its witness's and its causes,
 // which come last.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
@@ -53,15 +53,6 @@ internal enum ProblemFactKind : byte
     Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).
     ActualForm, // Binding: as Actual, for a side that is no Type (Value, a MismatchForm row and its count).
     ExpectedForm, // Binding: as Expected, the same.
-}
-
-/// <summary>A side of a mismatch that is no Type (SPEC 23.3): a closed row, whose text Binding's adapter owns, so no check writes one.</summary>
-internal enum MismatchForm : byte
-{
-    AnonymousFunction, // With its parameter count, or none where no Function Type is expected.
-    IntegerLiteral,
-    FloatingPointLiteral,
-    PositionType, // A Type proven Position or PositionRange.
 }
 
 /// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>

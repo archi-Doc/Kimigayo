@@ -18,6 +18,15 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+/// <summary>A side of a mismatch that is no Type (SPEC 23.3): a closed row, whose text Binding's adapter owns, so no check writes one.</summary>
+internal enum MismatchForm : byte
+{
+    AnonymousFunction, // With its parameter count, or none where no Function Type is expected.
+    IntegerLiteral,
+    FloatingPointLiteral,
+    PositionType, // A Type proven Position or PositionRange.
+}
+
 /// <summary>A problem Binding found: its check key (DIAGNOSTICS 4.1) and code; its facts are in the report.</summary>
 /// <param name="Code">The code.</param>
 /// <param name="Requirement">The requirement its check judged.</param>

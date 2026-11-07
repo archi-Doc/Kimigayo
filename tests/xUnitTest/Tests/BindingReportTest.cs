@@ -133,6 +133,22 @@ public sealed class BindingReportTest
         Assert.Equal(recorded, issue.Problem >= 0);
     }
 
+    // A side that is no Type is a row with, packed above it, a count: the record says what the check found, by the adapter's text alone.
+    [Theory]
+    [InlineData("func f()\n    let g: () -> i32 = func (a: i32) -> i32 => 1\n", "found an anonymous function with 1 parameter")]
+    [InlineData("func f()\n    let g: () -> i32 = func (a: i32, b: i32) -> i32 => 1\n", "found an anonymous function with 2 parameters")]
+    [InlineData("func f()\n    let g: (i32) -> i32 = func () -> i32 => 1\n", "found an anonymous function with 0 parameters")]
+    [InlineData("func f()\n    let x: i32 = func () => 1\n", "found an anonymous function")]
+    [InlineData("func f()\n    let t: (i32, bool) = 4\n", "found integer literal")]
+    [InlineData("func f()\n    let t: (f64, f64) = 2.5\n", "found floating-point literal")]
+    public void AFormIsItsRowAndCount(string source, string found)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        c.Binding.ReportDiagnostics();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+        Assert.EndsWith(found, record.Label);
+    }
+
     // CheckBound runs the pass's checks again without its reset, so the records keep the facts the pass recorded: the syntax a mismatch
     // shows and the part a located record names, with their text.
     [Theory]

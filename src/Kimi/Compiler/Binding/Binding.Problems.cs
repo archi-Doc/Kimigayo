@@ -31,18 +31,6 @@ public sealed partial class Binding
         this.UnlinkProblems(node);
     }
 
-    // The adapter's text of a mismatch side's form (SPEC 23.3).
-    private static string FormText(MismatchForm form, int count) => (form, count) switch
-    {
-        (MismatchForm.AnonymousFunction, < 0) => "an anonymous function",
-        (MismatchForm.AnonymousFunction, 1) => "an anonymous function with 1 parameter",
-        (MismatchForm.AnonymousFunction, _) => $"an anonymous function with {count} parameters",
-        (MismatchForm.IntegerLiteral, _) => "integer literal",
-        (MismatchForm.FloatingPointLiteral, _) => "floating-point literal",
-        (MismatchForm.PositionType, _) => "a Type proven Position or PositionRange",
-        _ => throw new ArgumentOutOfRangeException(nameof(form)),
-    };
-
     // The code of a failure at a node: the one table, with the rows that read the node until their checks record their own (E3, E4).
     private DiagnosticCode CodeOf(Koto node, BindingFailure failure)
     {
