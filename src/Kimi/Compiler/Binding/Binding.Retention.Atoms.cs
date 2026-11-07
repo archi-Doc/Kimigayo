@@ -231,11 +231,6 @@ public sealed partial class Binding
     {
         var environment = this.types.ClosureEnvironment(closure);
         this.retentionLimit |= environment is null;
-        if (BoundClosure.Of(closure) is { CapturedRegions.Count: > 0 } part)
-        {
-            this.retentionCaptured.Add(part);
-        }
-
         return environment ?? closure;
     }
 

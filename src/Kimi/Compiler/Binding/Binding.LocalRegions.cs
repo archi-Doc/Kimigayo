@@ -17,6 +17,9 @@ public sealed partial class Binding
     private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
     private int regionVersion;
 
+    // The region graph's version: every recorded bound moves it, so a body's last one is the whole-body graph.
+    internal int RegionVersion => this.regionVersion;
+
     internal static bool IsLocalRegion(BoundOrigin origin)
         => origin.Open || origin is { Kind: OriginKind.Inference, Binder: VariableKoto, Slot: < 0 };
 
