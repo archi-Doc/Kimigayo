@@ -205,9 +205,15 @@ internal static class DiagnosticCorpus
     /// <summary>Counts a Library program's records by code, in ordinal order: "2*A_Kd 1*B_Kd", or "clean".</summary>
     /// <param name="source">The program.</param>
     /// <returns>The counts.</returns>
-    internal static string RecordProfile(string source)
+    internal static string RecordProfile(string source) => RecordProfile(source, "Library");
+
+    /// <summary>Counts a program's records by code, in ordinal order: "2*A_Kd 1*B_Kd", or "clean".</summary>
+    /// <param name="source">The program.</param>
+    /// <param name="outputKind">The project's OutputKind.</param>
+    /// <returns>The counts.</returns>
+    internal static string RecordProfile(string source, string outputKind)
     {
-        var records = Check(source, "Library").Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
+        var records = Check(source, outputKind).Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
         return records.Any() ? string.Join(' ', records.Select(static x => $"{x.Count()}*{x.Key}")) : "clean";
     }
 
