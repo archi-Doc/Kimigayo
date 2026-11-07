@@ -14,7 +14,8 @@ namespace XunitTest;
 // located limit at the literal (before, the collector's at the whole literal). The guards keep dev's verdicts: a Closure naming no
 // container Origin (O1a, O1c, O3, O4) and an unresolved initializer (x1). Since the MIR decides (R6-check H5; H3b T51, class 4: records
 // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), `mir` is the MIR's record beside Binding's: A5's
-// UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit, and an UninitializedPlace_Kd at x1's constructor.
+// UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit; x1's constructor has none, as its Field has no stored Type (SPEC
+// 23.1.2; PLAN G105, G522; DECISIONS Q13).
 public partial class PropertyBindingTest
 {
     private const string ViewHead = "struct View {source}\n    public let data: ref/i32 during source\n    public let ";
@@ -68,11 +69,7 @@ public partial class PropertyBindingTest
     [InlineData("O1c", ViewHead + "t = Option<ref/i32 during source>.None" + ViewInit + Static + "    return need(view@move)", null)]
     [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", null)]
     [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", null)]
-    [InlineData(
-        "x1",
-        ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1",
-        "UnresolvedBinding_Kd: missingName",
-        "UninitializedPlace_Kd: init(data: ref/i32 during source) => self.data = data")]
+    [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 
