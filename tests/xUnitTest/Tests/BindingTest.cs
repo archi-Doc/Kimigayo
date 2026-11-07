@@ -10,6 +10,18 @@ namespace XunitTest;
 
 public class BindingTest
 {
+    // PLAN G375: a kept Proven is a state on the symbol, so a warm Bind's reads of a signature allocate nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBindOfSignatureReadsAllocatesNothing()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(
+            "contract C\n    func m(self: ref/Self) -> i32\nstruct S\n    Self is C\n    public init() => ()\n    public func m(self: ref/Self) -> i32 => 1\n" +
+            "struct Box<T>\n    T is C\n    public init() => ()\nfunc take(b: ref/Box<S>) -> i32 => 1\nfunc a(b: ref/Box<S>) -> i32 => take(b)\nfunc c(b: ref/Box<S>) -> i32 => take(b)");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void PipelineBindsExistingNodesAndRetainsCallPlans()
     {

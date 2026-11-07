@@ -40,6 +40,9 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Slice:
                 this.Slice(call);
                 return;
+            case IntrinsicWriter.Stride:
+                this.Finish(call, new Value('\0', this.Needed(call.Callee.Subst!, 0, out _)?.Layout.Stride ?? 0));
+                return;
             case IntrinsicWriter.Ensure:
                 this.Ensure(call, target);
                 return;

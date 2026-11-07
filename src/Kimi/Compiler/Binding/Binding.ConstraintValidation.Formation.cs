@@ -8,8 +8,8 @@ namespace Kimi.Compiler;
 // - Responsibility: two walks over one per-part step. The step (BeginTypeFormation, EndTypeFormation) judges a part's declaration
 //   context, its Origin clauses and a constructed part's clauses with every enclosing container's under its arguments. The per-use
 //   walk (CheckTypeConstraints) judges an instantiated Type and enters every component; the declaration walk
-//   (CheckDeclaredTypeConstraints) judges a callee's declared signature in its own scope (CheckSignatureTypeConstraints) and enters no
-//   Function Type's components at any depth.
+//   (CheckDeclaredTypeConstraints) judges a callee's declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints
+//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth.
 // - Inputs: a Type and the scope whose premises apply; the declaration contexts, Origin declarations and constraint clauses bound so far.
 // - Outputs: the proof, combined as P < U < L < R < E, with the cause it rests on read into the enclosing proof scope; in the per-use
 //   walk, also the clause fact at the part's verdict, handed on as a clause list hands its own (LeaveClause; PLAN G354 (2)).
@@ -18,12 +18,18 @@ namespace Kimi.Compiler;
 //   call begins its own query, so the two walks never share an entry. A cached part and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
 //   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
-//   no clause fact on until G375 removes its re-proof at each use.
+//   no clause fact on while PLAN G375's sigref1 stays open.
 public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
     // (DECISIONS BU-55) and the clause fact it hands on (G354 (2); none in the declaration walk).
     private readonly TypeMemo<(ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause)> formedParts = new();
+
+    // The walks the SignatureVerdict row ran in this pass.
+    private int signatureWalks;
+
+    /// <summary>Gets the walks the SignatureVerdict row ran in the latest pass, which a scaling check reads.</summary>
+    internal int SignatureWalkWork => this.signatureWalks;
 
     // The per-use walk over an instantiated Type. A part's proof and the cause it rests on depend on the part alone in one query (its
     // scope fixed), so each distinct part is proven once (FormedPart).
@@ -69,8 +75,7 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.DeclaredPart(type.Components[i], scope, query), true);
         }
 
-        // It hands no clause fact on (PLAN G354 (2)): a callee's signature is proven again at each use until G375 removes that re-proof,
-        // and a re-proven clause explains no use.
+        // It hands no clause fact on while PLAN G375's sigref1 stays open (G354 (2)): a failed signature is computed again at each use.
         return this.EndProof(this.EndTypeFormation(type, scope, proof));
     }
 
@@ -147,9 +152,43 @@ public sealed partial class Binding
         return this.EndProof(this.ReadVerdict(known.Proof, known.Cause, known.Fact));
     }
 
-    // A callee's declared signature, formed in its own scope by the declaration walk, at its three uses: a call's candidate evaluation,
-    // contract matching (the requirement's and the implementation's signatures) and a function reference (PLAN G375 keeps this re-proof).
+    // A callee's declared signature, formed in its own scope by the declaration walk, at a call's candidate evaluation and a function
+    // reference. Its Proven is a declaration query (DeclQueryKind.SignatureVerdict; PLAN G375), which leaves nothing to its reader. Any
+    // other answer depends on who asks (a cause written to the channel), so each use computes it in its own scope (PLAN G375, until R7-C2).
+    // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C2.
+    // Contract matching calls FormSignature directly until R7-V5 (PLAN G556).
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
+    {
+        if (this.activeRequirementContract is not null)
+        {
+            return this.FormSignature(function);
+        }
+
+        var symbol = function.BoundSymbol!;
+        switch (this.BeginQuery(symbol, DeclQueryKind.SignatureVerdict))
+        {
+            case DeclState.Done:
+                this.BeginProof(); // A kept answer and a computed one leave the same facts: outside every scope, the frame drops untaken ones.
+                return this.EndProof(ConstraintProof.Proven);
+            case DeclState.Running:
+                return ConstraintProof.Unknown; // SPEC 8.3.3: a revisited obligation supplies no evidence.
+        }
+
+        this.signatureWalks++;
+        var proof = this.FormSignature(function);
+        if (proof == ConstraintProof.Proven && this.contractHeadersReady)
+        {
+            this.CompleteQuery(symbol, DeclQueryKind.SignatureVerdict);
+        }
+        else
+        {
+            this.AbandonQuery(symbol, DeclQueryKind.SignatureVerdict);
+        }
+
+        return proof;
+    }
+
+    private ConstraintProof FormSignature(FunctionKoto function)
     {
         var scope = this.scopes[function];
         var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope) : ConstraintProof.Unknown;

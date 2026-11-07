@@ -1,5 +1,5 @@
-// Compiler-managed dynamic Array (SPEC 4.5, 4.9): storage, length/capacity metadata and the mutation
-// operations are supplied by the compiler; helpers may be added here as functions only.
+// Compiler-managed dynamic Array (SPEC 4.5, 4.9): storage, length/capacity metadata and the operations of
+// ArrayOperations.kimi are supplied by the compiler; other operations and helpers are functions here.
 public struct Array<T>
     Self is Iterable
     associate Iterable.IteratorType(source) is ArrayIterator<T> during source
@@ -196,6 +196,32 @@ public struct Array<T>
             for index in values.indices
                 Raw.initialize(storage + offset + index, values[index])
             Storage.setArrayLength(self, offset + count)
+
+    /// Ensures `capacity >= length + additional`, and moves nothing when the capacity suffices (SPEC 4.9.5).
+    ///
+    /// - abort: `additional` is negative, `length + additional` overflows, or growth fails.
+    public func reserve(self: uniq/Self, additional: isize)
+        require additional >= 0 else => Storage.argumentOutOfRange()
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            // The checked sum Aborts with KIMI_E_INT_OVERFLOW.
+            let minimum = (*handle).length + additional
+            if minimum > (*handle).capacity
+                Storage.growArray(handle@raw/Storage.ArrayRepr<u8>, Storage.stride<T>(), minimum)
+
+    /// Moves `value` to the end, growing the storage first when it is full (SPEC 4.9.3).
+    ///
+    /// - abort: The length overflows, which only zero-sized elements reach, or growth fails.
+    public func append(self: uniq/Self, value: T)
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            let length = (*handle).length
+            // The checked sum Aborts with KIMI_E_INT_OVERFLOW.
+            let needed = length + 1
+            if needed > (*handle).capacity
+                Storage.growArray(handle@raw/Storage.ArrayRepr<u8>, Storage.stride<T>(), needed)
+            Raw.initialize((*handle).data + length, value@move)
+            (*handle).length = needed
 
     /// Removes the elements for which `matching` returns true and keeps the order of the others.
     ///

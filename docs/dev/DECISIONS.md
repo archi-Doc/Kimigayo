@@ -5248,6 +5248,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Removes: `calleeDeclaration` of `CheckTypeConstraints` and `FormedPart` (R4-M162's patch) with its count line; G374's input-side
     call record (b2in: `UnprovenConstraint_Kd` at the call -1, the Closure's `TypeMismatch_Kd` +1).
   - Stays: the per-use re-proof of a declared signature at its three uses, G375's remaining item.
+  - Superseded in part by BU-120 (2026-11-07): the 'Stays' bullet holds only for an answer other than Proven and for contract matching; the rejection of a published-verdict column stands for a publication.
   - nin (`f: (Box<Array<i32>>) -> i32` under `T is Copy`): the declaration's `UnsatisfiedConstraint_Kd` records stay; the call's
     re-proof `NoApplicableOverload_Kd` goes; the selected call's instantiated input and the Closure's parameter add
     `UnsatisfiedConstraint_Kd` (+2). All dependent on the declaration's record (Q13).
@@ -9642,7 +9643,7 @@ resumed by R4-M86 (2026-10-20).
   - A kind is a row: its owner and writer, its output (kept where the owner publishes it), its re-entry rule (a SPEC cycle error at
     the declaration, or no evidence) and its not-ready path (Abandon to NotStarted). Kind: `Signature` (`BindHeader`): an inferred
     stored Property's re-entry is `CyclicBinding_Kd`, another header's re-entry reads no evidence, a header waiting on an associated
-    Type is abandoned. BU-95's set demand (`Binding.Types.cs`) is an ordinary demand inside its suspended consultation frame; its
+    Type is abandoned. `SignatureVerdict` (BU-120): Done means Proven; no column. BU-95's set demand (`Binding.Types.cs`) is an ordinary demand inside its suspended consultation frame; its
     state guard, a second copy of `BindHeader`'s entry rule, is deleted.
   - Interims: the cycle record stays at today's demanders (`BindReference`, `BindVariableCore`) until D2 d2 moves it into the row
     with the Error state; the header and variable guards read each other's Running state (`Resolving`) until D2 d4 makes the
@@ -9657,6 +9658,30 @@ resumed by R4-M86 (2026-10-20).
     an alias no Bind count reaches); an Error state before its writer (d2); memoizing the abandoned header (a wait, not a failure); a
     `SourceCheck` kind now (its rounds recompute a Running declaration, not once per pass); a `Variable` kind now (its callers re-bind
     a failed local on each use; d4); a state read at BU-95's site (a second copy of the entry rule).
+- **BU-120 A declared signature's Proven is a declaration query, `DeclQueryKind.SignatureVerdict`; any other answer is computed at each read**
+  (2026-11-07; R7-V1, plan §5.1, PLAN G375; ruling 3, the owner's O-44 for contract matching) SPEC 8.1.3, 8.3.3, 15.3.7, 15.6.1, 23.1.2.
+  Supersedes in part R4-M163: its "Stays: the per-use re-proof" holds now only for an answer other than Proven and for contract matching.
+  Its rejection of a published-verdict column stands for a publication, whose coverage reason still holds, and does not reach a demand query.
+  Extends BU-105 with a row. BU-57, BU-59 unchanged.
+  - Row: owner, the formation file. Output, the state: Done means Proven in this pass; no column. Re-entry, Unknown (SPEC 8.3.3); `case
+    Running` closes `BeginQuery`'s switch and is unreachable by reading on this form. Not ready: any other answer, or a demand before the
+    first `ValidateConformances` (`contractHeadersReady`, whose reproducer is a failure before the bodies), abandoned and computed at the next
+    read in the reader's scope. A header-state guard has no reproducer. Removal condition: R7-C2's `Enumerate` (G170's C3 in BU-59's and BU-105's words).
+  - Only Proven is kept because a failed answer depends on who asks and writes the channel. Storing it gave valid-U programs a new Language
+    error (review 1, B1 and B2).
+  - G375's second owner remains on the failing path, on calls and references, until R7-C2 makes a failed answer final.
+  - Contract matching calls the compute directly and reads no row, until R7-V5 removes that gate (O-44, PLAN G556).
+  - A demand under `activeRequirementContract` is outside the query: a requirement's call is proven under its reference, not as its
+    declaration (o4a). Removal condition: R7-C2, with the compute.
+  - The row has no reader inside verification, which is why `conformanceChecks` cannot change a kept Proven. A row reader inside verification
+    would end this reason.
+  - A Proven stays read after a later failure, by calls and references. That failure keeps its own record; `ValidateConstraintUses` and
+    `CheckCallTypeConstraints` read no row. `RevalidateImplicitConstructors` reads it, so a record resting on a declaration that fails after the
+    bodies goes, by rule W (Q13: w1's `Unsupported_Kd`). A program of that shape proving valid, or an independent record lost, reopens this.
+  - The declaration walk hands no clause fact on while sigref1 stays open (PLAN G375).
+  - Rejected: the row at contract matching (five dependent record moves at a reader R7-V5 deletes); settled verdicts (B1, B2); `declarationFailed`
+    (a bool for one commit); a `SourceStates` publication; a verdict epoch (BU-105); the reporting check as the only judge (it runs after every
+    reader); a header-state guard without a reproducer; a flag steering `RevalidateImplicitConstructors`' read (a symptom fix).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
@@ -15570,3 +15595,20 @@ R8-M* and R9-M* by the stage of the recording unit.
     theory's handle rows, which can then no longer fail.
   - Rejected: the plan's R1 as one unit (it edits about 15 offset sites that A1 deletes, changes every fixture's IR text and exceeds an
     hour); a Place sentence on each bodiless operation (several statements of one rule, gone at G1); the text in SPEC 22.1 (O-41).
+- **R8-M2 `append`, `reserve` and `setArrayLength` are Kimigayo bodies** (2026-11-07; R8-A1a; plan RP20, RQ9; prototype R8-L0p; on R8-M1)
+  SPEC 4.9.3, 4.9.5, 4.9.6, 4.9.8, 23.1.2; IMPL 21.1.3.
+  - Adopted: the three are bodies over `Storage.ArrayRepr<T>`. `Storage.growArray`, non-generic over `raw/ArrayRepr<u8>` and a stride,
+    is the one Array growth rule, beside `DictionaryStorage.grow`; its `data` accesses are punned ones, which IMPL 21.1.3 covers. Its
+    three bounded products use `Wrapping<isize>`, each after the bound that makes it representable: checked products left three dead
+    Abort blocks. `append` keeps `Row: None` and `reserve` gains it (SPEC 4.9.6), which `EachRowOperationsBodyStaysWithinItsRow` now checks.
+  - RP20 for `CompilerFunctionKind.ArrayReserve`, `ArrayAppend` and `StorageSetArrayLength` is implemented by removal: they no longer
+    exist, so no zero-reference row guards them (RP6). `stride<T>` is `IntrinsicId.Stride`'s first producer, with the `CompilerFunctionKind`
+    `StorageStride` until G1 removes the kinds; `IntrinsicWriter.Unproduced` gives way to a `Stride` row.
+  - Ruling under Q13 and SPEC 23.1.2 ("How failures are grouped into diagnostic records ... are implementation-defined; grouping never
+    changes acceptance"; the planning session, 2026-11-07; for the A1, K1 and later body families): a layout failure of an element Type
+    reached through a body is one failed requirement, grouped per instance, as `truncate` and every body already report it. The surviving
+    record stands at a user site and acceptance does not move.
+  - Counts (RQ9): `CompilerFunctionKind` 76 → 74; `KimiDeclarationId` 198 → 200 (`StorageStride`, `StorageGrowArray`, the latter because each
+    helper on an Abort path needs a `CallerLocation` catalog row until G1). `IntrinsicId` is unchanged.
+  - Rejected: a generic `growArray<T>` (one routine per element Type); an intrinsic for growth (expressible; the unit's O2 A/B shows no need).
+  - Temporary: `__kimi_array_grow` stays for Insert, Place and the literal until A1b.

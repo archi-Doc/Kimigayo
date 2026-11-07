@@ -11,7 +11,44 @@ namespace XunitTest;
 
 public partial class ImplicitBaseCallTest
 {
+    private const string LateFailureBehindABaseClause = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct Hidden
+            Self is Z
+            public init() => ()
+            public func z(self: ref/Self) -> i32 => 1
+        public struct S
+            Hidden is Z
+            public init() => ()
+        open struct Base
+            protected init(x: i32 = 0, s: Option<S> = .None) => ()
+        struct Leaf: Base
+        """;
+
+    private const string LateFailureBehindABaseClauseValid = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct Hidden
+            Self is Z
+            public init() => ()
+            public func z(self: ref/Self) -> i32 => 1
+        struct S
+            Hidden is Z
+            public init() => ()
+        open struct Base
+            protected init(x: i32 = 0, s: Option<S> = .None) => ()
+        struct Leaf: Base
+        """;
+
     private const string LimitedBumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\nopen struct Base0\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base0\n";
+
+    // PLAN G375 (Q13, rule W): RevalidateImplicitConstructors reads a kept Proven, so S's failure after the bodies is seen through its own
+    // InaccessibleBinding_Kd records, and the base clause adds no record resting on them.
+    [Theory]
+    [InlineData(LateFailureBehindABaseClause, "2*InaccessibleBinding_Kd 1*InvalidConstraint_Kd")]
+    [InlineData(LateFailureBehindABaseClauseValid, "clean")]
+    public void ARejudgeAfterTheBodiesReadsAKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Fact]
     public void OmittedBaseCallUsesOrdinaryDefaultsBeforeOwnInitializers()

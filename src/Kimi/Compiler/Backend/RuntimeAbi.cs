@@ -98,11 +98,6 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi ArrayGrow =
         new("__kimi_array_grow", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "minimum"), Location, LocationLength]);
 
-    internal static readonly FunctionAbi ArrayReserve = new(
-        "__kimi_array_reserve",
-        Unit.ComputationType,
-        [new("ptr", "handle", AbiParameterKind.Value, 0), new("i64", "stride"), new("i64", "additional", AbiParameterKind.Value, 1), Location, LocationLength]);
-
     internal static readonly FunctionAbi ArrayShrink = new(
         "__kimi_array_shrink",
         Unit.ComputationType,

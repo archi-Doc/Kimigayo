@@ -1148,23 +1148,23 @@ public sealed partial class InstanceCollectorTest
     // K 4.3, 4.5 row 2, X4 (DECISIONS R5-M121): a call of an Array operation targets the LegacyRow item of its function's instance, keyed by
     // the function and the erased substitution and represented by the collection, as its Item's Value call and its adapter do; its targets
     // are its row's declared needs: clear's the glue of an element that may need a drop, none over i32; an Array<isize> is another
-    // instance; setArrayLength, written in place, has none.
+    // instance.
     [Fact]
     public void AnArrayOperationIsItsFunctionInstancesLegacyRow()
     {
         var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
-            "func p(values: uniq/Array<i32>) => values.append(1)\nfunc w(values: uniq/Array<isize>) => values.append(1)\n" +
+            "func p(values: uniq/Array<i32>)\n    _ = values.pop()\nfunc w(values: uniq/Array<isize>)\n    _ = values.pop()\n" +
             "func c(values: uniq/Array<Res>) => values.clear()\nfunc n(values: uniq/Array<i32>) => values.clear()\n" +
-            "func v(values: uniq/Array<i32>)\n    let f = Array<i32>.reserve\n    f(values, 2)\n" +
+            "func v(values: uniq/Array<i32>)\n    let f = Array<i32>.shrinkToFit\n    f(values)\n" +
             "func a() -> (uniq/Array<Res>) -> () => Array<Res>.clear\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["LegacyRow Array<i32> ArrayAppend"], AtCalls(program, set, "Fn p"));
-        Assert.Equal(["LegacyRow Array<isize> ArrayAppend"], AtCalls(program, set, "Fn w"));
+        Assert.Equal(["LegacyRow Array<i32> ArrayPop"], AtCalls(program, set, "Fn p"));
+        Assert.Equal(["LegacyRow Array<isize> ArrayPop"], AtCalls(program, set, "Fn w"));
         Assert.Equal(["LegacyRow Array<Res> ArrayClear"], AtCalls(program, set, "Fn c"));
         Assert.All(RowTargets(program, set, "LegacyRow Array<Res> ArrayClear"), static x => Assert.Equal(["DropGlue Res"], x));
         Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayClear"));
-        Assert.Equal(["LegacyRow Array<i32> ArrayReserve"], AtCalls(program, set, "Fn v").Where(static x => x.Length != 0));
-        Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayReserve"));
+        Assert.Equal(["LegacyRow Array<i32> ArrayShrinkToFit"], AtCalls(program, set, "Fn v").Where(static x => x.Length != 0));
+        Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayShrinkToFit"));
         var adapter = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Kind == MonoKind.ItemAdapter);
         Assert.Equal(["LegacyRow Array<Res> ArrayClear"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.LegacyRow), static x => Assert.Equal(-1, x.BodyOrdinal));

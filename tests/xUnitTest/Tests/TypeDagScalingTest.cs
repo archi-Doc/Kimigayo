@@ -16,6 +16,22 @@ namespace XunitTest;
 /// does.</summary>
 public partial class TypeDagScalingTest
 {
+    // PLAN G375: a kept Proven is read, so a signature is walked once however many calls read it.
+    [Fact]
+    public void EachProvenSignatureIsWalkedOnce()
+    {
+        Assert.Equal(Walks(2), Walks(40));
+
+        static int Walks(int calls)
+        {
+            var source = "struct Box<T>\n    T is Copy\n    public init() => ()\nfunc take(b: ref/Box<i32>) -> i32 => 1\n" +
+                string.Concat(Enumerable.Range(0, calls).Select(static i => $"func c{i}(b: ref/Box<i32>) -> i32 => take(b)\n")) + "let present = 1";
+            var c = MinimalEmissionTest.Analyze(source);
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.SignatureWalkWork;
+        }
+    }
+
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
     [Theory]
