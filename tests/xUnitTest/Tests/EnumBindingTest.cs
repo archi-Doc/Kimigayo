@@ -307,20 +307,21 @@ public class EnumBindingTest
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
-    // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch. The MIR also records the
-    // Field its failed initializer leaves unset, at the struct (DECISIONS R5-M184; H3b T51, class 4: both reject, an added record, Q13).
+    // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch, and only it: the Field
+    // has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
     [Fact]
     public void ACaseConstructionInAFieldInitializerReportsItsOwnFailure()
     {
         const string Source = "struct S\n    public let x = Option<bool>.Some(1)\npublic func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(Source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.TypeMismatch_Kd), "1")];
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.TypeMismatch_Kd), "1")];
         Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381): a payload erased in a Field initializer, bound with the Field's header before the
-    // capability engine judges, is one located Unsupported_Kd at the converted Closure or Function Item with bound Type arguments; the
-    // MIR's record at the struct stays (R5-M184). It was the construction's TypeMismatch_Kd; typed and local twins are valid.
+    // capability engine judges, is one located Unsupported_Kd at the converted Closure or Function Item with bound Type arguments, the
+    // only record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
+    // It was the construction's TypeMismatch_Kd; typed and local twins are valid.
     [Theory]
     [InlineData("struct S\n    public let e = E.A(func (x: i32) -> i32 => x)\n", "(x: i32) -> i32")]
     [InlineData("group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let e = E.A(K.idg<i32>)\n", "K.idg<i32>")]
@@ -328,7 +329,7 @@ public class EnumBindingTest
     {
         var source = "enum E\n    A((i32) -> i32)\n    B\n" + declarations + "public func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.Unsupported_Kd), at)];
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.Unsupported_Kd), at)];
         Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
