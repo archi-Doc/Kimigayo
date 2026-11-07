@@ -1,15 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler;
 
 // DeclQuery (R7-D1; DECISIONS BU-105): the state of a declaration query, a fact Binding computes at most once per pass for one
 // declaration and kind, which every step that needs it demands.
 // - Inputs: the declaration's own BindingSymbol (its identity, kept across passes) and a DeclQueryKind; the pass stamp storageVersion.
-// - Outputs: the state, NotStarted, Running or Done, valid in the pass that set it. The output stays where the kind's owner publishes
-//   it (Signature, owned by BindHeader: the symbol's and its parameters' Types).
+// - Outputs: the state, NotStarted, Running or Done, valid in the pass that set it, two bits per kind in BindingSymbol's ushort, room for
+//   eight kinds and D2's Error state; a ninth kind fails BindingSymbol.QueryRoom at compile time. The output stays where the kind's owner
+//   publishes it (Signature, owned by BindHeader: the symbol's and its parameters' Types).
 // - Invariants: a state set in an earlier pass reads NotStarted (no per-symbol reset), up to the stamp's uint copy: a state not written
 //   in any of the 2^32 - 1 passes before a read aliases one 2^32 passes old (about 4.3 * 10^9 Binds of one Binding). NotStarted
 //   becomes Running only through BeginQuery, which answers the prior state (the caller computes only on NotStarted); Running becomes
@@ -37,6 +37,9 @@ internal enum DeclQueryKind : byte
 
     /// <summary>A function's declared signature formed in its own scope: Done means Proven (Binding.CheckSignatureTypeConstraints).</summary>
     SignatureVerdict,
+
+    /// <summary>The number of kinds; BindingSymbol packs two bits per kind, so a ninth kind fails its compile-time check.</summary>
+    Count,
 }
 
 /// <summary>A declaration query's state in a pass.</summary>
@@ -50,15 +53,6 @@ internal enum DeclState : byte
 
     /// <summary>Computed in this pass.</summary>
     Done,
-}
-
-/// <summary>One state per <see cref="DeclQueryKind"/>.</summary>
-[InlineArray(Kinds)]
-internal struct DeclStates
-{
-    internal const int Kinds = 2;
-
-    private DeclState element;
 }
 
 public sealed partial class Binding

@@ -286,8 +286,11 @@ internal enum BindingFailure : byte
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
 public sealed class BindingSymbol
 {
+    // Two bits per DeclQueryKind in a ushort: a ninth kind fails this constant's conversion at compile time.
+    private const byte QueryRoom = (byte)(8 - DeclQueryKind.Count);
+
     // The declaration queries' states (Binding.DeclQuery), valid in the pass queryPass names.
-    private DeclStates queries;
+    private ushort queries;
 
     private uint queryPass;
 
@@ -376,7 +379,7 @@ public sealed class BindingSymbol
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <returns>The state, NotStarted when set in another pass.</returns>
-    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? this.queries[(int)kind] : DeclState.NotStarted;
+    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
 
     /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
     /// <param name="kind">The query's kind.</param>
@@ -386,11 +389,12 @@ public sealed class BindingSymbol
     {
         if ((uint)pass != this.queryPass)
         {
-            this.queries = default;
+            this.queries = 0;
             this.queryPass = (uint)pass;
         }
 
-        this.queries[(int)kind] = state;
+        var shift = (int)kind * 2;
+        this.queries = (ushort)((this.queries & ~(3 << shift)) | ((int)state << shift));
     }
 }
 
