@@ -24,7 +24,7 @@ re-measures before relying on a count.
 **位置（2026-11-07、改訂 9）。** R4、R5、R6（R6-check を含む）は完了し、旧 Analysis は削除され、受理は MIR が決める。D5 の凍結は終わり、R7 は
 2026-11-07 に dev `bfc2e1836` から本線を開始した。R7・R8・R9 の範囲は段階表のとおりだが、A5 と R5 が読む Binding の事実はすでに R7 の形で公開
 済みで R7 の範囲外（R4-M35 OD2）。一方、R5/R6 期に R7 へ先送りされた項目（Koto 転送プロパティとその約 1,150 の読み、合成 Koto、
-HIR publisher の歩き、`StorageSubst`、要件の materializer、G149 の EnclosingInstance、G128/PD30（R5・R6 計画）の StorageNesting、`RequirementImplementation`
+`StorageSubst`、要件の materializer、G149 の EnclosingInstance、G128/PD30（R5・R6 計画）の StorageNesting、`RequirementImplementation`
 など）と、BU の未解決行の大半（G170 C3、G302、G172、G383、G375、G155、G317…）が R7 の部品に集まっている。
 
 **設計の要点（根本解決・重複削減・低アロケーション）。** R7 は Binding を 8 つの部品に組み直す：ドライバー（宣言クエリで順序を決める）、
@@ -78,7 +78,7 @@ EnclosingInstance/StorageNesting 消滅）と、Bind の cold/warm 時間・割�
 
 | Stage | ARCH ledger scope | What moved in or out since PLAN10 |
 | --- | --- | --- |
-| R7 | Binding consolidation: resolver, inference context, Contract solver (premise supply already `Binding.ContractSolver`, BU-29), CallPlan pipeline, Problem records | Out: every Binding fact A5 and R5 read, published in R7's target shape (R4-M35 OD2): `TyCtxt.OriginRows`, `Retains`, `RawStep`, `ArgumentKinds`, `ComponentSummaries`, `SourceStates`, `VTableDef`, `Witness`, `Comparison`, `Instantiates`, `Erase`. In: Binding's reads of the 36 Koto forwarding properties and the properties (R5-M9; about 1,150 reads: `.BoundSymbol` 475, `.BoundType` 408, `.BindingState` 204, `.ConversionBinding` 37, `.BoundCall` 22), the synthetic Kotos (R5-M9; 13 Binding files), the HIR publisher walk (R2b-D2, BU-81, R4-M142), `TyCtxt.StorageSubst` (R5-M36), `InstantiateRequirementCall` and `RequirementImplementation` (the R5 and R6 plan's Q8, G186), the legacy comparison composition (R5-M68), `EnclosingInstance` (G149, R5-M43, R5-M146, R5-M157), `StorageNesting` (G128, the R5 and R6 plan's PD30, BU-12), G157 (5) and (16), R1e, `MirDefKey` by declaration (R3-6), the three declaration-table views still waiting for readers (R2b-D3: `ImplTable`, `EffectBoundTable`, `AvailableBounds`; `VTableDef` and `UniversalRelations` exist), case enumeration in `PairBinder`, the Koto-keyed tables (ARCH code rules: 107 sites in 31 Binding files), the root helpers' Binding reads (PLAN10 §9: `ReferenceTypes` 29 files, `ElementAccess` 17, `ScalarTypes` 14, `ComparisonTypes` 5, `FormattingTypes` 4, `DefaultParameters` 2, `SlotTypes`, `SharedReadTypes`, `StrictBestCandidate`), and BU's open families (§5.1's mapping) |
+| R7 | Binding consolidation: resolver, inference context, Contract solver (premise supply already `Binding.ContractSolver`, BU-29), CallPlan pipeline, Problem records | Out: every Binding fact A5 and R5 read, published in R7's target shape (R4-M35 OD2): `TyCtxt.OriginRows`, `Retains`, `RawStep`, `ArgumentKinds`, `ComponentSummaries`, `SourceStates`, `VTableDef`, `Witness`, `Comparison`, `Instantiates`, `Erase`. In: Binding's reads of the 36 Koto forwarding properties and the properties (R5-M9; about 1,150 reads: `.BoundSymbol` 475, `.BoundType` 408, `.BindingState` 204, `.ConversionBinding` 37, `.BoundCall` 22), the synthetic Kotos (R5-M9; 13 Binding files), `TyCtxt.StorageSubst` (R5-M36), `InstantiateRequirementCall` and `RequirementImplementation` (the R5 and R6 plan's Q8, G186), the legacy comparison composition (R5-M68), `EnclosingInstance` (G149, R5-M43, R5-M146, R5-M157), `StorageNesting` (G128, the R5 and R6 plan's PD30, BU-12), G157 (5) and (16), R1e, `MirDefKey` by declaration (R3-6), the three declaration-table views still waiting for readers (R2b-D3: `ImplTable`, `EffectBoundTable`, `AvailableBounds`; `VTableDef` and `UniversalRelations` exist), case enumeration in `PairBinder`, the Koto-keyed tables (ARCH code rules: 107 sites in 31 Binding files), the root helpers' Binding reads (PLAN10 §9: `ReferenceTypes` 29 files, `ElementAccess` 17, `ScalarTypes` 14, `ComparisonTypes` 5, `FormattingTypes` 4, `DefaultParameters` 2, `SlotTypes`, `SharedReadTypes`, `StrictBestCandidate`), and BU's open families (§5.1's mapping) |
 | R8 | Library algorithms in Kimigayo, about 28 intrinsics | In: `LegacyRuntimeHelpers` (1,850 lines; 20 of the 29 `[Transitional("R8")]` declarations at the base, 28 in all at R6-gen's record), `Layout`'s handle rows (R5-M19), `MonoKind.LegacyRow` (R5-M121), `KimiLibrary.DictionaryStorage` and `TyCtxt.DictionaryStorage` (R5-M28, R5-M124), the `BodylessWitness` capability row (R5-M146), `BuiltinForm.Capacity` and the four temporary intrinsics (R3-9, R3-10, R5-M137: `IntrinsicId` 32 of 34, 28 after R8), `FormatKind`/`WriterKind`/`FormatBound`/`FormatEstimate` (R5-M128, R5-M130, R5-M131), G150, G157 (2) and (31), G337 O2/O3 (after R7, the owner's 「(b) 先送り」), §16-8 |
 | R9 | Remaining front-end cleanup, Documentation and toolchain moved out, final documentation | In: the toolchain, publication and profile files in `C/Emission` (1,364 lines; `WindowsProfile`'s target half already in Core, R5-M174), their structure-limit exemption (ARCH), IMPL §20.8.3 (`NativeToolchain.ReadExternalDeclarations` re-parses IR text), G345, PLAN10 §9's front-end rows (item loops, type grammar entries, the attribute context, keyword sets, `CompilerHelper`), the final records |
 
@@ -231,7 +231,7 @@ The board is the live record; this is the start.
 | Session | First units | Waiting on |
 | --- | --- | --- |
 | Front | R7-V1a and R7-E1 (designs), R7-C1a (tests), G416 U0 with U1 (one merge); next D3 with C8, N1a, N4, I4, N5's batch 1, I1, P1 | E1 implements after G416 U1 (one shared-representation unit at a time); E1's `MirFact` and `MirProblem` fit is a Middle consent; N5 follows E1's id assignment (R7-E0 §9 (3)) |
-| Middle | R7-Y1 (prototype), G147 (8ii)'s split; then Y3, Y2 and the defect stream (§5.4) | G147's Binding fact after G416 U1; the owner's O-38 and O-39 |
+| Middle | R7-Y1's prototype (done), G147 (8ii)'s split; then Y3, Y1, Y2 and the defect stream (§5.4) | G147's Binding fact after G416 U1 |
 | Back | R8-L0k, L0b's baselines, R1a's design (Back's split of R1, below in §5.2) | The quiet slot for L0b |
 
 ---
@@ -245,7 +245,7 @@ G181 (2), H5's Binding hunk, H14, the censuses D0, N0, C0, P0 and E0, D2a, D1 as
 
 | Phase | Window | Content |
 | --- | --- | --- |
-| A/B | R7's start → R7's main line | Front: R7-V1, E1, C1, G416 U0 and U1; D3, C8, N1–N4, N6, I4, I1, P1, P2, E2, SP1 (text), V2, T2's and N5's batches. Middle: R7-Y1, Y3, G147 (8ii)'s split and the defect stream (§5.4); P42's design package with the back. Back: R8-L0, R1a, A1 (a–c), K1 (a–c), S1 |
+| A/B | R7's start → R7's main line | Front: R7-V1, E1, C1, G416 U0 and U1; D3, C8, N1–N4, N6, I4, I1, P1, P2, E2, SP1 (text), V2, T2's and N5's batches. Middle: R7-Y3, Y1, G147 (8ii)'s split and the defect stream (§5.4); P42's design package with the back. Back: R8-L0, R1a, A1 (a–c), K1 (a–c), S1 |
 | C | R7's main line, R8's families | Front: R7-D2 (b–g), I2, I3's G378 and G356, C2–C7, P3–P10, E3–E4, T1, T3, V4, SP1's implementation (P4), O3's non-acceptance parts. Middle: R7-Y2, V3, Y5; the post-flip defects; R9-F1–F5 (with the front's review). Back: R1b, R8-S2, W1, W2, U1, G2 |
 | D | R7 and R8 exits, R9 | Front: R7-P11, E5, O1–O2, T2's deletions, X1–X3; the milestone order resumes (RQ17). Middle: R7-Y4; R9-M1, M2, B1, B2, C1, X1. Back: R8-G1, I1, L1, X1; R9-B1's codegen half |
 
@@ -257,7 +257,8 @@ Front:  G416 U0+U1 ─► E1 ─► E2 ─► E3 ─► E4 ─► E5
            └► C8 ─► C2 ─► C3 ─► C4 ─► C9
            └► N1 ─► N2 ─► N3 ─► N4 ─► V2 ─► D2 ─► T1 ─► T3 ─► O1 ─► O2 ─► X1 ─► X2 ─► X3
 Middle: G147 (8ii)'s split ─► the defect stream (§5.4)
-        Y1 ─► Y3 ─► Y2 ─► V3 ─► Y5(identity places with C3)        R9-F1 … F5 ─► M1 ─► M2 ─► B1 ─► C1 ─► X1
+        Y3 ─► Y2 ─► V3 ─► Y5(identity places with C3)              R9-F1 … F5 ─► M1 ─► M2 ─► B1 ─► C1 ─► X1
+           └► Y1
 Back:   L0 ─► R1a ─► A1a ─► A1b ─► A1c ─► K1a ─► K1b ─► K1c ─► R1b
                  └► S1 ─► S2 ─► W1a ─► W1b ─► W1c ─► W2 ─► W3 ─► U1 ─► G1 ─► G2 ─► I1 ─► L1 ─► X1
 ```
@@ -279,8 +280,8 @@ one window. "F", "M", "B" name the session that loads the unit.
 
 | Stretch | Front | Middle | Back |
 | --- | --- | --- | --- |
-| First | R7-C1a (tests); G416 U0 with U1; R7-V1a; R7-E1 after G416 U1; D3; C8 | G147 (8ii)'s split units; G338 (with G339 on the owner's word, O-39) | R8-L0k; L0b's evidence; R1a |
-| Next | C1b, I1, P1 (test authors; test-only commits); V1b–e; V2; N1 (a–f); N2; N4; N6; I4; P2; E2; SP1's text; T2's reads and N5's batches | R7-Y1; Y3; G396's items (§5.4); P42's design package | R8-A1 (a–c); S1; K1 (a–c; K1b with the middle's G255 C2); P42's design package after R1a's review |
+| First | R7-C1a (tests); G416 U0 with U1; R7-V1a; R7-E1 after G416 U1; D3; C8 | G147 (8ii)'s split units; G338 (with G339, GO, O-39) | R8-L0k; L0b's evidence; R1a |
+| Next | C1b, I1, P1 (test authors; test-only commits); V1b–e; V2; N1 (a–f); N2; N4; N6; I4; P2; E2; SP1's text; T2's reads and N5's batches | R7-Y3; Y1; G396's items (§5.4); P42's design package | R8-A1 (a–c); S1; K1 (a–c; K1b with the middle's G255 C2); P42's design package after R1a's review |
 | C1–C4 | R7-D2 (b–g); N3 | R7-Y2; V3 after V2; the defect stream | R1b; R8-S2; R8-W1a; R8-W1b; R8-U1 |
 | C5–C9 | R7-I2 (its core, then its parts); I3's G378 and G356 one rule per window | Y5 (identity places, with C3); the defect stream (§5.4) | R8-W1c; R8-W2t; R8-W2 (its core, then its parts); R8-W3 |
 | C10–C16 | R7-C2; C3; C4; C5; C6a–c; C7; C9 | the defect stream; R9-F1 (split), R9-F1 (loop) | R8-G2 |
@@ -356,7 +357,7 @@ prototype, and the planning session's reading of the output is its own hour.
 | E1–E6 | G155, G319, G333, G239's display, G343's adapter, G361 (E3), G181's remainder (E4's take records, its test row (c) with it), DIAGNOSTICS §11's Binding items (each closed or re-recorded); several problems at one node and per-record derivation (E1): G473, G421 (i) and vr13-d, G262 F2, G418, G465, G509, G521 (or N1), G523, G529, G157 (8); H11b-0 and H11b with G56's twins, G306 (2) and G430 |
 | O1–O3 | G194, G195, G257, G230 (A), G216 (b) and G215's (J) (with the middle; G403 and G450 with them), STATUS's "Binding still judges a relation between fixed Origins until R7" |
 | T1–T3 | G128 (RQ12), the R5 and R6 plan's PD30, G242, G289 (1) |
-| Y1–Y5 (middle) | G251 (1) (3) (5), G147 (2), BU-72's `IdentityPremise`, R4-M142's `PublisherUses`, G355's builder half |
+| Y1–Y5 (middle) | G251 (1) (3) (5), G147 (2), BU-72's `IdentityPremise`, G355's builder half |
 
 **G416 (beside stream V).** The holdings unit (PLAN G416) is not an R7 unit, but its S, U0, U1, U3 and shared U4, U5 run in the
 Front's lane and its U2 in the Middle's, under the owner's 「(a) 今 ACCEPT」. It counts against the one shared-representation unit of
@@ -483,9 +484,9 @@ other units have not started. Plan units that need an owner are named in the tab
 
 | ID | Unit | Change | Prereq | Verification | Size | Class / Review | Phase |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Y1 | Inline column writes (R2b-D2, BU-81) | `AdjustChildren` writes `Op`, `Res`, `Completion`, `Adjust` and PlaceShape at the node's bind in the Final pass; the publisher walk and `PublisherUses` (R4-M142) deleted; `HasFacts` checked at the write; `HirTables.Broken` unchanged; the lint walk reads columns | — | Comp: `HirColumnsTest`, `MirBuildTest`, goldens; semantic snapshot HIR equal; cost rows (publication about 2 % of warm Bind, R4-M142) | +150/−400 | Major (the publication contract is lasting and unchanged, R2b-D2; only the walk goes), R | A/B |
-| Y2 | One place-use fact (G251 (1), (3) and (5)) | `Binding.PlaceUse` (Shared/Exclusive/Consuming per Place use, a column) read by `ClosureEffects.NeedsExclusively` and HIR's `ExclusiveUse`; the divergences (view upcasts, `AdaptationBorrow`, raw Places, G251 (1)'s raw-pointer Exclusive rule, G251 (5)'s operation contract's write counted as the body's write, with the explicit SPEC §7.7.3 revision in this unit, the owner's O-21 (ii)) closed by the one fact | Y1 | Comp: `ClosureReceiverClassificationTest`, `HirColumnsTest`, `MirBorrowsTest` closure rows; the gate | +120/−200 | Major, design review | C |
-| Y3 | Adaptation modes | `HirAdaptation`'s PayloadProjection, BaseBorrow, StorageProjection, ReferenceRead state their mode (G147 (2)) | Y1 | Comp: `MirBuildTest`, `MirBorrowsTest` | +60/−80 | Major, D+R (the modes are columns of the Adjust row, no new `HirAdaptation` member, ARCH's vocabulary unchanged; a design that needs a member stops for the owner) | C |
+| Y1 | The publisher's inputs and readers | The walk's inputs explicit, claims per consumer, Res a derived read, the lint walk reading Completion; the walk's `[Transitional("R7")]` marks go. The publisher stays (O-40 (a)): a lasting component, and the unit's DECISIONS entry supersedes R2b-D2 | Y3 | Comp: `HirColumnsTest`, `MirBuildTest`, goldens; semantic snapshot HIR equal; cost rows | +60/−130 | Major, R | A/B |
+| Y2 | One place-use fact (G251 (1), (3) and (5)) | `Binding.PlaceUse` (Shared/Exclusive/Consuming per Place use, a column) read by `ClosureEffects.NeedsExclusively` and HIR's `ExclusiveUse`; the divergences (view upcasts, `AdaptationBorrow`, raw Places, G251 (1)'s raw-pointer Exclusive rule, G251 (5)'s operation contract's write counted as the body's write, with the explicit SPEC §7.7.3 revision in this unit, the owner's O-21 (ii)) closed by the one fact | Y3 | Comp: `ClosureReceiverClassificationTest`, `HirColumnsTest`, `MirBorrowsTest` closure rows; the gate | +120/−200 | Major, design review | C |
+| Y3 | Adaptation modes | `HirAdaptation`'s PayloadProjection, BaseBorrow, StorageProjection, ReferenceRead state their mode (G147 (2)) | — | Comp: `MirBuildTest`, `MirBorrowsTest` | +60/−80 | Major, D+R (the modes are columns of the Adjust row, no new `HirAdaptation` member, ARCH's vocabulary unchanged; a design that needs a member stops for the owner) | C |
 | Y4 | Koto forwarding properties deleted (CR-A7, R5-M9) | The 36 properties and `HirTables.HasCurrentBinding`'s forwarding after the Binding reads' move (N5, T2, E); ARCH's Syntax restriction extends to Binding; `UnwrapParentheses` restricted to Parsing and Binding | X1's reads at 0 | Comp: Session; bp; ArchitectureRulesTest row | −300 | Major, R | D |
 | Y5 | Identity places (with C3) | The builder reads the identity-resolved receiver Type; `MirBuilder.Identical`'s `Unsupported_Kd` and R5-M84's interim go; STATUS | C3 | Comp: `MirBuildTest`, `TypeIdentityTest`, `IdentityAcquisitionEmissionTest` and `GenericIdentityAdaptationTest` native | +30/−60 | Major, R | C |
 
@@ -502,7 +503,7 @@ other units have not started. Plan units that need an owner are named in the tab
 
 | ID | Unit | Change | Prereq | Verification | Phase |
 | --- | --- | --- | --- | --- | --- |
-| X1 | Deletion sweep | `[Transitional("R7")]` 0 (55 at dev `efe7f0b6c`); ArchitectureRulesTest zero-reference rows: the Koto forwarding properties, the synthetic Kotos, `BindingFailure`, `HirPublisher`, `StorageSubst`, `InstantiateRequirementCall`, the root helpers in Binding, Koto-keyed tables in Binding, `Supports*` gates; capability rows `EnclosingInstance` and `StorageNesting` gone | every R7 unit | Comp: Session | D |
+| X1 | Deletion sweep | `[Transitional("R7")]` 0 (55 at dev `efe7f0b6c`); ArchitectureRulesTest zero-reference rows: the Koto forwarding properties, the synthetic Kotos, `BindingFailure`, `StorageSubst`, `InstantiateRequirementCall`, the root helpers in Binding, Koto-keyed tables in Binding, `Supports*` gates; capability rows `EnclosingInstance` and `StorageNesting` gone | every R7 unit | Comp: Session | D |
 | X2 | Measurements and records | Bind cold, warm and retained against R7's start and the R2a/R5/R6 series; the scaling rows; `artifacts/benchmarks/r7-exit-areas.md` (sizes, hotspots, duplication); exceptions and Transitional declarations reviewed with the owner; STATUS, CODEMAP, ARCH, DIAGNOSTICS; the end-to-end Binding review (one reviewer reads each component's contract against AGENTS' structure rules) | X1 | Doc + Bench | D |
 | X3 | The acceptance list | The generated gate's named moves of R7 (T1–T4 and the recovered valid forms) as one list to the owner (the OD13 pattern) | X1 | Evid | D |
 
@@ -565,7 +566,7 @@ post-flip rows that R6-check's H3b names class 2 or 5 come first.
   G263's item 4, with G258's W (a fresh probe first: the old probe and host are gone; R5-M194).
 - **With G416:** its U2; G349 (A4's growth bound, with G332's rule: nothing has landed, and its U3 and U4 wait for G416's); G264's list (root fix
   (S) replaced U1: S0, S1′, S2 and S4 landed).
-- **Others:** G338 (with G339 on the owner's word, O-39); G311 (return sites, with the back's builder fact); G220 (its six rows on H5's (e) list; a new
+- **Others:** G338 (with G339, GO, O-39); G311 (return sites, with the back's builder fact); G220 (its six rows on H5's (e) list; a new
   MIR form is an owner decision, O1; R5-M194); G255 C2 (with K1b); G254; G257 (with O3); G298 (1); G272's N3 (held by the owner); G387; G136's pooled
   tables; the per-case callee acquisition (ARCH's Loan-stratum row names it "PLAN G13", which has no row, G396 (8); the A5 step 2 plan's RP13,
   the view hold); RZ3 (the HIR discard classification and the builder; the back's in-place Drop); G318 (the chain core below both phases, one unit,
@@ -642,7 +643,7 @@ together when the table names no overlap, else they serialize in the order the R
 | Binding's body-relation judgment removed (OJ1–OJ7 stay) | R7-O1 | `LocalRegions`, judging parts of `CallRelations` and `OriginProof`, six result-premise modes, per-request closures: about −2,500 |
 | `Apply` pure with the storage verdict as a query | R7-T1 | Storage preparation inside substitution, the `StorageNesting` row: about −300 for +100 |
 | `TyCtxt` predicates and `AdtDef` facts for the root helpers; one `Relate` | R7-T2, T3 | The nine root files (730 lines) and the duplicated walks: about −1,400 for +450 |
-| Inline column writes, `PlaceUse`, adaptation modes | R7-Y1–Y3 | The publisher walk, `PublisherUses`, three capability decisions: about −680 for +330 |
+| `PlaceUse`, adaptation modes, the publisher's explicit inputs | R7-Y1–Y3 | Three capability decisions: about −410 for +240 |
 | Forwarding properties and synthetic Kotos gone | R7-Y4, P11 | Parsing about −700, Binding reads replaced earlier |
 | `ArrayRepr`, `SliceRepr`, `StringRepr`, `Slot<K, V>`; `Layout` from placement | R8-R1 | `Layout.Rows`' handle rows and `LengthWord`: about −150 |
 | Kimigayo bodies for 53 kinds; `compareBytes`; the formatters; the adapter | R8-A1–W2, U1 | `LegacyRuntimeHelpers*` 1,850, `FunctionCodegen.Strings/Updates/Interpolation/Arrays/Dictionaries/Formatting` parts, `ModuleCodegen.Formatting/Arrays/Dictionaries` parts, `.ll.in` about 1,100, `KimiLibrary.DictionaryStorage`, `TyCtxt.DictionaryStorage`: about −3,500 C# and ll for +1,300 `.kimi` |
@@ -789,7 +790,7 @@ a session asks the owner and closed with the verbatim answer and where it is rec
 1. Session green with the milestones and the fixture families; the diagnostic snapshot differences classified; the generated gate's moves
    named by class in X3's list and accepted by the owner.
 2. ArchitectureRulesTest zero-reference rows: the Koto forwarding properties, the synthetic Kotos, Koto-keyed tables in Binding,
-   `BindingFailure`, `HirPublisher`, `StorageSubst`, `InstantiateRequirementCall`, the root helpers in Binding, `Supports*` gates; no
+   `BindingFailure`, `StorageSubst`, `InstantiateRequirementCall`, the root helpers in Binding, `Supports*` gates; no
    `[Transitional("R7")]`; the capability rows `EnclosingInstance` and `StorageNesting` gone; ARCH's Syntax restriction holds for Binding.
 3. Bind with publication: cold and warm time not above R7's start (the census harness, `--compiler-pipeline` stage 2, BindingBenchmark),
    warm 0 B, cold allocation and retained memory not above the start; the four scaling classes linear at their n = 40 rows.
@@ -921,3 +922,4 @@ frozen.
 | 9 | 2026-11-07 | The owner, verbatim 「実装計画書の時点から、devが進行したため、食い違いが生じています。精査して、今後の作業に支障がある箇所があれば、Implementation Planを修正してください。」 | A check of the plan against dev `efe7f0b6c`. §1.3 is today's position: D5 has ended, and RP4 and RP5 are met. §3 follows R7-M4, Q14 and Q15: the Coordinator runs the windows, WORKFLOW owns their rules, §3.3 gains the first-stop rule and the A5 consent rule, §3.4 is the work at R7's start. §4 is one queue with the done units removed, and §4.2's gates are those left. §5: the Full, Owner and FP labels became Major with a design review (§5.5 drops its candidates column); Prereq cells naming a passed gate are cut, and H11 becomes H11b; §5.1's table follows each issue's state on dev, gains the rows PLAN assigned after the base and names the issues with no unit; R6-check's moved items are listed; §5.4 lists what remains; §5.6 drops the landed rows. §5.2's common rule reads MIR acceptance, and R1's split is noted. §7: the mir ledger's rows go, the heavy set is WORKFLOW's, RP8's kernels stay the Back's. §9: the board is written in place. Row 8's "I3's U1-U6" is corrected: U6 was not implemented. No unit's rule changed. |
 | 10 | 2026-11-07 | The Front's D-49, naming the units revision 9 left open | §5.1: G391 goes to P3's Case part, G360 to I2 d, G181's remainder to E4, G354's remainder to P3's core and P2, H7's gates to O3's last part, `BasePath` to P3 and Y4, the rename to X1's first commit; the "No unit yet" row goes; I1 no longer lists G391 and G361. "D1b dropped" stands: BU-105 records it (a `SourceCheck` kind in its Rejected list). No unit's rule changed. |
 | 11 | 2026-11-07 | The Middle's D-51 | §5.4's X-5 notes point to PLAN G396 (7), re-checked by reading and grep; §7.1 names the A5 oracle's durable place; §5.4's PairCaseFamilies goes with G416, since O-38 is withdrawn (D-53). No unit's rule changed. |
+| 12 | 2026-11-07 | The owner's O-39 and O-40 (verbatim 「(a) GO」, 「(a) walk を恒久の部品として残す」; the Middle's D-54) | The HIR publisher stays as a lasting component: Y1 becomes one behavior-preserving unit after Y3 (+60/−130 (H)), `HirPublisher` leaves X1's row and §10.1 item 2, and §4.2's chain is Y3 ─► Y2 and Y3 ─► Y1. G339 goes ahead with G338. DECISIONS and ARCH land with Y1's unit, whose entry supersedes R2b-D2. No other unit's rule changed. |
