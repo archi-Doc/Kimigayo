@@ -565,16 +565,26 @@ public sealed partial class Binding
             return Holding.None;
         }
 
-        var nominal = AdtDef.IsStruct(type) || AdtDef.IsEnum(type);
-        if (nominal && !this.Readable(type, this.PrepareTypeStorage(type)))
+        var run = this.HeldRun(type, written, holder, out var complete);
+        if (!complete)
         {
             this.retentionLimit = true;
+            this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
             return Holding.None;
         }
 
-        HoldStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
-        var holds = this.retentionRawSources.Count > 0 &&
-            ((this.LayerAdmitted(type) & SemanticsMask.Raw) != 0 || (Abstract(type) && this.HoldsRaw(type)) || step is not (null or HoldStep.Address));
+        var (step, refers, stepped, hidden) = ((HoldStep?)null, run.End > run.Start, false, false);
+        for (var i = run.Start; i < run.End; i++)
+        {
+            var entry = this.retentionHeld[i];
+            var layer = (entry.Flags & HoldFlags.Raw) != 0;
+            step ??= layer ? entry.Step : null;
+            refers &= Dereference(entry);
+            stepped |= layer && entry.Step != HoldStep.Address;
+            hidden |= entry.Step == HoldStep.Abstract;
+        }
+
+        var holds = this.retentionRawSources.Count > 0 && (stepped || (hidden && this.HoldsRaw(type)));
         foreach (var (input, kind) in this.retentionRawSources)
         {
             kept[input] |= input != output && holds ? kind ?? RetentionKind.Value : RetentionKind.None;
@@ -587,48 +597,30 @@ public sealed partial class Binding
             HoldStep.Address => Holding.Unstated,
             _ => Holding.None,
         };
-        var below = lent ||
-            (output == CallRetention.ResultOutput && (this.BorrowReferent(type, out _, out _) is not null || step is HoldStep.Exclusive or HoldStep.Shared));
-        met |= nominal ? this.Stores(type, output, kept, below) : Holding.None;
-        if (TryPairLayer(type, out _, out var target))
+        var below = lent || (output == CallRetention.ResultOutput && refers);
+        if (type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice)
         {
-            return met | this.Held(target, null, null, output, kept, below);
+            _ = this.StoredHoldings(type, holder, this.retentionHeld); // Its Fields' own kinds, which a view's entry does not state.
+            run.End = this.retentionHeld.Count;
         }
 
-        for (var i = 0; !IsCallable(type) && i < type.Components.Count; i++)
+        for (var i = run.Start; i < run.End; i++)
         {
-            met |= this.Held(type.Components[i], InlinePart(written, i), holder, output, kept, below);
+            var part = this.retentionHeld[i];
+            met |= part.Step == HoldStep.Abstract ? this.HeldComponents(type, output, kept, below) : this.Held(part.Part, part.Written, part.Holder, output, kept, below);
         }
 
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return met;
     }
 
-    // The hold walk (Held) of a struct's or enum's stored content (SPEC 5.7 Slots and ownership): its base, Fields and Case payloads in
-    // the instance's kept parts (Instance, DECISIONS BU-41), the latter with the Types their declarations write; what they met. A
-    // Case's payloads are walked only where its instance substituted that Case (its kept payload Tuple set), the part the storage verdict
-    // walked (DECISIONS BU-37): the per-part rule at the Case's grain, which bounds the walk, so a failed Case's other payloads hold
-    // nothing (walked by payload, a failed Case's growing siblings would not end).
-    private Holding Stores(BoundType instance, int output, RetentionKind[] kept, bool lent)
+    // An abstract part's components (a projection's base, an adaptation's cases), which the hold walk goes through.
+    private Holding HeldComponents(BoundType type, int output, RetentionKind[] kept, bool lent)
     {
-        if (instance.Symbol?.Adt is not { } adt)
+        var met = Holding.None;
+        for (var i = 0; i < type.Components.Count; i++)
         {
-            return Holding.None;
-        }
-
-        var storage = this.Instance(instance);
-        var met = storage.PartsBase is { } parent ? this.Held(parent, null, null, output, kept, lent) : Holding.None;
-        var parts = storage.Parts;
-        for (var i = 0; AdtDef.IsStruct(instance) && i < adt.Fields.Length; i++)
-        {
-            met |= this.Held(parts[i], WrittenType(adt.Fields[i]), instance, output, kept, lent);
-        }
-
-        for (var i = 0; AdtDef.IsEnum(instance) && i < parts.Length; i++)
-        {
-            for (var j = 0; parts[i] is { } payloads && adt.Cases[i] is { } selected && j < selected.Payload.Length; j++)
-            {
-                met |= this.Held(payloads.Components[j], WrittenType(selected.Payload[j]), instance, output, kept, lent);
-            }
+            met |= this.Held(type.Components[i], null, null, output, kept, lent);
         }
 
         return met;
