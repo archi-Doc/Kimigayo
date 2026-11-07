@@ -29,6 +29,20 @@ public partial class OriginRelationDiagnosticTest
 
     private const string PairFunc = "func pair<T>(x: T) -> (T, i32) => (x@move, 1)\n";
 
+    private const string RbCall = "func mk<T>(x: (T, Option<ref/(ref/i32 during b) during a>), z: ref/i32 during b) -> (T, ref/i32 during a) => $abort(\"mk\")\n";
+
+    private const string Mk2Call = "func mk2<T>(w: Option<ref/T during static>) -> T => $abort(\"mk2\")\n";
+
+    private const string NnHead = "func k(q: ref/i32, r: ref/i32, c: bool, d: bool) -> ref/i32 during r\n";
+
+    private const string NnInner = "    func inner(p: (Option<ref/(ref/i32 during q) during r>, i32), x: ref/i32 during q) -> ref/i32 during r => x\n";
+
+    private const string NdInner = "    func inner(p: Option<ref/(ref/i32 during q) during r>, x: ref/i32 during q) -> ref/i32 during r => x\n";
+
+    private const string WfEnum = "enum WF<T>\n    Make((T) -> i32, Option<ref/T during static>)\n    Empty\nfunc mkf<T>(f: (T) -> i32, w: Option<ref/T during static>) -> WF<T>\n    return WF.Make(f@move, w@move)\n";
+
+    private const string WtEnum = "enum WT<T>\n    Make((T, i32), Option<ref/T during static>)\n    Empty\nfunc mkt<T>(t: (T, i32), w: Option<ref/T during static>) -> WT<T>\n    return WT.Make(t@move, w@move)\n";
+
     private const string PassStruct = "struct S\n    public init() => ()\n    public func pass<T>(self: ref/Self, x: T) -> T => x@move\n";
 
     private const string EmptyStruct = "struct E<T>\n    public init() => ()\n";
@@ -245,6 +259,34 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("dl1_ok", ImpliedStore + "func good(p: uniq/(ref/i32 during q), v: ref/i32 during q, ys: ref/(ref/i32 during q) during q) -> i32\n    put2(p, v, .Some(ys))\n    return 0\n", "", null)]
     public void EachCallAndConstructionProvesItsInstantiatedTypes(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
+
+    // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
+    // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
+    // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
+    // until that unit lands and removes the marker. `dotnet xUnitTest.dll -class <class> -explicit only` runs those.
+    [Theory]
+    // SPEC 15.6.1, 15.6.4 (PLAN G388, closed): a Signature position inside a Result-position aggregate (rb) and a layer around the slot the expected
+    // result solves (mk2) are judged; each with its valid twin.
+    [InlineData("guard", "rb", RbCall + "func k(q: ref/i32) -> i32\n    let short = 2\n    let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), short@ref)")]
+    [InlineData("guard", "rb_ok", RbCall + "func k(q: ref/i32, v: ref/i32 during q) -> i32\n    let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), v)\n    return 0\n", "")]
+    [InlineData("guard", "mk2", Mk2Call + "func k(q: ref/i32) -> i32\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "UnprovenOriginRelation_Kd: let y: ref/i32 during q = mk2(.None)")]
+    [InlineData("guard", "mk2_ok", Mk2Call + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "")]
+
+    // SPEC 10.5.1, 14.9.2, 15.6.1 (PLAN G390, closed): the selected call judges a nested join's positions (nn in a Tuple, nd alone).
+    [InlineData("guard", "nn", NnHead + NnInner + "    return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)\n", "UnprovenOriginRelation_Kd: return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)")]
+    [InlineData("guard", "nn_ok", NnHead + "    origin q outlives r\n" + NnInner + "    return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)\n", "")]
+    [InlineData("guard", "nd", NnHead + NdInner + "    return inner(if c => (if d => .None else => .None) else => (if d => .None else => .None), q)\n", "UnprovenOriginRelation_Kd: return inner(if c => (if d => .None else => .None) else => (if d => .None else => .None), q)")]
+    [InlineData("guard", "nd_ok", NnHead + "    origin q outlives r\n" + NdInner + "    return inner(if c => (if d => .None else => .None) else => (if d => .None else => .None), q)\n", "")]
+
+    // SPEC 15.6.1, 10.8.1 (PLAN G391): wf and wt above have their valid twins here, and their named calls (wfm, wtm) judge the same layer.
+    [InlineData("guard", "wf_ok", WfEnum + "func ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w: WF<ref/i32 during q> = WF.Make(func [] (x: ref/i32 during q) -> i32 => 0, .None)\n    return 0\n", "")]
+    [InlineData("guard", "wt_ok", WtEnum + "func ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w: WT<ref/i32 during q> = WT.Make((q, 1), .None)\n    return 0\n", "")]
+    [InlineData("guard", "wfm", WfEnum + "func bad(q: ref/i32) -> i32\n    let w: WF<ref/i32 during q> = mkf(func [] (x: ref/i32 during q) -> i32 => 0, .None)\n    return 0\n", "UnprovenOriginRelation_Kd: let w: WF<ref/i32 during q> = mkf(func [] (x: ref/i32 during q) -> i32 => 0, .None)")]
+    [InlineData("guard", "wfm_ok", WfEnum + "func ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w: WF<ref/i32 during q> = mkf(func [] (x: ref/i32 during q) -> i32 => 0, .None)\n    return 0\n", "")]
+    [InlineData("guard", "wtm", WtEnum + "func bad(q: ref/i32) -> i32\n    let w: WT<ref/i32 during q> = mkt((q, 1), .None)\n    return 0\n", "UnprovenOriginRelation_Kd: let w: WT<ref/i32 during q> = mkt((q, 1), .None)")]
+    [InlineData("guard", "wtm_ok", WtEnum + "func ok(q: ref/i32) -> i32\n    origin q outlives static\n    let w: WT<ref/i32 during q> = mkt((q, 1), .None)\n    return 0\n", "")]
+    public void AResultPositionAndANestedJoinAreJudgedByTheCall(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // An ill-formed explicit Type argument whose slot a contextual argument fills: the written Type occurrence is the slot's
     // contributor and carries the one obligation (PLAN G412), and the argument at the slot `T` itself is that solution's, so the call
