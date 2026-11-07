@@ -97,21 +97,9 @@ internal sealed partial class TyCtxt
         }
         else
         {
-            var result = signature.Components[1];
-            if (closure is not null)
-            {
-                var read = new BoundType[inputs.Length + 1];
-                read[0] = binding.ClosureReceiver(owner, closure);
-                for (var i = 0; i < inputs.Length; i++)
-                {
-                    read[i + 1] = binding.ClosureContractType(inputs[i]);
-                }
-
-                (inputs, result) = (read, binding.ClosureContractType(result));
-            }
-
+            inputs = closure is null ? inputs : [binding.ClosureReceiver(owner, closure), .. inputs];
             retention = !binding.HandedSignatures(owner, [.. signature.Components], this.retentionBounds) ? CallRetention.Limit
-                : binding.Retains(owner, inputs, result, null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
+                : binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
         }
 
         this.retentions.Add(key, retention);

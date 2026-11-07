@@ -107,6 +107,7 @@ public sealed partial class Binding
             }
 
             var nodes = this.RetentionNodes(environment);
+            this.ReturnedRegions(environment, callee, nodes);
             this.ExtractOriginPremises(environment, use.Parent);
             return this.RetentionRows(environment, nodes, inputs, result, callee, premises);
         }
@@ -545,6 +546,24 @@ public sealed partial class Binding
         }
 
         return nodes;
+    }
+
+    // SPEC 15.8.2 (PLAN G553): a Closure's result names its returned values' local regions by their sources and its environment by themselves,
+    // so each region its body returned reaches each result position: one fact of this contract, from the body, no relation of the Origins.
+    private void ReturnedRegions(OriginPremiseEnvironment environment, FunctionKoto callee, int[] nodes)
+    {
+        var atoms = this.retentionAtoms;
+        for (var r = 0; callee.ClosureDefinition is { } closure && r < closure.ReturnedRegions.Count; r++)
+        {
+            var region = this.PremiseNode(environment, closure.ReturnedRegions[r]);
+            for (var i = 0; i < atoms.Count; i++)
+            {
+                if (atoms[i] is { Input: CallRetention.ResultOutput, Origin: not null })
+                {
+                    AddPremiseEdge(environment, region, nodes[i], OriginPremiseRule.Input);
+                }
+            }
+        }
     }
 
     // An erased signature (the head's contract): the instantiated signature Type and the Binder of its per-call Origins.

@@ -275,6 +275,7 @@ public sealed partial class Binding
         plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
+        plan.ReturnedRegions.Clear();
         var symbol = this.symbols[function];
         plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
@@ -389,6 +390,7 @@ public sealed partial class Binding
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
+            this.ReturnedRegions(symbol.Type, closureBody, plan.ReturnedRegions, this.visitedParts.Begin(this.storageVersion));
             symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type));
         }
 
@@ -407,12 +409,9 @@ public sealed partial class Binding
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
             plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
-            // SPEC 7.7.2, 15.8.2 (PLAN G553): a capture is a snapshot, so the environment names its local regions' sources as of the
-            // literal, as the published result does: one Origin in one form for each reader of the Closure's Type and contract. The body
-            // keeps the region (BindingSymbol.Type), which later sources of the outer local never reach.
             for (var i = 0; i < plan.Storage.Count; i++)
             {
-                buffer[i] = this.ResolveLocalResultOrigins(plan.Storage[i].Environment.Type!);
+                buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
             plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
@@ -429,5 +428,42 @@ public sealed partial class Binding
 
         this.JudgeOmittedCaptures(function, plan);
         return Complete(function, plan.EnvironmentType);
+    }
+
+    // SPEC 15.8.2 (PLAN G553): the local regions outside the Closure's body that a returned value's Type names, a part of it included; a
+    // Function Type part keeps its own Origins (HasLocalRegion's walk).
+    private void ReturnedRegions(BoundType type, ExecutableBody body, List<BoundOrigin> regions, uint query)
+    {
+        if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
+        {
+            return;
+        }
+
+        ReturnedRegion(type.Origin ?? type.RawOrigin, body, regions);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            ReturnedRegion(type.OriginArguments[i], body, regions);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.ReturnedRegions(type.Components[i], body, regions, query);
+            }
+        }
+
+        static void ReturnedRegion(BoundOrigin? origin, ExecutableBody body, List<BoundOrigin> regions)
+        {
+            for (var i = 0; origin is not null && i < origin.Operands.Count; i++)
+            {
+                ReturnedRegion(origin.Operands[i], body, regions);
+            }
+
+            if (origin is not null && IsLocalRegion(origin) && !RegionIn(origin, body) && !regions.Contains(origin))
+            {
+                regions.Add(origin);
+            }
+        }
     }
 }

@@ -224,10 +224,6 @@ public sealed partial class Binding
         }
     }
 
-    // A written Closure signature Type as its contract reads it: an annotation naming a local region (`during r`) in the form of the
-    // environment, which names the region's sources (BindConcreteClosure; PLAN G553).
-    internal BoundType ClosureContractType(BoundType type) => this.ResolveLocalResultOrigins(type);
-
     // A Closure part of a contract input as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148): its environment, read at every
     // Closure part, the call receiver's (RetentionInput) and a nested one's (RetentionParts); one that does not substitute is the
     // contract's Limit.
