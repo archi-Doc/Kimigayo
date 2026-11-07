@@ -143,6 +143,9 @@ public class ArchitectureRulesTest
     // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
     [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
     [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=4;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
+    // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row, its requirement exclusion and contract matching;
+    // the walk's declaration is the third count. ContractMatching's two go at R7-V5 (PLAN G556), and the other three at R7-C2 (PLAN G375).
+    [InlineData("Computes of a declared signature", "src/Kimi/Compiler", @"\bFormSignature\(", "Binding/Binding.ConstraintValidation.Formation.cs=3;Binding/Binding.ContractMatching.cs=2")]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, MeasureOnce for one run that cannot
     // repeat, or MeasureHops for a compile-stack hop (DECISIONS R4-M178), which retire the thread's allocation context first; a window
     // that reads the thread's counter itself can be charged a runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks
