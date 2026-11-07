@@ -17,11 +17,15 @@ namespace Kimi.Compiler;
 //   demand of a Running query is a re-entry, answered by its kind's rule, never by computing again.
 // - Kinds (one row each): Signature. Re-entry: an inferred stored Property's is CyclicBinding_Kd at the declaration; another header's
 //   reads no evidence and records nothing. Not ready: a header waiting on an associated Type is abandoned. No Error state before its
-//   writer (R7-D2 d2).
+//   writer (R7-D2 d2). SignatureVerdict (Binding.ConstraintValidation.Formation): output, the state itself: Done means Proven in this
+//   pass. Re-entry: Unknown, no evidence (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances
+//   (contractHeadersReady), is abandoned and computed again at each read until R7-C2 (PLAN G375). A requirement's call is outside the
+//   query, and no reader runs inside verification, so the answer is the declaration's own. A Proven stays read after a later failure.
 // - Interims (removal stages): a Signature re-entry's CyclicBinding_Kd is recorded by the demanders that record it today
 //   (BindReference, BindVariableCore) until R7-D2 d2 moves it into the kind's rule with the Error state; BindHeader's guard reads the
 //   variable binding's Resolving and BindVariableCore's guard reads Signature's Running state until R7-D2 d4 makes the variable binding
-//   a kind. These two are the only reads of a state outside this file.
+//   a kind. These two are the only reads of a state outside this file. SignatureVerdict's not-ready path and its exclusion of a
+//   requirement's call go at R7-C2, where a failed answer is final (PLAN G375).
 // - Prohibitions: no output, record or message here; no per-symbol reset; no second pass stamp; no mode or bool parameter; no
 //   allocation; no write of a state outside this file (BindingSymbol.SetQueryState).
 
@@ -30,6 +34,9 @@ internal enum DeclQueryKind : byte
 {
     /// <summary>A function's, property's or annotated variable's header (Binding.BindHeader).</summary>
     Signature,
+
+    /// <summary>A function's declared signature formed in its own scope: Done means Proven (Binding.CheckSignatureTypeConstraints).</summary>
+    SignatureVerdict,
 }
 
 /// <summary>A declaration query's state in a pass.</summary>
@@ -49,7 +56,7 @@ internal enum DeclState : byte
 [InlineArray(Kinds)]
 internal struct DeclStates
 {
-    internal const int Kinds = 1;
+    internal const int Kinds = 2;
 
     private DeclState element;
 }

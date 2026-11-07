@@ -32,6 +32,10 @@ public sealed partial class RetentionTest
     // Bad beside a Field of height 65; G growing beside a failed Field.
     internal const string Bad = "struct Bad\n    public var m: MISSING\n";
 
+    internal const string Phantom = "struct Ph<T>\n";
+
+    internal const string CappedRaw = "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    public var b: raw/(raw/u8) during s\n";
+
     internal const string Handle = Bad + "struct Sx\n    public var x: rc/Bad\nfunc f(s: uniq/Sx, p: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n";
 
     internal const string Keep2 = Bad + "func keep2(x: ref/i32, b: uniq/Bad) -> ref/i32 during x => x\nfunc g(b: uniq/Bad)\n    var v = 1\n" +
@@ -258,8 +262,112 @@ public sealed partial class RetentionTest
     [InlineData(Box + "func f<s/T>(dst: uniq/Option<s/B<ref/i32 during q>>, v: ref/i32 during q)\n    s is rc or arc\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData(Cell + "func f(dst: rc/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
     [InlineData(Box + "func f(dst: ref/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => ()", "")]
+    [InlineData(Phantom + "func f(dst: uniq/Ph<ref/i32 during q>, v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Content}, reached {}")]
+    [InlineData("func f(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()", "store 0: own {1 Value}, reached {}")]
+    [InlineData("func f(dst: uniq/Text.HeapBuffer, v: ref/u8) => ()", "")]
     public void ExclusiveInputsAreStores(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 4.9, 15.6.4 (G416 row 9): `(K, V)` is a Dictionary's stored entry, so a borrow of it or a Slice of them holds within the Dictionary,
+    // and clearing it under a live one conflicts; dev's acceptance was the false one. Each valid twin uses it first.
+    [Theory]
+    [InlineData("-> ref/(i32, i64) during d", "let k = r@follow\n    d.clear()", "result {0 Value}", "")]
+    [InlineData("-> ref/(i32, i64) during d", "d.clear()\n    let k = r@follow", "result {0 Value}", "CallActivationConflict_Kd d.clear()")]
+    [InlineData("-> Slice<(i32, i64)> during d", "let k = r.length\n    d.clear()", "result {0 Value}", "")]
+    [InlineData("-> Slice<(i32, i64)> during d", "d.clear()\n    let k = r.length", "result {0 Value}", "CallActivationConflict_Kd d.clear()")]
+    public void ADictionarysEntryHoldsWithinIt(string result, string use, string row, string records)
+    {
+        var entry = $"func entry(d: ref/Dictionary<i32, i64>) {result} => $abort(\"x\")\n";
+        Assert.Equal(row, Declared(Bind(entry), "entry"));
+        var form = entry + $"func g()\n    var d: Dictionary<i32, i64> = [:]\n    let r = entry(d@ref)\n    {use}\npublic func main() => ()\n";
+        Assert.Equal(records, MirBorrowsTest.Records(form));
+    }
+
+    // Binding's bound counts entries, 32 of them, a Dictionary level counting two (the owner's O-47 (b)). A Tuple level is one, so dev's edge
+    // stands: n = 32 keeps the conflict, n = 33 is past it. A Dictionary level is two, so n = 16 keeps the conflict and n = 17 to 32 are past it.
+    [Theory]
+    [InlineData("Dictionary<i32, ", ">", 16, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("Dictionary<i32, ", ">", 17, "")]
+    [InlineData("Dictionary<i32, ", ">", 32, "")]
+    [InlineData("Dictionary<i32, ", ">", 33, "")]
+    [InlineData("(i32, ", ")", 32, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("(i32, ", ")", 33, "")]
+    public void TheBoundCountsEntries(string open, string close, int levels, string records)
+        => Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels))));
+
+    // The recorded limit (the owner's O-47 and O-49 (a); PLAN G408's class; the Front's, Binding's `StorageBound`): a storage nest past 32 entries,
+    // however few Dictionaries it holds: one under 31 others is enough. These invalid programs are newly accepted, each with no Language record, a
+    // limit and no contract: the 32-entry twin of each keeps the conflict.
+    [Theory]
+    [InlineData(1, 31, "")]
+    [InlineData(16, 1, "")]
+    [InlineData(1, 30, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData(16, 0, "ComparisonLoanConflict_Kd x = 3")]
+    public void AMixedNestPastTheBoundIsTheRecordedLimit(int dictionaries, int tuples, string records)
+    {
+        var leaf = string.Concat(Enumerable.Repeat("(i32, ", tuples)) + "ref/i32 during q" + new string(')', tuples);
+        Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat("Dictionary<i32, ", dictionaries)) + leaf + new string('>', dictionaries)));
+    }
+
+    // SPEC 5.2.1, 15.6.4 (G416 review B1): a raw layer's pointee is walked with no key of the layer, so a slot's cap steps only the layer its
+    // declaration states there, and a raw pointee below it stays stated by the Type: rule A keeps what a stored value brings (BU-1), and the
+    // twin's write conflicts while h lives.
+    [Theory]
+    [InlineData(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) => ()", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(
+        "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    let b: raw/(raw/u8 during static) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()",
+        "store 0: own {0 Content, 1 Value}, reached {} untied")]
+    public void ACapStepsOnlyTheLayerItsDeclarationStates(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    [Fact]
+    public void ACappedHoldersPointeeKeepsWhatARuleAStoreBrings()
+    {
+        const string Init = "    public init(l: ref/u8 during s)\n        self.loan = Loan.init(l)\n        self.b = null\n";
+        const string Form = "func put(h: uniq/HS, v: raw/u8, w: ref/i32) => ()\nfunc g()\n    var x = 1\n    var y: u8 = 2\n    var h = HS.init(y@ref)\n" +
+            "    put(h@uniq, null, x@ref)\n    x = 3\n    let k = h@ref\n";
+        Assert.Equal("ComparisonLoanConflict_Kd x = 3", MirBorrowsTest.Records(CappedRaw + Init + Form + "public func main() => ()\n"));
+        var result = Bind(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) -> HS => $abort(\"x\")\n");
+        Assert.StartsWith("result {0 Value, 1 Value Chain, 2 Content}", Declared(result, "f"), StringComparison.Ordinal);
+    }
+
+    // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
+    // call stores nothing there: phantomOk is valid and x's write is free; its twin stores T, so storedBad's write conflicts while h lives.
+    [Theory]
+    [InlineData("phantomOk", "func phantomOk()\n    var x = 1\n    var p = Ph<ref/i32>.init()\n    keep(p@uniq, x@ref)\n    x = 3\n    let k = p@ref\n", "")]
+    [InlineData(
+        "storedBad",
+        "func storedBad()\n    var x = 1\n    var y = 2\n    var h = Hd<ref/i32>.init(y@ref)\n    keepH(h@uniq, x@ref)\n    x = 3\n    let k = h@ref\n",
+        "ComparisonLoanConflict_Kd x = 3")]
+    public void ATypeArgumentAFieldLessGenericDoesNotStoreKeepsNoLoan(string name, string form, string expected)
+        => Assert.Equal(expected, name.Length == 0 ? string.Empty : HoldingRecords(form));
+
+    // Guards of dev's answer at a HeapBuffer, which takes its declared Fields until G-1 judges SPEC 22.9 (G416): a call may store a raw input
+    // there as in a raw Field (heapRawKept beside slotBad; SPEC 5.2.1: a value moved into raw storage keeps its Loans), and the buffer's own
+    // borrow conflicts (heapBytesBad).
+    [Theory]
+    [InlineData("func heapRawKept()\n    var h = Text.heap(8)\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    put(h@uniq, p)\n    x = 2\n    let k = h@ref\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func slotBad()\n    var s = Slot.init()\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    s.put(p)\n    x = 2\n    let k = s@ref\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func heapBytesBad()\n    var h = Text.heap(8)\n    let b = h.bytes()\n    h.clear()\n    let n = b.length\n", "CallActivationConflict_Kd h.clear()")]
+    public void AHeapBufferHoldsByItsDeclaredFields(string form, string expected)
+        => Assert.Equal(expected, HoldingRecords(form));
+
+    // SPEC 15.6.4 (G416 C): Start, End, BufferFull and InvalidUtf8 declare no storage, so no borrow forms within them and a result during one
+    // holds no part of it. Dev's false rejection goes; a struct with a Field keeps its conflict.
+    [Theory]
+    [InlineData("End", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("End", "-> Slice<i32> during dst", "w.length", "result {0 Content}", "")]
+    [InlineData("Start", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("BufferFull", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("Text.InvalidUtf8", "-> ref/i32 during dst", "w@follow", "result {0 Content}", "")]
+    [InlineData("Mark", "-> ref/i32 during dst", "w@follow", "result {0 Value}", "ComparisonLoanConflict_Kd v = m")]
+    public void AnEmptyStructHoldsNothing(string type, string result, string use, string row, string records)
+    {
+        var form = "struct Mark\n    Self is Copy\n    public var n: i32\n    public init() => self.n = 0\n" +
+            $"func f(dst: ref/{type}) {result} => $abort(\"x\")\n";
+        Assert.Equal(row, Declared(Bind(form), "f"));
+        Assert.Equal(records, MirBorrowsTest.Records(form + $"func g(m: {type})\n    var v = m\n    let w = f(v@ref)\n    v = m\n    let k = {use}\npublic func main() => ()\n"));
+    }
 
     // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
     // an Origin below an rc or arc element's layer is stored there as one in an owned or obj element is.
@@ -1478,6 +1586,27 @@ public sealed partial class RetentionTest
         }
     }
 
+    // A function's own contract, with no call substitution.
+    internal static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
+
+    // The records of a call that may store what a `nest` value holds by value, then a write under the stored borrow (SPEC 15.6.4).
+    private static string NestRecords(string nest)
+        => MirBorrowsTest.Records(
+            $"func make(x: ref/i32 during q) -> {nest} => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: {nest}) => ()\n" +
+            "func g()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n    x = 3\n    let k = slot@follow\n" +
+            "public func main() => ()\n");
+
+    // The shapes of a storing call, then a form and `main`: its published Error records.
+    private static string HoldingRecords(string form)
+    {
+        var shapes = Phantom + "    public init() => ()\nstruct Hd<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n" +
+            "func keep(slot: uniq/Ph<ref/i32 during a>, value: ref/i32 during a) => ()\n" +
+            "func keepH(slot: uniq/Hd<ref/i32 during a>, value: ref/i32 during a) => slot.item = value\n" +
+            "func put(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()\n" +
+            "struct Slot\n    var data: raw/u8\n    public init() => self.data = null\n    public func put(self: uniq/Self, p: raw/u8) => self.data = p\n";
+        return MirBorrowsTest.Records(shapes + form + "public func main() => ()\n");
+    }
+
     private static Compilation Bind(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -1529,9 +1658,6 @@ public sealed partial class RetentionTest
 
         return null;
     }
-
-    // A function's own contract, with no call substitution.
-    private static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
 
     // Each call of a named callee under its substitution, in its definition, in source order.
     private static string[] Calls(Compilation c, string name)

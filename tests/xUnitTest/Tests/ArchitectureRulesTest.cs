@@ -21,7 +21,7 @@ public class ArchitectureRulesTest
         "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.OriginSummaries.cs=2;" +
         "Binding/Binding.PlaceAuthority.Raw.cs=1;" +
         "Binding/Binding.RawOrigins.Holder.cs=4;Binding/Binding.RawOrigins.Steps.cs=3;Binding/Binding.RawOrigins.cs=4;" +
-        "Binding/Binding.Retention.Atoms.cs=1;Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
+        "Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
@@ -122,6 +122,10 @@ public class ArchitectureRulesTest
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-N1a (RP6): ResolvePath is the one evaluation of a Type name and PublishPath its one writer, so these entries stay gone.
     [InlineData("Lookup entries replaced by ResolvePath", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:RootTypeName|LookupImportedType|StopInheritedLookup|SelectTypeCandidate)\b", 0)]
+    // G416 Q2: HoldStep absorbed RawStep, so one vocabulary names a layer's step (RP6).
+    [InlineData("The RawStep vocabulary", "src/Kimi/Compiler", "*.cs", @"\bRawStep\b", 0)]
+    // G416 U1: a value's parts are Holdings' entries, read by every fit and fold; the private walks stay gone (RP6).
+    [InlineData("Private walks of what a value holds", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:HeldParts|BorrowShaped|BorrowTarget|PartPlace|HeldPart|Stores)\b(?=\()|\bPartPlace\b", 0)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
@@ -134,7 +138,7 @@ public class ArchitectureRulesTest
     // G160-1 gives its raw arm (Storage, TypeRelations, OriginDeclarations, LocalRegions.Types, TypeRelations.Origins), a closure instance's
     // context change, which passes the raw role on, or an array literal's formation, never a raw layer. The raw role (BoundType.RawOrigin,
     // a Pointer that states one) is read and written only at its named sites; review checks the Intern calls whose Semantics is a variable.
-    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.RawStep, a stored layer's from its declaration (design-final §15).
+    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.StoredStep, a stored layer's from its declaration (design-final §15).
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
@@ -145,6 +149,9 @@ public class ArchitectureRulesTest
     // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
     [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
     [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=4;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
+    // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row, its requirement exclusion and contract matching;
+    // the walk's declaration is the third count. ContractMatching's two go at R7-V5 (PLAN G556), and the other three at R7-C2 (PLAN G375).
+    [InlineData("Computes of a declared signature", "src/Kimi/Compiler", @"\bFormSignature\(", "Binding/Binding.ConstraintValidation.Formation.cs=3;Binding/Binding.ContractMatching.cs=2")]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, MeasureOnce for one run that cannot
     // repeat, or MeasureHops for a compile-stack hop (DECISIONS R4-M178), which retire the thread's allocation context first; a window
     // that reads the thread's counter itself can be charged a runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks

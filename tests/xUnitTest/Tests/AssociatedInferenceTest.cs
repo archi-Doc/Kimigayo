@@ -12,6 +12,46 @@ namespace XunitTest;
 
 public class AssociatedInferenceTest
 {
+    private const string InferredHeaderFails = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct Box<T>
+            T is Z
+            public init() => ()
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.(C).Item
+        struct S
+            Self is C
+            public init() => ()
+            public func get(self: ref/Self) -> i32 => 1
+            public func use(self: ref/Self, b: ref/Box<Self.(C).Item>) -> i32 => 1
+        func f(s: ref/S, b: ref/Box<i32>) -> i32 => s.use(b)
+        func g(s: ref/S, b: ref/Box<i32>) -> i32 => s.use(b)
+        """;
+
+    private const string InferredHeaderHolds = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct X
+            Self is Z
+            public init() => ()
+            public func z(self: ref/Self) -> i32 => 1
+        struct Box<T>
+            T is Z
+            public init() => ()
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.(C).Item
+        struct S
+            Self is C
+            public init() => ()
+            public func get(self: ref/Self) -> X => X.init()
+            public func use(self: ref/Self, b: ref/Box<Self.(C).Item>) -> i32 => 1
+        func f(s: ref/S, b: ref/Box<X>) -> i32 => s.use(b)
+        func g(s: ref/S, b: ref/Box<X>) -> i32 => s.use(b)
+        """;
+
     private const string PqContracts = "contract P\n    associate X\n    associate Z\n    func x(self: ref/Self) -> Self.X\n    func z(self: ref/Self) -> Self.Z\ncontract Q\n    associate Y\n    associate W\n    func y(self: ref/Self) -> Self.Y\n    func w(self: ref/Self) -> Self.W\n";
 
     private const string PaFirstField = "struct PA\n    Self is P\n    public func x(self: ref/Self) -> PB.(Q).Y => 0\n    public func z(self: ref/Self) -> i32 => 0\n";
@@ -33,6 +73,12 @@ public class AssociatedInferenceTest
     private const string ChainA = "struct A\n    Self is HA\n    public func item(self: ref/Self) -> i32 => 0\n    public func other(self: ref/Self) -> B.(HB).Value => 0\n";
 
     private const string ChainB = "struct B\n    Self is HB\n    public func value(self: ref/Self) -> A.(HA).Item => 0\n";
+
+    // PLAN G375: a signature completed by associated inference is judged complete; its clause fails or holds as written.
+    [Theory]
+    [InlineData(InferredHeaderFails, "2*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
+    [InlineData(InferredHeaderHolds, "clean")]
+    public void ASignatureCompletedByInferenceIsJudgedComplete(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Theory]
     [InlineData("Self.Item", "i32", "42", "i32")]
