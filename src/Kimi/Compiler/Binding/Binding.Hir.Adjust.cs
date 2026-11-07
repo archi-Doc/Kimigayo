@@ -6,8 +6,8 @@
 //   is acquired (Discarded).
 // - Inputs: a consumer and its evaluated Op (OpOf), Binding's facts for the consumer (its call plans, receiver operations, conversion,
 //   match plan, enum construction) and for the child (its recorded adaptation, erasure, bare acquisition); and two facts of the record's
-//   walk: the capability the consumer's own use needs (IHirUses.UseExclusive), which only a user index's selection reads (SPEC 4.7.1;
-//   DECISIONS BU-8), and a child's claim (ChildAdjust's `claimed`): whether an earlier use of the child by the same consumer needed
+//   walk: the capability the consumer's own use needs (AdjustChildren's `exclusive`), which only a user index's selection reads (SPEC
+//   4.7.1; DECISIONS BU-8), and a child's claim (ChildAdjust's `claimed`): whether an earlier use of the child by the same consumer needed
 //   exclusive capability of it, by the Adjust that use gave (its operation's target, which the row states, HirAdjust.Exclusive, an
 //   exclusive borrow, or a Reborrow or pair-case acquisition of a child whose Type needs it): the rule's Claims, which a record applies
 //   and accumulates per publish (the publisher's claims). It decides whether Binding's recorded in-place shared read of a selection
@@ -19,9 +19,9 @@
 // - Invariants: a consumer's uses come in evaluation order, its calls' inputs last and in CallPlan.Of's order; the rule reads no other
 //   walk state.
 // - Prohibitions: the rule writes nothing; no record keeps a second copy of a use's Adjust.
-// The publisher's record of the uses (PublisherUses, over its claims, ExclusiveUse, Derived and column writes) is the Transitional walk's,
-// until R7 (DECISIONS R4-M142). Every take of a node records its claim through the one Claims(child, adjust) before ExclusiveUse reads it:
-// its consumer's (FixAdjust) and its container's discard (the publisher's DiscardRow) share one member, Claim (PLAN G426).
+// The publisher's record of the uses (RowUses) writes the rows and the claims (DECISIONS R4-M142). Every take of a node records its claim
+// through the one Claims(child, adjust) before ExclusiveUse reads it: its consumer's (FixAdjust) and its container's discard (the
+// publisher's DiscardRow) share one member, RowUses.Claim (PLAN G426).
 
 using Kimi.Compiler.Parsing;
 
@@ -38,13 +38,10 @@ public sealed partial class Binding
         Inspection,
     }
 
-    // The record of the uses the Adjust column's rule gives (AdjustChildren): the HIR publisher's (PublisherUses), which writes each, and
+    // The record of the uses the Adjust column's rule gives (AdjustChildren): the HIR publisher's (RowUses), which writes each, and
     // ClosureEffects' finder (ConsumedTakes), which keeps one child's.
     private interface IHirUses
     {
-        // The capability the consumer's own use needs, which selects a user index's indexUniq (SPEC 4.7.1; DECISIONS BU-8).
-        bool UseExclusive { get; }
-
         // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal; -1 after the last.
         void Call(int ordinal);
 
@@ -78,8 +75,9 @@ public sealed partial class Binding
     private bool SelectsUniq(Koto index, bool exclusive) => exclusive && this.IndexerCall(index, exclusive: true) is not null;
 
     // The children a node's Op acquires or uses (SPEC 3.5, 10.2, 15.1.5): its own operands first, then its calls' receivers and arguments by
-    // their operations, in evaluation order; a deeper consumer, such as a setter acquiring an assignment's value, is used last.
-    private void AdjustChildren<T>(Koto node, HirOp op, ref T uses)
+    // their operations, in evaluation order; a deeper consumer, such as a setter acquiring an assignment's value, is used last. Exclusive
+    // is the capability the consumer's own use needs, which selects a user index's indexUniq (SPEC 4.7.1; DECISIONS BU-8).
+    private void AdjustChildren<T>(Koto node, HirOp op, bool exclusive, ref T uses)
         where T : IHirUses
     {
         switch (node)
@@ -199,7 +197,7 @@ public sealed partial class Binding
             }
         }
 
-        var unselected = node is IndexKoto ? this.IndexerCall(node, !this.SelectsUniq(node, uses.UseExclusive))?.CallStorage : null;
+        var unselected = node is IndexKoto ? this.IndexerCall(node, !this.SelectsUniq(node, exclusive))?.CallStorage : null;
         for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
         {
             uses.Call(i);
@@ -295,58 +293,43 @@ public sealed partial class Binding
         (adjust.Acquire == HirAcquire.Reborrow && this.Exclusive(child.BoundType)) ||
         (adjust.Acquire == HirAcquire.ByCase && child.BoundType is { } type && this.BareReborrows(type, child));
 
-    // The publisher's record of the uses, a struct, so that AdjustChildren is specialized for it and calls it directly (the S1 publish A/B:
-    // the publisher passed as itself, a class, made every use an interface call and a warm publish about 2% slower).
-    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
-    private readonly struct PublisherUses(HirPublisher publisher) : IHirUses
-    {
-        public bool UseExclusive => publisher.UseExclusive;
-
-        public void Call(int ordinal) => publisher.Call(ordinal);
-
-        public void Use(Koto? child, HirAdaptation adaptation, UseKind kind) => publisher.Use(child, adaptation, kind);
-
-        public void Use(Koto? child, in BoundArgumentOperation operation) => publisher.Use(child, in operation);
-
-        public void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place) => publisher.FixAdjust(child, adjust, place);
-    }
-
-    private sealed partial class HirPublisher
+    // The publisher's record of the uses of one module's nodes (a call shared across modules names nodes of another), a struct, so that
+    // AdjustChildren is specialized for it and calls it directly (the S1 publish A/B: the publisher passed as itself, a class, made every
+    // use an interface call and a warm publish about 2% slower).
+    private struct RowUses(Binding binding, SyntaxTable table, bool[] claims) : IHirUses
     {
         // The call of the node whose inputs AdjustChildren gives, by its CallPlan.Of ordinal; -1 outside its calls (FixAdjust).
         private int callOrdinal = -1;
 
-        internal bool UseExclusive => this.exclusive;
-
-        internal void Call(int ordinal) => this.callOrdinal = ordinal;
+        public void Call(int ordinal) => this.callOrdinal = ordinal;
 
         // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it; the
         // row it gives records the claim (FixAdjust).
-        internal void Use(Koto? child, in BoundArgumentOperation operation)
+        public readonly void Use(Koto? child, in BoundArgumentOperation operation)
         {
             if (child is not null)
             {
-                this.FixAdjust(child, binding.ChildAdjust(child, operation, claimed: this.Owns(child) && this.claims[child.SyntaxId]));
+                this.FixAdjust(child, binding.ChildAdjust(child, operation, this.Claimed(child)), default);
             }
         }
 
         // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its consumer claimed.
-        internal void Use(Koto? child, HirAdaptation adaptation = HirAdaptation.None, UseKind kind = UseKind.Acquisition)
+        public readonly void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
         {
             if (child is not null)
             {
-                this.FixAdjust(child, binding.ChildAdjust(child, adaptation, kind, claimed: this.Owns(child) && this.claims[child.SyntaxId]));
+                this.FixAdjust(child, binding.ChildAdjust(child, adaptation, kind, this.Claimed(child)), default);
             }
         }
 
-        // Only the nodes of the module being published; a call shared across modules names nodes of another. The Adjust's claim on the child
-        // (Claims) is recorded. At a call input the earlier call's Adjust (EarlierAdjust) is the input's plan-row Adjust, the column keeping
-        // the later; at any other call input the row states none, which also clears a row of an earlier pass.
-        internal void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place = default)
+        // Only the nodes of the module being published. The Adjust's claim on the child (Claims) is recorded. At a call input the earlier
+        // call's Adjust (EarlierAdjust) is the input's plan-row Adjust, the column keeping the later; at any other call input the row states
+        // none, which also clears a row of an earlier pass.
+        public readonly void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
         {
             if (this.Owns(child))
             {
-                ref var column = ref this.table!.Hir.Adjusts![child!.SyntaxId];
+                ref var column = ref table.Hir.Adjusts![child!.SyntaxId];
                 if (this.callOrdinal >= 0)
                 {
                     var earlier = EarlierAdjust(this.callOrdinal, column, adjust);
@@ -357,11 +340,24 @@ public sealed partial class Binding
                 this.Claim(child, adjust);
                 if (place.Kind != HirPlaceKind.Unset)
                 {
-                    this.table.Hir.Places![child.SyntaxId] = place;
+                    table.Hir.Places![child.SyntaxId] = place;
                 }
             }
         }
 
+        // The one record of a take's claim on an owned node (Claims): an Adjust its consumer fixed (FixAdjust) or its container's discard
+        // row (DiscardRow), each recorded before ExclusiveUse reads the node's claims.
+        internal readonly void Claim(Koto node, HirAdjust adjust) => claims[node.SyntaxId] |= binding.Claims(node, adjust);
+
+        // Whether the takes recorded so far claim a node.
+        internal readonly bool Claimed(Koto node) => this.Owns(node) && claims[node.SyntaxId];
+
+        // Whether a node is of the module being published.
+        internal readonly bool Owns(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId < table.Hir.Adjusts!.Length;
+    }
+
+    private sealed partial class HirPublisher
+    {
         // SPEC 23.1.2 (DECISIONS R4-M109, R4-M88 Rule 2): an Error node has no Place and no value of its own to acquire or adapt, so wherever
         // a consumer wrote an acquisition or adaptation for it, in the column or in its plan row (the earlier of two calls), it is that
         // consumer's derived value, used as it is. An Error assignment target folds too; the builder derives the whole assignment and never
@@ -371,30 +367,23 @@ public sealed partial class Binding
             var derived = new HirAdjust(HirAcquire.Temporary, HirAdaptation.None);
             if (HirTables.AdjustOf(node) != default)
             {
-                this.FixAdjust(node, derived);
+                this.uses.FixAdjust(node, derived, default);
             }
 
-            if (this.Owns(node) && HirTables.PlanOf(node).Adjust != default)
+            if (this.uses.Owns(node) && HirTables.PlanOf(node).Adjust != default)
             {
                 HirTables.PlanFor(node, written: true).Adjust = derived;
             }
         }
 
-        // The one record of a take's claim on an owned node (Claims): an Adjust its consumer fixed (FixAdjust) or its container's discard
-        // row (DiscardRow), each recorded before ExclusiveUse reads the node's claims.
-        private void Claim(Koto node, HirAdjust adjust) => this.claims[node.SyntaxId] |= binding.Claims(node, adjust);
-
         // Whether a node's use needs write or exclusive capability, which selects a user index's indexUniq (SPEC 4.7.1; DECISIONS BU-8): the
-        // capability its takes need, which FixAdjust and the discard row recorded (claims), or it is updated or exclusively borrowed, or an
-        // exclusive use reaches it as the receiver of a Field or an element, as a group's operand or as the reference, handle or pair layer a
-        // follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw Place, whose capability its
-        // path does not decide (SPEC 5.2). The parent is the node's while the node is visited.
-        private bool ExclusiveUse(Koto node)
-            => (this.Owns(node) && this.claims[node.SyntaxId]) || (this.parentOp == HirOp.Borrow && binding.Exclusive(this.parent!.BoundType)) ||
-            ((this.parentOp is HirOp.Assign or HirOp.CompoundAssign || (this.exclusive && (this.parentOp is HirOp.Field or HirOp.Index or HirOp.Deref ||
-                this.parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(this.parent!))) && ReferenceEquals(Operand(this.parent), node));
-
-        // Whether a node is of the module being published.
-        private bool Owns(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, this.table) && node.SyntaxId < this.table!.Hir.Adjusts!.Length;
+        // capability its takes need, which FixAdjust and the discard row recorded (Claimed), or it is updated or exclusively borrowed, or
+        // an exclusive use (the parent's) reaches it as the receiver of a Field or an element, as a group's operand or as the reference,
+        // handle or pair layer a follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw
+        // Place, whose capability its path does not decide (SPEC 5.2).
+        private bool ExclusiveUse(Koto node, Koto? parent, HirOp parentOp, bool exclusive)
+            => this.uses.Claimed(node) || (parentOp == HirOp.Borrow && binding.Exclusive(parent!.BoundType)) ||
+            ((parentOp is HirOp.Assign or HirOp.CompoundAssign || (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref ||
+                parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(parent!))) && ReferenceEquals(Operand(parent), node));
     }
 }
