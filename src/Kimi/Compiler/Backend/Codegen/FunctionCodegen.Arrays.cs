@@ -18,10 +18,14 @@ internal sealed partial class FunctionCodegen
     // all are put: the puts run no user code and cannot fail.
     private Value? ArrayBuffer(in SourceInfo source, Value handle, BoundType array, ValueLowering record, int count)
     {
+        // The empty handle: null, 0, 0 (IMPL 21.1.3). The data word is stored as the pointer it is: stored as an integer, SROA promotes it as one
+        // and O2 keeps one address in a `phi i64` beside the body's `phi ptr`, which it cannot merge (R8-A1d, the O2 corpus' Array).
+        var words = record.Layout.FieldOffsets.Span;
+        this.StoreAt(this.Offset(handle, words[0]), RuntimeAbi.StringReference.Layout, new('n', 0));
         var word = Layout.Row(BoundType.ISize).Layout;
-        foreach (var offset in record.Layout.FieldOffsets.Span)
+        foreach (var offset in words[1..])
         {
-            this.StoreAt(this.Offset(handle, offset), word, new('\0', 0)); // The empty handle: null, 0, 0 (IMPL 21.1.3).
+            this.StoreAt(this.Offset(handle, offset), word, new('\0', 0));
         }
 
         if (count == 0)

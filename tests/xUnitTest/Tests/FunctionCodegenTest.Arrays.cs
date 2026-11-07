@@ -202,7 +202,8 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(Generate(c));
         var none = Assert.Single(FunctionsOf(ir, c, "arNone"));
         Assert.Empty(CallsOf(none));
-        Assert.Equal(3, none.Instructions.Count(static x => x.Shape == "store i64 0, ptr %, align 8"));
+        Assert.Single(none.Instructions, static x => x.Shape == "store ptr null, ptr %, align 8"); // The data word, a pointer (ArrayBuffer's reason).
+        Assert.Equal(2, none.Instructions.Count(static x => x.Shape == "store i64 0, ptr %, align 8"));
         var size = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arSize")))).Callee!;
         Assert.Contains(FunctionsOf(ir, c, "arrayCapacity"), x => x == size);
         Assert.Contains(size.Instructions, static x => x.Shape == "load i64, ptr %, align 8" && x.Operands[0].Shape == "getelementptr i8, ptr %, i64 16");
