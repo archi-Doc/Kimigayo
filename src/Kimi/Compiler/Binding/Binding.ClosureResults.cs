@@ -146,7 +146,7 @@ public sealed partial class Binding
                 }
 
                 var resolved = this.ResolveLocalResultOrigins(source);
-                if (!this.FitsTypeAt(resolved, published, node, out var failure) && !this.CheckLocalTypeUse(resolved, published, node))
+                if (!this.FitsValueAt(resolved, published, node, node, out var failure))
                 {
                     this.FailMismatch(node.Parent is JumpKoto jump ? jump : node, node, resolved, published, failure);
                 }

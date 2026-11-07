@@ -574,8 +574,8 @@ public sealed partial class Binding
                         targetResult?.Add(jump.Expression, actual);
                     }
 
-                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node, out var failure) &&
-                        !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
+                    if (actual is not null && resultType is not null &&
+                        !this.FitsValueAt(actual, resultType, node, jump.Expression ?? jump, out var failure))
                     {
                         this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType, failure);
                     }
@@ -621,8 +621,7 @@ public sealed partial class Binding
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node, out var failure) &&
-            !this.CheckLocalTypeUse(actual, expected, node))
+        if (expected is not null && actual is not null && !this.FitsValueAt(actual, expected, node, node, out var failure))
         {
             this.FailMismatch(node, node, actual, expected, failure);
         }

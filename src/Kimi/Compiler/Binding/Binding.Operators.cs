@@ -125,7 +125,8 @@ public sealed partial class Binding
                 }
 
                 // SPEC 13.7.1: the result, computed in the read Type, is fitted to a Property's destination Type.
-                if (this.PropertyUpdateDestination(unary.Operand) is { } written && !this.FitsTypeAt(operand, written, unary, out var failure))
+                if (this.PropertyUpdateDestination(unary.Operand) is { } written &&
+                    !this.FitsValueAt(operand, written, unary, unary.Operand, out var failure))
                 {
                     return this.FailMismatch(unary, unary.Operand, operand, written, failure);
                 }
@@ -270,7 +271,7 @@ public sealed partial class Binding
         }
 
         if (binary.Akind != KotoKind.Equals && this.PropertyUpdateDestination(binary.Left) is { } destination &&
-            !this.FitsTypeAt(left, destination, binary, out var failure))
+            !this.FitsValueAt(left, destination, binary, binary.Left, out var failure))
         {
             this.FailMismatch(binary, binary.Left, left, destination, failure);
             return false;
@@ -314,7 +315,7 @@ public sealed partial class Binding
                 ? Complete(binary, result) : this.FailMismatch(binary, binary.Right, right, BoundType.ISize, ComparisonFailure.Shape);
         }
 
-        if (!this.FitsTypeAt(right, left, binary, out var fit) && !this.CheckLocalTypeUse(right, left, binary.Right))
+        if (!this.FitsValueAt(right, left, binary, binary.Right, out var fit))
         {
             return this.FailMismatch(binary, binary.Right, right, left, fit);
         }
