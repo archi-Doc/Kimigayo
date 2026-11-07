@@ -156,7 +156,7 @@ public sealed partial class Binding
         => function.Modifier == ModifierKind.Public && function.Parameters.Count == 0 && function.GenericArguments.Count == 0 &&
             function.Origins.Count == 0 && function.TypeConstraints.Count == 0 &&
             !function.IsSpecialization && !function.IsAnonymous && !function.IsGenerated && !function.IsRequirement &&
-            (function.Body is not null || function.ExpressionBody is not null) && !Parser.HasLibraryImport(function.AttributeChain) &&
+            (function.Body is not null || function.ExpressionBody is not null) && function.FindAttribute(AttributeKind.LibraryImport) is null &&
             ReferenceEquals(function.BoundSymbol?.Type, BoundType.Unit);
 
     private void ResetStartup()
