@@ -200,14 +200,29 @@ internal static class DiagnosticCorpus
     /// <summary>Checks one source as the product of a minimal Application project through the shared check entry (SPEC 23.2.2).</summary>
     /// <param name="source">The source text of <c>Program.kimi</c>.</param>
     /// <returns>The finalized output.</returns>
-    internal static CheckOutput Check(string source)
+    internal static CheckOutput Check(string source) => Check(source, "Application");
+
+    /// <summary>Counts a Library program's records by code, in ordinal order: "2*A_Kd 1*B_Kd", or "clean".</summary>
+    /// <param name="source">The program.</param>
+    /// <returns>The counts.</returns>
+    internal static string RecordProfile(string source)
+    {
+        var records = Check(source, "Library").Diagnostics.GroupBy(static x => x.Code).OrderBy(static x => x.Key, StringComparer.Ordinal);
+        return records.Any() ? string.Join(' ', records.Select(static x => $"{x.Count()}*{x.Key}")) : "clean";
+    }
+
+    /// <summary>Checks a program of an output kind.</summary>
+    /// <param name="source">The program.</param>
+    /// <param name="outputKind">The project's OutputKind.</param>
+    /// <returns>The check's output.</returns>
+    internal static CheckOutput Check(string source, string outputKind)
     {
         var folder = Path.Combine(Path.GetTempPath(), "kimi-check-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
         {
             var project = Path.Combine(folder, "Program.kimiproj");
-            File.WriteAllText(project, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{WindowsProfile.Target}\"}}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
             Assert.True(
                 Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),

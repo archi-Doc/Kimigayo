@@ -12,6 +12,52 @@ namespace XunitTest;
 
 public class AssociatedInferenceTest
 {
+    private const string InferredHeaderFails = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct Box<T>
+            T is Z
+            public init() => ()
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.(C).Item
+        struct S
+            Self is C
+            public init() => ()
+            public func get(self: ref/Self) -> i32 => 1
+            public func use(self: ref/Self, b: ref/Box<Self.(C).Item>) -> i32 => 1
+        func f(s: ref/S, b: ref/Box<i32>) -> i32 => s.use(b)
+        func g(s: ref/S, b: ref/Box<i32>) -> i32 => s.use(b)
+        """;
+
+    private const string InferredHeaderHolds = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct X
+            Self is Z
+            public init() => ()
+            public func z(self: ref/Self) -> i32 => 1
+        struct Box<T>
+            T is Z
+            public init() => ()
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.(C).Item
+        struct S
+            Self is C
+            public init() => ()
+            public func get(self: ref/Self) -> X => X.init()
+            public func use(self: ref/Self, b: ref/Box<Self.(C).Item>) -> i32 => 1
+        func f(s: ref/S, b: ref/Box<X>) -> i32 => s.use(b)
+        func g(s: ref/S, b: ref/Box<X>) -> i32 => s.use(b)
+        """;
+
+    // PLAN G375: a signature completed by associated inference is judged complete; its clause fails or holds as written.
+    [Theory]
+    [InlineData(InferredHeaderFails, "2*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
+    [InlineData(InferredHeaderHolds, "clean")]
+    public void ASignatureCompletedByInferenceIsJudgedComplete(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("Self.Item", "i32", "42", "i32")]
     [InlineData("Self.Item", "f32", "1.0", "f32")]

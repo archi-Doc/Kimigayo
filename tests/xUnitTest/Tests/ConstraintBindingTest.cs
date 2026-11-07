@@ -9,10 +9,208 @@ namespace XunitTest;
 
 public class ConstraintBindingTest
 {
+    private const string LateClause = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct S
+            i32 is Z
+            public init() => ()
+        contract D
+            func n(self: ref/Self, s: ref/S) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> i32 => 1
+        func use(u: ref/U, s: ref/S) -> i32 => u.n(s)
+        """;
+
+    private const string LateClauseValid = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct S
+            public init() => ()
+        contract D
+            func n(self: ref/Self, s: ref/S) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> i32 => 1
+        func use(u: ref/U, s: ref/S) -> i32 => u.n(s)
+        """;
+
+    private const string LateAfterItsReaders = """
+        contract D
+            func n(self: ref/Self, s: ref/S) -> i32
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> i32 => 1
+        func use1(u: ref/U, s: ref/S) -> i32 => u.n(s)
+        func f(s: ref/S) -> i32 => 1
+        func use2(s: ref/S) -> i32 => f(s)
+        func use3(s: ref/S) -> i32 => f(s)
+        struct S
+            i32 is Z
+            public init() => ()
+        contract Z
+            func z(self: ref/Self) -> i32
+        """;
+
+    private const string LateThroughAClosedClause = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct X
+            i32 is Z
+            public init() => ()
+        struct Box<T>
+            public init() => ()
+        contract C
+            func m(self: ref/Self, b: ref/Box<X>) -> i32
+        struct U
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, b: ref/Box<X>) -> i32 => 1
+        struct W
+            U is C
+            public init() => ()
+        func use(u: ref/U, b: ref/Box<X>, w: ref/W) -> i32 => u.m(b)
+        """;
+
+    private const string LateWithUses = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        struct S
+            i32 is Z
+            public init() => ()
+            public func get(self: ref/Self) -> i32 => 1
+        contract D
+            func n(self: ref/Self, s: ref/S) -> S
+        struct U
+            Self is D
+            public init() => ()
+            public func n(self: ref/Self, s: ref/S) -> S => S.init()
+        func use<T>(t: ref/T, s: ref/S) -> i32
+            T is D
+            return t.n(s).get()
+        func use2(u: ref/U, s: ref/S) -> i32
+            let f: (ref/U, ref/S) -> S = U.n
+            return f(u, s).get() + u.n(s).get()
+        """;
+
+    private const string LateAssociated = """
+        contract Z
+            func z(self: ref/Self) -> i32
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct S
+            i32 is Z
+            public init() => ()
+        struct H
+            Self is C
+            associate C.Item is S
+            public init() => ()
+            public func get(self: ref/Self) -> S => S.init()
+        func read<T>(t: ref/T) -> T.Item
+            T is C
+            return t.get()
+        func use(h: ref/H) -> S => read(h)
+        """;
+
+    private const string BoundRequirement = """
+        contract Src<X>
+            associate Item is Copy
+        contract P<E>: Src<E>
+            func read(self: ref/Self, v: ref/Box<Self.(Src<E>).Item>) -> i32
+        struct Box<T>
+            T is Copy
+            public init() => ()
+        struct S
+            Self is P<i32>
+            Self is P<string>
+            associate Src<i32>.Item is i32
+            associate Src<string>.Item is i64
+            public init() => ()
+            public func read(self: ref/Self, v: ref/Box<i32>) -> i32 => 1
+            public func read(self: ref/Self, v: ref/Box<i64>) -> i32 => 2
+        func via<T>(t: ref/T, b: ref/Box<T.(Src<i32>).Item>) -> i32
+            T is P<i32>
+            return t.read(b)
+        func via2<T>(t: ref/T, b: ref/Box<T.(Src<string>).Item>) -> i32
+            T is P<string>
+            return t.read(b)
+        """;
+
+    private const string BoundRequirementNoPremise = """
+        contract P<E>
+            func read(self: ref/Self, v: ref/Box<E>) -> i32
+        struct Box<T>
+            T is Copy
+            public init() => ()
+        struct S
+            Self is P<i32>
+            Self is P<string>
+            public init() => ()
+            public func read(self: ref/Self, v: ref/Box<i32>) -> i32 => 1
+            public func read(self: ref/Self, v: ref/Box<string>) -> i32 => 2
+        func via<T>(t: ref/T, b: ref/Box<i32>) -> i32
+            T is P<i32>
+            return t.read(b)
+        func via2<T>(t: ref/T, b: ref/Box<string>) -> i32
+            T is P<string>
+            return t.read(b)
+        """;
+
     // An owner whose clause its formation decides (PLAN G354 (2)).
     private const string OwnedHolder = "struct H<T>\n    T is Owned\n    public let t: T\n    public init(t: T) => self.t = t@move\n";
     private const string CopyHolder = "struct K<T>\n    T is Copy\n    public let t: T\n";
     private const string CallableHolder = "struct H<F>\n    F is Callable<(ref/i32) -> i32>\n    public let f: F\n    public init(f: F) => self.f = f@move\n";
+
+    // PLAN G375, G556: contract matching computes and reads no kept Proven, so a declaration that fails after the bodies still fails a conformance.
+    [Theory]
+    [InlineData(LateClause, "1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateClauseValid, "clean")]
+    [InlineData(LateAfterItsReaders, "1*IncompatibleContractImplementation_Kd 3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateThroughAClosedClause, "1*IncompatibleContractImplementation_Kd 3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateWithUses, "1*IncompatibleContractImplementation_Kd 2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAssociated, "1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    public void ALateFailureReachesContractMatching(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G375: a requirement's call is proven under its reference, not as its declaration, so it neither reads nor writes the kept Proven: `P<i32>`'s
+    // call must not answer `P<string>`'s.
+    [Theory]
+    [InlineData(BoundRequirement, "clean")]
+    [InlineData(BoundRequirementNoPremise, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    public void ARequirementsCallIsOutsideTheKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G375: a kept Proven is valid in its pass (Binding.DeclQuery), so an edit that fails the signature's Type is seen by the next pass's call.
+    [Fact]
+    public void NoKeptProvenCrossesAPass()
+    {
+        const string Valid = "contract C\n    func m(self: ref/Self) -> i32\nstruct S\n    Self is C\n    public init() => ()\n    public func m(self: ref/Self) -> i32 => 1\n" +
+            "struct Box<T>\n    T is C\n    public init() => ()\nfunc take() -> Box<S>\n    return Box<S>.init()\nfunc use() -> i32\n    let b = take()\n    return 1";
+        var failing = Valid.Replace("public func m(", "public func n(", StringComparison.Ordinal);
+        var c = CompilationTestHelper.ParseSuccess(Valid);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Edit(failing, "m", "n");
+        Assert.False(c.Bind().IsComplete);
+        var fresh = CompilationTestHelper.ParseSuccess(failing);
+        fresh.Bind();
+        Assert.Equal(fresh.Binding.Issues.Select(static x => x.Code).Order(), c.Binding.Issues.Select(static x => x.Code).Order());
+        Edit(Valid, "n", "m");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+
+        void Edit(string source, string removed, string added)
+        {
+            var old = Implementation(c, removed);
+            var donor = Implementation(CompilationTestHelper.ParseSuccess(source), added);
+            ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+            Assert.True(KotoHelper.Replace(old.Parent!, old, donor));
+        }
+
+        static FunctionKoto Implementation(Compilation compilation, string name)
+            => KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parent is StructKoto && x.Name == name);
+    }
 
     [Theory]
     [InlineData("T is i32", "i32", ConstraintProof.Proven)]
@@ -229,7 +427,7 @@ public class ConstraintBindingTest
     // SPEC 8.3, 23.1.2 (PLAN G354 (2)): a Type's formation publishes the clause fact it decides on, so a call or a Function Item that
     // rests on an owner's or an argument's formation names that clause (the first at the highest rank) and, for a Type argument's, the
     // declaration that states it (an id<K<string>> row was InternalInvariant_Kd before); a callee's signature, proven again at each use,
-    // explains none until G375 (null Note).
+    // explains none until R7-V1d (null Note).
     [Theory]
     [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", "Call init requires T is Owned; this condition cannot be proven for ref/i32")]
     [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "H.init(f: g@move)", "Call init requires F is Callable<(ref/i32) -> i32>; this condition cannot be proven for (ref/i32) -> i32")]

@@ -12,6 +12,46 @@ namespace XunitTest;
 
 public class ConformanceConvergenceTest(ITestOutputHelper output)
 {
+    private const string ImplementationNamesItsConformance = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        struct Box<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<S>) -> i32 => 1
+        func use(s: ref/S, b: ref/Box<S>) -> i32 => s.m(b)
+        """;
+
+    private const string ImplementationsNameEachOthersConformance = """
+        contract C
+            func m(self: ref/Self, other: ref/Box<Self>) -> i32
+        contract K
+            func k(self: ref/Self, other: ref/Pack<Self>) -> i32
+        struct Box<T>
+            T is K
+            public init() => ()
+        struct Pack<T>
+            T is C
+            public init() => ()
+        struct S
+            Self is C
+            Self is K
+            public init() => ()
+            public func m(self: ref/Self, other: ref/Box<S>) -> i32 => 1
+            public func k(self: ref/Self, other: ref/Pack<S>) -> i32 => 1
+        func use(s: ref/S, b: ref/Box<S>, p: ref/Pack<S>) -> i32 => s.m(b) + s.k(p)
+        """;
+
+    // PLAN G556, the owner's O-44: a6's form is valid. These rows pin today's records, not validity: R7-V5 removes contract matching's formation gate and
+    // moves them, and it labels the second program itself.
+    [Theory]
+    [InlineData(ImplementationNamesItsConformance, "2*InvalidConstraint_Kd 2*UnprovenConstraint_Kd")]
+    [InlineData(ImplementationsNameEachOthersConformance, "1*IncompatibleContractImplementation_Kd 4*InvalidConstraint_Kd 5*UnprovenConstraint_Kd")]
+    public void ConformanceCyclesThroughASignatureKeepTheirRecordsUntilV5(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("i32", "", true)]
     [InlineData("U", "", true)]
