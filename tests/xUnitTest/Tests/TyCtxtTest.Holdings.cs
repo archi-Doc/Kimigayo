@@ -22,7 +22,7 @@ public sealed partial class TyCtxtTest
         "func probe<T, P>(i: i32, unit: (), tuple: (i32, bool), two: [2 of i32], one: [1 of i32], plain: Plain, cell: Cell, empty: Empty<bool>,\n" +
         "    generic: Generic<bool>, ref: ref/Plain, uniq: uniq/Plain, slice: Slice<i32>, uniqSlice: UniqSlice<i32>, obj: obj/Plain, rc: rc/Plain,\n" +
         "    arc: arc/Plain, array: Array<i32>, dictionary: Dictionary<i32, i32>, text: string, bare: raw/u8, stated: raw/u8 during static,\n" +
-        "    parameter: T, projection: P.(Iterator).Item, function: (i32) -> i32, heap: Text.HeapBuffer, selfOnly: SelfOnly<bool>, x: uniq/i32,\n" +
+        "    parameter: T, projection: P.(Iterator).Item, function: (i32) -> i32, heap: Text.HeapBuffer, start: Start, selfOnly: SelfOnly<bool>, x: uniq/i32,\n" +
         "    selfOrigin: SelfOrigin during x, refSlot: RefSlot during x, uniqSlot: UniqSlot during x) -> ()\n    P is Iterator\n    return ()\n" +
         "func pairs<a/A, b/B, c/C>(all: a/A, some: b/B, rawOnly: c/C) -> ()\n    b is owner or uniq\n    c is raw\n    return ()\n" +
         "public func main() => ()\n";
@@ -55,6 +55,7 @@ public sealed partial class TyCtxtTest
     [InlineData("projection", "P.Item Abstract Premised")]
     [InlineData("function", "- Erased Nothing")]
     [InlineData("heap", "u8 Own Its Repeated")]
+    [InlineData("start", "")]
     public void EachFormHoldsItsRowsEntries(string parameter, string entries)
     {
         var (c, p) = HoldingsLayers();

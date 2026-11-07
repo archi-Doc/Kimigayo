@@ -32,6 +32,8 @@ public sealed partial class RetentionTest
     // Bad beside a Field of height 65; G growing beside a failed Field.
     internal const string Bad = "struct Bad\n    public var m: MISSING\n";
 
+    internal const string Phantom = "struct Ph<T>\n";
+
     internal const string Handle = Bad + "struct Sx\n    public var x: rc/Bad\nfunc f(s: uniq/Sx, p: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n";
 
     internal const string Keep2 = Bad + "func keep2(x: ref/i32, b: uniq/Bad) -> ref/i32 during x => x\nfunc g(b: uniq/Bad)\n    var v = 1\n" +
@@ -258,8 +260,28 @@ public sealed partial class RetentionTest
     [InlineData(Box + "func f<s/T>(dst: uniq/Option<s/B<ref/i32 during q>>, v: ref/i32 during q)\n    s is rc or arc\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData(Cell + "func f(dst: rc/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
     [InlineData(Box + "func f(dst: ref/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => ()", "")]
+    [InlineData(Phantom + "func f(dst: uniq/Ph<ref/i32 during q>, v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Content}, reached {}")]
+    [InlineData("func f(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()", "")]
+    [InlineData("func f(dst: uniq/Text.HeapBuffer, v: ref/u8) => ()", "")]
     public void ExclusiveInputsAreStores(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
+    // call stores nothing there: phantomOk is valid and x's write is free; its twin stores T, so storedBad's write conflicts while h lives.
+    [Theory]
+    [InlineData("phantomOk", "func phantomOk()\n    var x = 1\n    var p = Ph<ref/i32>.init()\n    keep(p@uniq, x@ref)\n    x = 3\n    let k = p@ref\n", "")]
+    [InlineData(
+        "storedBad",
+        "func storedBad()\n    var x = 1\n    var y = 2\n    var h = Hd<ref/i32>.init(y@ref)\n    keepH(h@uniq, x@ref)\n    x = 3\n    let k = h@ref\n",
+        "ComparisonLoanConflict_Kd x = 3")]
+    public void ATypeArgumentAFieldLessGenericDoesNotStoreKeepsNoLoan(string name, string form, string expected)
+    {
+        Assert.NotEmpty(name);
+        var shapes = Phantom + "    public init() => ()\nstruct Hd<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n" +
+            "func keep(slot: uniq/Ph<ref/i32 during a>, value: ref/i32 during a) => ()\n" +
+            "func keepH(slot: uniq/Hd<ref/i32 during a>, value: ref/i32 during a) => slot.item = value\n";
+        Assert.Equal(expected, MirBorrowsTest.Records(shapes + form + "public func main() => ()\n"));
+    }
 
     // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
     // an Origin below an rc or arc element's layer is stored there as one in an owned or obj element is.

@@ -288,8 +288,8 @@ public sealed partial class Binding
     }
 
     // A value's parts by value (StorageWalk; `run`, its entries), walked in the same state with the Type each part's declaration writes
-    // there and the instance holding it; a Type argument, which has no address (a Loan entry, but in a Type keeping no part), brings the
-    // output fold only targets. For the input fold, after them, the content of each `during self` Field or payload (SelfContent).
+    // there and the instance holding it; a Type argument, which has no address (a Loan entry), brings the output fold only targets.
+    // For the input fold, after them, the content of each `during self` Field or payload (SelfContent).
     private void Parts(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run)
     {
         var captured = at.Captured || type.Kind == BoundTypeKind.Closure; // A Closure's parts are its environment's bindings.
@@ -617,21 +617,19 @@ public sealed partial class Binding
     private int CarrierNode(OriginPremiseEnvironment environment, BoundType carrier)
         => this.AtomNode(environment, new(CallRetention.ResultOutput, null, Writable: false, null, carrier, null));
 
-    // A Type's entries (Holdings) as a run on retentionHeld, a stack: its caller reads it and removes it. HeapBuffer reads its declared Fields
-    // here until G416's named moves. False at Binding's Limit.
+    // A Type's entries (Holdings) as a run on retentionHeld, a stack: its caller reads it and removes it. False at Binding's Limit.
     private HeldRange HeldRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
     {
         var start = this.retentionHeld.Count;
-        complete = type.Symbol?.LibraryDeclaration == KimiDeclarationId.HeapBuffer ? this.StoredHoldings(type, holder, this.retentionHeld)
-            : this.Holdings(type, written, holder, this.retentionHeld);
+        complete = this.Holdings(type, written, holder, this.retentionHeld);
         return new(start, this.retentionHeld.Count);
     }
 
-    // Whether a value of a Type has an entry at its own address or past an own step: no dereference, raw step, or erased or abstract part;
-    // a Type argument only in a Type keeping no part (KeepsNoPart).
+    // Whether a value of a Type has an entry at its own address or past an own step: no dereference, raw step, or erased or abstract part.
+    // A Type argument has no address (SPEC 15.3.5), but a Loan<T>'s until U3a (G416 D4; row 10).
     private bool ByValue(BoundType type, in Hold entry) => entry.Step switch
     {
-        HoldStep.Loan => this.KeepsNoPart(type),
+        HoldStep.Loan => type.Symbol?.LibraryDeclaration == KimiDeclarationId.Loan,
         HoldStep.Own => (entry.Flags & (HoldFlags.Raw | HoldFlags.ReadOnly)) == 0,
         HoldStep.Inline => true,
         _ => false,

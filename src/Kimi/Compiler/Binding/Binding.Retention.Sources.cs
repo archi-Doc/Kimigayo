@@ -172,20 +172,10 @@ public sealed partial class Binding
         return borrows;
     }
 
-    // A library Type whose storage the compiler implements: a nominal Type that keeps no part, no base and no Type argument.
-    private bool Opaque(BoundType type) => type is { Symbol.LibraryDeclaration: not null, Components.Count: 0 } && this.KeepsNoPart(type);
-
-    // A struct or enum whose instance keeps no part and no base (Instance): a compiler-managed collection, whose Type arguments are its
-    // elements (SPEC 4.5, 4.9), or, with none, storage the compiler implements (Opaque).
-    private bool KeepsNoPart(BoundType type)
-        => (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) && this.Readable(type, this.PrepareTypeStorage(type)) &&
-            this.Instance(type) is { Parts.Length: 0, PartsBase: null };
-
     // Whether a storage holds a value of a Type as itself or a part (its entries; `carried`: also a shared handle's payload, which a new value
-    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36),
-    // a library Type keeping no part (compiler-implemented storage, Opaque) and raw storage a value holds (RawStorage; SPEC 5.7, 5.2, DECISIONS
-    // BU-91) hold any (a referent an abstract part is may hold any part, as an implementation of its Contract may), so a borrow formed within
-    // raw storage, punned or not, is one formed through its holder.
+    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
+    // and raw storage a value holds (RawStorage; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
+    // as an implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
     private bool Holds(BoundType? storage, BoundType value, bool carried, int depth)
     {
         if (storage is null)
@@ -198,7 +188,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.Fits(storage, value) || this.Opaque(storage))
+        if (this.Fits(storage, value))
         {
             return true;
         }
