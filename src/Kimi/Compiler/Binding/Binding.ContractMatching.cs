@@ -527,7 +527,9 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var formation = CombineProof(this.CheckSignatureTypeConstraints(requirement), this.CheckSignatureTypeConstraints(implementation), true);
+        // Formation is no compatibility obligation (the owner's O-44): this gate goes at R7-V5 (PLAN G556). Until then it computes and never
+        // reads the SignatureVerdict row, so a declaration that fails late still fails it.
+        var formation = CombineProof(this.FormSignature(requirement), this.FormSignature(implementation), true);
         if (formation != ConstraintProof.Proven)
         {
             return formation;

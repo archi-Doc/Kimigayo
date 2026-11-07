@@ -204,4 +204,6 @@ public enum KimiDeclarationId : byte
     ArrayRepr,
     SliceRepr,
     StringRepr,
+    StorageStride,
+    StorageGrowArray,
 }

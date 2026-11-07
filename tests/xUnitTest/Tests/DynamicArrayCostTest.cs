@@ -225,10 +225,10 @@ public class DynamicArrayCostTest
     [Fact]
     public void ReloadEmitsOnlyTheCurrentlyUsedCachedHelpers()
     {
-        var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"before\"]\nlet first = values@uniq.remove(0)\nConsole.writeLine(first)");
+        var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"before\"]\nfor value in values@move => Console.writeLine(value)");
         using var initial = new StringWriter();
         Assert.True(c.Generate(initial), MinimalEmissionTest.Describe(c));
-        Assert.Contains("@__kimi_array_remove_", initial.ToString()); // A generator names its helper (DECISIONS R5-M121).
+        Assert.Contains("@__kimi_array_own_", initial.ToString()); // A generator names its helper (DECISIONS R5-M121).
         var replacement = MinimalEmissionTest.Analyze("var values: Array<i32> = [20, 22]\nrequire values[0] + values[1] == 42 else => $abort(\"values\")\nvalues@uniq.clear()");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
         var tree = c.Kotonoha;
@@ -241,7 +241,7 @@ public class DynamicArrayCostTest
         using var output = new StringWriter();
         Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         var ir = output.ToString();
-        Assert.DoesNotContain("@__kimi_array_remove_", ir);
+        Assert.DoesNotContain("@__kimi_array_own_", ir);
 
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }

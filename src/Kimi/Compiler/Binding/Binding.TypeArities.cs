@@ -6,18 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private enum TypeLookupRole : byte
-    {
-        Any,
-        Type,
-        Semantics,
-    }
-
-    private static bool HasTypeLookupRole(BindingSymbol candidate, TypeLookupRole role)
-        => role == TypeLookupRole.Any || (role == TypeLookupRole.Semantics
-            ? candidate.Kind == BindingSymbolKind.SemanticsParameter
-            : (candidate.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType) && candidate.Declaration is not ContractKoto);
-
     private static bool DistinctTypeArities(DeclarationContainerKoto declaration, BindingSymbol head)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
@@ -30,24 +18,6 @@ public sealed partial class Binding
         }
 
         return true;
-    }
-
-    private BindingSymbol? SelectTypeCandidate(TypeCandidates candidates, Koto use)
-    {
-        if (candidates.Ambiguous)
-        {
-            this.Fail(use, BindingFailure.Ambiguous, true);
-            return null;
-        }
-
-        // Retain a mismatching declaration for the existing formation/arity diagnostic.
-        // A populated nearer stage must never fall through to an outer or default stage.
-        if (candidates.Import.Environment is not null)
-        {
-            this.importedContainers[use] = candidates.Import;
-        }
-
-        return candidates.Match ?? candidates.First;
     }
 
     // A stack-local summary fixes the lookup stage before checking Type arity.
@@ -64,14 +34,13 @@ public sealed partial class Binding
         ref TypeCandidates result,
         BindingSymbol? head,
         BindingScope scope,
-        bool core,
+        TypeLookupRole role,
         int arity,
-        AliasImport import = default,
-        TypeLookupRole role = TypeLookupRole.Any)
+        AliasImport import = default)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
-            if ((core && candidate.Kind == BindingSymbolKind.Container) || !HasTypeLookupRole(candidate, role) || !this.Accessible(candidate, scope))
+            if (!HasTypeLookupRole(candidate, role) || !this.Accessible(candidate, scope))
             {
                 continue;
             }
@@ -101,12 +70,5 @@ public sealed partial class Binding
             result.Import = same ? result.Import.MergeWitness(import) : import;
             result.Match = candidate;
         }
-    }
-
-    private BindingSymbol? SelectTypeCandidate(BindingSymbol? head, BindingScope scope, Koto use, bool core, int arity = 0)
-    {
-        var candidates = default(TypeCandidates);
-        this.AddTypeCandidates(ref candidates, head, scope, core, arity);
-        return this.SelectTypeCandidate(candidates, use);
     }
 }

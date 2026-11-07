@@ -9,9 +9,9 @@ namespace XunitTest;
 
 // The Array family of MIR code generation (R5 C8d; SPEC 4.3, 4.5, 4.9.3, 4.9.5, 4.9.7, 7.7.4, 16.3.2, 22.2; DECISIONS R5-M121): each operation
 // and storage kind calls its LegacyRow item's routine (P1b's helper of its kind over the element, or a capacity routine given the element's
-// stride) with the call's operands by slot, its result slot and location, at a direct call, an Item's Value call and an adapter's entry; an
-// Array from none, setArrayLength and capacity are written in place; an Array's glue calls its Drop helper, which destroys the elements by
-// their glue; natively.
+// stride) with the call's operands by slot, its result slot and location, at a direct call, an Item's Value call and an adapter's entry;
+// `append`, `reserve` and `setArrayLength` are Kimigayo bodies (R8-A1a), called the same way; an Array from none and capacity are written in
+// place; an Array's glue calls its Drop helper, which destroys the elements by their glue; natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library over Arrays of i32, a 16-byte struct, a drop-needing struct, a 24-byte Copy struct, string and Unit: the eight operations, the
@@ -115,16 +115,16 @@ public sealed partial class FunctionCodegenTest
     public void ArrayProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
-    // SPEC 4.9.3 (DECISIONS R5-M121): each operation calls the helper of its LegacyRow item with the handle, its operands at their slots (an
-    // element by value, a string by its storage, a zero-sized one not at all), its result slot and the call's location; append's helper grows
-    // by the element's stride.
+    // SPEC 4.9.3 (DECISIONS R5-M121): each operation calls the helper of its LegacyRow item, or its body (R8-A1a, A1b), with the handle, its
+    // operands at their slots (an element by value, a string by its storage, a zero-sized one not at all), its result slot and the call's
+    // location; `append`'s body grows through `growArray` by the element's stride.
     [Fact]
     public void ArrayOperationsCallTheHelperOfTheirInstance()
     {
         var c = Analyze(Arrays, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var grow = ir.Function("__kimi_array_grow");
+        var grow = Assert.Single(FunctionsOf(ir, c, "growArray"));
         foreach (var (name, site, signature, shape, stride) in new[]
         {
             ("arPut", "values.append(value)", "internal void (ptr, i32, ptr, i64)", "call void @(ptr %, i32 %, ptr @, i64 {0})", 4),
@@ -135,7 +135,9 @@ public sealed partial class FunctionCodegenTest
             var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))));
             Assert.Equal(signature, call.Callee!.Signature);
             Assert.Equal(string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, LocationText(Arrays, site).Length), call.Shape);
-            Assert.Contains(call.Callee.Instructions, x => x.Callee == grow && x.Shape == $"call void @(ptr %, i64 {stride}, i64 %, ptr %, i64 %)");
+            Assert.Contains(FunctionsOf(ir, c, "append"), x => x == call.Callee);
+            Assert.Contains(call.Callee.Instructions, x => x.Callee == grow && x.Shape == "call void @(ptr %, i64 %, i64 %, ptr %, i64 %)");
+            Assert.Contains(call.Callee.Instructions, x => x.Shape == $"store i64 {stride}, ptr %, align 8");
         }
 
         var text0 = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arPutText"))));
@@ -143,17 +145,18 @@ public sealed partial class FunctionCodegenTest
         var take = Assert.Single(FunctionsOf(ir, c, "arTake"));
         var pop = Assert.Single(CallsOf(take));
         Assert.Equal("internal void (ptr, ptr)", pop.Callee!.Signature);
-        Assert.Same(take.Parameters[0], pop.Operands[1]); // Its result slot is the caller's.
+        Assert.Same(take.Parameters[0], pop.Operands[0]); // Its result slot is the caller's, first in a body's signature.
         Assert.Contains(pop.Callee.Instructions, static x => x.Shape == "store i32 1, ptr %, align 4"); // None's tag.
 
-        var removes = FunctionsOf(ir, c, "remove").SelectMany(CallsOf).Select(static x => x.Callee!.Signature).Where(static x => x.Contains("(ptr, i64", StringComparison.Ordinal));
-        Assert.Equal(["internal i32 (ptr, i64, ptr, i64)", "internal void (ptr, i64, ptr, i64)", "internal void (ptr, i64, ptr, ptr, i64)"], removes.Distinct().Order(StringComparer.Ordinal));
+        var removes = FunctionsOf(ir, c, "remove").SelectMany(CallsOf).Select(static x => x.Callee!.Signature).Where(static x => x.EndsWith("ptr, i64, ptr, i64)", StringComparison.Ordinal));
+        Assert.Equal(["internal i32 (ptr, i64, ptr, i64)", "internal void (ptr, i64, ptr, i64)", "internal void (ptr, ptr, i64, ptr, i64)"], removes.Distinct().Order(StringComparer.Ordinal));
         Assert.Contains(FunctionsOf(ir, c, "insert").SelectMany(CallsOf), static x => x.Callee!.Signature == "internal void (ptr, i64, i32, ptr, i64)");
         Assert.Contains(FunctionsOf(ir, c, "swap").SelectMany(CallsOf), static x => x.Callee!.Signature == "internal void (ptr, i64, i64, ptr, i64)");
 
         var reserve = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arRoom"))));
-        Assert.Same(ir.Function("__kimi_array_reserve"), reserve.Callee);
-        Assert.Equal($"call void @(ptr %, i64 16, i64 8, ptr @, i64 {LocationText(Arrays, "values.reserve(8)").Length})", reserve.Shape);
+        Assert.Contains(FunctionsOf(ir, c, "reserve"), x => x == reserve.Callee);
+        Assert.Equal($"call void @(ptr %, i64 8, ptr @, i64 {LocationText(Arrays, "values.reserve(8)").Length})", reserve.Shape);
+        Assert.Contains(reserve.Callee!.Instructions, static x => x.Shape == "store i64 16, ptr %, align 8"); // The stride it gives growArray.
         var shrink = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arFit"))));
         Assert.Same(ir.Function("__kimi_array_shrink"), shrink.Callee);
         Assert.Equal($"call void @(ptr %, i64 16, ptr @, i64 {LocationText(Arrays, "values.shrinkToFit()").Length})", shrink.Shape);
@@ -181,7 +184,7 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 4.3, 4.9.5, 22.2 (DECISIONS R5-M121): an Array from none is the runtime's empty handle at its Place; capacity loads the handle's
-    // capacity word; setArrayLength stores the length in its length word; the storage boundary's helpers write the remainder's Fields.
+    // capacity word; setArrayLength's body stores the length in its length word; the storage boundary's helpers write the remainder's Fields.
     [Fact]
     public void TheStorageBoundaryAndTheInPlaceRowsWriteTheHandlesWords()
     {
@@ -195,8 +198,8 @@ public sealed partial class FunctionCodegenTest
         Assert.Contains(size.Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 16");
         Assert.Contains(size.Instructions, static x => x.Shape == "load i64, ptr %, align 8" && x.Operands[0].Shape == "getelementptr i8, ptr %, i64 16");
 
-        var copies = FunctionsOf(ir, c, "initRepeating").Single();
-        Assert.Contains(copies.Instructions, static x => x.Shape == "store i64 %, ptr %, align 8" && x.Operands[^1].Shape == "getelementptr i8, ptr %, i64 8");
+        var published = FunctionsOf(ir, c, "setArrayLength").SelectMany(static x => x.Instructions);
+        Assert.Contains(published, static x => x.Shape == "store i64 %, ptr %, align 8" && x.Operands[^1].Shape == "getelementptr i8, ptr %, i64 8");
 
         var borrows = FunctionsOf(ir, c, "iterate").SelectMany(CallsOf).Where(static x => x.Callee!.Signature == "internal void (ptr, ptr)").ToArray();
         Assert.Contains(borrows, static x => x.Callee!.Instructions.Where(static y => y.Opcode == "store").Select(static y => y.Shape)
@@ -237,11 +240,11 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([init, grow], texts.Where(x => x.Callee == init || x.Callee == grow).Select(static x => x.Callee));
         Assert.Equal(
             $"call void @(ptr %, i64 24, i64 2, ptr @, i64 {LocationText(Literals, "[s@move, \"t\"]").Length})", texts.Single(x => x.Callee == grow).Shape);
-        Assert.DoesNotContain("@__kimi_array_append_", text, StringComparison.Ordinal);
+        Assert.Empty(FunctionsOf(ir, c, "append")); // A literal places its elements through one growth and never appends.
     }
 
     // SPEC 7.7.4 (DECISIONS R5-M108, R5-M121): an Item's Value call and an erased Item's adapter entry call what its direct call calls, the
-    // helper of its instance or the capacity routine given its stride; the entry forwards its own parameters.
+    // helper or body of its instance or the capacity routine given its stride; the entry forwards its own parameters.
     [Fact]
     public void AnArrayItemCallsItsDirectCallsRoutine()
     {
@@ -250,8 +253,9 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(text);
         var item = Assert.Single(FunctionsOf(ir, c, "arItemTake"));
         Assert.Contains(CallsOf(item), static x => x.Callee!.Signature == "internal void (ptr, ptr)" && x.Callee.Instructions.Any(y => y.Shape == "store i32 1, ptr %, align 4"));
-        var room = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arItemRoom"))), x => x.Callee == ir.Function("__kimi_array_reserve"));
-        Assert.Equal($"call void @(ptr %, i64 16, i64 4, ptr @, i64 {LocationText(Arrays, "f(values, 4)").Length})", room.Shape);
+        var reserves = FunctionsOf(ir, c, "reserve");
+        var room = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arItemRoom"))), x => reserves.Contains(x.Callee));
+        Assert.Equal($"call void @(ptr %, i64 4, ptr @, i64 {LocationText(Arrays, "f(values, 4)").Length})", room.Shape);
 
         var entries = ir.Functions.Where(x => x.Blocks.Count > 0 && CallsOf(x) is [{ Callee.Signature: "internal void (ptr, i32, ptr, i64)" }]).ToArray();
         var entry = Assert.Single(entries, x => x.Parameters.Count > 4);
@@ -325,20 +329,20 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 7.7.4, 4.9.3 (DECISIONS R5-M121, ruling Q6): an erased append over an element in memory (a struct) or over a reference (ref/string)
-    // is an entry that forwards its handle, its element and its location, as received, to the helper of its instance: the entry's input of a
-    // reference is a SharedReference where the helper's is a Value of the same pointer Type.
+    // is an entry that forwards its handle, its element and its location, as received, to the body of its instance: the entry's input of a
+    // reference is a SharedReference where the body's is a Value of the same pointer Type.
     [Theory]
     [InlineData("Pair")]
     [InlineData("ref/string during static")]
-    public void AnErasedAppendForwardsItsElementToTheHelper(string element)
+    public void AnErasedAppendForwardsItsElementToItsBody(string element)
     {
-        var text = Generate(Analyze(
+        var c = Analyze(
             "struct Pair\n    public let a: i64\n    public let b: i64\n    public init(a: i64, b: i64)\n        self.a = a\n        self.b = b\n" +
             $"func erased() -> (uniq/Array<{element}>, {element}) -> () => Array<{element}>.append\n",
-            OutputKind.Library));
-        var ir = GeneratedIr.Parse(text);
-        var helper = ir.Function(Regex.Match(text, @"define internal \S+ @(__kimi_array_append_\d+)\(").Groups[1].Value);
-        var entry = Assert.Single(ir.Functions, x => x.Blocks.Count > 0 && CallsOf(x) is [{ } only] && only.Callee == helper);
+            OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var body = Assert.Single(FunctionsOf(ir, c, "append"));
+        var entry = Assert.Single(ir.Functions, x => x.Blocks.Count > 0 && CallsOf(x) is [{ } only] && only.Callee == body);
         var forward = Assert.Single(CallsOf(entry));
         Assert.Equal(4, forward.Operands.Count); // The handle, the element, and the caller's location and its length.
         Assert.Equal(entry.Parameters.Where(forward.Operands.Contains), forward.Operands);

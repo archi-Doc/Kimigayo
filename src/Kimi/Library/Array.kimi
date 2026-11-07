@@ -1,5 +1,5 @@
-// Compiler-managed dynamic Array (SPEC 4.5, 4.9): storage, length/capacity metadata and the mutation
-// operations are supplied by the compiler; helpers may be added here as functions only.
+// Compiler-managed dynamic Array (SPEC 4.5, 4.9): storage, length/capacity metadata and the operations of
+// ArrayOperations.kimi are supplied by the compiler; other operations and helpers are functions here.
 public struct Array<T>
     Self is Iterable
     associate Iterable.IteratorType(source) is ArrayIterator<T> during source
@@ -196,6 +196,98 @@ public struct Array<T>
             for index in values.indices
                 Raw.initialize(storage + offset + index, values[index])
             Storage.setArrayLength(self, offset + count)
+
+    /// Ensures `capacity >= length + additional`, and moves nothing when the capacity suffices (SPEC 4.9.5).
+    ///
+    /// - abort: `additional` is negative, `length + additional` overflows, or growth fails.
+    public func reserve(self: uniq/Self, additional: isize)
+        require additional >= 0 else => Storage.argumentOutOfRange()
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            // The checked sum Aborts with KIMI_E_INT_OVERFLOW.
+            let minimum = (*handle).length + additional
+            if minimum > (*handle).capacity
+                Storage.growArray(handle@raw/Storage.ArrayRepr<u8>, Storage.stride<T>(), minimum)
+
+    /// Moves `value` to the end, growing the storage first when it is full (SPEC 4.9.3).
+    ///
+    /// - abort: The length overflows, which only zero-sized elements reach, or growth fails.
+    public func append(self: uniq/Self, value: T)
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            let length = (*handle).length
+            // The checked sum Aborts with KIMI_E_INT_OVERFLOW.
+            let needed = length + 1
+            if needed > (*handle).capacity
+                Storage.growArray(handle@raw/Storage.ArrayRepr<u8>, Storage.stride<T>(), needed)
+            Raw.initialize((*handle).data + length, value@move)
+            (*handle).length = needed
+
+    /// Places `value` at `index`, moving the elements from `index` on up one slot, in order (SPEC 4.9.3).
+    ///
+    /// - abort: `index` is outside `[0, length]`, the length overflows, which only zero-sized elements reach, or growth
+    ///   fails.
+    internal func insertAt(self: uniq/Self, index: isize, value: T)
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            let length = (*handle).length
+            require index >= 0 and index <= length else => Storage.indexBounds()
+            // The checked sum Aborts with KIMI_E_INT_OVERFLOW.
+            let needed = length + 1
+            if needed > (*handle).capacity
+                Storage.growArray(handle@raw/Storage.ArrayRepr<u8>, Storage.stride<T>(), needed)
+            let data = (*handle).data
+            // From the end: each element moves into the slot the previous step vacated (SPEC 5.2.3).
+            var position = length
+            while position > index
+                let previous = position - 1
+                Raw.initialize(data + position, data[previous]@move)
+                position = previous
+            Raw.initialize(data + index, value@move)
+            (*handle).length = needed
+
+    /// Removes and returns the last element, or returns `None` when the Array is empty (SPEC 4.9.3).
+    public func pop(self: uniq/Self) -> Option<T>
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            let length = (*handle).length
+            require length > 0 else => return .None
+            let last = length - 1
+            (*handle).length = last
+            return .Some((*handle).data[last]@move)
+
+    /// Removes and returns the element at `index`, moving the following elements down one slot, in order (SPEC 4.9.3).
+    ///
+    /// - abort: `index` is outside `[0, length)`.
+    internal func removeAt(self: uniq/Self, index: isize) -> T
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            let length = (*handle).length
+            require index >= 0 and index < length else => Storage.indexBounds()
+            let data = (*handle).data
+            let removed = data[index]@move
+            let last = length - 1
+            // From `index`: each element moves into the slot the previous step vacated (SPEC 5.2.3).
+            var position = index
+            while position < last
+                let next = position + 1
+                Raw.initialize(data + position, data[next]@move)
+                position = next
+            (*handle).length = last
+            return removed@move
+
+    /// Exchanges the elements at `first` and `second`; equal positions change nothing (SPEC 4.9.3).
+    ///
+    /// - abort: A position is outside `[0, length)`.
+    internal func swapAt(self: uniq/Self, first: isize, second: isize)
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            let length = (*handle).length
+            require first >= 0 and first < length and second >= 0 and second < length else => Storage.indexBounds()
+            if first == second => return
+            let data = (*handle).data
+            // Distinct positions designate distinct Places, also when `T` is zero-sized (SPEC 5.2).
+            Kimi.Intrinsics.swap(data[first]@uniq, data[second]@uniq)
 
     /// Removes the elements for which `matching` returns true and keeps the order of the others.
     ///

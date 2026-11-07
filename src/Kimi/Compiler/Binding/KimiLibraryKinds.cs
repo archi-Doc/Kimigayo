@@ -70,14 +70,8 @@ public enum CompilerFunctionKind : byte
     MakeArc,
     Clone,
     TestTempDirectory,
-    ArrayReserve,
-    ArrayAppend,
-    ArrayInsert,
-    ArrayPop,
-    ArrayRemove,
     ArrayClear,
     ArrayShrinkToFit,
-    ArraySwap,
     TextFixed,
     TextHeap,
     TextWriter,
@@ -130,7 +124,7 @@ public enum CompilerFunctionKind : byte
     StorageTransferBytes,
     StorageIndexBounds,
     StorageBorrowUniqSlice,
-    StorageSetArrayLength,
+    StorageStride,
     RawAllocate,
     RawRelease,
     RawInitialize,
@@ -214,8 +208,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or
-            CompilerFunctionKind.Swap or CompilerFunctionKind.ArrayReserve or CompilerFunctionKind.ArrayAppend or CompilerFunctionKind.ArrayInsert or CompilerFunctionKind.ArrayPop or
-            CompilerFunctionKind.ArrayRemove or CompilerFunctionKind.ArrayClear or CompilerFunctionKind.ArrayShrinkToFit or CompilerFunctionKind.ArraySwap or
+            CompilerFunctionKind.Swap or CompilerFunctionKind.ArrayClear or CompilerFunctionKind.ArrayShrinkToFit or
             CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextHeap or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or CompilerFunctionKind.TextToString or
             CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or CompilerFunctionKind.FixedBufferBytes or CompilerFunctionKind.FixedBufferText or
             CompilerFunctionKind.FixedBufferValidate or CompilerFunctionKind.FixedBufferClear or CompilerFunctionKind.FixedBufferReserve or CompilerFunctionKind.FixedBufferIntoText or
@@ -225,8 +218,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
             CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageBorrowDictionary or
             CompilerFunctionKind.StorageBorrowDictionaryExclusive or CompilerFunctionKind.StorageOwnDictionary or CompilerFunctionKind.StorageKeyAt or CompilerFunctionKind.StorageValueAt or
             CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive or CompilerFunctionKind.StorageOwnFixed or
-            CompilerFunctionKind.StorageDictionaryLayout or CompilerFunctionKind.StoragePlaceDictionaryEntry or CompilerFunctionKind.StorageBorrowUniqSlice or
-            CompilerFunctionKind.StorageSetArrayLength => default,
+            CompilerFunctionKind.StorageDictionaryLayout or CompilerFunctionKind.StoragePlaceDictionaryEntry or CompilerFunctionKind.StorageBorrowUniqSlice => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
@@ -237,6 +229,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.TextWriter => Intrinsic(IntrinsicId.ErasedWriter),
         CompilerFunctionKind.StorageTryAllocateBytes => Intrinsic(IntrinsicId.TryAllocateBytes),
         CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
+        CompilerFunctionKind.StorageStride => Intrinsic(IntrinsicId.Stride),
         CompilerFunctionKind.RawAllocate => Intrinsic(IntrinsicId.RawAllocate),
         CompilerFunctionKind.RawRelease => Intrinsic(IntrinsicId.RawRelease),
         CompilerFunctionKind.RawInitialize => Intrinsic(IntrinsicId.RawInitialize),
@@ -256,7 +249,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextValidateUtf8 =>
+        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.ArrayClear and <= CompilerFunctionKind.TextValidateUtf8 =>
             CompilerFunctionEffect.Inputs,
         >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or
             >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,

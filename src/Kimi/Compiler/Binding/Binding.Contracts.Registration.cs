@@ -90,7 +90,7 @@ public sealed partial class Binding
         for (var depth = 0; structure.Bases.Count > 0 && depth <= this.nodes.Count; depth++)
         {
             var syntax = structure.Bases[0];
-            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], false);
+            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.Any);
             if (type is null)
             {
                 return null;
