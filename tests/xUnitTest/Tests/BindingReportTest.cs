@@ -261,12 +261,13 @@ public sealed class BindingReportTest
         Assert.InRange(time.ElapsedMilliseconds, 0, 30_000);
     }
 
-    // The same, through the whole cold path: an import with n Types without a C counterpart has n records, at bytes linear in n.
+    // The same, through the whole cold path: an import with n Types without a C counterpart has n records, at bytes linear in n. The points lie
+    // past the step a pass's tables take between 384 and 512 parameters, which a valid import has too.
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void AnImportsPartsTakeLinearBytes()
     {
-        int[] parts = [128, 256, 512];
+        int[] parts = [512, 1024, 2048];
         var compilations = new Compilation[parts.Length];
         var bytes = AllocationMeasurement.MeasureSeries(parts.Length, i =>
         {
