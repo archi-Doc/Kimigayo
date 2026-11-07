@@ -409,7 +409,7 @@ public sealed partial class Binding
             }
 
             var syntax = structure.Bases[0];
-            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], false);
+            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.Any);
         }
 
         return false;

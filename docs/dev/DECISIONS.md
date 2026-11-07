@@ -4932,6 +4932,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     「受け入れる」. The measured cost is accepted and its optimization is a later PLAN item, whose candidates are a HandedSignatures memo per
     declaration (at most 18%) and the rows (28%); form (a) is rejected for the reasons above. Warm step 4 of the Loan stratum stays 0
     B.
+  - Amended by R4-M181 (PLAN G416 U2): A5 no longer reads `Binding.SelfAdmitted` through TyCtxt; `TyCtxt.SelfAdmitted` goes, and A5 reads row 13's entries.
 - **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
   (2026-10-31; superseded in part by R4-M162; amended by R4-M161; design round 2 and design-r2 Amendments 1-5; the owner, verbatim:
   「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and 「すべて推奨の内容でお願いします」 for the e1a split) SPEC 10.7, 15.3.5,
@@ -5721,6 +5722,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     no verdict or record move: 0 record differences on the 1,764-program oracle, and the A5, scaling and retention classes
     pass.
   - Rejected: (B), normalizing every constructor's counts to the binder's (ten sites, keeping a count no key reader reads).
+- **R4-M181 A5 reads what a value holds (PLAN G416 U2)** (2026-11-07; the Middle's ruling F5 (a), no U2-0, no U2b, on the owner's O-12 and O-13; the Front's F1 and F3
+  in `claude/f-g416-u0`). `MirTypes.HoldsLoans` walks `TyCtxt.Holdings` one level at a time; it no longer decides a step from a Type's shape, tracks a stored part's positions, or
+  reads a layer's statement or the holder's Type arguments.
+  - **`RawMembers` takes a Holdings read's key** (the layer, the Type its declaration writes there, the holder), and A5 reads the walk's own key, since row 15's entry carries its pointee's. A `layer` that is no raw layer answers true with no members, where `StoredStep` throws; Holdings publishes a Members entry only at a raw layer.
+  - **Departures.** BU-39 and BU-58 keep `TyCtxt.RawMembers(instance, part, positions, members)` for R4-M76's per-part guard; the positions form goes, because the guard no longer tracks positions: A5 asks at the entry the walk stands on. R4-M154's sentence that A5 reads `SelfAdmitted` through TyCtxt no longer holds: `TyCtxt.SelfAdmitted` goes, and A5 reads row 13's entries, which `RawHoldings` publishes from `Binding.SelfAdmitted`.
+  - **The table.** Every entry past a step gives its mode's fact (`Met`: Loan in the value's own storage, the write fact past an exclusive reference, nothing more in a LoanOnly mode), and
+    only Own mode goes past it (`Past`). `Inline`, a safe `Own` and `Loan` pass the walk on. A `Loan` entry adds no fact of its own and takes `own ? mode | LoanOnly : mode`: a Type
+    argument has no address (SPEC 15.3.5), but past an exclusive reference a call may replace the whole value, so it stays Exclusive. The modes, `MirHoldingKey` (R4-M157),
+    `MirDepths` (R4-M153), `Facts` and the memo per case Type (R4-M140) are unchanged. A5 keeps its own key: `Hold.Written` stays as declared.
+  - **Binding's storage Limit is no fact of A5's.** `Holdings` publishes the entries and answers false; the walk ignores the answer, since its own bound covers the growth (R4-M153).
+  - **`Unsupported` is A5's Limit** wherever a mode reads the write fact, and Loan alone in a LoanOnly mode (Q2's condition 4).
+  - **A pair layer never reaches this walk** (`MirBorrows.Holding` reads `cases.Type`). The old `PairLayer` arm was dead: every pair layer is `IsAbstract`, so the arm above it answered
+    first. A direct call now gets one entry per admitted case: `s is owner or ref` moves from Through to Named, `s is owner` over a concrete target to no Loan. No analysis reaches it.
+  - **Named limit, the bound (the owner's O-47 (b), O-49 (a), and O-53 (a), verbatim 「(a) O-49 (a) は A5 にも適用する」; PLAN G408).** A storage nest past 32 entries, a Dictionary level counting two, in Binding and in A5. `MirTypes.Bound` stays 32, shared by both walks; row 9's `(K, V)` entry stays. A level is one entry: a Case's payload component moves from two levels to one, a Dictionary's K and V from one to two. The edge is entries from the holder's root, so it shifts with the holder and with what else the nest holds. On a nest holding a Dictionary level, an invalid program past the limit reports `OwnershipDepthLimit_Kd` alone at the call, in place of its conflict records, and a valid one may be newly rejected by that Resource record (IMPL 21.3.2). Edges pinned: Dictionaries alone, conflicts through 15, limit from 16, valid past `uniq` from 16, by value from 17; three entries a level, exact at 10, invalid and valid past `uniq` at 11, by value at 12; one Dictionary under 30 Tuples, limited past `uniq`. A5's limit is located where a check rests on the guard; a program whose answer comes from Binding's row has no record past the bound on either analysis (the Front's named limit). An enum nest gets the exact answer, so such a program gains Language records in place of a limit record, and a guard form loses the call's limit record. A nest with no Dictionary level and no enum moves nothing.
+  - **D10 moved nothing.** U0 publishes UniqSlice as a view. The Field reading differs from the view only by a `during self` layer, which is not valid (`UniqSlice<i32> during self` is
+    MissingOriginBinding_Kd), and by unpublished members, which its one slot cannot leave. All four contexts agree on `UniqSlice<i32>` and `UniqSlice<ref/i32>`. So no U2b.
+  - **Rejected:** mapping Holdings' false to Limit or Deep (Limit replaces OwnershipDepthLimit_Kd; Deep hides a decided part beside it). A depth weight per entry to keep the old numbers (a second copy of what a level is).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -7354,6 +7372,7 @@ resumed by R4-M86 (2026-10-20).
     no result row reads), so no test asserts it.
   - Supersedes BU-24's `TyCtxt.RawStep(raw)`, `TyCtxt.RawStep(function, …)` and `TyCtxt.RawMembers(origin, …)` readers, with its
     open difference between the declared signature view and instantiated retention.
+  - Amended by R4-M181 (PLAN G416 U2): `TyCtxt.RawMembers(instance, part, positions, members)` goes; the guard asks at the entry its walk stands on.
 - **BU-40 N2's retention rows: rule A, R′ and the transfer rule from the input list, with a Chain kind** (2026-10-25; superseded in
   part by BU-42 and BU-52; designs A and B, B with A's Iterator key; PLAN G160's N2 rows, unit bu41; the owner's order of 2026-10-25)
   SPEC 15.6.4 as DECISIONS R4-M131 states it. Binding's rows had the unstated-layer rule only as D6's result branch
@@ -8327,6 +8346,7 @@ resumed by R4-M86 (2026-10-20).
     StatesUnstated (the Checker would need a TyCtxt, and the row's seen keys would be hidden); a cross-query cache.
   - Open (PLAN G309): with raw leaves (`raw/i32 during static`, `raw/i32 during s`) the chain reaches Binding's raw-Origin walks, still
     exponential; their TypeDagScalingTest rows are Explicit until G309.
+  - Amended by R4-M181 (PLAN G416 U2): `TyCtxt.RawMembers` takes a Holdings read's key, and its positions form goes.
 
 - **BU-59 A premise source's own check is published on its source, `BindingSymbol.SourceState` and `SourceCause`, in rounds of a fresh
   capability epoch, each in the reverse of the previous round's order** (2026-10-30; PLAN G170 N6 under C1 §5, unit U1, bu74; the
@@ -9682,6 +9702,12 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: the row at contract matching (five dependent record moves at a reader R7-V5 deletes); settled verdicts (B1, B2); `declarationFailed`
     (a bool for one commit); a `SourceStates` publication; a verdict epoch (BU-105); the reporting check as the only judge (it runs after every
     reader); a header-state guard without a reproducer; a flag steering `RevalidateImplicitConstructors`' read (a symptom fix).
+- **BU-122 A Type name resolves by one pure evaluation and one writer: `ResolvePath`, `PublishPath`** (2026-11-07; R7-N1a; Major; design review) SPEC 9.5, 9.6, 9.7, 13.5.1.
+  - Rule: `ResolvePath(syntax, scope, role, arity)` returns a `ResolvedPath`, writes nothing on the use's nodes or in a table keyed by them, and reads no state a publication writes; it may force a declaration query, whose facts and records are that declaration's. A stage reports by returning: `Selected`, `Unresolved`, `Ambiguous`, `QualificationStop` with its facts. `PublishPath` alone writes, once, from the `nameSteps` stack. One path stands above a mark, but for an adaptation target, which compares two roles and replays both lookups' steps; a role's ambiguity there stands beside the other's selection. `TypeName` is the two together.
+  - `TypeLookupRole` takes `core` as a row: `Any`, `NoContainer`, `Type`, `Semantics`. They are today's filters, not SPEC 9.2's roles, and `Any` alone reaches stage 4.
+  - Removes `RootTypeName`, `SelectTypeCandidate`, `StopInheritedLookup`, `LookupImportedType` and `Lookup`'s Type branch. `ResolveRootPath` keeps a member step of its own until the `::` unit.
+  - Behavior-preserving. b, c, d, e and f are separate designs; G488 and BU-117 stay open.
+  - Rejected: N0's patch (stages publish); snapshot and undo; a `publish` flag; a per-use memo (a Koto-keyed table); recursion on the left instead of the stack (O(depth²)); SPEC's names on the rows (they are not its contracts).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
