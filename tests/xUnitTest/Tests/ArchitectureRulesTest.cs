@@ -61,6 +61,11 @@ public class ArchitectureRulesTest
     // matching its source.
     private const string DeletedByH10b2 = @"\b(?:ControlFlowAnalysi[s]|ControlFlowIssu[e]|ControlFlowNodeInf[o]|AnalyzeControlFlo[w]|LintError[s])\b";
 
+    // R8-S1a (RP6): the paths the library witness table replaced, one rule and one witness kind for a built-in Type's library conformance.
+    private const string ReplacedByWitnessTable = @"\w*FixedArrayEntry\b|" +
+        @"\b(?:FixedArrayWitness|RentFixedArrayArguments|ReturnFixedArrayArguments|FixedArraySlots)\b|" +
+        @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
+
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
@@ -93,6 +98,8 @@ public class ArchitectureRulesTest
     [InlineData("Test references to the old control-flow analysis", "tests", "*.cs", DeletedByH10b2, 0)]
     [InlineData("Benchmark references to the old control-flow analysis", "src/Benchmark", "*.cs", DeletedByH10b2, 0)]
     [InlineData("Playground references to the old control-flow analysis", "src/Playground", "*.cs", DeletedByH10b2, 0)]
+    // R8-S1a (RP6): no second statement of a table row; the test class FixedArrayEntryTest keeps its own name.
+    [InlineData("Compiler references to the paths the library witness table replaced", "src/Kimi", "*.cs", ReplacedByWitnessTable, 0)]
     // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
     [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Backend reads of Koto semantic slots", "src/Kimi/Compiler/Backend", "*.cs", SemanticSlotReads, 0)]
