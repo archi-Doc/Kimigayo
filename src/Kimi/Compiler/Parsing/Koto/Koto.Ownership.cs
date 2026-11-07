@@ -146,8 +146,25 @@ public abstract partial class Koto
 
         oldKoto.Parent = default;
         newKoto.Parent = this;
+        (this as AttributeKoto ?? this.Parent as AttributeKoto)?.Classify(); // An attribute's Name is its operand or that operand's callee.
         this.CodeContext.Compilation.NoteSyntaxEdit(this);
         return true;
+    }
+
+    /// <summary>Gets the first attribute of a kind attached to this node.</summary>
+    /// <param name="kind">The attribute kind.</param>
+    /// <returns>The attribute, or <see langword="null"/> when this node has none of that kind.</returns>
+    internal AttributeKoto? FindAttribute(AttributeKind kind)
+    {
+        for (var attribute = this.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            if (attribute.Kind == kind)
+            {
+                return attribute;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Replaces a known child slot in constant time, retaining source and attribute provenance.</summary>

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -29,6 +30,7 @@ public sealed partial class Binding
     private readonly List<int> retentionPath = new();
     private readonly Dictionary<(int Path, int Layer), int> retentionPathIds = new(); // The paths walked, each by its prefix and last layer.
     private readonly HashSet<BoundType> retentionParts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(BoundType Type, BoundType? Written, BoundType? Holder), int> retentionWalked = new(); // Enters' depths, reused.
 
     // Whether an unconditional `Input` premise edge relates a layer's node to the layer above's (`above`, -1: none), or the two are one
     // node: then the layer adds nothing to a fit, being reached whenever the layer above is (DECISIONS R4-M154, Revision 10). Such edges
@@ -138,14 +140,30 @@ public sealed partial class Binding
             return true;
         }
 
+        this.retentionWalked.Clear();
         return source.Through is { } referent && this.Borrows(position, null, null, referent, 0);
+    }
+
+    // Whether a query's walk enters a part: each (Type, Written, Holder), which alone decide what lies below it, at the shallowest depth it is
+    // met at, again where it is met shallower. So the answer is a function of the part, not of the path to it: within the bound it is the
+    // paths' answer, in work linear in the parts (G416: a branching recursion has 2^(depth/2) paths).
+    private bool Enters(BoundType type, BoundType? written, BoundType? holder, int depth)
+    {
+        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionWalked, (type, written, holder), out var met);
+        if (met && shallowest <= depth)
+        {
+            return false;
+        }
+
+        shallowest = depth;
+        return true;
     }
 
     // Whether a position, or a part it carries (Holds), is a borrow of a part a referent holds by value: one formed through a source's
     // layer.
     private bool Borrows(BoundType? position, BoundType? written, BoundType? holder, BoundType referent, int depth)
     {
-        if (position is null || depth > StorageBound)
+        if (position is null || depth > StorageBound || !this.Enters(position, written, holder, depth))
         {
             return false;
         }
@@ -213,6 +231,7 @@ public sealed partial class Binding
     {
         foreach (var at in this.retentionFills)
         {
+            this.retentionWalked.Clear();
             if (at is null || this.Occurs(part, at, 0))
             {
                 return true;
@@ -225,7 +244,7 @@ public sealed partial class Binding
     // Whether a carrier, Origins erased, is a Type or occurs among its components, to the depth bound.
     private bool Occurs(BoundType? type, BoundType carrier, int depth)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null || depth > StorageBound || !this.Enters(type, null, null, depth))
         {
             return false;
         }

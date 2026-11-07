@@ -9,6 +9,8 @@ namespace XunitTest;
 
 public class IntrinsicCapabilityTest
 {
+    private const string GrowingCopy = "contract Has\n    associate Out\nstruct G<T>\n    Self is Copy when T is Has, T.(Has).Out is Copy\n";
+
     [Theory]
     [InlineData("i32", true, true)]
     [InlineData("bool", true, true)]
@@ -455,6 +457,16 @@ public class IntrinsicCapabilityTest
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.3.3 Limits: a proof growing without end is a resource failure, never Unknown or Refuted, reported once at the declaration that reaches the
+    // limit; finite bindings prove Copy.
+    [InlineData("C6", "g200-copy", GrowingCopy + "struct W<X>\n    Self is Has\n    associate Has.Out is G<W<(X, X)>>\nfunc inspect(x: G<W<i32>>) -> ()\n    let a = x\n    let b = x\n    return\n", "Resource: func inspect(x: G<W<i32>>) -> ()", Explicit = true)]
+    [InlineData("guard", "g200-fin", GrowingCopy + "struct V\n    Self is Has\n    associate Has.Out is i32\nstruct W<X>\n    Self is Has\n    associate Has.Out is G<V>\nfunc inspect(x: G<W<i32>>) -> ()\n    let a = x\n    let b = x\n    return\n", "")]
+    public void AProofGrowingWithoutEndIsAResourceFailure(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(f => f.Name == name);
 

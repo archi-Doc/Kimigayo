@@ -15,20 +15,6 @@ public sealed partial class Binding
     /// ones. One whose Attribute fails before (InvalidLibraryImport) is no import.</summary>
     internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
 
-    // SPEC 22.6: whether a function carries the import Attribute; its validity is checked separately.
-    internal static bool IsLibraryImport(FunctionKoto function)
-    {
-        for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
-        {
-            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" })
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static Koto? AttributeTarget(AttributeKoto attribute)
     {
         var target = attribute.Parent;
@@ -100,7 +86,7 @@ public sealed partial class Binding
         var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is not AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } attribute ||
+            if (this.nodes[i] is not AttributeKoto { Kind: AttributeKind.LibraryImport } attribute ||
                 AttributeTarget(attribute) is not FunctionKoto function)
             {
                 continue;
@@ -232,7 +218,7 @@ public sealed partial class Binding
             var imports = 0;
             for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
-                if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" } && ++imports > 1)
+                if (attribute.Kind == AttributeKind.LibraryImport && ++imports > 1)
                 {
                     return true;
                 }
@@ -407,7 +393,7 @@ public sealed partial class Binding
             var valid = true;
             for (var attribute = container.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
-                if (attribute.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "Layout" })
+                if (attribute.Kind != AttributeKind.Layout)
                 {
                     continue;
                 }

@@ -202,6 +202,8 @@ public class InlineLayoutTest
             "struct D\n    let x: X<K<S3>>\n"], string.Empty),
         ["inherited binding"] = ([Src, Src2, "open struct KB<J>\n" + Conditional, "struct K<J> : KB<J>\n    let z: i32\n", StoresItem, ValIsD,
             "struct D\n    let x: X<K<S2>>\n"], "D"),
+        ["inherited binding finite"] = ([Src, Src2, "open struct KB<J>\n" + Conditional, "struct K<J> : KB<J>\n    let z: i32\n", StoresItem,
+            "struct S3\n    Self is Src2\n    associate Src2.Val is i32\n", "struct D\n    let x: X<K<S3>>\n"], string.Empty),
         ["two-step binding"] = ([Src, "contract Src3\n    associate Val is Src2\n", "contract Src2\n    associate Val2\n",
             "struct K<J>\n    Self is Src when J is Src3\n        associate Src.Item is J.Val.Val2\n", StoresItem,
             "struct S4\n    Self is Src3\n    associate Src3.Val is S5\n", "struct S5\n    Self is Src2\n    associate Src2.Val2 is D\n",

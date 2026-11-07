@@ -39,7 +39,8 @@ internal static class RuntimeAbi
 
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
-    // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (implementation-defined, IMPL 21.1.3).
+    // { data, length, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (implementation-defined, IMPL 21.1.3). A lasting pair with the
+    // library's Storage.StringRepr, since hand-written runtime IR needs these words; LayoutTest and KimiLibraryShapeTest pin the two.
     internal static readonly ValueLowering String = new(new("%kimi.string", 24, 8, 24, new[] { 0, 8, 16 }), "%kimi.string", "ptr");
 
     internal static readonly ValueLowering StringReference = new(new("ptr", 8, 8, 8, ReadOnlyMemory<int>.Empty), "ptr", "ptr");
