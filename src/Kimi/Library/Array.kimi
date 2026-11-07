@@ -141,10 +141,12 @@ public struct Array<T>
     /// - abort: `length` is negative.
     public func truncate(self: uniq/Self, length: isize)
         require length >= 0 else => Kimi.Storage.argumentOutOfRange()
-        while self.length > length
-            match self.pop()
-                .Some(_) => ()
-                .None => return
+        unsafe
+            let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
+            let count = (*handle).length
+            if length >= count => return
+            Storage.destroyValues<T>(((*handle).data + length)@raw/u8, count - length)
+            (*handle).length = length
 
     /// Moves every element of `other` to the end, in order; `other` is consumed.
     public func appendAll(self: uniq/Self, other: Array<T>)

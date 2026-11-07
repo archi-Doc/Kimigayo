@@ -123,6 +123,12 @@ public class DynamicArrayCapacityLimitTest
         Assert.Contains("destroying", kept, StringComparison.Ordinal);
     }
 
+    // SPEC 4.9.8: `truncate` is O(1 + d) as `clear` is: the same Array keeps its first element at once at O0 and O2. A walk from the end reads
+    // the null buffer at the top of the address space; FunctionCodegenTest's TruncateDestroysThroughItsOwnBody pins that no walk is written.
+    [Fact]
+    public void CleanupFreeTruncateDoesNotWalkTheElements()
+        => ScalarEmissionTest.EmitFixture("DynamicArrayCapacityConstantTruncate", FullArray("u8", long.MaxValue) + "values.truncate(1)\nrequire values.length == 1 else => $abort(\"length\")\nConsole.writeLine(\"ok\")", "ok\n");
+
     internal static string RuntimeIr()
     {
         var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = [1]\nvalues@uniq.append(2)");

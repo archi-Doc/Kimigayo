@@ -184,6 +184,16 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([element, free], CalleesOf(call.Callee!));
     }
 
+    // SPEC 4.9.7, 4.9.8 (R8-A1c): truncate destroys the tail by destroyValues in its own body, as clear does; it does not walk it through pop.
+    [Fact]
+    public void TruncateDestroysThroughItsOwnBody()
+    {
+        var c = Analyze("func arTrim(values: uniq/Array<i32>) => values.truncate(1)\n", OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        Assert.Single(FunctionsOf(ir, c, "truncate"));
+        Assert.Empty(FunctionsOf(ir, c, "pop"));
+    }
+
     // SPEC 4.3, 4.9.5, 22.2 (DECISIONS R5-M121): an Array from none is the runtime's empty handle at its Place; capacity's body loads the
     // handle's capacity word; setArrayLength's body stores the length in its length word; the storage boundary's helpers write the remainder's
     // Fields.

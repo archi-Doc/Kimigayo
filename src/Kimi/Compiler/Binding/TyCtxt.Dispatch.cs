@@ -81,9 +81,10 @@ internal sealed partial class TyCtxt
 
     // SPEC 22.10.1, 8.6.1: the one requirement a library Contract declares, which a compiler function runs on a user Type (BufferWriter's
     // reserve for an erased writer's destination); null for a Contract that declares none.
-    internal BindingSymbol? Declaration(KimiDeclarationId id) => library.GetSymbol(id);
-
     internal BindingSymbol? OwnRequirement(KimiDeclarationId contract) => library.GetSymbol(contract)?.Contract?.OwnRequirement();
+
+    // The library declaration a compiler component reaches by its catalog identity (InstanceCollector: the destroyArray instance).
+    internal BindingSymbol? Declaration(KimiDeclarationId id) => library.GetSymbol(id);
 
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
 

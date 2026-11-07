@@ -75,11 +75,6 @@ internal sealed partial class ModuleCodegen
     private RemainderFields? ResultParts(int item, ArrayHelperKind kind)
     {
         var parts = LegacyRuntimeHelpers.ArrayRow(kind).Result;
-        if (parts == ArrayHelperResult.None)
-        {
-            return default(RemainderFields);
-        }
-
         var entry = this.set.Items[item];
         var declared = TyCtxt.Signature(entry.Key.Body.Def.Decl!, entry.Representative, -1, out _);
         var result = declared is null ? null : this.collector.TypeOf(item, declared);

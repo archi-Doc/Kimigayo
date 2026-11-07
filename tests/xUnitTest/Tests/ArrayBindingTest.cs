@@ -204,6 +204,15 @@ public class ArrayBindingTest
             "struct Mark\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nvar marks: Array<Mark> = []\nmarks.append(Mark.init())\nmarks.append(Mark.init())\nmarks.clear()\nConsole.writeLine(\"cleared\")\nmarks.append(Mark.init())",
             "drop\ndrop\ncleared\ndrop\n");
 
+    // SPEC 4.9.1, 4.9.7 (R8-A1c; 4.9.7's `log.truncate(1)`): truncate destroys from the end in decreasing index order, one by one for a zero-sized
+    // element; at or above the length it changes nothing. A negative length is LibraryAbortContextTest's row.
+    [Theory]
+    [InlineData("TruncateOrder", "struct Logged\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop \\(self.id)\")\nvar log: Array<Logged> = [Logged.init(1), Logged.init(2), Logged.init(3)]\nlog.truncate(1)\nrequire log.length == 1 else => $abort(\"length\")\nConsole.writeLine(\"kept\")", "drop 3\ndrop 2\nkept\ndrop 1\n")]
+    [InlineData("TruncateAtLength", "struct Logged\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop \\(self.id)\")\nvar log: Array<Logged> = [Logged.init(1), Logged.init(2)]\nlet capacity = log.capacity\nlog.truncate(2)\nlog.truncate(3)\nrequire log.length == 2 and log.capacity == capacity else => $abort(\"changed\")\nConsole.writeLine(\"kept\")", "kept\ndrop 2\ndrop 1\n")]
+    [InlineData("TruncateZeroSized", "struct Mark\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nvar marks: Array<Mark> = []\nmarks.append(Mark.init())\nmarks.append(Mark.init())\nmarks.append(Mark.init())\nmarks.truncate(1)\nrequire marks.length == 1 else => $abort(\"length\")\nConsole.writeLine(\"cut\")", "drop\ndrop\ncut\ndrop\n")]
+    public void TruncateDestroysTheTail(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout);
+
     // SPEC 4.9.1, 4.9.3: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
     [Theory]
     [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(-1")]

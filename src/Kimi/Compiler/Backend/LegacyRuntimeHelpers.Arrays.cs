@@ -18,12 +18,11 @@ internal enum ArrayHelperKind : byte
 }
 
 /// <summary>What an Array helper's descriptor reads of its function's result, which its item's instance gives (ModuleCodegen.ResultParts;
-/// DECISIONS R5-M121): nothing; or a remainder record's Fields and its storage Field's size (SPEC 22.2), an owned remainder's with its
+/// DECISIONS R5-M121): a remainder record's Fields and its storage Field's size (SPEC 22.2), an owned remainder's with its
 /// capacity, a fixed array's, whose routine is given the array's length.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum ArrayHelperResult : byte
 {
-    None,
     Remainder,
     OwnedRemainder,
     FixedRemainder,
