@@ -167,9 +167,30 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(x: Wrapping<i32>) -> Wrapping<i32> => 1 + x\npublic func main() => ()")]
     [InlineData("func f(x: ref/isize) -> isize => 1 + x\npublic func main() => ()")]
     [InlineData("func f<T>(x: ref/T) -> T\n    T is PrimitiveInteger\n    return 1 + x\npublic func main() => ()")]
+    [InlineData("func f(x: ref/i32) -> i32 => 1 % x\npublic func main() => ()")]
+    [InlineData("func f<T>(x: T) -> T\n    T is PrimitiveInteger\n    return 1 % x\npublic func main() => ()")]
     public void AProvenRightIntegerSuppliesTheLiteralExpectation(string source)
     {
         var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // SPEC 13.3.4: a right operand's Left Contract provides `%` after a literal left; the counterpart check keeps its selection.
+    [Fact]
+    public void ARightLeftProviderKeepsTheLiteralRemainder()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("""
+            struct V
+                Self is LeftRemainderProvider<i32>
+                associate LeftRemainderProvider<i32>.Output is i32
+                var x: i32 = 0
+                public func remainderFrom(left: ref/i32, self: ref/Self) -> i32
+                    return 0
+            func f(v: V)
+                _ = 1 % v
+            public func main() => ()
+            """);
         Assert.True(compilation.Bind().IsComplete, MinimalEmissionTest.Describe(compilation));
         Assert.Empty(compilation.Binding.Issues);
     }
@@ -197,6 +218,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("_ = (1 + p) + (1 + true)", "OperatorNotDefined_Kd@1 + p|NonNumericOperand_Kd@1 + true")]
     [InlineData("_ = p + (1 + p)", "OperatorNotDefined_Kd@1 + p|OperatorNotDefined_Kd@p + (1 + p)")]
     [InlineData("let v: i32 = 1 + p", "OperatorNotDefined_Kd@1 + p")]
+    [InlineData("_ = 1 % p\n    let b: bool = 3", "OperatorNotDefined_Kd@1 % p|TypeMismatch_Kd@3")]
     public void ALiteralLeftRouteRecordStaysAtEachOperation(string body, string records)
     {
         var errors = Errors(Analyze($"func f(p: ref/raw/i32)\n    {body}\npublic func main() => ()"));
@@ -455,6 +477,23 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         "ref/()",
         "+",
         "1 + u",
+        null)]
+    [InlineData("let v = 1 % true", "NonNumericOperand_Kd", "bool", "%", "1 % true", null)]
+    [InlineData("func f(b: bool) => 1 % b\npublic func main() => ()", "NonNumericOperand_Kd", "bool", "%", "1 % b", null)]
+    [InlineData("func f(u: ()) => 1 % u\npublic func main() => ()", "NonNumericOperand_Kd", "()", "%", "1 % u", null)]
+    [InlineData(
+        "func f(q: ref/raw/i32) => 1 % q\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "ref/raw/i32",
+        "%",
+        "1 % q",
+        null)]
+    [InlineData(
+        "func f(u: uniq/raw/i32) => 1 % u\npublic func main() => ()",
+        "OperatorNotDefined_Kd",
+        "uniq/raw/i32",
+        "%",
+        "1 % u",
         null)]
     [InlineData(
         "func f(p: ref/raw/i32, n: isize) => p + n\npublic func main() => ()",

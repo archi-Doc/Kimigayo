@@ -110,7 +110,7 @@ public sealed partial class Binding
         }
 
         // SPEC 13.3.4: the counterpart is judged at its terminal Type, as the left operand is, and keeps its own Type.
-        if (left.IsNumeric && rightCore is not null && kind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash)
+        if (left.IsNumeric && rightCore is not null)
         {
             var counterpart = this.NumericApplicability(rightCore, scope);
             if (counterpart.Failure != BindingFailure.None)
