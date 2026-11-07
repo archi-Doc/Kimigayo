@@ -533,9 +533,11 @@ public sealed partial class Binding
 
     // Each atom's node, interned before the catalog's walk, so its local-Place premises (R5) reach them; a carrier's hidden Origins outlive
     // the layer above each of its occurrences (R2, SPEC 15.6.1). Each local region of a Closure part the contract reads reaches the meet of
-    // its sources as of the literal (BoundClosure.CapturedRegions; SPEC 7.7.2, 15.3.6, 15.8.2; PLAN G553), which the published result and
-    // this region then name alike: the capture is a snapshot of that meet, and a position that reaches the meet may hold it. A may-fact of
-    // this contract's rows, no relation of the Origins: a later source shrinks the solved region below that meet, and no proof reads the edge.
+    // its sources as of the literal (BoundClosure.CapturedRegions; SPEC 7.7.2, 15.3.6, 15.8.2; DECISIONS: G553), which the published result
+    // and this region then name alike: the capture is a snapshot of that meet, and a position that reaches the meet may hold it. A may-fact
+    // of this contract's rows, no relation of the Origins: a later source shrinks the solved region below that meet, and no proof reads the
+    // edge. It is conservative: the rows read it as a fit, and it sits on the region's one node, so it reaches every Closure's occurrence
+    // of the region (the owner's O-51; removal R7-O2).
     private int[] RetentionNodes(OriginPremiseEnvironment environment)
     {
         foreach (var closure in this.retentionCaptured)

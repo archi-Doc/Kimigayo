@@ -3,17 +3,19 @@
 // Closure literals (SPEC 7.7, 10.5, 10.8, 15.3.4): an anonymous function bound as a Closure value.
 // - Responsibility: the literal's header against a fixed expected signature (ClosureExpectation restates it over the literal's
 //   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
-//   ClosureResultType); its capture entries, body and result, and the published Signature and EnvironmentType
-//   (BindConcreteClosure); a Closure argument bound under a consultation (BindClosureArgument); for TryCandidate, the one Closure
+//   ClosureResultType); its capture entries, body and result, and the published Signature, EnvironmentType and CapturedRegions
+//   (BindConcreteClosure, by BindClosureHeader, CaptureEntriesFail, BindClosureBody and PublishClosure); a Closure argument bound under
+//   a consultation (BindClosureArgument); for TryCandidate, the one Closure
 //   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers,
 //   PermittedClosureReceiver).
 // - Inputs: the literal, its scope, an expected Type and whether its result is open, the capture sources it looks up; capture
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
-// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
+// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType, CapturedRegions,
 //   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
 // - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
 //   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
+//   no CapturedRegions, which PublishClosure writes with the environment, the moment the published result resolves the same regions, and
 //   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
 //   then (Binding.OriginProof.cs); a header probe binds no parameter, visits no body and restores the enclosing probe on exit.
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
@@ -471,8 +473,9 @@ public sealed partial class Binding
         return Complete(function, plan.EnvironmentType);
     }
 
-    // SPEC 7.7.2, 15.8.2 (PLAN G553): each local region a capture's Type names, a part of it included, with the meet of its sources now, at
-    // the literal, the moment the published result resolves them (BoundClosure.CapturedRegions); a Function Type part keeps its own Origins.
+    // SPEC 7.7.2, 15.8.2 (DECISIONS: G553): each local region a capture's Type names, a part of it included, with the meet of its sources
+    // now, at the literal, the moment the published result resolves them (BoundClosure.CapturedRegions); a Function Type part keeps its own
+    // Origins.
     private void CapturedRegions(BoundType type, BoundClosure plan, uint query)
     {
         if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)

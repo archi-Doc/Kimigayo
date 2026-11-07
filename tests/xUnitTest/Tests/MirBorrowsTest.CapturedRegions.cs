@@ -114,4 +114,16 @@ public sealed partial class MirBorrowsTest
     [InlineData(See + "func f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let inner = func [r] (p: ref/i32 during q) -> ref/i32 during q => p\n    let outer = func [inner] (p: ref/i32 during q) -> ref/i32 during q => inner(p)\n    let v = outer(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
     [InlineData(See + "struct H<F>\n    public var f: F\n    public init(f: F)\n        self.f = f@move\nfunc f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let h = H.init(func [r] (p: ref/i32 during q) -> ref/i32 during q => p)\n    let v = h.f(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
     public void AResultNamingOneSourceCannotHoldTheCapture(string source) => MirTargetSide.Check(source);
+
+    // A recorded conservative limit (the owner's O-51, verbatim 「全部 (a)」; the root fix with R7-O2's local slot regions): these three are
+    // valid and clean on the base, and shape C rejects them. The region's edge is a may-fact on its one node, which the rows read as a fit:
+    // (k2, O-51, R7-O2) one Closure's meet reaches another Closure's occurrence of the region (SPEC 7.7.2: each capture is its own snapshot);
+    // (v7, O-51, R7-O2) a position naming the meet as of the literal where the region, solved over a later bound, could not hold the capture
+    // (SPEC 15.3.6); (v7u, O-51, R7-O2) its exclusive form. R7-O2 turns these into accepted rows; until then each is this record, here.
+    [Theory]
+    [InlineData(See + "func both<A, B, T>(x: ref/A, y: ref/B, t: T) -> T\n    return t@move\nfunc t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = a@ref\n    var r = s\n    let c1 = func [r] () => r\n    r = b@ref\n    let c2 = func [r] () => r\n    let v = both(c1@ref, c2@ref, s)\n    b = 3\n    see(v)\n" + Main, "b = 3", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var c: i32 = 3\n    let s = a@ref\n    let w = b@ref\n    var r = s\n    let h = func [r, w] (p: ref/i32 during s) -> ref/i32 during s => p\n    let v = h(s)\n    r = c@ref\n    b = 3\n    see(v)\n    see(r)\n" + Main, "b = 3", null)]
+    [InlineData("func t(value: uniq/i32 during q, other: uniq/i32 during q, third: uniq/i32 during z)\n    var v = value@move\n    var h = func [v] (p: uniq/i32 during q) -> uniq/i32 during q => p\n    let a = h(other)\n    v@follow = 3\n    a@follow = 1\n    v = third@move\n" + Main, "v@follow = 3", null)]
+    public void ACapturedRegionsMeetIsAConservativeLimit(string source, string context, string? subject)
+        => MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(context, subject)));
 }
