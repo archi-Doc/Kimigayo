@@ -146,6 +146,7 @@ public sealed partial class Binding
         BindingSymbol? valueMember = null;
         MemberSelection typeSelection = default;
         MemberSelection valueSelection = default;
+        BoundType? qualified = null; // The Type path's binding of the qualifier.
         var qualifier = this.TypeName(member.Left, scope, false);
         if (qualifier?.Type is { } type && qualifier.Declaration is not ContractKoto)
         {
@@ -164,6 +165,7 @@ public sealed partial class Binding
                     return null;
                 }
 
+                qualified = qualifiedType;
                 typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member ?? typeMember;
                 if (originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !typeSelection.Ambiguous ? typeSelection.Member : null))
@@ -171,15 +173,20 @@ public sealed partial class Binding
                     return null;
                 }
             }
-            else if (qualifier.Declaration is GroupKoto { IsRoot: false } &&
-                this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } groupType)
+            else if (qualifier.Declaration is GroupKoto { IsRoot: false })
             {
+                if (this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is not { } groupType)
+                {
+                    return null;
+                }
+
                 if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
                 {
                     this.Fail(member.Left, BindingFailure.InvalidOrigin);
                     return null;
                 }
 
+                qualified = groupType;
                 typeSelection = this.LookupTypeMember(groupType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member;
             }
@@ -222,6 +229,17 @@ public sealed partial class Binding
             }
         }
 
+        if (valuePossible && qualified is not null && (typeMember is null) == (valueMember is null))
+        {
+            // SPEC 9.6: a qualifier of both namespaces follows each namespace's complete path before one is selected, but the value path
+            // read the Type path's binding of the shared node, so neither finding no member nor both paths finding it decides the form.
+            // Until both paths are evaluated before either publishes (PLAN G488, R7 N1), it is outside the implemented subset, at the
+            // qualifier; the member consulted it, so its own Unsupported, and the Type path's access or missing name, rest on it.
+            this.Fail(member.Left, BindingFailure.Unsupported);
+            this.Fail(member, BindingFailure.Unsupported);
+            return null;
+        }
+
         if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
         {
             this.Fail(member, BindingFailure.Ambiguous, true);
@@ -260,8 +278,7 @@ public sealed partial class Binding
             this.memberSelections[member] = typeMember is not null ? typeSelection : valueSelection;
             if (typeMember is not null)
             {
-                member.Left.BoundSymbol = qualifier;
-                member.Left.BindingState = BindingState.Resolved;
+                PublishQualifier(member.Left, qualifier!);
             }
 
             member.BoundSymbol = selected;

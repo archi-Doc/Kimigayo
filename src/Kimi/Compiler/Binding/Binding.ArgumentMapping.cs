@@ -50,6 +50,20 @@ public sealed partial class Binding
         return new(inputsValid, valid, defaults);
     }
 
+    // SPEC 10.1.1: a function-value call passes all arguments positionally, so its arguments match a signature when they are as many as
+    // its parameters and none is labeled.
+    internal static CallArgumentMap MapValueCallArguments(InvocationKoto call, BoundType signature)
+    {
+        var parameters = signature.Components[0].Components;
+        var valid = parameters.Count == call.ArgumentNodes.Count;
+        for (var i = 0; valid && i < call.ArgumentNodes.Count; i++)
+        {
+            valid = call.GetArgumentLabel(i) is null;
+        }
+
+        return new(valid, valid, 0);
+    }
+
     // SPEC 7.2.1, 7.3.3: an argument without a label may supply parameter `index`: the receiver's, or one before the `!` boundary (any
     // without one).
     internal static bool AllowsPositionalArgument(FunctionKoto function, int index)
@@ -89,6 +103,44 @@ public sealed partial class Binding
 
         used[slot] = true;
         return true;
+    }
+
+    // SPEC 10.1 step 1: whether the explicit Type arguments fit a candidate's own slots by their count and kinds (a length argument at
+    // a length parameter, a Type at a Type parameter); it reads no argument.
+    private static bool ExplicitTypeArgumentsFit(FunctionKoto function, GenericsKoto generic, ReadOnlySpan<BoundLength?> explicitLengths)
+    {
+        var slots = CallOwnSlots(function);
+        if (generic.TypeArguments.Count != slots.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < slots.Count; i++)
+        {
+            if ((slots[i] is LengthParameterKoto) != (explicitLengths[i] is not null))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // SPEC 10.1 steps 1 and 2, 23.1.2 (DECISIONS BU-79's G455 amendment): whether any candidate passes the two checks that read no
+    // argument, its explicit Type arguments' count and kinds and its argument matching. Beside an unprepared argument a call reports
+    // NoApplicable only when none does; a value call (no Symbol, no Type arguments) reads its matching alone.
+    private static bool AnyArgumentsMatch(ReadOnlySpan<EvaluatedCandidate> candidates, GenericsKoto? generic, ReadOnlySpan<BoundLength?> explicitLengths)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (candidate.ArgumentMap.Valid &&
+                (generic is null || candidate.Symbol?.Declaration is not FunctionKoto function || ExplicitTypeArgumentsFit(function, generic, explicitLengths)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 10.1 step 2, 10.1.1: the defaults a candidate uses, its parameter slots that neither a written argument (`mapping`) nor the

@@ -87,6 +87,8 @@ public sealed class BoundMatch
 
     internal List<byte> CaseCoverage { get; } = new();
 
+    /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure; the plan
+    /// cannot be built.</summary>
     internal bool Invalid { get; set; }
 
     internal bool Pending { get; set; }

@@ -83,7 +83,8 @@ public sealed partial class Binding
             return Complete(unary, type);
         }
 
-        var operand = this.BindNode(unary.Operand, scope, unary.Akind == KotoKind.Not ? BoundType.Boolean : unary.Akind == KotoKind.Dereference ? null : expected);
+        // SPEC 12.3, 13.3.4: only a literal-only operand takes the expected Type; any other operand is typed on its own, once.
+        var operand = this.BindNode(unary.Operand, scope, unary.Akind == KotoKind.Not ? BoundType.Boolean : unary.Akind != KotoKind.Dereference && IsUnfittedLiteral(unary.Operand) ? expected : null);
         if (unary.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus)
         {
             operand = this.ReadReferent(unary.Operand, operand); // SPEC 3.3: a value operand denotes its Copy referent.
@@ -343,7 +344,7 @@ public sealed partial class Binding
             ref this.arithmeticSelectionFailures,
             binary,
             BindingFailure.ArithmeticSelection,
-            new(rejected, left, right, ArithmeticContract(operation), "No proven conformance fits the counterpart structure"));
+            new(rejected, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit));
     }
 
     // SPEC 13.4, 10.2: a string operand behind several reference layers is read as one shared reference to the string;

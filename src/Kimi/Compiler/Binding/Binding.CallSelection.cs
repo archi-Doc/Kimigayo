@@ -104,7 +104,7 @@ public sealed partial class Binding
             this.BindHeader(candidate);
             if (function.IsConstructor)
             {
-                declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, evaluation.Mapping) : null;
+                declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, evaluation.Mapping, evaluation.Expected) : null;
             }
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;

@@ -45,6 +45,11 @@ public sealed partial class Binding
         var evaluated = this.candidateScratch.Rent(count);
         var stride = required.Components[0].Components.Count + 1;
         var operations = this.argumentOperationScratch.Rent(count * stride);
+
+        // SPEC 10.5.3: the one candidate's trial binds its slots here, so that its record reads the signature the trial substituted.
+        var slots = count == 1 && ReferenceCandidate(symbol)!.Declaration is FunctionKoto one ? one.GenericArguments.Count : 0;
+        var trialArguments = slots == 0 ? null : this.typeScratch.Rent(slots);
+        var trialLengths = slots == 0 ? null : this.lengthScratch.Rent(slots);
         BindingSymbol selected;
         (int Slot, ulong Parameters)? perCall = null;
         (int Slot, ReferenceSlotFailure Failure) slotFailure = default;
@@ -69,7 +74,7 @@ public sealed partial class Binding
                 this.referenceSlotFailure = default;
                 ReferenceConstraintFailure? constraint = null;
                 var state = this.Accessible(candidate, scope)
-                    ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out constraint, operations.AsSpan(index * stride, stride - 1))
+                    ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out constraint, operations.AsSpan(index * stride, stride - 1), trialArguments, boundLengths: trialLengths)
                     : CandidateApplicability.Inapplicable;
                 if (count == 1)
                 {
@@ -127,16 +132,27 @@ public sealed partial class Binding
                     (this.referenceSlotFacts ??= new(ReferenceEqualityComparer.Instance))[use] = new(generic, slotFailure.Slot, slotFailure.Failure, KotoHelper.UnwrapParentheses(use) is GenericsKoto);
                 }
 
-                var candidateItem = this.types.Intern(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
-                if (count == 1 && this.FunctionItemSignature(candidateItem) is { } actual)
+                // SPEC 10.5.3, 10.7: the one candidate's record reads the signature its trial substituted, its Item over the arguments the
+                // trial bound (the written ones where given) and its container; with a slot unbound there is none, and the declaration's
+                // own signature is a Type mismatch whose Note names the slot. When only its Origin contract fails, the record names that
+                // contract (SPEC 15.6.1), with the candidate's own inputs instantiated: a member, else a condition of the candidate. A
+                // comparison that names no fact read the contract its failed clause made unavailable, so the record rests on that
+                // clause (SPEC 23.1.2, DECISIONS Q13 rule W).
+                if (count == 1 && evaluated[0].Symbol is { Declaration: FunctionKoto function } single)
                 {
-                    // SPEC 10.7, 15.6.1: when the one candidate's signature matches and only its Origin contract fails, the record names
-                    // that contract, with the candidate's own inputs instantiated: a member, else a condition of the candidate.
-                    var contract = ComparisonFailure.Shape;
-                    return ReferenceTypes.StorageMatches(required, actual) &&
-                        !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
-                        ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
-                        : this.FailMismatch(use, use, actual, required, contract);
+                    var bound = slotFailure.Failure == ReferenceSlotFailure.None && (trialArguments is null || ReferenceSlotsComplete(function, trialArguments, trialLengths!));
+                    var candidateItem = bound ? this.FunctionItemType(single, trialArguments.AsSpan(0, slots), this.ReferenceContainer(use, single), trialLengths.AsSpan(0, slots))
+                        : this.FunctionItemType(single, default);
+                    if (this.FunctionItemSignature(candidateItem) is { } actual)
+                    {
+                        var contract = ComparisonFailure.Shape;
+                        var structure = bound && ReferenceTypes.StorageMatches(required, actual);
+                        return structure && !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
+                            ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
+                            : structure && contract.Kind == ComparisonFailureKind.None && this.FailedOriginClause(function) is { } clause
+                            ? this.CompleteDependent(use, clause)
+                            : this.FailMismatch(use, use, actual, required, contract);
+                    }
                 }
 
                 var rejected = new RejectedCandidate[applicable == 0 ? count : applicable];
@@ -161,6 +177,11 @@ public sealed partial class Binding
         {
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.candidateScratch.Return(evaluated, clearArray: true);
+            if (trialArguments is not null)
+            {
+                this.typeScratch.Return(trialArguments, clearArray: true);
+                this.lengthScratch.Return(trialLengths!, clearArray: true);
+            }
         }
 
         var target = (FunctionKoto)selected.Declaration;

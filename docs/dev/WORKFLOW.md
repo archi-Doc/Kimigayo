@@ -181,4 +181,27 @@ Independent units continue.
    a queue row on the board.
 3. The commit states the root cause, the concept changed, the sites sharing the cause, the deletions, the rejected options and what
    remains unverified.
-4. The Coordinator lands queued units on dev in windows, two or three a day (DECISIONS R7-M2, R7-M4).
+4. The Coordinator lands queued units on dev in [windows](#windows).
+5. After a window lands, the Coordinator deletes its units' branches on `origin` and locally, and each session removes its own
+   worktrees of landed units. Unmerged and `held/` branches stay.
+
+### Windows
+
+A window merges queued units onto dev, verifies them once and lands them together (DECISIONS Q15).
+
+- **Entry.** A unit enters when its review is ACCEPT, its unit checks passed on a base at most two windows old, and its queue row
+  names its branch head (the Coordinator's docs commit included) and its expected record and acceptance moves.
+- **Moves.** A unit moves acceptance when a program it changes goes from rejected to accepted or back; it moves records when only
+  the records of programs that stay rejected change.
+- **Size.** At most five units that move records or acceptance, and at most one unit that moves acceptance per area (Front, Middle,
+  Back). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
+- **Files.** Units of one window share no file except PLAN's table end and separate DECISIONS entries. An overlap waits for the
+  next window, in order of readiness.
+- **Run.** The Coordinator merges the units onto dev, builds the solution with warnings as errors and runs the heavy set once: the
+  default Session with the diagnostic snapshot against the shared base and every native fixture (a fixture whose inputs match the
+  base's passed result within 24 hours is reused, VERIFICATION), the milestones, the CLI harnesses and a semantic write. The
+  window's opening line names each unit's expected moves; any other snapshot difference fails the window.
+- **Failure.** A failing unit leaves the window and the window runs again. When a failure names no unit, the units are split in
+  halves until it does.
+- **Close.** The Coordinator associates the evidence with `scripts/verify-commit.ps1`, pushes dev, seeds the shared base and closes
+  the board rows. No push that changes verification inputs reaches dev outside a window.

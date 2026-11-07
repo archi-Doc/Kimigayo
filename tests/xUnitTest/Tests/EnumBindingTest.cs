@@ -254,9 +254,27 @@ public class EnumBindingTest
         Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
     }
 
+    // SPEC 6.5.2 item 2, 10.8, 15.6.1 (owner O-27 (a)): an explicit Type argument that differs from the expected Type's only in its
+    // Origins is kept, and the result's fit judges the Origin relation: under the clause, through `let`, nested and in a user enum.
+    [Theory]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.Some(x)\n")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.None\n")]
+    [InlineData("func f<s/T>(x: s/T during a, y: ref/i32 during c) -> Option<s/T during c>\n    s is ref\n    origin a outlives c\n    return Option<s/T during a>.Some(x)\n")]
+    [InlineData("func f<s/T>(x: s/T during a, y: ref/i32 during c) -> Option<s/T during c>\n    s is ref\n    origin a outlives c\n    return Option<s/T during a>.None\n")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> ()\n    origin a outlives c\n    let o: Option<ref/i32 during c> = Option<ref/i32 during a>.Some(x)\n    _ = o\n")]
+    [InlineData("enum E<T>\n    A(T, i32)\n    N\nfunc f(x: ref/i32 during a, y: ref/i32 during c) -> E<ref/i32 during c>\n    origin a outlives c\n    return E<ref/i32 during a>.A(x, 1)\n")]
+    [InlineData("func f(x: ref/i32 during static, y: ref/i32 during c) -> Option<ref/i32 during c>\n    return Option<ref/i32 during static>.Some(x)\n")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<Option<ref/i32 during c>>\n    origin a outlives c\n    return .Some(Option<ref/i32 during a>.Some(x))\n")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<Option<ref/i32 during c>>\n    origin a outlives c\n    return Option<Option<ref/i32 during a>>.Some(.Some(x))\n")]
+    public void AnExplicitCaseArgumentKeepsItsOriginsAgainstTheExpectedType(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
+
     // SPEC 6.5.2, 10.8.1, 23.1: a payload that does not fit its decided payload Type is the construction's one Type mismatch, settled,
     // typed or Literal alike, as a call's misfit is the call's; a slot no evidence or default binds is the construction's own record, on
-    // which its waiting payloads depend; a waiting callable's own failure is its record (SPEC 10.5).
+    // which its waiting payloads depend; a waiting callable's own failure is its record (SPEC 10.5). An explicit Type argument that
+    // differs from the expected Type's in structure or Semantics is the construction's Type mismatch; one that differs only in its
+    // Origins is the result's Origin relation, and a payload against the kept argument is the payload's record (SPEC 6.5.2 item 2, 15.6.1).
+    // In an invariant position (under `uniq/`, or a `uniq/T` Field) the clause `a outlives c` does not prove the required `a == c`.
     [Theory]
     [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let x = P.Pair(1, [a, a])\n", nameof(DiagnosticCode.TypeMismatch_Kd), "P.Pair(1, [a, a])")]
     [InlineData("func f()\n    let x: Option<i64> = Option.Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option.Some(true)")]
@@ -271,26 +289,39 @@ public class EnumBindingTest
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.Some(identity(1))")]
     [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "takeGeneric(Option.Some(1))")]
     [InlineData("func f()\n    let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    return Option<ref/i32 during a>.None\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.None")]
+    [InlineData("func f<s/T>(x: s/T during a, y: ref/i32 during c) -> Option<s/T during c>\n    s is ref\n    return Option<s/T during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<s/T during a>.Some(x)")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin c outlives a\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
+    [InlineData("func f(x: ref/i32 during a) -> Option<ref/i32 during static>\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.Some(y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "y")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i64 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<ref/i64 during a>.None")]
+    [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.Some(x)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.Some(x)")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.None")]
+    [InlineData("func f(x: uniq/(ref/i32 during a) during u, y: ref/i32 during c) -> Option<uniq/(ref/i32 during c) during u>\n    origin a outlives c\n    return Option<uniq/(ref/i32 during a) during u>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<uniq/(ref/i32 during a) during u>.Some(x)")]
+    [InlineData("struct Slot<T> {w}\n    public let value: uniq/T during w\n\nfunc f(x: Slot<ref/i32 during a> during u, y: ref/i32 during c) -> Option<Slot<ref/i32 during c> during u>\n    origin a outlives c\n    return Option<Slot<ref/i32 during a> during u>.Some(x@move)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<Slot<ref/i32 during a> during u>.Some(x@move)")]
     public void ACaseConstructionReportsItsOwnFailure(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
-    // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch. The MIR also records the
-    // Field its failed initializer leaves unset, at the struct (DECISIONS R5-M184; H3b T51, class 4: both reject, an added record, Q13).
+    // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch, and only it: the Field
+    // has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
     [Fact]
     public void ACaseConstructionInAFieldInitializerReportsItsOwnFailure()
     {
         const string Source = "struct S\n    public let x = Option<bool>.Some(1)\npublic func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(Source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.TypeMismatch_Kd), "1")];
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.TypeMismatch_Kd), "1")];
         Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381): a payload erased in a Field initializer, bound with the Field's header before the
-    // capability engine judges, is one located Unsupported_Kd at the converted Closure or Function Item with bound Type arguments; the
-    // MIR's record at the struct stays (R5-M184). It was the construction's TypeMismatch_Kd; typed and local twins are valid.
+    // capability engine judges, is one located Unsupported_Kd at the converted Closure or Function Item with bound Type arguments, the
+    // only record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
+    // It was the construction's TypeMismatch_Kd; typed and local twins are valid.
     [Theory]
     [InlineData("struct S\n    public let e = E.A(func (x: i32) -> i32 => x)\n", "(x: i32) -> i32")]
     [InlineData("group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let e = E.A(K.idg<i32>)\n", "K.idg<i32>")]
@@ -298,7 +329,7 @@ public class EnumBindingTest
     {
         var source = "enum E\n    A((i32) -> i32)\n    B\n" + declarations + "public func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UninitializedPlace_Kd), "struct"), (nameof(DiagnosticCode.Unsupported_Kd), at)];
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.Unsupported_Kd), at)];
         Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 

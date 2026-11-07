@@ -141,6 +141,28 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Problems("struct S\n    var value: i32\n    public init(flag: bool)\n        if flag => return\n        self.value = 1\n"));
     }
 
+    // SPEC 6.3.5, 23.1.2 (PLAN G105, G522): a Field Binding formed no stored Type for, its initializer failed in the parser or in
+    // Binding or its Type annotation unresolved, is a part of a rejected declaration that its constructor places nothing into
+    // (MirBuilder.Stored), so no exit requires it: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit
+    // one, also one that never sets the annotated Field, a generic and a nested struct's report only the Field's own failure; another Field
+    // an explicit init leaves unset is still reported (fail-before: UninitializedPlace_Kd at the struct or the init for the failed Field).
+    [Theory]
+    [InlineData("struct Node\n    var next = (1 x)\n", "")]
+    [InlineData("struct Node\n    var next = undefinedName\n", "")]
+    [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    init(k: i32) => self.k = k\n", "")]
+    [InlineData("struct S\n    var a: Missing\n    var k: i32\n    init() => self.k = 1\n", "")]
+    [InlineData("struct Box<T>\n    var next = (1 x)\nfunc f()\n    let b = Box<i32>.init()\n", "")]
+    [InlineData("struct Outer\n    public let k: i32 = 1\n    struct Inner\n        var next = (1 x)\n", "")]
+    [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    var m: i32\n    init(k: i32) => self.k = k\n", "UninitializedPlace_Kd init(k: i32) => self.k = k 1")]
+    public void AConstructorRequiresNoFieldWithoutAStoredType(string source, string expected)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        c.Bind();
+        var own = TestDiagnostics.Of(c).Select(static x => x.Code).Concat(c.Binding.Issues.Select(static x => x.Code.ToString()));
+        Assert.Contains(own, static x => x is nameof(DiagnosticCode.ExpectedSyntax_Kd) or nameof(DiagnosticCode.UnresolvedBinding_Kd));
+        Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(c));
+    }
+
     // SPEC 15.1.3, 15.1.5: a Move needs a Move Path: a constant index of a fixed array has one, a runtime index of an Array has none
     // (StaticMovePathRequired_Kd), and such a Move changes no state, so a second one is not MovedPlace; a raw pointer's Take is untracked
     // (SPEC 5.2.3), also of a pointer read through a borrow (PLAN G222). A Place a function publishes never offers Take, whatever root
