@@ -21,6 +21,9 @@ namespace Kimi.Compiler;
 //   pass. Re-entry: Unknown, no evidence (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances
 //   (contractHeadersReady), is abandoned and computed again at each read until R7-C2 (PLAN G375). A requirement's call is outside the
 //   query, and no reader runs inside verification, so the answer is the declaration's own. A Proven stays read after a later failure.
+//   DirectBase (Binding.BaseLayers): output AdtDef.DirectBase, a clean read's name or a failed clause's; a bound clause's Type answers
+//   first. Re-entry: the chain ends there, counted (SPEC 9.5). Not ready: abandoned and counted; a read that moved the count stores
+//   nothing (interim until R7-D2 d3).
 // - Interims (removal stages): a Signature re-entry's CyclicBinding_Kd is recorded by the demanders that record it today
 //   (BindReference, BindVariableCore) until R7-D2 d2 moves it into the kind's rule with the Error state; BindHeader's guard reads the
 //   variable binding's Resolving and BindVariableCore's guard reads Signature's Running state until R7-D2 d4 makes the variable binding
@@ -37,6 +40,9 @@ internal enum DeclQueryKind : byte
 
     /// <summary>A function's declared signature formed in its own scope: Done means Proven (Binding.CheckSignatureTypeConstraints).</summary>
     SignatureVerdict,
+
+    /// <summary>A struct's base clause read as the declaration it names (Binding.BaseLayers).</summary>
+    DirectBase,
 
     /// <summary>The number of kinds; BindingSymbol packs two bits per kind, so a ninth kind fails its compile-time check.</summary>
     Count,

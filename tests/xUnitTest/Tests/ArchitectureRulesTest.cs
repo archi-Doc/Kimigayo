@@ -131,6 +131,9 @@ public class ArchitectureRulesTest
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
     // R7-N1a (RP6): ResolvePath is the one evaluation of a Type name and PublishPath its one writer, so these entries stay gone.
     [InlineData("Lookup entries replaced by ResolvePath", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:RootTypeName|LookupImportedType|StopInheritedLookup|SelectTypeCandidate)\b", 0)]
+    // R7-N2d (RP6): one reading of a clause as a declaration and one walk of those readings; the guards and the copies stay gone.
+    [InlineData("Base-walk guards", "src/Kimi/Compiler/Binding", "*.cs", @"\bmemberLookupVisiting\b|\bqualificationVisiting\b", 0)]
+    [InlineData("A clause read as a declaration", "src/Kimi/Compiler/Binding", "*.cs", @"BoundType\?\.Symbol \?\? this\.TypeName\(", 0)]
     // G416 Q2: HoldStep absorbed RawStep, so one vocabulary names a layer's step (RP6).
     [InlineData("The RawStep vocabulary", "src/Kimi/Compiler", "*.cs", @"\bRawStep\b", 0)]
     // G416 U1: a value's parts are Holdings' entries, read by every fit and fold; the private walks stay gone (RP6).

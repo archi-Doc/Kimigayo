@@ -9,6 +9,19 @@ namespace XunitTest;
 /// <summary>SPEC 8.7.3: ObjectPayload, the opt-out declaration and Object Target evidence.</summary>
 public class ObjectPayloadTest
 {
+    // SPEC 8.7.3 (R7-N2d): the opt-out passes through a projected base, a chain and a fragment; each was accepted before.
+    [Theory]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is P\nopen struct P\n    Self is not ObjectPayload\n    public init() => ()\nstruct D: Source.HasBase.Parent\n    public init(): base() => ()\nfunc f(a: obj/D) => ()")]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is P\nopen struct P\n    Self is not ObjectPayload\n    public init() => ()\nopen struct D: Source.HasBase.Parent\n    public init(): base() => ()\nstruct L: D\n    public init(): base() => ()\nfunc f(a: obj/L) => ()")]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    Self is not ObjectPayload\n    public init() => ()\npublic struct D\n    public init(): base() => ()\npublic struct D: Source.HasBase.Parent\n    func g(self) -> i32 => 1\nfunc f(a: obj/D) => ()")]
+    [InlineData("open struct E\n    protected internal open struct M\n        Self is not ObjectPayload\n        public init() => ()\n    public init() => ()\nopen struct D: E\n    public init() => ()\nstruct U: D.M\n    public init() => ()\nfunc f(a: obj/U) => ()")]
+    public void AnOptOutPassesThroughAProjectedBase(string source)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.NotObjectPayload_Kd);
+    }
+
     private const string Parser = "struct Parser\n    Self is not ObjectPayload\n    public var pos: i32 = 0\n";
 
     [Theory]

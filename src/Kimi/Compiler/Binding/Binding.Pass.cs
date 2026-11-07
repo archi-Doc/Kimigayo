@@ -18,6 +18,9 @@ public sealed partial class Binding
         this.callInferenceFailures?.Clear();
         this.storageVersion++;
         this.signatureWalks = 0;
+        this.memberWalks = 0;
+        this.clausesBindable = false;
+        this.earlyReads?.Clear();
         this.storageMarks.Clear();
         this.storageStack.Clear();
         this.issues.Clear();

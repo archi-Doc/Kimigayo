@@ -40,6 +40,9 @@ internal sealed class AdtDef
     /// Inline layout validation writes it for every struct and enum in every pass; Layout reads it (DECISIONS R5-M37).</summary>
     internal bool InlineCycle { get; set; }
 
+    /// <summary>Gets or sets the declaration a struct's base clause names, valid once its DirectBase query is Done (Binding.BaseLayers).</summary>
+    internal BindingSymbol? DirectBase { get; set; }
+
     /// <summary>Gets or sets the storage version of the pass whose PrepareStorage refilled this shape.</summary>
     internal ulong Version { get; set; }
 

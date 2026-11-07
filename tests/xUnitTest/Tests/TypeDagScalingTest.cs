@@ -54,6 +54,26 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 9.6 (R7-N2c): member lookup's walk is linear in the layers it reads, on a chain and on a cycle, where its test may go three times round.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MemberWalksAreLinearInTheLayers(bool cycle)
+    {
+        var work = new[] { 100, 200, 400 }.Select(Work).ToArray();
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 400, string.Join(' ', work));
+
+        int Work(int layers)
+        {
+            var chain = string.Concat(Enumerable.Range(1, layers - 1).Select(static i => $"open struct C{i}: C{i - 1}\n"));
+            var misses = string.Concat(Enumerable.Repeat("    v.none()\n", 10));
+            var head = cycle ? $"open struct C0: C{layers - 1}" : "open struct C0";
+            var c = CompilationTestHelper.ParseSuccess($"{head}\n    public func top(self) -> i32 => 1\n{chain}func f(v: ref/C{layers - 1}) -> i32\n{misses}    return v.top()\n");
+            c.Bind();
+            return c.Binding.MemberWalkWork;
+        }
+    }
+
     // SPEC 8.2: two closures of one generic function in a shared Tuple close in each instance's substitution; the Tuple's shared parts
     // are closed once and stay shared, and every part equals the part instantiated alone.
     [Fact]

@@ -30,6 +30,28 @@ public class InheritedNameBindingTest
         Assert.Contains(restored.Binding.Issues, x => ReferenceEquals(x.Node, Type(restored)) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
 
+    // SPEC 6.2.2, 9.6: a lookup that reaches a struct whose clause another lookup is binding is no inheritance cycle (R7-N2c).
+    [Theory]
+    [InlineData("open struct Z<T>\n    public struct Other\ncontract K<T>\nopen struct E: Z<D.Inner>\n    public struct Inner\nstruct D: E\n    Self is K<D.Other>")]
+    [InlineData("contract K<T>\nstruct D: E\n    Self is K<D.Other>\nopen struct E: Z<D.Inner>\n    public struct Inner\nopen struct Z<T>\n    public struct Other")]
+    public void AReentryForAnotherNameIsNoCycle(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 6.2.2, 9.6: lookup through a cycle reads every declaration on it, and a miss is one record, wherever the walk starts (R7-N2c).
+    [Theory]
+    [InlineData("open struct X: Y\n    public func x(self) -> i32 => 1\nopen struct Y: X\n    public func y(self) -> i32 => 1\nfunc f(v: ref/X, w: ref/Y) -> i32 => v.y() + w.x() + v.none()", 1)]
+    [InlineData("open struct D: E\n    public func d(self) -> i32 => 1\nopen struct E: F\n    public func e(self) -> i32 => 1\nopen struct F: E\n    public func g(self) -> i32 => 1\nfunc f(v: ref/D, w: ref/F) -> i32 => v.g() + w.e() + w.none()", 1)]
+    [InlineData("open struct G<T>: G<Option<T>>\n    public func g(self) -> i32 => 1\nfunc f(v: ref/G<i32>) -> i32 => v.g() + v.none()", 1)]
+    public void AWalkThroughACycleReadsEachLayerAndEnds(string source, int misses)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(misses, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.AmbiguousBinding_Kd));
+    }
+
     [Theory]
     [InlineData("private func f() => ()", "public func f() => ()")]
     [InlineData("private var f: i32", "public var f: i32")]
@@ -115,6 +137,36 @@ public class InheritedNameBindingTest
                 throw new InvalidOperationException("Inherited Name validation failed.");
             }
         }));
+    }
+
+    // SPEC 9.4.2, 9.6 (R7-N2d): a base clause resolves without its own struct's layers, in its name and arguments; these overflowed the
+    // stack or were rejected before.
+    [Theory]
+    [InlineData("open struct D: Q\n    public init() => ()\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct U: D.N\n        public init() => ()\n        func g(self) -> i32 => self.far()")]
+    [InlineData("open struct D: Q\n    public init() => ()\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct U: D.N\n        public init() => ()\n        func g(self) -> i32 => self.far()")]
+    [InlineData("open struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct U: Q.N\n        public init() => ()\n        func g(self) -> i32 => self.far()")]
+    [InlineData("open struct E\n    protected internal open struct M\n        public init() => ()\n    public init() => ()\nopen struct D: E\n    public init() => ()\nstruct U: D.M\n    public init() => ()")]
+    [InlineData("open struct E\n    protected internal open struct M\n        public init() => ()\n    public init() => ()\nstruct U: E.M\n    public init() => ()")]
+    [InlineData("open struct E\n    protected internal open struct M\n        public func m(self) -> i32 => 1\n        public init() => ()\n    public init() => ()\nopen struct C: E\n    public init() => ()\nopen struct D: C\n    public init() => ()\nstruct U: D.M\n    public init() => ()\n    func g(self) -> i32 => self.m()")]
+    public void AClauseResolvesWithoutItsOwnLayers(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 6.2.2, 9.4.2 (R7-N2d): the invalid twins end with their own record; p1 overflowed the stack before, so its parent fails by
+    // killing the host. A parameter or a projection through one is no base, and the walk ends at it (rt1, rt8).
+    [Theory]
+    [InlineData("open struct X\n    protected open struct Y\n        public init() => ()\n    public init() => ()\nstruct D: X.Y\n    public init() => ()", DiagnosticCode.InaccessibleBinding_Kd)]
+    [InlineData("open struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Q\n        public init(): base() => ()\n        struct U: Q.N\n            public init() => ()\n            func g(self) -> i32 => self.far()", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("open struct E\n    protected open struct M\n        public init() => ()\n    public init() => ()\nopen struct D: E\n    public init() => ()\nstruct U: D.M\n    public init() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("open struct W<T>: T\nopen struct V<T>: T\nopen struct X<T>: T\nopen struct Z\n    public func z(self) -> i32 => 1\n    public init() => ()\nfunc f(a: ref/V<W<X<V<Z>>>>) -> i32 => a.z()", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("contract C\n    associate Next\nopen struct L<T>: T.C.Next\nstruct A\n    Self is C\n    associate C.Next is L<B>\nstruct B\n    Self is C\n    associate C.Next is L<A>\nfunc f(a: ref/L<A>) -> i32 => a.nope()", DiagnosticCode.InvalidTypeFormation_Kd)]
+    public void AClauseThatNeedsItsOwnLayersIsRejected(string source, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
     private static StructKoto Type(Compilation c)
