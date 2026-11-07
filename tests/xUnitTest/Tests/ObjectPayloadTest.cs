@@ -24,6 +24,21 @@ public class ObjectPayloadTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NotObjectPayload_Kd);
     }
 
+    // SPEC 9.2, 8.7.3 (R7-N2b): a base clause reads the role of its binder before it is bound, so a nearer group or a Kotonoha reference name
+    // leaves the struct it names, and the derived struct inherits that struct's opt-out.
+    [Theory]
+    [InlineData("open struct G\n    Self is not ObjectPayload\n    public init() => ()\ngroup Box\n    group G\n    public struct D: G\n        public init() => ()\nfunc f(a: obj/Box.D) => ()\n")]
+    [InlineData("alias G1\nalias G2\ngroup G1\n    public open struct X\n        Self is not ObjectPayload\n        public init() => ()\ngroup G2\n    public group X\nstruct D: X\n    public init() => ()\nfunc f(a: obj/D) => ()\n")]
+    [InlineData("open struct G\n    Self is not ObjectPayload\n    public init() => ()\ngroup Box\n    group G\n    public struct D: G\n        public init() => ()\ngroup Box\n    public struct D\n        func g(self) -> i32 => 1\nfunc f(a: obj/Box.D) => ()\n")]
+    [InlineData("open struct G\n    Self is not ObjectPayload\n    public init() => ()\ngroup Box\n    group G\n    public struct D\n        public init() => ()\ngroup Box\n    public struct D: G\n        func g(self) -> i32 => 1\nfunc f(a: obj/Box.D) => ()\n")]
+    [InlineData("alias G1\ngroup G1\n    public open struct Kimi\n        Self is not ObjectPayload\n        public init() => ()\nstruct D: Kimi\n    public init() => ()\nfunc f(a: obj/D) => ()\n")]
+    public void AnOptOutPassesThroughABaseClauseUnderItsBindersRole(string source)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.NotObjectPayload_Kd);
+    }
+
     [Theory]
     [InlineData("func f(x: Parser, y: ref/Parser, z: uniq/Parser, p: raw/Parser) => ()")]
     [InlineData("struct Box<T>\n    let item: T\nfunc f(x: obj/Box<Parser>, y: rc/(Parser, i32)) => ()")]

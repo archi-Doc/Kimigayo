@@ -49,8 +49,8 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Test:
                 this.Test(call);
                 return;
-            case IntrinsicWriter.Capacity:
-                this.Capacity(call);
+            case IntrinsicWriter.Destroy:
+                this.DestroyValues(call, target);
                 return;
             case IntrinsicWriter.Buffer:
                 this.FormatBuffer(call, row);
@@ -94,8 +94,8 @@ internal sealed partial class FunctionCodegen
     // A legacy row's routine (DECISIONS R5-M116, R5-M121, R5-M124, R5-M128), the one path its direct call, its Item's Value call and its
     // adapter's entry take, its slot-less values into `given`: a Routine row's (writeLine); a Formatting row's, given its witness target's kind
     // (FunctionCodegen.Formatting); a row's in its function's instance (LegacyRow.InInstance), its call site's LegacyRow item's
-    // (ModuleCodegen.Row: the item's Array helper or its row's capacity routine, given the element's stride or a fixed array's length, or
-    // placeEntry's Place helper, which takes no given value); null for any other row, and after a record at the source (such a row's call
+    // (ModuleCodegen.Row: the item's Array helper, given a fixed array's length where its row reads one, or placeEntry's Place helper, which
+    // takes no given value); null for any other row, and after a record at the source (such a row's call
     // targets its item, K 4.5 row 2).
     private FunctionAbi? Routine(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {

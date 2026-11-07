@@ -1587,7 +1587,7 @@ public sealed partial class FunctionCodegenTest
     // row held before Wrapper read Requested: the wrapper's definition requests its target's Signature.
     [Theory]
     [InlineData("group Values\n    public let count: i32 = start()\n    func start() -> i32 => 4\nlet x = Values.count\n", "Body", "count", "let count: i32 = start()")]
-    [InlineData("var values: Array<i32> = [3]\nvalues.clear()\n", "LegacyRow", "clear", "values.clear()")]
+    [InlineData("var values: Array<i32> = [3]\nfor v in values => ()\n", "LegacyRow", "borrowStorage", "for v in values => ()")]
     [InlineData(
         "struct Shown\n    Self is Utf8Format\n    public init() => ()\n" +
         "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => .Ok(())\n" +

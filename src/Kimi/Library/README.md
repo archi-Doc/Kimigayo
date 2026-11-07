@@ -13,7 +13,7 @@ embedded and implemented.
   functions belong inside declaration containers such as groups or structs.
 - `Slice.kimi` and `Array.kimi` declare the compiler-managed sequence Types; their storage and
   metadata are supplied by the compiler. Array's operations move to Kimigayo bodies over
-  `Storage.ArrayRepr<T>` family by family (`ArrayOperations.kimi`, DECISIONS R8-M2, R8-M3); the rest are
+  `Storage.ArrayRepr<T>` family by family (`ArrayOperations.kimi`, DECISIONS R8-M2, R8-M3, R8-M5); the rest are
   supplied by the compiler until their R8 unit.
   The internal group `Kimi.Storage.FixedArray` in `Storage.kimi` holds the fixed-array receiver
   functions. The `length` and `indices` of a fixed array stay compiler sequence metadata, shared

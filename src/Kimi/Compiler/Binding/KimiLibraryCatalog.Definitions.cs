@@ -73,15 +73,15 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.MakeRcCyclic, "makeRcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.MakeArcCyclic, "makeArcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.Weak, "Weak", SourceExpected: false, ManagedRepresentation: true),
-        // SPEC 4.9.3, 4.9.5: the Array mutation operations declared inside the Array struct, `clear` and `shrinkToFit` compiler-implemented and
-        // the others Kimigayo bodies; SPEC 4.9.6 gives `reserve`, `append`, `insert`, `pop`, `remove` and `swap` no user-code effect.
+        // SPEC 4.9.3, 4.9.5: the Array mutation operations, Kimigayo bodies declared inside the Array struct; SPEC 4.9.6 gives `reserve`,
+        // `append`, `insert`, `pop`, `remove`, `swap` and `shrinkToFit` no user-code effect and `clear` the destruction of its elements.
         new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArrayInsert, "insertAt", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArrayPop, "pop", KimiLibraryContainer.Array, SourceFunction: true, Row: None),
         new(KimiDeclarationId.ArrayRemove, "removeAt", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
-        new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear, Row: Target),
-        new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
+        new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: Target),
+        new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.ArraySwap, "swapAt", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),
         // SPEC 4.9.3, 4.9.5, 22.1: the public constructors are bodiless signatures whose definitions the compiler supplies from the
         // linked internal source functions, with the same parameters and premises and a `Self` result.
@@ -188,6 +188,11 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageTransferBytes, "transferBytes", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageTransferBytes),
         new(KimiDeclarationId.StorageStride, "stride", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageStride),
         new(KimiDeclarationId.StorageGrowArray, "growArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
+        new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageDestroyArray, "destroyArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageArrayCapacity, "arrayCapacity", KimiLibraryContainer.Storage, SourceFunction: true, Row: None),
+        new(KimiDeclarationId.DictionaryStorageCapacity, "capacity", SourceFunction: true, Owner: "DictionaryStorage", Row: None),
         // SPEC 22.5.1: the Kimigayo capacity decisions carry the standard operation's caller context to their failures.
         new(KimiDeclarationId.DictionaryStorageReserveEntries, "reserveEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),

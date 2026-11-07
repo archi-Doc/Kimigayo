@@ -36,7 +36,7 @@ public sealed partial class Binding
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoReceiver);
         }
 
-        if (structure.Bases.Count == 0)
+        if (structure.BaseClause is not { } clause)
         {
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoBase);
         }
@@ -57,7 +57,7 @@ public sealed partial class Binding
             return this.CompleteDependent(reference, structure);
         }
 
-        reference.BasePath = this.MemberPath(null, structure.Bases[0], baseType);
+        reference.BasePath = this.MemberPath(null, clause, baseType);
         return this.BindReference(reference, receiver, scope);
     }
 

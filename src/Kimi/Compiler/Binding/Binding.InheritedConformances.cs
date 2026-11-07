@@ -34,14 +34,13 @@ public sealed partial class Binding
 
             this.inheritedConformanceStates[type] = 1;
 
-            if (type.Declaration is not StructKoto { Bases.Count: 1 } declaration)
+            if (type.Declaration is not StructKoto { BaseClause: { } syntax } declaration)
             {
                 this.inheritedConformanceStates[type] = 2;
                 return;
             }
 
-            var syntax = declaration.Bases[0];
-            if (!complete && this.TypeName(syntax, this.scopes[declaration], TypeLookupRole.Any)?.Declaration is not StructKoto)
+            if (!complete && this.TypeName(syntax, this.scopes[declaration], TypeLookupRole.NoContainer)?.Declaration is not StructKoto)
             {
                 this.inheritedConformanceStates[type] = 0;
                 return;
@@ -300,12 +299,12 @@ public sealed partial class Binding
                 return new(implementation, type, path);
             }
 
-            if (symbol.Declaration is not StructKoto { Bases.Count: 1 } declaration || AdtDef.Base(type) is not { } parent)
+            if (symbol.Declaration is not StructKoto { BaseClause: { } clause } || AdtDef.Base(type) is not { } parent)
             {
                 break;
             }
 
-            path = this.MemberPath(path, declaration.Bases[0], parent);
+            path = this.MemberPath(path, clause, parent);
             type = parent;
         }
 
