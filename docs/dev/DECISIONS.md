@@ -10057,6 +10057,49 @@ resumed by R4-M86 (2026-10-20).
     its own entry, `ParseAssociatedConstraint`. No alias reaches the form: SPEC 18.2.1 targets only a Kotonoha or a group, and an alias creates no Core.
   - SPEC 8.2.1's sentence and Appendix F's production follow, with `"::"? Name` and `PrimitiveType`, which the parser keeps.
   - Rejected: a new `SyntaxForm` (the clause block already reports `Syntax.Constraint`); a grammar path with no Type path (it would repeat the Type grammar for qualifiers).
+- **BU-121 The storage a value of a Type holds is one published fact** (2026-11-07; PLAN G416, G334; units U0 and U1, one Q row; Major; the
+  owner's O-12 「(a) 今 ACCEPT」, O-13 「推奨どおり」; the Front's rulings of 2026-11-07 after step 0 and after implementation review 1, REJECT at rows 9
+  and 20) SPEC 15.6.2, 15.6.4, 15.3.5, 5.7, 4.9; SPEC 3.3.4 is unit S's.
+  - Representation: `Binding.Holdings(type, written, holder, into)`, published as `TyCtxt.Holdings`, appends one level of `Hold(Part, Step, Holds,
+    Flags, Written, Holder)`. New vocabularies: `HoldStep`, `HoldContent`, `HoldFlags`. Contract in `Binding.Holdings.cs`. At Binding's storage
+    Limit it publishes the entries and answers false: a fold reads false first, a reader with its own bound (A5) reads the entries.
+  - Q2 (a): `HoldStep` absorbs `RawStep`, its five values first in their order (`Unstated` is `Address`). `TyCtxt.RawStep` is
+    `TyCtxt.StoredStep`. `Holdings` and `StoredStep` read one function, `DeclaredStep`. An `Unsupported` entry is retention's Limit for every
+    reader (`HeldRun`); A5's `Past` keeps its default arm until R4's U2 (Mir/ is the rename only, H-7).
+  - Amendments to `artifacts/verify/g416/fact.md` revision 3:
+    - A: BU-113's position rule stays outside the fact. StorageWalk reads `RawStepAt` at every raw layer of an output fold, with the walk's own
+      `Written` and `Holder`.
+    - B: a captured Origin-less raw layer is row 11. Row 12 for a capture is a named decision in U3a's design.
+    - **Row 20 is withdrawn from U0-U5; BU-91 stands.** HeapBuffer takes its declared Fields (rows 3, 13), like a user struct of its shape. Row 20
+      gave a pun of its bytes no Loan, so `h.clear()` under a live borrow was accepted, invalid by 15.6.4. Its question returns in G-1's design.
+    - D: new row 3b: each Type argument of a struct or enum is one `Loan`, Its(T) entry (rule 15.3.5). A Contract, which only a projection's
+      components name, publishes its Type arguments by the same rule. It has two readers, `HeldComponents` and `OwnOccurrences` through `Refers`, so the
+      row outlives `HeldComponents` at U3b.
+    - Row 4 reads the given Type's Components with Holder null; a contract's walk asks with `ClosureEnvironment` and keeps the Holder of the storage
+      holding the Closure. Row 15's entry carries the pointee's keys. `Hold.Written` stays as the declaration writes it.
+    - Row 16's raw case is `Exclusive`, `Raw`, Its until U3b. `Weak` has no form, so no row is published until P41.
+  - Named moves:
+    - D': a Field-less generic's T has no Places (SPEC 15.3.5), `Wrapping<T>` and the milestone's `Cache` included; no corpus record moved. phantomOk
+      (valid) is accepted, it erred; storedBad (invalid) errs.
+    - C: Opaque's four empty structs {InvalidUtf8, Start, End, BufferFull} hold nothing, by their declared Fields. `f(dst: ref/End) -> ref/i32 during
+      dst` goes from `result {0 Value}` to `{0 Content}` and `Slice<i32> during dst` likewise, so a valid program's `ComparisonLoanConflict_Kd` goes: no
+      borrow forms within a struct with no storage, and dev's rejection was the false one. A struct with a Field keeps its conflict.
+    - Row 9: `(K, V)` is a Dictionary's stored entry (SPEC 4.9), so `ref/(K, V) during d` and `Slice<(K, V)> during d` hold within it, and
+      `d.clear()` under a live one errs with CallActivationConflict_Kd. Dev accepted it; dev's acceptance was the false one.
+    - Named limit (the owner's O-47 (b), verbatim 「(b)でお願いします」, and O-49 (a), verbatim 「全部 (a)」): Binding's `StorageBound` stays 32 and counts entries,
+      and row 9's entry makes a Dictionary level two, so a storage nest past 32 entries is past it, however few Dictionaries it holds: one under 31 others
+      is enough, and so are 17 alone. It joins dev's silent past-the-bound class, which starts at 33 levels, and review T1's invalid programs are newly
+      accepted there; a nest of 32 entries keeps `ComparisonLoanConflict_Kd`. No Language record is invented. G408's class; the limit is the Front's, as
+      Binding's `StorageBound` is. Raising Binding's bound to 64 was tried and rejected: it left the input fold's paths exponential on valid raw recursions
+      (Revision 10's key).
+  - `Binding.Enters`: the fits at the bound enter each (Type, Written, Holder) at the shallowest depth it is met at, per query (`Borrows`, `Occurs`, one
+    pooled table). Such a key alone decides what lies below, so the answer is the paths' answer, in work linear in the parts. `Borrows` had no such
+    guard, so a recursion branching behind a collection walked 2^(depth/2) paths (`Tree`: 2^16 at bound 32).
+  - Stays until a named unit: StorageWalk's pair arm (U3b, D2); `ByValue`'s `Loan<T>` test (U3a, D4, row 10's Places); `Held` reading a UniqSlice's
+    stored Fields and an abstract entry's components (U3b, where rule A reads entries).
+  - Rejected: a separate `RawStep` (a second copy of five values); a capture stater flag (not dev's); `RawStepAt` inside the accessor (it would read a
+    signature's scope, so no reader's memo stays sound); row 20 at U0 (it reopens BU-91); a Dictionary's K and V as direct parts (SPEC 4.9 stores
+    the entry, and S2 needs `(K, V)`).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
