@@ -81,8 +81,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 4.7, 4.6.2: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
     // end its length), from Len of the receiver; of a Utf8Slice, the one struct Binding serves as a sequence (SequenceMember), Len of its
-    // byte Slice. SPEC 4.9.5: an Array's or a Dictionary's capacity is the temporary intrinsic Capacity of a shared view of the handle
-    // (owner decision 2026-10-11) until R8's representation structs make it a Field read.
+    // byte Slice. SPEC 4.9.5: an Array's or a Dictionary's capacity is the call of its library Field read on a shared view of the handle.
     private void Metadata(MirPlace destination, MemberAccessKoto member)
     {
         var form = IntrinsicDisposition.FormOf(member);
@@ -97,7 +96,11 @@ internal sealed partial class MirBuilder
         {
             var start = this.arguments.Count;
             this.arguments.Add(this.Borrow(SemanticsKind.Ref, sequence, member));
-            this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.Capacity), start, member);
+            var collection = this.body.TypeOf(sequence)!;
+            var read = compilation.Library.GetSymbol(
+                collection.Kind == BoundTypeKind.Array ? KimiDeclarationId.StorageArrayCapacity : KimiDeclarationId.DictionaryStorageCapacity)!;
+            var subst = compilation.Types.Synthesized(read, null, [.. collection.Components]);
+            this.Invoke(destination, new MirCallee(MirCalleeKind.Fn, read, subst), start, member);
             return;
         }
 

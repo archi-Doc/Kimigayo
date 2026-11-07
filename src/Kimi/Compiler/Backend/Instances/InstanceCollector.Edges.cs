@@ -93,7 +93,7 @@ internal sealed partial class InstanceCollector
                 this.DestructionTargets(program, item, site, type);
                 return;
             case MonoKind.LegacyRow:
-                this.RowTargets(program, item, site, type);
+                this.RowTargets(program, item, site);
                 return;
             case MonoKind.ObjectDescriptor or MonoKind.VTable:
                 this.Object(program, item, site, key.Kind, type);

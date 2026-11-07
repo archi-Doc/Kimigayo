@@ -28,8 +28,8 @@
 // the storage its handle parameter designates; DECISIONS R5-M121, R5-M124); a Dictionary from none targets the body of the
 // DictionaryStorage function the Dictionary runtime declares for construction, initialize (Declared, through TyCtxt's F2c view); a
 // type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
-// a DropGlue's direct parts, DropGlue.Parts, a Dictionary's the clearEntries instance its Drop row declares when an entry may need a drop,
-// and a LegacyRow's declared callee and needs, placeEntry's append body and an ElementGlue need its Element parts' glue;
+// a DropGlue's direct parts, DropGlue.Parts, an Array's the destroyArray instance, a Dictionary's the clearEntries instance its Drop row
+// declares when an entry may need a drop, and a LegacyRow's declared callee, placeEntry's append body;
 // InstanceCollector.Witnesses.cs: a comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a
 // property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).

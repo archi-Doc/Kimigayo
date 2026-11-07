@@ -346,6 +346,47 @@ internal group Storage
             (*handle).data = memory
             (*handle).capacity = target
 
+    /// Reduces the capacity toward the length (SPEC 4.9.5), one routine for every element Type, as `growArray` is. A
+    /// failed allocation leaves the handle unchanged; zero-sized elements keep their buffer and only the recorded
+    /// capacity shrinks.
+    ///
+    /// - safety: `handle` addresses a live Array whose elements have `stride` bytes each.
+    internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)
+        unsafe
+            let length = (*handle).length
+            if (*handle).capacity <= length
+                return
+            let buffer = (*handle).data
+            if length == 0
+                Raw.release(buffer)
+                (*handle).data = null
+                (*handle).capacity = 0
+                return
+            if stride != 0
+                // `length <= capacity` bounds the product.
+                let bytes = (length@Wrapping<isize> * stride@Wrapping<isize>)@isize
+                let memory = Storage.tryAllocateBytes(bytes)
+                if memory == null
+                    return
+                Storage.transferBytes(memory, buffer, bytes)
+                Raw.release(buffer)
+                (*handle).data = memory
+            (*handle).capacity = length
+
+    /// Destroys an Array whose owner is done with it, the body of its drop glue: the elements from the last, then the
+    /// storage (SPEC 4.9.7, 16.3.2). The handle states no `E`, so an Array as deep as storage allows stays within it.
+    ///
+    /// - safety: `handle` addresses a live Array of `E` that nothing reads or destroys again.
+    internal unsafe func destroyArray<E>(handle: raw/ArrayRepr<u8>)
+        unsafe
+            let storage = (*handle).data
+            destroyValues<E>(storage, (*handle).length)
+            Raw.release(storage)
+
+    /// Reads an Array's `capacity` (SPEC 4.9.5).
+    internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize
+        unsafe => return (*(value@follow@raw@raw/ArrayRepr<E>)).capacity
+
     /// Publishes `length` completed elements within the existing allocation; it neither reads nor destroys any element.
     ///
     /// - safety: `length` is within the capacity, each `data[i]` of `value`'s `ArrayRepr` below it designates a

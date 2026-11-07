@@ -115,8 +115,7 @@ public sealed class Kernel32ImportsTest
     // PLAN G366: the Array runtime is a template, so a definition marker line it lacks or repeats fails it.
     [Theory]
     [InlineData("{{__kimi_array_grow}}\n", "")]
-    [InlineData("{{__kimi_array_shrink}}\n", "")]
-    [InlineData("{{__kimi_array_shrink}}\n", "{{__kimi_array_shrink}}\n{{__kimi_array_shrink}}\n")]
+    [InlineData("{{__kimi_array_grow}}\n", "{{__kimi_array_grow}}\n{{__kimi_array_grow}}\n")]
     public void BrokenArrayRuntimeTemplateFails(string marker, string replacement)
     {
         var template = LegacyRuntimeHelpers.ArrayRuntimeTemplate;

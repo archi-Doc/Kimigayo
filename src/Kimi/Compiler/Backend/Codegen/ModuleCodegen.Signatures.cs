@@ -221,8 +221,8 @@ internal sealed partial class ModuleCodegen
     }
 
     // K11: a request naming an item (Signature, Glue, Ensure, Shim, Adapter, Factory, Row, Wrapper) is for a Generated item, the only
-    // items the module defines; another is a broken contract, recorded at the item's site. Release, ArrayDrop and DictionaryDrop name the
-    // item being written, which the Write's loop chose by its mark.
+    // items the module defines; another is a broken contract, recorded at the item's site. Release and DictionaryDrop name the item
+    // being written, which the Write's loop chose by its mark.
     private void Requested(int item)
     {
         if (!this.set.IsGenerated(item))

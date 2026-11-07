@@ -111,16 +111,21 @@ public class DynamicArrayCapacityLimitTest
     public void AnUnrepresentableMinimumStillAborts()
         => WriteProbe("RequiredSize", RuntimeIr(), Handle(0, 0) + "\n  call void @__kimi_array_grow(ptr %handle, i64 16, i64 576460752303423488, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_ALLOC_SIZE: Allocation size exceeds limit\n");
 
+    // SPEC 4.9.8: `clear` is O(1 + d), so over a cleanup-free element it walks nothing at any optimization level: an Array of the largest
+    // length, its buffer null, clears at once at O0 and O2, and a cleanup-free destroyValues is no loop in the generated text.
     [Fact]
     public void CleanupFreeClearDoesNotWalkTheElements()
     {
-        var ir = RuntimeIr();
-        WriteProbe("ConstantClear", ir, Handle(long.MaxValue, long.MaxValue) + "\n  call void @" + Helper(ir, "__kimi_array_clear_") + "(ptr %handle, ptr @probe_location, i64 5)\n  %length = load i64, ptr %length_ptr, align 8\n  %empty = icmp eq i64 %length, 0\n  br i1 %empty, label %passed, label %failed\npassed:\n  call void @__kimi_exit(i32 0)\n  unreachable\nfailed:\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
+        ScalarEmissionTest.EmitFixture("DynamicArrayCapacityConstantClear", FullArray("u8", long.MaxValue) + "values.clear()\nrequire values.length == 0 else => $abort(\"length\")\nConsole.writeLine(\"ok\")", "ok\n");
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("func f(values: uniq/Array<u8>) => values.clear()\nvar values: Array<u8> = []\nf(values@uniq)"));
+        Assert.DoesNotContain("destroying", ir, StringComparison.Ordinal);
+        var kept = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("func f(values: uniq/Array<string>) => values.clear()\nvar values: Array<string> = []\nf(values@uniq)"));
+        Assert.Contains("destroying", kept, StringComparison.Ordinal);
     }
 
     internal static string RuntimeIr()
     {
-        var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = [1]\nvalues@uniq.clear()");
+        var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = [1]\nvalues@uniq.append(2)");
         var ir = CompilationTestHelper.WriteIr(compilation);
         return ir;
     }
