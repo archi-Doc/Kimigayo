@@ -94,9 +94,8 @@ internal sealed partial class FunctionCodegen
     // A legacy row's routine (DECISIONS R5-M116, R5-M121, R5-M124, R5-M128), the one path its direct call, its Item's Value call and its
     // adapter's entry take, its slot-less values into `given`: a Routine row's (writeLine); a Formatting row's, given its witness target's kind
     // (FunctionCodegen.Formatting); a row's in its function's instance (LegacyRow.InInstance), its call site's LegacyRow item's
-    // (ModuleCodegen.Row: the item's Array helper, given a fixed array's length where its row reads one, or placeEntry's Place helper, which
-    // takes no given value); null for any other row, and after a record at the source (such a row's call
-    // targets its item, K 4.5 row 2).
+    // (ModuleCodegen.PlaceRow: placeEntry's Place helper, which takes no given value); null for any other row, and after a record at the
+    // source (such a row's call targets its item, K 4.5 row 2).
     private FunctionAbi? Routine(LegacyRow row, int target, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
@@ -116,10 +115,7 @@ internal sealed partial class FunctionCodegen
             return null;
         }
 
-        var routine = this.module.Row(target, out var number);
-        this.slotless[0] = new('\0', number);
-        given = this.slotless.AsSpan(0, 1);
-        return routine;
+        return this.module.PlaceRow(target);
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in

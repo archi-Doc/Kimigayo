@@ -46,6 +46,24 @@ public class DynamicArrayIterationTest
     public void DestroysYieldedAndRemainingElementsOnce(string name, string loop, string stdout)
         => ScalarEmissionTest.EmitFixture("DynamicArrayIteration" + name + "Tasks", Task + "let tasks: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\n" + loop, stdout);
 
+    // SPEC 4.9.7, 22.2.2 (R8-A1d): an owning iterator moved between holders and partly consumed destroys what remains in decreasing index order,
+    // Array and fixed array alike, an inner Array with it; a zero-sized element runs each destructor.
+    [Theory]
+    [InlineData("Moved", "var noisy: Array<Noisy> = [Noisy.init(1), Noisy.init(2), Noisy.init(3), Noisy.init(4)]\nvar it = noisy@move.intoIterator()\nmatch it.next()\n    .Some(let first) => Console.writeLine(\"took \\(first.id)\")\n    .None => ()\nlet moved = it@move\nConsole.writeLine(\"moved\")\nvar again = moved@move\nmatch again.next()\n    .Some(let second) => Console.writeLine(\"took \\(second.id)\")\n    .None => ()\nConsole.writeLine(\"end\")\n", "took 1\ndrop 1\nmoved\ntook 2\ndrop 2\nend\ndrop 4\ndrop 3\n")]
+    [InlineData("Fixed", "var noisy: [3 of Noisy] = [Noisy.init(7), Noisy.init(8), Noisy.init(9)]\nvar it = noisy@move.intoIterator()\nmatch it.next()\n    .Some(let first) => Console.writeLine(\"took \\(first.id)\")\n    .None => ()\nConsole.writeLine(\"end\")\n", "took 7\ndrop 7\nend\ndrop 9\ndrop 8\n")]
+    [InlineData("Nested", "var outer: Array<Array<Noisy>> = [[Noisy.init(11), Noisy.init(12)], [Noisy.init(13)]]\nvar it = outer@move.intoIterator()\nmatch it.next()\n    .Some(let row) => Console.writeLine(\"row \\(row.length)\")\n    .None => ()\nConsole.writeLine(\"end\")\n", "row 2\ndrop 12\ndrop 11\nend\ndrop 13\n")]
+    public void AnOwningIteratorDestroysWhatRemainsInDecreasingOrder(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("DynamicArrayIterationRemaining" + name, "struct Noisy\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop \\(self.id)\")\n" + source, stdout);
+
+    // SPEC 4.8.4, 4.8.5 (R8-A1d): each view over a zero-sized element and over an empty provider counts its elements and writes nothing.
+    [Fact]
+    public void ViewsCountZeroSizedAndEmptyElements()
+    {
+        const string Units = "var units: Array<()> = [(), ()]\nvar seen: isize = 0\nfor _ in units@uniq => seen += 1\nfor _ in units => seen += 1\nvar view = units.sliceUniq()\nConsole.writeLine(\"\\(seen) \\(view.length)\")\n";
+        const string Empties = "var none: [0 of i32] = []\nvar nothing = none.sliceUniq()\nvar empty: Array<i32> = []\nvar still = empty.sliceUniq()\nConsole.writeLine(\"\\(nothing.length) \\(still.length)\")\n";
+        ScalarEmissionTest.EmitFixture("DynamicArrayIterationZeroSized", Units + Empties, "4 2\n0 0\n");
+    }
+
     [Fact]
     public void ReturnSecuresTheYieldBeforeDestroyingTheIterator()
         => ScalarEmissionTest.EmitFixture(

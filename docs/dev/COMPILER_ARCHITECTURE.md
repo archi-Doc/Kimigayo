@@ -78,7 +78,7 @@ a SPEC basis and owner approval.
 | `MirAggregateKind` | 6 |
 | `LayoutNeed` | 4 |
 
-These are the unchanged pre-retirement limits; IntrinsicId uses 31 and returns to 28 at R8 (DECISIONS R5-M137). `LayoutNeed` (`None`,
+These are the unchanged pre-retirement limits; IntrinsicId uses 30 and returns to 27 at R8-I1 (DECISIONS R5-M137). `LayoutNeed` (`None`,
 `Parts`, `Element`, `TypeArguments`; the owner, DECISIONS R5-M149) is the Backend's one statement of what a form's generated code reads a
 layout of besides its by-value storage: `LayoutNeeds`' rows (projection steps, operators, comparison nodes) and the intrinsic and legacy
 rows' `Need` columns; a new form adds a row.
@@ -247,12 +247,12 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     owner, 2026-11-06, 「一括承認します。」);
   - F1's located `Unsupported_Kd` at a returned Closure's call,
     `Binding.ValueCalls.CallAtomsOf`'s `Foreign` row (F1's representation unit; DECISIONS R4-M152);
-  - `LegacyRuntimeHelpers`, the Backend's static Array, Dictionary, formatting and string-comparison runtime text and the legacy row
+  - `LegacyRuntimeHelpers`, the Backend's static Dictionary, formatting and string-comparison runtime text and the legacy row
     map of the Body-disposition compiler functions, with `FormatKind`, `WriterKind`, `FormatBound`, `FormatEstimate` and the
     conversion text (R8, DECISIONS R5-M16, R5-M116, R5-M128, R5-M130, R5-M131); `Layout`'s Slice, Array and Dictionary handle word
     counts (R8, DECISIONS R5-M19);
   - R5's temporaries (recorded by their first units, DECISIONS R5-M18; reviewed with the owner at R5's exit, R5-M148):
-    `MonoKind.LegacyRow` (R8; DECISIONS R5-M121); Binding's i128 division and remainder and its 128-bit float conversion gates
+    `MonoKind.LegacyRow`, placeEntry's alone (R8; DECISIONS R5-M121, R8-M6); Binding's i128 division and remainder and its 128-bit float conversion gates
     beside the capability table's operation rows (R7, DECISIONS R5-M190); the legacy comparison composition (A-12, else R7; DECISIONS
     R5-M68, R5-M148); `TyCtxt.DictionaryStorage`, the F2c Dictionary-storage view whose one reader is the instance collector (R8,
     deleted with `KimiLibrary.DictionaryStorage.cs`; DECISIONS R5-M28, R5-M124); `TyCtxt.StorageSubst`, the Self-less substitution

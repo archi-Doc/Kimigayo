@@ -311,6 +311,10 @@ internal static partial class LegacyRuntimeHelpers
         return ExpandRuntime(string.Join('\n', parts), CollectionsMarshal.AsSpan(definitions));
     }
 
+    // A signature that writes the caller's result slot.
+    private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
+        => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
+
     private static partial class Texts
     {
         // The runtime templates with each row's routine definition spliced in once.

@@ -618,6 +618,24 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // SPEC 8.15.3 (R8-A1d): a generic owning iteration's bound is the same gap: Array^61<i32> is an instance, and over Array^62<i32> the storage
+    // nesting is Unsupported_Kd at the requesting call.
+    [Theory]
+    [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n")]
+    [InlineData("    for x in a@move\n        Console.writeLine(\"x\")\n")]
+    public void GenericOwningIterationsBoundIsAGapAtTheRequestingCall(string operation)
+    {
+        foreach (var (depth, admitted) in new[] { (61, true), (62, false) })
+        {
+            var type = string.Concat(Enumerable.Repeat("Array<", depth)) + "i32" + new string('>', depth);
+            var c = MirBuildTest.Compile($"func f<T>(a: Array<T>)\n{operation}public func main() -> ()\n    var a: {type} = []\n    f(a@move)\n    return\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            var program = c.BuildMir();
+            _ = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+            Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "f(a@move)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        }
+    }
+
     // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, HeapBuffer's reserve through BufferWriter or
     // a #LibraryImport function, is the BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a
     // requirement call, and a requirement Item where it is formed and where it is called, whether or not the output calls the function
@@ -1145,19 +1163,16 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
     }
 
-    // K 4.3, 4.5 row 2, X4 (DECISIONS R5-M121): a call of an Array storage kind targets the LegacyRow item of its function's instance, keyed
-    // by the function and the erased substitution and represented by the collection, as its Item's Value call and its adapter do; its row
-    // declares no target; an Array<isize> is another instance.
+    // K 4.3 (R8-A1d): a call of an Array storage function targets the body of its function's instance, as any call, and no Array operation
+    // has a LegacyRow item left; an Array<isize> is another instance.
     [Fact]
-    public void AnArrayStorageKindIsItsFunctionInstancesLegacyRow()
+    public void AnArrayStorageFunctionIsItsFunctionInstancesBody()
     {
         var (program, set) = Collect("func p(values: ref/Array<i32>) => values.iterate()\nfunc w(values: ref/Array<isize>) => values.iterate()\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         var labels = set.Items.ToArray().Select(x => Label(program, x)).ToArray();
-        Assert.Contains("LegacyRow Array<i32> StorageBorrowShared", labels);
-        Assert.Contains("LegacyRow Array<isize> StorageBorrowShared", labels);
-        Assert.Empty(Targets(program, set, "LegacyRow Array<i32> StorageBorrowShared"));
-        Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.LegacyRow), static x => Assert.Equal(-1, x.BodyOrdinal));
+        Assert.Equal(2, labels.Count(static x => x.StartsWith("library Fn borrowStorage", StringComparison.Ordinal)));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
     // SPEC 4.9.7, 16.3.2 (PLAN G126): an Array's destruction reaches its element's glue through the bodies: `clear` and destroyArray each hold
@@ -1423,8 +1438,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["ref/Array<i32>", "ref/Bag"], Signature(Item(program, set, "PropertyWitness Bag StorageBorrow")));
         Assert.Empty(program.Records(MirRecordClass.Collection));
         Assert.Equal(
-            ["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
-            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` is one Array aggregate, which targets no routine (DECISIONS R5-M129).
+            ["library Fn growArray in group Storage", "PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
+            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` is one Array aggregate, which targets growArray's body (R8-A1d).
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));

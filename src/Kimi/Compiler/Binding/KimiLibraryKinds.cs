@@ -101,17 +101,11 @@ public enum CompilerFunctionKind : byte
     BuiltinEquals,
     BuiltinCompare,
     BuiltinArithmetic,
-    StorageBorrowShared,
-    StorageBorrowExclusive,
-    StorageOwn,
     StorageBorrowDictionary,
     StorageBorrowDictionaryExclusive,
     StorageOwnDictionary,
     StorageKeyAt,
     StorageValueAt,
-    StorageBorrowFixedShared,
-    StorageBorrowFixedExclusive,
-    StorageOwnFixed,
     StorageDictionaryLayout,
     StorageMissingDictionaryKey,
     StorageArgumentOutOfRange,
@@ -121,7 +115,6 @@ public enum CompilerFunctionKind : byte
     StorageTryAllocateBytes,
     StorageTransferBytes,
     StorageIndexBounds,
-    StorageBorrowUniqSlice,
     StorageDestroyValues,
     StorageStride,
     RawAllocate,
@@ -143,7 +136,6 @@ internal enum IntrinsicId : byte
     MoveBytes, // A byte copy whose ranges do not overlap (transferBytes' contract; DECISIONS R5-M18).
     Stride, // Type facts (SPEC 22.2, IMPL 21.1.3); destroying the values of a cleanup-free T generates nothing.
     DestroyValues,
-    ReinterpretLoan, // shareLoan and lendLoan (SPEC 22.2).
     Abort, // $abort (SPEC 17.4).
     Fail, // A fixed SPEC 22.5.2 code.
     WriteStdout, // SPEC 22.1, 22.5.
@@ -212,10 +204,9 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
             CompilerFunctionKind.HeapBufferBytes or CompilerFunctionKind.HeapBufferText or CompilerFunctionKind.HeapBufferValidate or CompilerFunctionKind.HeapBufferClear or
             CompilerFunctionKind.HeapBufferReserve or CompilerFunctionKind.HeapBufferIntoString or CompilerFunctionKind.WindowPush or CompilerFunctionKind.WindowAppend or
             CompilerFunctionKind.WindowLimit or CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.WriterStatus or
-            CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageBorrowDictionary or
+            CompilerFunctionKind.StorageBorrowDictionary or
             CompilerFunctionKind.StorageBorrowDictionaryExclusive or CompilerFunctionKind.StorageOwnDictionary or CompilerFunctionKind.StorageKeyAt or CompilerFunctionKind.StorageValueAt or
-            CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive or CompilerFunctionKind.StorageOwnFixed or
-            CompilerFunctionKind.StorageDictionaryLayout or CompilerFunctionKind.StoragePlaceDictionaryEntry or CompilerFunctionKind.StorageBorrowUniqSlice => default,
+            CompilerFunctionKind.StorageDictionaryLayout or CompilerFunctionKind.StoragePlaceDictionaryEntry => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),

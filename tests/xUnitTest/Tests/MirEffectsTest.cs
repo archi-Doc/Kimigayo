@@ -193,6 +193,22 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Problems($"contract Eater\n    func eat<T>(self: ref/Self, item: T)\n{premise}        effect confined\nstruct E\n    Self is Eater\n" +
                 $"    public func eat<T>(self: ref/Self, item: T)\n{premise}        ()\n"));
 
+    // SPEC 4.9.6 (R8-A1d): an owning iterator's destruction, Array or fixed array, destroys its elements through destroyValues, which reports the
+    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not.
+    [Theory]
+    [InlineData("Loud", "Array<Loud> = []", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("i32", "Array<i32> = []", "")]
+    [InlineData("i32", "[1 of i32] = [1]", "")]
+    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string expected)
+    {
+        _ = element;
+        Assert.Equal(
+            Expected(expected),
+            Problems(Loud + "contract Make\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Make\n" +
+                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        let it = a@move.intoIterator()\n        return 0\n"));
+    }
+
     // R4-M6a: a Drop destroys what A2's verdicts leave in the view: a moved value nothing (Elide), a partly moved one its remaining parts
     // (Open: the moved Field's row is Elide, the other Field has none and follows the own bit), a whole one its Type (Keep).
     [Theory]

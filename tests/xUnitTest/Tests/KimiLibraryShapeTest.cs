@@ -40,7 +40,6 @@ public partial class KimiLibraryShapeTest
     [
         (KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string)"),
         (KimiDeclarationId.TestTempDirectory, "public func tempDirectory() -> string"),
-        (KimiDeclarationId.StorageBorrowUniqSlice, "internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a"),
         (KimiDeclarationId.Replace, "public func replace<T>(target: uniq/T ! with => value: T) -> ()"),
         (KimiDeclarationId.Exchange, "public func exchange<T>(target: uniq/T ! with => value: T) -> T"),
         (KimiDeclarationId.Swap, "public func swap<T>(first: uniq/T, second: uniq/T) -> ()"),
@@ -77,17 +76,11 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.WriterWrite, "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.WriterStatus, "public func status(self: ref/Self) -> Result<(), BufferFull>"),
         (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
-        (KimiDeclarationId.StorageBorrowShared, "internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a"),
-        (KimiDeclarationId.StorageBorrowExclusive, "internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a"),
-        (KimiDeclarationId.StorageOwn, "internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>"),
         (KimiDeclarationId.StorageBorrowDictionary, "internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a\nK is Equatable"),
         (KimiDeclarationId.StorageBorrowDictionaryExclusive, "internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a\nK is Equatable"),
         (KimiDeclarationId.StorageOwnDictionary, "internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>\nK is Equatable"),
         (KimiDeclarationId.StorageKeyAt, "internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K"),
         (KimiDeclarationId.StorageValueAt, "internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V"),
-        (KimiDeclarationId.StorageBorrowFixedShared, "internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a"),
-        (KimiDeclarationId.StorageBorrowFixedExclusive, "internal func borrowStorageUniq<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a"),
-        (KimiDeclarationId.StorageOwnFixed, "internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>"),
         (KimiDeclarationId.StorageDictionaryLayout, "internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/Dictionary<K, V> during value, isize)\nK is Equatable"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
         (KimiDeclarationId.StoragePlaceDictionaryEntry, "internal unsafe func placeEntry<K, V>(handle: raw/Dictionary<K, V>, key: K, value: V)\nK is Equatable"),
@@ -139,7 +132,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(201, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(192, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -443,7 +436,6 @@ public partial class KimiLibraryShapeTest
     [Theory]
     [InlineData(KimiDeclarationId.ArrayReserve, "public func reserve(self: uniq/Self, additional: isize)")]
     [InlineData(KimiDeclarationId.ArrayAppend, "public func append(self: uniq/Self, value: T)")]
-    [InlineData(KimiDeclarationId.StorageSetArrayLength, "internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)")]
     [InlineData(KimiDeclarationId.StorageGrowArray, "internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)")]
     [InlineData(KimiDeclarationId.ArrayInsert, "internal func insertAt(self: uniq/Self, index: isize, value: T)")]
     [InlineData(KimiDeclarationId.ArrayPop, "public func pop(self: uniq/Self) -> Option<T>")]
@@ -496,9 +488,9 @@ public partial class KimiLibraryShapeTest
     // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
     // (Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
     [Theory]
-    [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
-    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
-    [InlineData("Storage.OwnedRemainder", "internal struct OwnedRemainder<E>\ninternal let storage: raw/E during self\ninternal var position: isize\ninternal var count: isize\ninternal var capacity: isize\ndrop")]
+    [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
+    [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
+    [InlineData("ArrayOwningIterator", "public struct ArrayOwningIterator<T>\nvar array: Storage.ArrayRepr<T>\nvar position: isize = 0\nvar count: isize\ndrop")]
     [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
     [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
     [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal let storage: raw/u8 during self\ninternal let stride: isize\ninternal var link: isize\ninternal var tail: isize\ninternal var count: isize\ndrop")]
@@ -507,7 +499,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Storage.SliceRepr", "internal struct SliceRepr<T>\ninternal var data: raw/T\ninternal var length: isize")]
     [InlineData("Storage.StringRepr", "internal struct StringRepr\ninternal var data: raw/u8\ninternal var length: isize\ninternal var releaseKind: u8")]
     [InlineData("Storage.InlineStorage", "internal struct InlineStorage<A>\ninternal var value: A")]
-    [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize\ninternal var count: isize\ndrop")]
+    [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize = 0\ninternal var count: isize\ndrop")]
     [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
     [InlineData("ResolvedRange", "public struct ResolvedRange\npublic let start: isize\npublic let end: isize")]
     [InlineData("FromEnd", "public struct FromEnd<T>\npublic let offset: T")]

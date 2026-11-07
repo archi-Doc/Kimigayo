@@ -83,7 +83,6 @@ public sealed class Kernel32ImportsTest
     // constants), by its text throughout the whole text wrote.
     [Theory]
     [InlineData("WindowsRuntime")]
-    [InlineData("ArrayRuntime")]
     [InlineData("TestRuntime")]
     public void RuntimeTemplateExpandsAsEachMarkersReplacement(string runtime)
     {
@@ -91,8 +90,7 @@ public sealed class Kernel32ImportsTest
         var (template, definitions) = runtime switch
         {
             "WindowsRuntime" => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in")), RuntimeAbi.RuntimeDefinitions),
-            "TestRuntime" => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), []),
-            _ => (LegacyRuntimeHelpers.ArrayRuntimeTemplate, LegacyRuntimeHelpers.ArrayRuntimeDefinitions),
+            _ => (File.ReadAllText(Path.Combine(repo, "src/Kimi/Testing/TestRuntime.ll")), Array.Empty<FunctionAbi>()),
         };
         var expected = template;
         foreach (Match marker in Regex.Matches(template, @"\{\{(\w+)\}\}"))
@@ -112,16 +110,17 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(expected, LlvmModuleText.ExpandRuntime(template, definitions));
     }
 
-    // PLAN G366: the Array runtime is a template, so a definition marker line it lacks or repeats fails it.
+    // PLAN G366: a runtime is a template, so a definition marker line it lacks or repeats fails it.
     [Theory]
-    [InlineData("{{__kimi_array_grow}}\n", "")]
-    [InlineData("{{__kimi_array_grow}}\n", "{{__kimi_array_grow}}\n{{__kimi_array_grow}}\n")]
-    public void BrokenArrayRuntimeTemplateFails(string marker, string replacement)
+    [InlineData("{{__kimi_array_free}}\n", "")]
+    [InlineData("{{__kimi_array_free}}\n", "{{__kimi_array_free}}\n{{__kimi_array_free}}\n")]
+    public void ABrokenMarkerLineOfTheRuntimeFails(string marker, string replacement)
     {
-        var template = LegacyRuntimeHelpers.ArrayRuntimeTemplate;
+        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
+        var template = File.ReadAllText(Path.Combine(repo, "src/Kimi/Compiler/Backend/WindowsRuntime.ll.in"));
         Assert.Contains(marker, template, StringComparison.Ordinal);
         Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(
-            template.Replace(marker, replacement, StringComparison.Ordinal), LegacyRuntimeHelpers.ArrayRuntimeDefinitions));
+            template.Replace(marker, replacement, StringComparison.Ordinal), RuntimeAbi.RuntimeDefinitions));
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,
@@ -152,7 +151,6 @@ public sealed class Kernel32ImportsTest
         LlvmModuleText.WriteRuntime(texts, null);
         LlvmModuleText.WriteRuntime(texts, TestRuntime.Text);
         LegacyRuntimeHelpers.WriteFormattingRuntime(texts);
-        LegacyRuntimeHelpers.WriteArrayRuntime(texts);
         texts.Write(LegacyRuntimeHelpers.StringComparisons + LlvmModuleText.TryAllocate + LlvmModuleText.TransferBytes);
         var chars = texts.GetStringBuilder().Length;
         Assert.True(allocated <= 11L * chars, $"runtime texts allocation {allocated} for {chars} chars");
