@@ -47,6 +47,19 @@ public class ConditionalMemberBindingTest
         }
     }
 
+    // SPEC 7.5, 8.8.2: a block member's own Constraint on the declaring Type's parameter joins the block's condition; the body
+    // relies on both, and a call is applicable only as both hold (PLAN G484).
+    [Theory]
+    [InlineData("i32", true)]
+    [InlineData("Plain", false)]
+    public void ABlockMembersConstraintOnTheDeclaringParameterJoinsTheCondition(string argument, bool valid)
+    {
+        var c = Parse("contract C\nstruct Plain\n    Self is Copy\n    var x: i32\nstruct S<T>\n    var t: T\n    Self is C when T is Copy\n        public func same(self: ref/Self) -> bool\n" +
+            $"            T is Equatable\n            let a = self.t\n            return a == self.t\nfunc use(s: ref/S<{argument}>) -> bool => s.same()");
+        Assert.True(c.Bind().IsComplete == valid, Describe(c));
+        Assert.Equal(valid ? [] : ["NoApplicableOverload_Kd"], CompilationTestHelper.BindingErrors(c).Select(x => x.Code));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

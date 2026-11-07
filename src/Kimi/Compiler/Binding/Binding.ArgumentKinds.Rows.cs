@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 //   argument's own position, and the child rows of an argument, the positions of its composition (ChildPositions, AddChildPosition),
 //   composed once per candidate at its first solve (RetainChildRows, the probe's state) and retained, which every later solve of the
 //   candidate (CollectPositionPremises) and its selected call's judgment (JudgePositionRows) read, each leaf at its own sub-Type; both
-//   readers stay here until U5's shared relation judge.
+//   readers stay here until U5's shared relation judge. Its evidence leaves (IsEvidenceLeaf) are read by EvidenceNames and by a value
+//   call's solve (SolveValueCallOrigins, PLAN G504).
 // - Inputs: the arguments, the candidate's parameter patterns, solution and contributions (SlotSolution.Contribute, ContributePayloads);
 //   the position composition (Binding.ArgumentKinds.Positions.cs) and each part's contribution (PartContribution) for child rows.
 // - Outputs: PositionRow; SlotSolution.Rows, the candidate's root rows, a slice of CallEvaluation.Rows (rowScratch); childRows, the
@@ -55,6 +56,11 @@ public sealed partial class Binding
     // Whether retained row `j` of a slice ending at `end` has no child row: the next row is not its child (pre-order).
     private bool IsLeaf(int sliceStart, int j, int end)
         => j + 1 >= end || this.childRows[j + 1].Parent != j - sliceStart;
+
+    // Whether retained row `j` of a group ending at `end` is an evidence position, a leaf with a Type of its own (R4', DECISIONS BU-104):
+    // the one reading of an evidence leaf, for EvidenceNames and a value call's solve (SolveValueCallOrigins).
+    private bool IsEvidenceLeaf(in SlotSolution solution, int j, int end)
+        => this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j].Contribution == Contribution.Evidence;
 
     // The retained rows of `argument` in the candidate's slice, [start, end); empty when the argument's root has no child rows.
     private void ChildGroup(in SlotSolution solution, int argument, out int start, out int end)
