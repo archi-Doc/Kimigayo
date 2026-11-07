@@ -11,8 +11,9 @@ public sealed partial class Binding
     // in the call's substitution, as TyCtxt.Witness reads them) and a definition's premises, each target with its declaring instance: a
     // built-in comparison's plan leaves, another built-in target itself (no instance), else the conformance's witness, an inherited one
     // included, or the accessor an accessor-call Property witness runs (SPEC 11.9.2); false where none resolves, a standard Property
-    // witness included, whose Field operation (a Set destroys the replaced value) no rule here reads. A virtual witness dispatches
-    // through its slot, whose bound the caller reads (SPEC 6.4.6, DispatchBounds).
+    // witness included, whose Field operation (a Set destroys the replaced value) no rule here reads, and a library witness of a row with
+    // EffectsLimit (LibraryWitnessGroup). A virtual witness dispatches through its slot, whose bound the caller reads (SPEC 6.4.6,
+    // DispatchBounds).
     internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? recorded, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
     {
         var contract = this.InstanceContract(recorded, self, reference);
@@ -27,6 +28,7 @@ public sealed partial class Binding
         switch (witness.Kind)
         {
             case RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance:
+            case RequirementWitnessKind.LibraryWitness when !witness.Group.EffectsLimit:
                 into.Add((witness.Target!, witness.Declaring));
                 return true;
             case RequirementWitnessKind.Property when witness.Property.Kind == PropertyWitnessKind.AccessorCall:
@@ -117,8 +119,7 @@ public sealed partial class Binding
             RequirementWitnessKind.Builtin => Copy(witness.Target!),
             RequirementWitnessKind.Conformance => this.InstantiateConformanceCall(call, witness, destination),
             RequirementWitnessKind.Property => this.InstantiatePropertyRequirementCall(call, self, witness, destination),
-            RequirementWitnessKind.FixedArrayEntry => this.InstantiateFixedArrayEntry(call, self, witness.Target!, destination),
-            RequirementWitnessKind.IntegerPosition => this.InstantiateIntegerPosition(call, self, witness.Target!, destination),
+            RequirementWitnessKind.LibraryWitness => this.InstantiateLibraryWitness(call, self, witness, destination),
             _ => null, // None, or Refused: exclusive receiver preservation remains OCC-X.
         };
 

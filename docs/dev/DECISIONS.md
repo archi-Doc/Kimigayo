@@ -10687,6 +10687,7 @@ structure is recorded here by the unit that first implements it.
   Rejected: built-in targets created lazily by the core (a view would create symbols); the arithmetic built-ins left with per-call
   writes (the same cause); the refusal left in the materializer (F5b resolves without a CallPlan); extracting `InstanceReference`'s
   matching half before F5b, its second caller.
+  - Superseded in part by R8-M4: `RequirementWitnessKind.LibraryWitness` replaces `FixedArrayEntry` and `IntegerPosition`; the one-rule shape stands.
 - **R5-M23 The R6-check prerequisite package Q8** (owner, 2026-10-18: 「Q8を承認」, answering the request to approve the package
   with Q8-6 and Q8-7 as proposed; OQ10, R5-M1) `draft/Sketches/R5 Step 0/Q8-package.md` with `Q8-decisions.md` (Q8-1a–Q8-8) is
   the owner-approved design of DEC Q6 form 1 for Q7, Q16, Q17, Q21 and H1a, and of form 2 for the lint group G:L (Q9–Q12); H1
@@ -15728,3 +15729,26 @@ R8-M* and R9-M* by the stage of the recording unit.
     elements exhaust both; O2 is no worse. O0 corpus times are not recorded yet; `ArrayMoves`' single O0 runs were 0.68 s on A, 4.61 s on B.
   - Temporary: `__kimi_array_grow`'s one remaining caller is the literal (`FunctionCodegen.ArrayBuffer`), until R8-A1d deletes
     `LegacyRuntimeHelpers.Arrays.cs`, with A1's literal path deciding its form; this supersedes R8-M2's "until A1b".
+- **R8-M4 The library witness table** (Back, 2026-11-07; the owner's O-50 adopted the family's design; supersedes the `FixedArrayEntry` and
+  `IntegerPosition` kinds of R5-M22, whose one-rule shape stands) A permanent Binding component (`Binding/Binding.LibraryWitnesses.cs`,
+  contract at its head). `Binding.WitnessGroup(self, KimiDeclarationId?)`, static, is the one statement of which Contract of a built-in
+  Type an internal Kimi group serves; a row is `LibraryWitnessGroup`: the group (`WitnessMembers`, local like `RequirementWitnessKind`), the
+  argument column (`TypeParameter`, `TypeArgument`, `LengthParameter`, a row of neither has count 0), from which the temporary `EffectsLimit` is
+  derived.
+  `RequirementWitnessKind.LibraryWitness` replaces both kinds; the witness is the group's one function, explicit specializations aside,
+  named as the requirement. The core, the conformance proof (one arm, before the comparison arm), `FixedArrayIteratorType`, the loop's entry,
+  `SelectsWitness` and `ContractCalls` read the table. `WitnessReceiver` states a group's receiver, and its default arm throws, as
+  `KimiLibrary.Members`' does, so a later group falls into no other group's arm; `KimiLibrary.Members` and its inverse `MembersOf` are the one
+  lookup, and `IsBuiltinMemberGroup` and `IsReceiverType` read them. `ComparisonTypes.IsBuiltin` is renamed `OperatorTableRuns`: "the operator
+  table runs it", true at every stage, while SPEC 13.4 keeps calling string's comparison built-in. A new built-in Type costs five edits in two
+  files: a `WitnessMembers` value, a `WitnessGroup` arm, a `WitnessReceiver` arm, a `KimiLibrary.Members` arm and the group's property.
+  Rejected: `Witnesses` answering `true` for the kind: its answer names a target and a declaring Type, so A4 enters a generic group function at
+  abstract `E`, `N` or `I`, which accepts or falsely rejects programs dev reports as the located Limit. Rejected: a `when` on Type identity
+  (review 1, B4); a second contract-to-name table.
+  - **`EffectsLimit`, temporary (`[Transitional("R7")]`):** a computed property of the row, `TypeParameter is not null`, so no row states it: a row
+    whose functions are generic keeps `Witnesses`' `false`, A4's Limit, a located `Unsupported_Kd` where a default's copy calls the requirement on a
+    closed Self under a `confined` obligation (`MirEffectsTest.ALibraryWitnessInADefaultsCopyIsTheLimit`), and a row of no parameter, S1d2's string,
+    has its body read. Removal: R7-P5, which deletes `RequirementInstances`' copies: `Witnesses` answers a witness's instance with its Types (A-12's
+    read of the view, else R7, `ComparisonPlan`'s condition). Those valid programs are then accepted, a behavior change with its own tests.
+  - R5-M22's sentence "Property, FixedArrayEntry, IntegerPosition, Refused and None give false" reads: "Property, a library witness of a row with
+    `EffectsLimit`, Refused and None give false".
