@@ -283,18 +283,16 @@ public sealed partial class RetentionTest
         Assert.Equal(records, MirBorrowsTest.Records(form));
     }
 
-    // SPEC 15.6.4 (G416 row 9, review B2): the bound counts entries, so a Dictionary level, two entries, spends no more of it than dev's 32
-    // levels, n = 17 and 32 keeping dev's conflict, and n = 33 past it as on dev. A Tuple level is one: n = 33 to 64 now reach a part dev gave up
-    // on, a named move in the sound direction, which retains more.
+    // The bound counts entries (the owner's O-47 (b)). A Tuple level is one, so dev's bound stands: n = 32 keeps the conflict, n = 33 is past it.
+    // A Dictionary level is two, so n = 16 keeps the conflict and n = 17 to 32 join dev's silent past-the-bound class: a recorded limit (PLAN
+    // G408, STATUS), these invalid programs newly accepted, no Language record invented. Not a contract to keep: G408 removes it.
     [Theory]
     [InlineData("Dictionary<i32, ", ">", 16, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("Dictionary<i32, ", ">", 17, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("Dictionary<i32, ", ">", 32, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("Dictionary<i32, ", ">", 17, "")]
+    [InlineData("Dictionary<i32, ", ">", 32, "")]
     [InlineData("Dictionary<i32, ", ">", 33, "")]
     [InlineData("(i32, ", ")", 32, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("(i32, ", ")", 33, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("(i32, ", ")", 62, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("(i32, ", ")", 64, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("(i32, ", ")", 33, "")]
     public void TheBoundCountsEntries(string open, string close, int levels, string records)
     {
         var nest = string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels));
