@@ -33,6 +33,24 @@ public class OriginPremiseCatalogTest
     private const string Seven = "func f<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(x: ref/Box<h/H during q> during r, y: ref/i32 during q) -> ref/i32 during r\n" +
         "    a is ref\n    b is ref\n    c is ref\n    d is ref\n    e is ref\n    g is ref\n";
 
+    // PLAN G491: `z` borrows the local `x`, so a nested signature naming `z` names `Projection[x]`.
+    private const string Outer = "func outer(p: ref/i64, q: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n";
+
+    private const string Annotated = "func outer(p: ref/i64, q: ref/i64) -> i32\n    let x: ref/i64 during p = p\n    let z = x@ref\n";
+
+    private const string Converted = "func g(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives b\n    return v\n";
+
+    private const string Compared = "func h(w: ref/i64 during a, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w\n";
+
+    // PLAN G491 (C-80's x1): a condition on its own inputs; `Lent` borrows a second local, `y`, in Outer.
+    private const string Ranked = "func g3(s: ref/(ref/i64 during a) during b, v: ref/i64 during c, u: ref/i64 during d) -> ref/i64 during d\n" +
+        "    origin c outlives d\n    return u\n";
+
+    private const string Lent = "    let y = q\n    let w = y@ref\n";
+
+    private const string Two = "struct Two {a, b}\n    origin b outlives a\n    public let both: ref/(ref/i64 during b) during a\n" +
+        "    public init(both: ref/(ref/i64 during b) during a) => self.both = both\n";
+
     public static TheoryData<string, string, string> Rows => new()
     {
         // R1, SPEC 15.3.3: an enclosing function's clause.
@@ -70,20 +88,88 @@ public class OriginPremiseCatalogTest
     [MemberData(nameof(Rows))]
     public void EachPremiseRuleProvesItsProgram(string rule, string proven, string unproven)
     {
-        var (codes, metrics) = Check(proven);
+        var (codes, metrics, _) = Check(proven);
         Assert.Empty(codes);
         Assert.NotEqual(0, metrics.EdgesOf(Enum.Parse<OriginPremiseRule>(rule)));
         Assert.Contains(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), Check(unproven).Codes);
     }
 
-    // R5, SPEC 15.6, 15.6.1: a borrow of a complete local Place is well-formed, so the Origins stored in the Place outlive the
-    // borrow's inferred region. That region is never fixed, so region inference also accepts the relation without the premise.
+    // R5, SPEC 15.6.1, 15.6.5: a borrow of a complete local Place is well-formed, so the Origins stored in the Place outlive the
+    // borrow's Origin. That Origin is body-local, hence finite, so the body proves the relation without any premise.
     [Fact]
     public void ABorrowedLocalPlaceSuppliesItsStoredOrigins()
     {
         var source = "enum E<T>\n    Some(T)\n    None\nlet text = \"hello\"\nlet savedText = text@ref\nlet inner = (savedText, 42)\nlet input = inner@ref\n" +
             "let value: E<ref/(ref/string during savedText, i32) during input> = .Some(input)\nmatch value@ref\n    .Some((let saved, _)) => Console.writeLine(saved@follow)\n    .None => $abort(\"none\")\n";
-        var (codes, metrics) = Check(source);
+        var (codes, metrics, _) = Check(source);
+        Assert.Empty(codes);
+        Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
+    }
+
+    // SPEC 15.2.2, 15.3.4, 15.6.1 (PLAN G491): R5 is the well-formedness obligation of the body that declares the local, never a premise
+    // of a nested signature or body. A nested function's or anonymous function's inputs, or a comparison's required signature, may name
+    // `z` (`Projection[x]`), but `p outlives z` stays outer's obligation, so `p outlives q` is Unknown there; in an anonymous function's
+    // body, `x` and `z` are fixed Origins (SPEC 15.6.5, 15.8.2), so `x outlives z` is Unknown too. A required signature's own input
+    // (`ref/(ref/i64 during x) during z`) still gives its condition. A meet whose operand names `z` does not make a comparison's relation
+    // between fixed Origins a body's: `(p and z) outlives q` needs `p outlives q` (SPEC 15.3.6, 15.6.1), also where 15.3.6 solves it,
+    // as `g5`'s `a := (p and z)` whose well-formedness needs `a outlives q` (r5, the inferred form of r1; SPEC 15.2.2 absorbs no meet
+    // by a body relation). For `p outlives w`, `w = y@ref`, only the Origins stored in `y` outlive `w`: `x`'s, which a required input
+    // names through `z`, take no part, so `p outlives q` remains (x1, and x1m with a meet).
+    [Theory]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData("func g5(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives a\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g5\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during (p and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Converted + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData("func h2(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during x) during z, ref/i64 during z) -> ref/i64 during z = h2\n    return 0\n", null)]
+    [InlineData(Outer + "    let f = func() -> i32\n        let w: ref/i64 during z = x\n        return 0\n    return f()\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Outer + "    let f = func() -> ref/i64 during z => x\n    let k = f()\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Outer + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Annotated + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Outer + "    let f = func(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q => v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Outer + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during q) -> ref/i64 during p\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during p) during q, ref/i64 during p) -> ref/i64 during q = g\n    return 0\n", null)]
+    public void LocalPlaceIsNoPremiseOfANestedSignatureOrBody(string body, string? code)
+        => Assert.Equal(code is null ? [] : [code], Check(body + Main).Codes);
+
+    // PLAN G491, G492: an enclosing local named in a nested signature is a fixed Origin there (SPEC 15.3.4), so `x outlives q` is Unknown.
+    // R5 no longer accepts it; the record at `return v` is not pinned, since its category is G492's.
+    [Fact]
+    public void ABorrowedLocalNamedInANestedSignatureIsRejectedAtItsUse()
+    {
+        var (codes, _, subjects) = Check("func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n" +
+            "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during x) -> ref/i64 during q\n        return v\n    return 0\n" + Main);
+        Assert.NotEmpty(codes);
+        Assert.All(subjects, static x => Assert.Contains(x, new[] { "return v", "v" }));
+    }
+
+    // SPEC 15.6.4 step 3, 15.6.5: a nested function's or anonymous function's own local keeps R5 in that body (NestedField's form).
+    [Theory]
+    [InlineData(Two + "func outer(p: ref/i64) -> i32\n    func inner(q: ref/i64) -> i32\n        let r = q\n        let h = Two.init(r@ref)\n        return 0\n    return inner(p)\n")]
+    [InlineData(Two + "func outer(p: ref/i64) -> i32\n    let f = func(q: ref/i64) -> i32\n        let r = q\n        let h = Two.init(r@ref)\n        return 0\n    return f(p)\n")]
+    public void ANestedBodyKeepsLocalPlaceForItsOwnLocals(string body)
+    {
+        var (codes, metrics, _) = Check(body + Main);
+        Assert.Empty(codes);
+        Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
+    }
+
+    // SPEC 15.6.1, 15.6.5 (the owner's 「(b)にする」, PLAN G491, G492): a comparison in the body that declares the locals judges a
+    // relation that requires an Origin to outlive one of their borrows as that body's, as the local fit `let w: ref/i64 during z = x`
+    // is: R5 proves `x outlives z`, at a function's, a nested function's own and the top level's locals, and a meet operand by operand
+    // (SPEC 15.3.6: `p outlives z` proves `p outlives (q and z)`).
+    [Theory]
+    [InlineData(Compared + Outer + "    let f: (ref/i64 during p, ref/i64 during (q and z)) -> ref/i64 during (q and z) = h\n    return 0\n" + Main)]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during q, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n" + Main)]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during p, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
+    [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    func inner(q: ref/i64) -> i32\n        let x = q\n        let z = x@ref\n        let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n        return 0\n    return inner(p)\n" + Main)]
+    [InlineData(Compared + "let y: i64 = 1\nlet x = y@ref\nlet z = x@ref\nlet f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n")]
+    public void AComparisonInTheDeclaringBodyKeepsLocalPlace(string source)
+    {
+        var (codes, metrics, _) = Check(source);
         Assert.Empty(codes);
         Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
     }
@@ -210,7 +296,8 @@ public class OriginPremiseCatalogTest
         return oracle.Outlives(longer);
     }
 
-    private static (string[] Codes, OriginProofMetrics Metrics) Check(string source)
+    // The records' codes, the proof metrics and each record's subject (the first line of its syntax), Binding's issues before the analysis'.
+    private static (string[] Codes, OriginProofMetrics Metrics, string[] Subjects) Check(string source)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
@@ -220,6 +307,7 @@ public class OriginPremiseCatalogTest
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        return (c.Binding.Issues.Select(static x => x.Code.ToString()).Concat(c.Problems.Select(static x => x.Code.ToString())).ToArray(), metrics);
+        var subjects = c.Binding.Issues.Select(static x => x.Node).Concat(c.Problems.Select(x => c.SyntaxOf(x.Subject))).Select(static x => x.ToString().Split('\n')[0].Trim());
+        return (c.Binding.Issues.Select(static x => x.Code.ToString()).Concat(c.Problems.Select(static x => x.Code.ToString())).ToArray(), metrics, subjects.ToArray());
     }
 }
