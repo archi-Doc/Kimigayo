@@ -393,6 +393,10 @@ public sealed partial class Binding
             this.ReturnedRegions(symbol.Type, closureBody, plan.ReturnedRegions, this.visitedParts.Begin(this.storageVersion));
             symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type));
         }
+        else
+        {
+            this.StatedResultRegions(function, closureBody, plan);
+        }
 
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
         try
@@ -428,6 +432,50 @@ public sealed partial class Binding
 
         this.JudgeOmittedCaptures(function, plan);
         return Complete(function, plan.EnvironmentType);
+    }
+
+    // SPEC 15.8.2 (PLAN G553): a stated result's regions: what the values the body fits into it name, a walk of the bound body, which keeps
+    // no list of its returns for a stated result.
+    private void StatedResultRegions(FunctionKoto function, ExecutableBody body, BoundClosure plan)
+    {
+        var holds = false;
+        for (var i = 0; i < plan.Storage.Count && !holds; i++)
+        {
+            holds = plan.Storage[i].Environment.Type is { } capture && this.HasLocalRegion(capture);
+        }
+
+        if (!holds)
+        {
+            return;
+        }
+
+        var regions = plan.ReturnedRegions;
+        var query = this.visitedParts.Begin(this.storageVersion);
+        if (function.ExpressionBody?.BoundType is { } value)
+        {
+            this.ReturnedRegions(value, body, regions, query);
+        }
+
+        function.Body?.VisitChildren(new ReturnedValues(this, function, body, regions, query));
+    }
+
+    // A stated result's returned values (StatedResultRegions): each `return` of the Closure's own body.
+    private sealed class ReturnedValues(Binding binding, FunctionKoto function, ExecutableBody body, List<BoundOrigin> regions, uint query) : KotoVisitor
+    {
+        public override void Visit(Koto node)
+        {
+            if (node is FunctionKoto)
+            {
+                return;
+            }
+
+            if (node is JumpKoto { Expression.BoundType: { } returned } jump && ReferenceEquals(BindTransferTarget(jump), function))
+            {
+                binding.ReturnedRegions(returned, body, regions, query);
+            }
+
+            node.VisitChildren(this);
+        }
     }
 
     // SPEC 15.8.2 (PLAN G553): the local regions outside the Closure's body that a returned value's Type names, a part of it included; a
