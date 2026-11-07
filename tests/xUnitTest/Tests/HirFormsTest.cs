@@ -867,6 +867,73 @@ public sealed partial class HirFormsTest
         Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
     }
 
+    // SPEC 4.7.1 (DECISIONS BU-8, R4-M142): a user index's selection as ExpansionPlan gives it, which equal IR does not show where index and
+    // indexUniq have equal bodies. Every take claims, also one a later take overwrites: the bare take of a for's Subject below a part (a
+    // stored uniq over ref, a pair of ref or uniq) before the shared entry call, and of a compound assignment's right side before its
+    // operator's `right: ref/Vec2`.
+    [Fact]
+    public void AnOverwrittenTakeSelectsByItsClaim()
+    {
+        const string Source = """
+            struct One<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public var uniqCalls: i32 = 0
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    self.uniqCalls += 1
+                    return self.first@uniq
+            struct Holder<T>
+                public var items: T
+                public init(items: T) => self.items = items@move
+            struct Vec2
+                Self is Addable<Vec2>
+                associate Addable<Vec2>.Output is Vec2
+                public var x: i32 = 0
+                public init() => ()
+                public func added(self: ref/Self, right: ref/Vec2) -> Vec2 => Vec2.init()
+            func stored(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32
+                var total: i32 = 0
+                for x in v[0].0
+                    total += x
+                return total
+            func pair<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T) -> i32
+                s is ref or uniq
+                var total: i32 = 0
+                for x in v[0].0
+                    total += x
+                return total
+            func counted(v: uniq/Two<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32
+                var total: i32 = 0
+                for x in v[0].0
+                    total += x
+                return total
+            func element(v: uniq/One<uniq/Vec2 during a>) -> i32
+                var total = Vec2.init()
+                total += v[0]
+                return total.x
+            func part(v: uniq/One<Holder<uniq/Vec2 during a>>) -> i32
+                var total = Vec2.init()
+                total += v[0].items
+                return total.x
+
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var selections = Reachable(c.Kotonoha).Where(static x => x is IndexKoto && ExpansionPlan.Of(x)?.Second is not null).Select(static x => ExpansionPlan.Of(x)!.Value.Second!.Target.Name);
+        Assert.Equal(Enumerable.Repeat("indexUniq", 5), selections);
+    }
+
     // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that
     // turns a discarded Place into a value (`let x = 2` replaced, so the statement `x` names the function `x`) leaves no earlier pass's
     // Type in its row, which MirBuilder.Held would hold the value at.

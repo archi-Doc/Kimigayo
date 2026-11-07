@@ -304,10 +304,10 @@ public sealed partial class Binding
                 return null; // The HIR publisher's walk takes no child of such a consumer.
             }
 
-            var shared = new ConsumedTakes(binding, target, exclusive: false);
-            binding.AdjustChildren(consumer, op, ref shared);
-            var exclusive = new ConsumedTakes(binding, target, exclusive: true);
-            binding.AdjustChildren(consumer, op, ref exclusive);
+            var shared = new ConsumedTakes(binding, target);
+            binding.AdjustChildren(consumer, op, exclusive: false, ref shared);
+            var exclusive = new ConsumedTakes(binding, target);
+            binding.AdjustChildren(consumer, op, exclusive: true, ref exclusive);
             return shared.Result == exclusive.Result ? shared.Result : null;
         }
 
@@ -357,8 +357,8 @@ public sealed partial class Binding
 
         // One child's takes by its consumer, as the Adjust rule gives them and the HIR publisher writes them: the last, the column's, and
         // the earlier call's that a later one replaces by another (EarlierAdjust, the plan row's), each completed by the claim the
-        // consumer's uses of the child made so far (Claims, R4-M142's `claimed`), under a given capability of the consumer's own use.
-        private struct ConsumedTakes(Binding binding, Koto child, bool exclusive) : IHirUses
+        // consumer's uses of the child made so far (Claims, R4-M142's `claimed`), under the capability AdjustChildren is given.
+        private struct ConsumedTakes(Binding binding, Koto child) : IHirUses
         {
             private HirAdjust last;
             private HirAdjust earlier;
@@ -368,8 +368,6 @@ public sealed partial class Binding
 
             // Whether either take acquires the child by value; null where the consumer takes no such child.
             public readonly bool? Result => this.found ? ByValue(this.last) || ByValue(this.earlier) : null;
-
-            public readonly bool UseExclusive => exclusive;
 
             // An acquisition by the bare rule (SPEC 3.5): Copied, moved, Reborrowed or by case, erased or not.
             public static bool ByValue(HirAdjust adjust) => adjust is
