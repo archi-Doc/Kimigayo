@@ -118,7 +118,7 @@ public sealed partial class MirBorrowsTest
     // A recorded conservative limit (the owner's O-51, verbatim 「全部 (a)」, and O-52, verbatim 「a」; the root fix with R7-O2's local slot
     // regions): valid and clean on the base, and shape C rejects them. The region's edge is a may-fact on its one node, which the rows read as
     // a fit. Every form has the region in a Closure's environment, a result or store position reaching the meet of its sources in source
-    // order, and a Loan the position's own value does not carry, read through the receiver. These rows name the classes; the class is wider.
+    // order, and a Loan the position's own value does not carry. These rows name the classes; the class is wider.
     // Scope, two Closure parts of the region in one contract, in or out of a loop, the position reaching one's meet: (k2, O-51, R7-O2) one
     // Closure's meet reaches another Closure's occurrence of the region (SPEC 7.7.2: each capture is its own snapshot). Tense, a bound the
     // region takes after the literal, an assignment or a call's argument to a `during r` parameter, that never reaches the capture: (v7,
