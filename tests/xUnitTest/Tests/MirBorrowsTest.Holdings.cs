@@ -8,6 +8,8 @@ namespace XunitTest;
 public sealed partial class MirBorrowsTest
 {
     private const string Limited = "grow(w@uniq, y@ref) OwnershipDepthLimit_Kd";
+    private const string Stored = "store(d@uniq, value@ref) OwnershipDepthLimit_Kd";
+    private const string Conflicts = "slot@ref ComparisonLoanConflict_Kd|y = 5 ComparisonLoanConflict_Kd";
 
     private const string HoldingShapes = """
         struct Window {a}
@@ -39,38 +41,71 @@ public sealed partial class MirBorrowsTest
         Assert.Contains("chainBad: w@ref", problems);
     }
 
-    // The owner's O-47, PLAN G408: row 9's `(K, V)` entry stays and the bound stays 32, so a Dictionary level costs two steps and a nest reaches
-    // the bound at half a Tuple's depth: a named limit, A5's located OwnershipDepthLimit_Kd at the call where a check rests on the guard; a
-    // program whose answer comes from Binding's row has no record from 17 on either analysis (rulings-4).
-    // With an exclusive reference at depth n the call may store y's Loan in `slot` (invalid, SPEC 15.6.4, 15.6.2): through 15 the
-    // conflict is reported, from 16 the limit record alone, which stands for it (review B1). A Loan-free nest under an exclusive reference (valid)
-    // is exact through 15 and limited from 16, by value through 16 and limited from 17: a Resource record, IMPL 21.3.2.
+    // The owner's O-47, O-49 (a), PLAN G408: row 9's `(K, V)` entry stays and the bound stays 32, so the named limit is a storage nest past 32
+    // entries, a Dictionary level counting two: A5's located OwnershipDepthLimit_Kd at the call where a check rests on the guard; a program whose
+    // answer comes from Binding's row has no record past it on either analysis (rulings-4). This row is a nest of Dictionaries alone. With an
+    // exclusive reference at depth n the call may store y's Loan in `slot` (invalid, SPEC 15.6.4, 15.6.2): through 15 the conflict is reported,
+    // from 16 the limit record alone, which stands for it (review B1). A Loan-free nest under an exclusive reference (valid) is exact through
+    // 15 and limited from 16, by value through 16 and limited from 17: a Resource record, IMPL 21.3.2.
     [Theory]
-    [InlineData(15, "slot@ref ComparisonLoanConflict_Kd|y = 5 ComparisonLoanConflict_Kd", "", "")]
-    [InlineData(16, Limited, "store(d@uniq, value@ref) OwnershipDepthLimit_Kd", "")]
-    [InlineData(17, Limited, "store(d@uniq, value@ref) OwnershipDepthLimit_Kd", "store(d@uniq, value@ref) OwnershipDepthLimit_Kd")]
-    [InlineData(31, Limited, "store(d@uniq, value@ref) OwnershipDepthLimit_Kd", "store(d@uniq, value@ref) OwnershipDepthLimit_Kd")]
-    public void ADictionaryNestPastTheBoundIsALocatedLimit(int depth, string invalid, string pastExclusive, string byValue)
+    [InlineData(15, Conflicts, "", "")]
+    [InlineData(16, Limited, "", "", true)]
+    [InlineData(17, Limited, Stored, Stored)]
+    [InlineData(31, Limited, Stored, Stored)]
+    public void ADictionaryNestPastTheBoundIsALocatedLimit(int depth, string invalid, string pastExclusive, string byValue, bool limitedPastExclusive = false)
+        => AssertNestLimit(x => Repeated("Dictionary<i32, ", depth) + x + Repeated(">", depth), string.Empty, invalid, limitedPastExclusive ? Stored : pastExclusive, byValue);
+
+    // The same limit on a mixed nest (review R1), which is the limit's general form: the edge is entries from the holder's root, not Dictionary
+    // levels, so it shifts with the holder and with what else the nest holds. A level of a Field, a Tuple or an Array over a Dictionary is three
+    // entries: exact at 10 levels, 30 entries; at 11, 33, an invalid program loses its conflict records to the limit record, and a valid one
+    // past an exclusive reference is newly rejected, a named Resource record; by value, with no reference step on the path, the valid one
+    // follows at 12. One Dictionary under 30 Tuples is past the limit by the same count, past an exclusive reference only.
+    [Theory]
+    [InlineData("field", 10, Conflicts, "", "")]
+    [InlineData("field", 11, Limited, Stored, "")]
+    [InlineData("field", 12, Limited, Stored, Stored)]
+    [InlineData("tuple", 10, Conflicts, "", "")]
+    [InlineData("tuple", 11, Limited, Stored, "")]
+    [InlineData("tuple", 12, Limited, Stored, Stored)]
+    [InlineData("array", 10, Conflicts, "", "")]
+    [InlineData("array", 11, Limited, Stored, "")]
+    [InlineData("array", 12, Limited, Stored, Stored)]
+    [InlineData("tuples", 30, Limited, Stored, "")]
+    public void AMixedNestPastTheBoundIsALocatedLimit(string form, int levels, string invalid, string pastExclusive, string byValue)
+    {
+        var (open, close) = form switch
+        {
+            "field" => ("Hd<Dictionary<i32, ", ">>"),
+            "tuple" => ("(i32, Dictionary<i32, ", ">)"),
+            "array" => ("Array<Dictionary<i32, ", ">>"),
+            _ => ("(", ", i32)"),
+        };
+        var inner = form == "tuples" ? (Func<string, string>)(static x => $"Dictionary<i32, {x}>") : static x => x;
+        AssertNestLimit(x => Repeated(open, levels) + inner(x) + Repeated(close, levels), "struct Hd<T>\n    public var item: T\n", invalid, pastExclusive, byValue);
+    }
+
+    private static string Repeated(string text, int count) => string.Concat(Enumerable.Repeat(text, count));
+
+    // A nest's records in the three forms: an exclusive reference at its leaf (invalid: the call may store y's Loan in `slot`), and a Loan-free
+    // nest under an exclusive reference and by value (valid, MirBorrowsTest.DepthLimit's GuardForm).
+    private static void AssertNestLimit(Func<string, string> nest, string shapes, string invalid, string pastExclusive, string byValue)
     {
         const string Target = "uniq/(ref/i32 during a) during a";
-        var nest = Nest(Target);
-        var loanFree = Nest("i32");
-        Assert.Equal(Rows(invalid), Records($"func make(target: {Target}) -> {nest} => $abort(\"x\")\nfunc grow(h: uniq/({nest}) during c, extra: ref/i32 during a) => ()\n" +
+        var (held, loanFree) = (nest(Target), nest("i32"));
+        Assert.Equal(Rows(invalid), Records($"func make(target: {Target}) -> {held} => $abort(\"x\")\nfunc grow(h: uniq/({held}) during c, extra: ref/i32 during a) => ()\n" +
             "func inspect<T>(value: ref/T) => ()\nfunc f()\n    var z = 1\n    var y = 2\n    var slot = z@ref\n    var w = make(slot@uniq)\n    grow(w@uniq, y@ref)\n    y = 5\n    inspect(slot@ref)\n"));
         Assert.Equal(Rows(pastExclusive), Records(Guard($"uniq/{loanFree} during e", $"uniq/{loanFree}", "z")));
         Assert.Equal(Rows(byValue), Records(Guard(loanFree, loanFree, "z@move")));
-
-        string Nest(string inner) => string.Concat(Enumerable.Repeat("Dictionary<i32, ", depth)) + inner + string.Concat(Enumerable.Repeat(">", depth));
 
         static string Guard(string part, string parameter, string read) => "func inspect<T>(value: ref/T) => ()\n" +
             $"func store(t: uniq/((ref/i32 during a, ref/(ref/i32 during b) during c, {part})), v: ref/i32 during a) => ()\n" +
             $"func f(z: {parameter}) -> ()\n    var value = 42\n    var x = 1\n    var r = x@ref\n    var d = (x@ref, r@ref, {read})\n" +
             "    store(d@uniq, value@ref)\n    value = 99\n    inspect(r@ref)\n    return\n";
 
-        static IEnumerable<string> Records(string source)
+        IEnumerable<string> Records(string source)
         {
-            var c = CompileDepthForm(source + "public func main() => ()\n");
-            return DepthRecords(c, Analyze(c), "f").Where(static x => x.Line != "var d = (x@ref, r@ref, z@move)").Select(static x => $"{x.Line} {x.Code}");
+            var c = CompileDepthForm(shapes + source + "public func main() => ()\n");
+            return DepthRecords(c, Analyze(c), "f").Select(static x => $"{x.Line} {x.Code}");
         }
     }
 }
