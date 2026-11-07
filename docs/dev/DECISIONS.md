@@ -15530,3 +15530,28 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Plan: RP7 and RP21 end (Q14); RQ6's units run one prototype-first candidate unless the owner instructs otherwise; R8-R1 and
     R8-G1 are Major units under their approved design.
   - Reason: the middle session ran the windows besides its defect stream, and three sessions edited the same documents.
+- **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
+  on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
+  - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
+    Kotonoha, are the one component of an Array, a Slice and a string; IMPL 21.1.3 states the Place and each `data` pointer's guarantee
+    in SPEC 5.5's shape, so a raw Field access through them is an ordinary access. `Array`, `Slice` and `string` keep their Type
+    semantics. `during self` stands only on `ArrayRepr.data`, where the value owns the storage (SPEC 5.7, 5.2.1).
+  - Stages (option (b)): R1a now, the structs and the text; R1b, `Layout`'s handle rows derived from the structs' placement, after the
+    A1 and K1 families, when fewer offset sites remain; R1c, the fixed-array boundary, with A1d.
+  - O-41 (a): the contract lives in IMPL 21.1.3, SPEC unchanged for this fact: user code cannot name the structs, SPEC 3.1.2 leaves the
+    layout implementation-defined, and SPEC 5.5's hook is a guarantee documented by the implementation.
+  - O-43 (A), a lasting exception: `Storage.StringRepr` and the runtime's statement (`RuntimeAbi.String`, `%kimi.string`, the runtime
+    IR's Field order) are a lasting pair at the runtime boundary. The plan keeps `__kimi_destroy_string` as IR, `TestRuntime.ll` and
+    `FunctionCodegen.Stores.cs:Text` read the same words, and `RuntimeAbi` is process-wide and cannot read a compilation's placement.
+    No Transitional tag and no removal stage. The guard is permanent, and each part holds one thing: `LayoutTest`'s `StringRepr` row and
+    `RecordFieldsAreFixed` hold `StringRepr` against `RuntimeAbi.String`; `MinimalEmissionTest.cs:34` holds `%kimi.string`'s definition;
+    `FunctionCodegenTest.Strings.cs:164-167` and `.Updates.cs:115, 144` hold `Stores.cs:Text`; the templates' Field order
+    (`WindowsRuntime.ll.in:104, :264, :299`, `TestRuntime.ll`) has only native runs: `String*`, `Utf*` and `Abort*`.
+  - Supersedes: the plan's §5.2 SP1 row for this fact (the rest of SP1 stays with its units), and §2.2's RQ11 "the punnable list of
+    Appendix E gains the pairs", which names no existing list (it is SPEC 5.2's) and needs no pair once the Fields are ordinary Places.
+  - Vocabulary: `KimiDeclarationId` 195 → 198 (`ArrayRepr`, `SliceRepr`, `StringRepr`; the lang-item set at G1, RQ9). `[Transitional("R8")]`
+    tags stay 29.
+  - Temporary, each removed at R1b: `Layout.Handles` beside the structs (already tagged; words pinned equal for all three), and the pin
+    theory's handle rows, which can then no longer fail.
+  - Rejected: the plan's R1 as one unit (it edits about 15 offset sites that A1 deletes, changes every fixture's IR text and exceeds an
+    hour); a Place sentence on each bodiless operation (several statements of one rule, gone at G1); the text in SPEC 22.1 (O-41).
