@@ -16,6 +16,16 @@ public sealed partial class MirEffectsTest
     // emptied by pops destroys no element, or the body is rewritten so that its items stay within None.
     private const string AppendAllDropsItsEmptiedSource = "appendAll: Drop T";
 
+    // SPEC 4.9.7 (PLAN G126): destroyValues is a destruction of its Type argument in A4, the item clear's row covers.
+    [Fact]
+    public void DestroyValuesIsADestructionOfItsTypeArgument()
+    {
+        var c = MirBuildTest.Compile("public func main() => ()\n");
+        var (effects, _, program) = Analyzed(c);
+        var clear = program.Callee(new(MirCalleeKind.Fn, c.Library.GetSymbol(KimiDeclarationId.ArrayClear)!))!;
+        Assert.Contains(effects.Items(clear, 0, out _).ToArray(), static x => x.Kind == MirEffects.Drop && x.Type.Name == "T");
+    }
+
     // SPEC 4.9.6: each Kimi body with a row stays within it in A4's items, with abstract Type parameters: an atom is the row's requirement
     // on the Type below its parameter, a shared call through its Callable input, or a destruction the row's target or Callable input
     // reaches or the premises prove Copy (as A4 resolves an atom at the top); an Unknown only a call of the row's requirement on that Type
@@ -47,7 +57,7 @@ public sealed partial class MirEffectsTest
         }
 
         Assert.Equal([AppendAllDropsItsEmptiedSource], outside);
-        Assert.Equal(26, bodies);
+        Assert.Equal(30, bodies);
 
         void Check(string name, BindingSymbol operation, MirBody body)
         {

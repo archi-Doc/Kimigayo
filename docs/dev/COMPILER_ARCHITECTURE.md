@@ -78,7 +78,7 @@ a SPEC basis and owner approval.
 | `MirAggregateKind` | 6 |
 | `LayoutNeed` | 4 |
 
-These are the unchanged pre-retirement limits; IntrinsicId uses 32 and returns to 28 at R8 (DECISIONS R5-M137). `LayoutNeed` (`None`,
+These are the unchanged pre-retirement limits; IntrinsicId uses 31 and returns to 28 at R8 (DECISIONS R5-M137). `LayoutNeed` (`None`,
 `Parts`, `Element`, `TypeArguments`; the owner, DECISIONS R5-M149) is the Backend's one statement of what a form's generated code reads a
 layout of besides its by-value storage: `LayoutNeeds`' rows (projection steps, operators, comparison nodes) and the intrinsic and legacy
 rows' `Need` columns; a new form adds a row.
@@ -240,7 +240,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     ended their reads outside Binding except the tests', until R7, and the old control-flow analysis', which H10b-2 deleted; DECISIONS
     R5-M9, R5-M190, R5-M193); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the lasting HIR
     publication/version contract is unmarked, and only its publisher walk and private state disappear at R7;
-  - the temporary intrinsics `Capacity`, `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and
+  - the temporary intrinsics `FormatBuffer`, `FormatSegment` (`FormatHint` until C9d, DECISIONS R5-M133) and
     `FormatFinish` that the owner admitted on 2026-10-11 (`IntrinsicId` limit 34, back to 28 in R8; DECISIONS R3-9, R3-10, R5-M137);
   - `Binding.IsTwinRecord`, the test MIR side's twin filter (R7's Problem records unit, with the twins; the owner, 2026-11-06,
     「Cで決定します」; DECISIONS R4-M111, R5-M188, R5-M192);

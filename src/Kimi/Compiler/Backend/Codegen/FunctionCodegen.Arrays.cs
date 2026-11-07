@@ -1,15 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
+using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.5, 16.3.2, 22.2; R5 plan C8d; DECISIONS R5-M121, R5-M129), beside the
-// operations and storage kinds whose call runs their LegacyRow item's routine (FunctionCodegen.Intrinsics' Routine): an Array aggregate's
-// storage (ArrayBuffer: the runtime's empty handle at its Place with its location, for n elements one growth to n and the length n), whose
-// buffer the aggregate writer puts the elements in; capacity, P2b's kernel over the handle, the legacy representation's
-// capacity word of an Array or a Dictionary (PD2); and an Array's glue level, its glue item's Drop helper called with the glue's own
-// parameters (the string row's form). A Dictionary's glue and a Dictionary from none are FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
+// The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.7, 16.3.2, 22.2; R5 plan C8d; DECISIONS R5-M121, R5-M129), beside the
+// storage kinds whose call runs their LegacyRow item's routine (FunctionCodegen.Intrinsics' Routine): an Array aggregate's storage
+// (ArrayBuffer: the runtime's empty handle at its Place with its location, for n elements one growth to n and the length n), whose buffer
+// the aggregate writer puts the elements in; destroyValues' counted loop over T's glue (PLAN G126); and an Array's glue level, the
+// destroyArray instance its glue item targets, called with the glue's own parameters (the string row's form). A Dictionary's glue and a
+// Dictionary from none are FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
 internal sealed partial class FunctionCodegen
 {
     // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array aggregate's storage at its handle: the runtime's empty handle, then for its n
@@ -40,27 +41,66 @@ internal sealed partial class FunctionCodegen
         return this.LoadAt(handle, RuntimeAbi.StringReference.Layout); // The buffer word, a pointer (IMPL 21.1.3).
     }
 
-    // SPEC 4.9.5: capacity, from the shared view of the handle its one operand holds, by P2b's kernel (the legacy handle's capacity word).
-    private void Capacity(in MirTerminator call)
+    // SPEC 4.9.7, 16.3.2, 4.9.8 (PLAN G126): destroyValues over its operands, the storage and the count: the values from the last, each by T's
+    // glue, the call's target, in the one counted loop (Loop) after a test for no value. A T without a glue has no target and writes nothing,
+    // so a cleanup-free destruction costs nothing at any optimization level.
+    private void DestroyValues(in MirTerminator call, int target)
     {
-        if (!this.Operand(this.body.Operands[call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0)], out var handle))
+        if (target >= 0)
         {
-            return; // A broken contract, recorded.
+            var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
+            if (this.Needed(call.Callee.Subst!, 0, out _) is not { } element ||
+                !this.Operand(this.body.Operands[call.Start + ArgumentPosition(key, 0)], out var storage) ||
+                !this.Operand(this.body.Operands[call.Start + ArgumentPosition(key, 1)], out var count) ||
+                !this.Location(call.Source, out var site))
+            {
+                return; // A broken contract, recorded.
+            }
+
+            var (id, empty, bytes) = (this.next, new Value('t', this.next + 1), new Value('t', this.next + 2));
+            this.next += 3;
+            var output = this.output;
+            output.Write("  ");
+            this.WriteValue(empty);
+            output.Write(" = icmp eq i64 ");
+            this.WriteValue(count);
+            output.Write(", 0\n  br i1 ");
+            this.WriteValue(empty);
+            output.Write(", label %undestroyed");
+            WriteNumber(output, id);
+            output.Write(", label %destroying");
+            WriteNumber(output, id);
+            output.Write("\ndestroying");
+            WriteNumber(output, id);
+            output.Write(":\n  ");
+            this.WriteValue(bytes);
+            output.Write(" = mul i64 ");
+            this.WriteValue(count);
+            output.Write(", ");
+            WriteNumber(output, element.Layout.Stride);
+            output.Write('\n');
+            var last = this.Difference(bytes, new('\0', element.Layout.Stride));
+            this.Loop(count, element, new Destroyed(target, storage, last, site));
+            output.Write("  br label %undestroyed");
+            WriteNumber(output, id);
+            output.Write("\nundestroyed");
+            WriteNumber(output, id);
+            output.Write(":\n");
         }
 
-        var capacity = new Value('t', this.next++);
-        LegacyRuntimeHelpers.WriteCapacity(
-            this.output, this.Spelled(handle, stackalloc char[SpellingLength]), this.Spelled(capacity, stackalloc char[SpellingLength]), this.next++);
-        this.Finish(call, capacity);
+        this.Finish(call, null);
     }
 
-    // SPEC 4.9.7, 16.3.2: an Array's glue level at its address, its glue item's Drop helper (P1b's row, which destroys the elements from the
-    // last by the element's glue, then releases the buffer) with the glue's own parameters.
+    // SPEC 4.9.7, 16.3.2: an Array's glue level at its address, its one target, the destroyArray instance, with the glue's own parameters.
     private void ArrayGlue(int glue, Value address, Site site)
     {
-        if (this.module.ArrayDrop(glue) is { } drop)
+        if (this.collector.Set.Targets(glue) is not [var target])
         {
-            this.Destroy(drop, address, site);
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets the body an Array's destruction runs.
+        }
+        else if (this.module.Signature(target.Item) is { } destroy)
+        {
+            this.Destroy(destroy, address, site);
         }
     }
 }

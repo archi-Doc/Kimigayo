@@ -50,8 +50,8 @@ internal sealed partial class ModuleCodegen
             return null; // Recorded.
         }
 
-        var stored = new StoredValue(key, null);
-        var storedValue = new StoredValue(value, null);
+        var stored = new StoredValue(key);
+        var storedValue = new StoredValue(value);
         var helper = this.dictionaries[item] is { } kept && (kept.Kind, kept.Key, kept.Value) == (kind, stored, storedValue) ? kept
             : DictionaryHelper.Create(
                 kind, stored, storedValue, DictionaryEntryLayout.Of(key.Layout, value.Layout), "_" + item.ToString(CultureInfo.InvariantCulture));

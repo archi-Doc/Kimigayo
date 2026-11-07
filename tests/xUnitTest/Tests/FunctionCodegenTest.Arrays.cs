@@ -158,33 +158,45 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal($"call void @(ptr %, i64 8, ptr @, i64 {LocationText(Arrays, "values.reserve(8)").Length})", reserve.Shape);
         Assert.Contains(reserve.Callee!.Instructions, static x => x.Shape == "store i64 16, ptr %, align 8"); // The stride it gives growArray.
         var shrink = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arFit"))));
-        Assert.Same(ir.Function("__kimi_array_shrink"), shrink.Callee);
-        Assert.Equal($"call void @(ptr %, i64 16, ptr @, i64 {LocationText(Arrays, "values.shrinkToFit()").Length})", shrink.Shape);
+        Assert.Contains(FunctionsOf(ir, c, "shrinkToFit"), x => x == shrink.Callee);
+        Assert.Equal($"call void @(ptr %, ptr @, i64 {LocationText(Arrays, "values.shrinkToFit()").Length})", shrink.Shape);
+        Assert.Contains(FunctionsOf(ir, c, "shrinkArray"), x => shrink.Callee!.Instructions.Any(y => y.Callee == x && y.Shape == "call void @(ptr %, i64 %, ptr %, i64 %)"));
     }
 
-    // SPEC 4.9.7, 16.3.2 (DECISIONS R5-M121): clear's helper destroys each element by the element's glue, from the last, and keeps the buffer;
-    // over i32 it destroys nothing. An Array's glue calls its own Drop helper with its parameters, which also releases the buffer.
+    // SPEC 4.9.7, 16.3.2 (PLAN G126): clear's body destroys each element by the element's glue in one counted loop, and keeps the buffer; over
+    // i32 it destroys nothing. An Array's glue calls its one destroyArray instance with its parameters, which also releases the buffer.
     [Fact]
-    public void ArrayDestructionRunsTheElementsGlueThroughItsHelper()
+    public void ArrayDestructionRunsTheElementsGlueThroughItsBodies()
     {
         var c = Analyze(Arrays, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
-        var free = ir.Function("__kimi_array_free");
+        var free = ir.Function("__kimi_free");
         var clear = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arEmpty")))).Callee!;
-        var element = Assert.Single(CalleesOf(clear));
-        Assert.Equal("internal void (ptr, ptr, i64)", element.Signature);
+        var element = Assert.Single(CalleesOf(clear), static x => x.Signature == "internal void (ptr, ptr, i64)");
         Assert.Contains(CalleesOf(element), static x => x.Signature == "internal void (ptr)"); // Res's destructor instance.
-        Assert.Empty(CalleesOf(Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arEmptyInts")))).Callee!));
+        Assert.DoesNotContain(CalleesOf(Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arEmptyInts")))).Callee!), static x => x.Signature == "internal void (ptr, ptr, i64)");
 
         var keep = Assert.Single(FunctionsOf(ir, c, "arKeep"));
         var glue = Assert.Single(CalleesOf(keep), static x => x.Signature == "internal void (ptr, ptr, i64)");
         var call = Assert.Single(CallsOf(glue));
         Assert.Equal([glue.Parameters[0], glue.Parameters[1], glue.Parameters[2]], call.Operands);
+        Assert.Contains(FunctionsOf(ir, c, "destroyArray"), x => x == call.Callee);
         Assert.Equal([element, free], CalleesOf(call.Callee!));
     }
 
-    // SPEC 4.3, 4.9.5, 22.2 (DECISIONS R5-M121): an Array from none is the runtime's empty handle at its Place; capacity loads the handle's
-    // capacity word; setArrayLength's body stores the length in its length word; the storage boundary's helpers write the remainder's Fields.
+    // SPEC 4.9.7, 4.9.8 (R8-A1c): truncate destroys the tail by destroyValues in its own body, as clear does; it does not walk it through pop.
+    [Fact]
+    public void TruncateDestroysThroughItsOwnBody()
+    {
+        var c = Analyze("func arTrim(values: uniq/Array<i32>) => values.truncate(1)\n", OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        Assert.Single(FunctionsOf(ir, c, "truncate"));
+        Assert.Empty(FunctionsOf(ir, c, "pop"));
+    }
+
+    // SPEC 4.3, 4.9.5, 22.2 (DECISIONS R5-M121): an Array from none is the runtime's empty handle at its Place; capacity's body loads the
+    // handle's capacity word; setArrayLength's body stores the length in its length word; the storage boundary's helpers write the remainder's
+    // Fields.
     [Fact]
     public void TheStorageBoundaryAndTheInPlaceRowsWriteTheHandlesWords()
     {
@@ -194,8 +206,8 @@ public sealed partial class FunctionCodegenTest
         var init = Assert.Single(CallsOf(none));
         Assert.Same(ir.Function("__kimi_array_init"), init.Callee);
         Assert.Same(none.Parameters[0], init.Operands[0]);
-        var size = Assert.Single(FunctionsOf(ir, c, "arSize"));
-        Assert.Contains(size.Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 16");
+        var size = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arSize")))).Callee!;
+        Assert.Contains(FunctionsOf(ir, c, "arrayCapacity"), x => x == size);
         Assert.Contains(size.Instructions, static x => x.Shape == "load i64, ptr %, align 8" && x.Operands[0].Shape == "getelementptr i8, ptr %, i64 16");
 
         var published = FunctionsOf(ir, c, "setArrayLength").SelectMany(static x => x.Instructions);
@@ -295,7 +307,6 @@ public sealed partial class FunctionCodegenTest
         Assert.True(grow.Success && grow.Index < first);
 
         var cleared = Generate(Analyze("func arEmptyInts(values: uniq/Array<i32>) => values.clear()\n", OutputKind.Library));
-        Assert.Matches(@"define internal void @__kimi_array_clear_\d+\(", cleared);
         Assert.DoesNotContain("@__kimi_array_grow", cleared, StringComparison.Ordinal);
     }
 

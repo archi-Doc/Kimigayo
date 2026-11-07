@@ -581,7 +581,7 @@ fn room @174
   bb0:
       StorageLive(_2) @180
     * _2 = &(*_1): ref/Array<i32> @180
-      _0 = intrinsic Capacity(move _2) -> bb1 @180
+      _0 = arrayCapacity<i32>(move _2) -> bb1 @180
   bb1:
       StorageDead(_2) @180
       return @180
