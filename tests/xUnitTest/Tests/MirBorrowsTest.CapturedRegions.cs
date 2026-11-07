@@ -22,6 +22,8 @@ public sealed partial class MirBorrowsTest
 
     private const string Main = "public func main() => ()\n";
 
+    private const string See = "func see(p: ref/i32) => ()\n";
+
     // SPEC 15.8.2's table, an exclusive capture: "Reborrow of a captured exclusive reference ... in a Shared or Exclusive call, depends on
     // the call receiver", so while a result is live a second Exclusive call (7.7.3, 15.6.2), or a Move of the Closure, conflicts: an arrow
     // and a block body, only the first result used, a local's borrow, an elided Origin, a second capture, a Closure held in a Field, one
@@ -86,4 +88,21 @@ public sealed partial class MirBorrowsTest
     [InlineData("func f(value: uniq/i32 during q, other: uniq/i32 during q, third: uniq/i32 during q) -> ()\n    var v = value@move\n    var h = func [v] (p: uniq/i32 during q) -> uniq/i32 during q => p\n    let a = h(other)\n    let b = h(third)\n    a@follow = 1\n    b@follow = 2\n" + Main)]
     [InlineData("func f() -> ()\n    var x: i32 = 1\n    var v = x@uniq\n    var h = func [v@move] () => v@move\n    let r = h@move()\n    r@follow = 1\n    x = 5\n" + Main)]
     public void ACapturedRegionConflictsWithNothingLive(string source) => MirTargetSide.Check(source);
+
+    // SPEC 7.7.2, 15.3.6, 15.6.4 (the consent review's B1): a capture is a snapshot whose local region is the meet of its sources as of the
+    // literal, and a meet outlives what all its sources do, so a result naming one source of several cannot hold the capture and keeps
+    // none of its Loans: a source added after the capture, one before it, either order of a replaced source, two parameters' exclusive
+    // references, `static` beside a local Borrow, a Closure that reads its capture, a Consuming call, a Closure over a Closure, one in a Field.
+    [Theory]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = b@ref\n    var r = a@ref\n    let c = func [r] (p: ref/i32 during s) -> ref/i32 during s => p\n    r = s\n    let v = c(s)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = b@ref\n    let u = a@ref\n    var r = u\n    r = s\n    let c = func [r] (p: ref/i32 during u) -> ref/i32 during u => p\n    let v = c(u)\n    b = 3\n    see(v)\n    see(b@ref)\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = b@ref\n    var r = s\n    r = a@ref\n    let c = func [r] (p: ref/i32 during s) -> ref/i32 during s => p\n    let v = c(s)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    [InlineData(See + "func f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let c = func [r] (p: ref/i32 during q) -> ref/i32 during q => p\n    let v = c(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    [InlineData("func f(value: uniq/i32 during p, other: uniq/i32 during q, m: uniq/i32 during p, k: bool)\n    var v = value@move\n    if k => v = other@move\n    var h = func [v] (z: uniq/i32 during p) -> uniq/i32 during p => z\n    let a = h(m)\n    v@follow = 3\n    a@follow = 1\n" + Main)]
+    [InlineData(See + "func t(s: ref/i32 during static, k: bool)\n    var a: i32 = 1\n    var r = s\n    if k => r = a@ref\n    let c = func [r] (p: ref/i32 during static) -> ref/i32 during static => p\n    let v = c(s)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    [InlineData(See + "func pick(q: ref/i32, k: bool) -> ref/i32 during q\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let log = func [r] (p: ref/i32 during q) -> ref/i32 during q\n        see(r)\n        return p\n    let v = log(q)\n    a = 3\n    return v\n" + Main)]
+    [InlineData(See + "func consumeText(s: string) => ()\nfunc f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let t = \"x\"\n    let c = func [r, t@move] (p: ref/i32 during q) -> ref/i32 during q\n        consumeText(t@move)\n        return p\n    let v = c@move(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    [InlineData(See + "func f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let inner = func [r] (p: ref/i32 during q) -> ref/i32 during q => p\n    let outer = func [inner] (p: ref/i32 during q) -> ref/i32 during q => inner(p)\n    let v = outer(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    [InlineData(See + "struct H<F>\n    public var f: F\n    public init(f: F)\n        self.f = f@move\nfunc f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let h = H.init(func [r] (p: ref/i32 during q) -> ref/i32 during q => p)\n    let v = h.f(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    public void AResultNamingOneSourceCannotHoldTheCapture(string source) => MirTargetSide.Check(source);
 }

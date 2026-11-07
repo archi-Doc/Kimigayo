@@ -407,9 +407,12 @@ public sealed partial class Binding
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
             plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
+            // SPEC 7.7.2, 15.8.2 (PLAN G553): a capture is a snapshot, so the environment names its local regions' sources as of the
+            // literal, as the published result does: one Origin in one form for each reader of the Closure's Type and contract. The body
+            // keeps the region (BindingSymbol.Type), which later sources of the outer local never reach.
             for (var i = 0; i < plan.Storage.Count; i++)
             {
-                buffer[i] = plan.Storage[i].Environment.Type!;
+                buffer[i] = this.ResolveLocalResultOrigins(plan.Storage[i].Environment.Type!);
             }
 
             plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
