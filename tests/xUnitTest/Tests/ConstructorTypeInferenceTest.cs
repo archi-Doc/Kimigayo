@@ -209,8 +209,9 @@ public class ConstructorTypeInferenceTest
 
     // SPEC 10.5.1, 10.8, 10.8.1 (PLAN G527): the fixed-binding check gives a completed waiting argument the context its completion used:
     // a waiting callable the fixed expected call signature S, every other part (a contextual Case) its instantiated parameter Type, so
-    // waiting alone never rejects the single constructor (ConstructorSelectionChanged_Kd before, the first nine rows, the last at a
-    // literal's default). Guards: a Closure at a common Function Type and at a Callable slot F, which keep S, and the explicit construction.
+    // waiting alone never rejects the single constructor (ConstructorSelectionChanged_Kd before, the first ten rows, the ninth at a
+    // literal's default, the tenth a write to a borrowed payload's local after which the construction is not used: SPEC 15.6, its Loan is
+    // not live). Guards: a Closure at a common Function Type and at a Callable slot F, which keep S, and the explicit construction.
     [Theory]
     [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc.init(n, .None)\n    return 0\n")]
     [InlineData(Paired + "func g(q: ref/i32) -> i32\n    let x = Gc.init(q, .Some(q))\n    return 0\n")]
@@ -221,6 +222,7 @@ public class ConstructorTypeInferenceTest
     [InlineData(TwoSlots + "func g(q: ref/i32) -> G2<i32>{t}\n    origin t.a == q\n    origin t.b == q\n    return G2.init(q, .None)\n")]
     [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    let x: G2<i32>{t} = G2.init(q, .Some(q))\n    return 0\n")]
     [InlineData(Paired + "func g() -> i32\n    let x = Gc.init(1, .None)\n    return 0\n")]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var v: i32 = 1\n    let x = G2.init(q, .Some(v@ref))\n    v = 2\n    return 0\n")]
     [InlineData("struct Gf<T>\n    public let t: T\n    public let k: i32\n    public init(x: T, f: () -> i32)\n        self.t = x@move\n        self.k = f()\nfunc g() -> i32\n    let n: i32 = 1\n    let x = Gf.init(n, func () -> i32 => 2)\n    return 0\n")]
     [InlineData("struct B<F>\n    F is Callable<() -> i32>\n    public let f: F\n    public init(f: F)\n        self.f = f@move\nfunc g() -> i32\n    let b = B.init(func () => 1)\n    return 0\n")]
     [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc<i32>.init(n, .None)\n    return 0\n")]
@@ -232,12 +234,16 @@ public class ConstructorTypeInferenceTest
 
     // SPEC 10.4, 10.8, 10.8.1 (PLAN G527): the invalid twins keep their records: a slot only a waiting Case could fix is the inference
     // boundary, two constructors that a waiting Case cannot tell apart are ambiguous, SPEC 10.8.1's changed selection stays one beside a
-    // waiting `.None`, and a payload that does not fit the instantiated parameter Type is its own mismatch.
+    // waiting `.None`, and a payload that does not fit the instantiated parameter Type is its own mismatch. SPEC 15.6, 15.6.2: a write to a
+    // local whose Loan the constructed local holds through a payload, borrowed (`v@ref`) or adapted (`n` at `ref/`), conflicts when the
+    // construction is read later (accepted with no record before, as the explicit `G2<i32>.init` gives).
     [Theory]
     [InlineData("struct Gu<T, U>\n    public let t: T\n    public let o: Option<U>\n    public init(x: T, o: Option<U>)\n        self.t = x@move\n        self.o = o@move\nfunc g() -> i32\n    let n: i32 = 1\n    let x = Gu.init(n, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
     [InlineData("struct W<T>\n    public let t: T\n    public init(x: T, o: Option<T>)\n        self.t = x@move\n    public init(x: T, o: Option<i64>)\n        self.t = x@move\nfunc g() -> i32\n    let n: i32 = 1\n    let w = W.init(n, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.AmbiguousBinding_Kd) })]
     [InlineData("struct V<T>\n    public let k: i32\n    public init(x: ref/i32, y: ref/T, o: Option<T>)\n        self.k = 0\n    public init(x: ref/T, y: ref/T, o: Option<T>)\n        self.k = 1\nfunc g(x: ref/(ref/i32 during w), y: ref/i32) -> i32\n    let c = V.init(x, y, .None)\n    return 0\n", new[] { nameof(DiagnosticCode.ConstructorSelectionChanged_Kd) })]
     [InlineData(Paired + "func g() -> i32\n    let n: i32 = 1\n    let x = Gc.init(n, .Some(true))\n    return 0\n", new[] { nameof(DiagnosticCode.TypeMismatch_Kd) })]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var v: i32 = 1\n    let x = G2.init(q, .Some(v@ref))\n    v = 2\n    let k = x.r\n    return 0\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
+    [InlineData(TwoSlots + "func g(q: ref/i32) -> i32\n    var n: i32 = 1\n    let x = G2.init(q, .Some(n))\n    n = 2\n    let k = x.s\n    return 0\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
     public void TheTwinsOfAWaitingArgumentAtTheFixedConstructionKeepTheirRecords(string body, string[] codes)
         => Assert.Equal(codes, DiagnosticCorpus.Check(body + Main).Diagnostics.Select(static x => x.Code));
 
