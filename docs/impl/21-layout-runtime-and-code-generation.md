@@ -57,6 +57,9 @@ windows-x64 is little endian with 64-bit pointers; the built-in Condition `point
 | `i64` / `u64`, `isize` / `usize`, `f64` | 8 / 8 / 8 |
 | `i128` / `u128` | 16 / 16 / 16 |
 | `raw/T`, `ref/T`, `uniq/T`, object handles, `Weak<S>` | 8 / 8 / 8 |
+| `Array<T>`, `string` | 24 / 8 / 24 |
+| `Slice<T>` | 16 / 8 / 16 |
+| `Dictionary<K, V>` | 56 / 8 / 56 |
 | Unit, `Loan<T>`, Never | 0 / 1 / 0 |
 
 - A `char` stores a Unicode scalar value as an unsigned 32-bit integer. Neither `char` nor `bool` corresponds to C `char`, `WCHAR` or Windows `BOOL`.
@@ -64,6 +67,23 @@ windows-x64 is little endian with 64-bit pointers; the built-in Condition `point
 - `ref/V` and `uniq/V` are one nonnull pointer to the immediate storage of `V`, with no length, count or Loan data. A borrow of a zero-sized `V` holds a nonnull address aligned for `V`.
 - **Nonnull Option representation.** `Option<R>`, where `R` is `ref/T`, `uniq/T`, `obj/T`, `rc/T`, `arc/T`, `objref/T` or `objuniq/T`, is one pointer-sized word: null is `None`, and every valid value of `R` is `Some`. It does not extend to `Option<Option<R>>`, to structs or Tuples containing references, or to other enums.
 - A common function value is 16 bytes with alignment 8. An environment of at most 8 bytes and alignment at most 8 is stored inline; a larger one is allocated when the value is formed ([§7.7.4](../spec/07-functions-and-callable-values.md#774-function-references-and-erasure)).
+- **Handles.** The one component of an `Array<T>`, a `Slice<T>` or a `string` is a Place of an internal `#Layout("C")` struct of the Kimi Kotonoha at the value's address, and a `Dictionary<K, V>`'s is a `DictionaryStorage.Handle`:
+
+  | Type | Component | Fields |
+  | --- | --- | --- |
+  | `Array<T>` | `Storage.ArrayRepr<T>` | `data: raw/T during self`, `length: isize`, `capacity: isize` |
+  | `Slice<T>` | `Storage.SliceRepr<T>` | `data: raw/T`, `length: isize` |
+  | `string` | `Storage.StringRepr` | `data: raw/u8`, `length: isize`, `releaseKind: u8` |
+
+  The component is Initialized from the start of the value's construction, or from the operation that otherwise creates the value, until the value is destroyed or leaves the Place; a Move, Take or relocation of the value carries it. Its Fields hold no valid value until the construction has written them, and it is complete when the value is ([§3.4](../spec/03-types-and-values.md#34-places-and-storage), [§15.1.2](../spec/15-ownership-and-lifetime-analysis.md#1512-construction-and-completeness)). A raw Place of the component's Type at the value's address designates it, so its Fields are ordinary Places of their Field Types; a Field read or written at another Type is a punned access ([§5.2](../spec/05-raw-pointers-and-unsafe-memory.md#52-raw-places)).
+
+  A pointer read from `data`, at its Field's Type or punned at another raw pointer Type, and every pointer derived from it, has this guarantee ([§5.5](../spec/05-raw-pointers-and-unsafe-memory.md#55-integer-addresses)), which a body of the Kimi Kotonoha that writes these Fields restores before the value is used again:
+
+  - **`Array<T>`.** `data` is null while `capacity` is 0, and otherwise a zero-byte `Raw.allocate` result or the start of an unreleased allocation of `capacity` elements, which `Raw.release` accepts as an `allocate` result. The pointer has that storage as provenance, a zero-byte result its own zero-length provenance, and has an `allocate` result's read and write authority within the limits of [§5.2.1](../spec/05-raw-pointers-and-unsafe-memory.md#521-access-conditions). The storage stays live until the capacity changes or the Array releases it. Each `data[i]` below `length` designates a distinct Place holding a complete element, and the storage holds no other value.
+  - **`Slice<T>`.** With a positive `length`, `data` is nonnull and aligned, each `data[i]` below `length` designates a distinct Place of the viewed region, and the pointer has those Places as provenance, read authority and no write authority. With `length` 0 it has no provenance and may be null.
+  - **`string`.** With a positive `length`, `data` is nonnull, each `data[i]` below `length` designates a distinct complete `u8` Place, and the pointer has those bytes as provenance, read authority and no write authority; they stay live while the string does. With `length` 0 it has no provenance and may be null. `releaseKind` is 0 for bytes no value owns and 1 for a heap block that the string's destruction frees.
+
+  Only the Kimi Kotonoha's own sources rely on this bullet. For any other source these layouts and guarantees are implementation-defined, module-local and no external ABI.
 - The layout of enums other than the nonnull Option, the string representation, object headers, reference-count storage, weak side tables, the maximum reference count, and all runtime metadata (type descriptors, value metadata, virtual-dispatch tables) are implementation-defined, module-local and not an external ABI. The lifecycle of counted objects, including the Abort at the count maximum, is defined in [§13.6.2](../spec/13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle) and [§13.6.3](../spec/13-operators-and-assignment.md#1363-weak-references).
 
 ```kimi

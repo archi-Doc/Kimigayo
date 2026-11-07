@@ -8,6 +8,10 @@ namespace XunitTest;
 /// `for ref/Self during a` proves the stored pair's dependencies, and so the target's, outlive `a`.</summary>
 public class AssociatedPairFormationTest
 {
+    private const string HasOut = "contract Has\n    associate Out\n";
+
+    private const string PairSource = "contract Src\n    associate Item\nstruct S\n    Self is Src\n    associate Src.Item is i32\nstruct W<s/T>\n    T is Src\n    let b: T.Item\n";
+
     private const string Holder =
         "struct Holder<s/T>\n    s is value or valueborrow\n    Self is Peek\n    associate Peek.Item(a) is ref/T during a\n    var item: s/T\n" +
         "    public init(item: s/T) => self.item = item@move\n    public func peek(self: ref/Self during a) -> ref/T during a\n        return self.item@follow@ref\n";
@@ -81,4 +85,19 @@ public class AssociatedPairFormationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(codes.Order(), c.Binding.Issues.Select(static x => x.Code.ToString()).Order());
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.2.1, 8.1.1, 8.5.2, 9.2: a pair target is a clause's subject and a projection's base; only a standalone value Type use is restricted, so a
+    // premise on it proves its projection whatever `s` admits.
+    [InlineData("C6", "g202", HasOut + "struct EQ<s/T>\n    T is Has\n    let v: T.(Has).Out\n", "", Explicit = true)]
+    [InlineData("guard", "g202o", HasOut + "struct EQ<s/T>\n    s is owner\n    T is Has\n    let v: T.(Has).Out\n", "")]
+    [InlineData("C6", "g327-rc", PairSource + "struct D\n    let w: W<rc/S>\n", "", Explicit = true)]
+    [InlineData("C6", "g327-own", PairSource + "struct D\n    let w: W<S>\n", "", Explicit = true)]
+
+    // SPEC 8.3.2 Closed world, 10.6: a target with no path to the Contract is Refuted at the use, and the declaration stays valid.
+    [InlineData("C6", "g327-bad", PairSource + "struct N\n    let x: i32\nstruct D\n    let w: W<rc/N>\n", "UnsatisfiedConstraint_Kd: let w: W<rc/N>", Explicit = true)]
+    public void APremiseOnAPairTargetProvesItsProjection(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }
