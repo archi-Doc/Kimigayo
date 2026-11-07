@@ -423,7 +423,7 @@ public sealed partial class Binding
             };
         }
 
-        if (this.TypeName(syntax, scope, false) is not { Declaration: ContractKoto declaration } named)
+        if (this.TypeName(syntax, scope, TypeLookupRole.Any) is not { Declaration: ContractKoto declaration } named)
         {
             this.RejectEffectBound(effect, new(EffectRejection.NotContract));
             return null;

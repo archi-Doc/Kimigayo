@@ -171,10 +171,29 @@ public class ArrayBindingTest
             "var names: Array<string> = []\nnames@uniq.append(\"alpha\")\nnames@uniq.append(\"gamma\")\nnames@uniq.insert(1, \"beta\")\nlet second = names@uniq.remove(1)\nConsole.writeLine(second)\nmatch names@uniq.pop()\n    .Some(let last) => Console.writeLine(last)\n    .None => $abort(\"empty\")\nrequire names.length == 1 else => $abort(\"length\")\nnames@uniq.clear()\nnames@uniq.append(\"delta\")\nConsole.writeLine(\"ok\")",
             "beta\ngamma\nok\n");
 
+    // SPEC 4.9.3 (R8-A1b): the bodies relocate: both ends and the middle move in order, equal positions change nothing and no destructor runs
+    // until the program destroys the values, over an element in memory, a narrowed scalar and a zero-sized element.
+    [Theory]
+    [InlineData(
+        "RelocateTasks",
+        "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop \\(self.id)\")\nvar tasks: Array<Task> = []\ntasks.append(Task.init(1))\ntasks.append(Task.init(2))\ntasks.insert(0, Task.init(3))\ntasks.insert(1, Task.init(4))\ntasks.insert(^0, Task.init(5))\ntasks.swap(0, ^1)\ntasks.swap(2, 2)\nConsole.writeLine(\"moved\")\nlet middle = tasks.remove(1)\nlet first = tasks.remove(0)\nConsole.writeLine(\"\\(middle.id) \\(first.id) \\(tasks[0].id) \\(tasks[1].id) \\(tasks[2].id)\")",
+        "moved\n4 5 1 2 3\ndrop 5\ndrop 4\ndrop 3\ndrop 2\ndrop 1\n")]
+    [InlineData(
+        "RelocateBools",
+        "var values: Array<bool> = [true, false, false]\nvalues.insert(1, true)\nvalues.swap(0, 2)\nlet first = values.remove(0)\nlet second = values.remove(0)\nrequire not first and second and values[0] and not values[1] else => $abort(\"order\")\nConsole.writeLine(\"ok\")",
+        "ok\n")]
+    [InlineData(
+        "RelocateUnits",
+        "var units: Array<()> = [(), ()]\nunits.insert(1, ())\nunits.swap(0, 2)\nunits.remove(1)\nmatch units.pop()\n    .Some(_) => ()\n    .None => $abort(\"some\")\nmatch units.pop()\n    .Some(_) => ()\n    .None => $abort(\"some\")\nmatch units.pop()\n    .Some(_) => $abort(\"none\")\n    .None => Console.writeLine(\"ok\")",
+        "ok\n")]
+    public void MovesRelocateWithoutDestruction(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout);
+
     // SPEC 4.9.1, 4.9.3: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
     [Theory]
     [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(-1")]
     [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "self.removeAt(position)")]
+    [InlineData("SwapEqualBeyond", "var values: Array<i32> = [1, 2]\nvalues@uniq.swap(5, 5)\nConsole.writeLine(\"after\")", "", "self.swapAt(first: PositionSyntax")]
     public void PositionOperationsAbortInResolution(string name, string source, string stdout, string anchor)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
@@ -189,15 +208,15 @@ public class ArrayBindingTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
-        foreach (var id in new[] { KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove, KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit })
+        foreach (var id in new[] { KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit })
         {
             var symbol = c.Library.GetSymbol(id)!;
             Assert.NotEqual(CompilerFunctionKind.None, symbol.CompilerFunction);
             Assert.Same(c.Library.DynamicArray.Declaration, symbol.Declaration.Parent);
         }
 
-        // R8-A1a: these two are Kimigayo bodies of the same declaration.
-        foreach (var id in new[] { KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend })
+        // R8-A1a, A1b: these are Kimigayo bodies of the same declaration.
+        foreach (var id in new[] { KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend, KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove, KimiDeclarationId.ArraySwap })
         {
             var symbol = c.Library.GetSymbol(id)!;
             Assert.Equal(CompilerFunctionKind.None, symbol.CompilerFunction);

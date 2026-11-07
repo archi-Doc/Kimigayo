@@ -73,7 +73,7 @@ public sealed partial class Binding
                 symbol = this.Library.Module;
             }
 
-            symbol = this.SelectTypeCandidate(symbol, root, use, false);
+            symbol = this.SelectQualifier(symbol, root, use);
 
             if (symbol is null && first && (!this.compilation.IsTestBuild || this.TestReferenceAllowed(use, name.ToString())) && this.compilation.References(use.CodeContext.Kotonoha) is { } references &&
                 references.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(name, out var module))
@@ -141,14 +141,14 @@ public sealed partial class Binding
         }
     }
 
-    private BindingSymbol? LookupImportedType(string name, BindingScope scope, Koto use, bool core, int arity, TypeLookupRole role)
+    private ResolvedPath ResolveImportedType(string name, BindingScope scope, Koto use, TypeLookupRole role, int arity, int step)
     {
         var candidates = default(TypeCandidates);
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
         if (use.CodeContext.SourceDocument is { } source &&
             this.namedAliases.TryGetValue((source, name), out var named) && named.Declaration!.BindingState == BindingState.Resolved)
         {
-            this.AddTypeCandidates(ref candidates, named.Declaration!.BoundSymbol, scope, core, arity, named, role);
+            this.AddTypeCandidates(ref candidates, named.Declaration!.BoundSymbol, scope, role, arity, named);
         }
 
         for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
@@ -157,25 +157,25 @@ public sealed partial class Binding
             var target = this.AliasTarget(alias.Declaration!);
             if (target is not null && target.Types.TryGetValue(name, out var candidate))
             {
-                this.AddTypeCandidates(ref candidates, candidate, scope, core, arity, alias, role);
+                this.AddTypeCandidates(ref candidates, candidate, scope, role, arity, alias);
             }
         }
 
         if (candidates.First is not null)
         {
-            return this.SelectTypeCandidate(candidates, use);
+            return this.SelectedPath(candidates, use, step);
         }
 
         foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
             var target = this.DefaultAliasTarget(use, path);
-            this.AddTypeCandidates(ref candidates, target?.Types.GetValueOrDefault(name), scope, core, arity, role: role);
+            this.AddTypeCandidates(ref candidates, target?.Types.GetValueOrDefault(name), scope, role, arity);
         }
 
-        return candidates.First is not null ? this.SelectTypeCandidate(candidates, use) : null;
+        return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
     }
 
-    private BindingSymbol? LookupImportedValue(string name, BindingScope scope, Koto use, bool core)
+    private BindingSymbol? LookupImportedValue(string name, BindingScope scope, Koto use)
     {
         BindingSymbol? imported = null;
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
@@ -189,7 +189,7 @@ public sealed partial class Binding
             }
 
             candidate = this.AccessibleImport(candidate, scope);
-            if (candidate is null || (core && candidate.Kind == BindingSymbolKind.Container))
+            if (candidate is null)
             {
                 continue;
             }
@@ -230,7 +230,7 @@ public sealed partial class Binding
             }
 
             var accessible = this.AccessibleImport(candidate, scope);
-            if (accessible is null || (core && accessible.Kind == BindingSymbolKind.Container))
+            if (accessible is null)
             {
                 continue;
             }

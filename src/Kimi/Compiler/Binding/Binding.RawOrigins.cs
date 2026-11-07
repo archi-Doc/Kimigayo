@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 //   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a slot Phantom in a case its Type selects, also through
 //   a written projection; an atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its
 //   Origin's kind; DeclaredStep over StoredLayer, a Field's or Case payload's layer in the instance's kept part, in the cases that
-//   instance selects, which StoredStep, StoredMembers and the hold walk read; RawStepAt, a layer a contract's walk meets by its position,
+//   instance selects, which StoredStep and the hold walk read; RawStepAt, a layer a contract's walk meets by its position,
 //   over SignatureStep, the walked signature's declared layer, and BinderStep, an Origin where it is bound; DECISIONS BU-113), which
 //   retention and A5 read, and the borrows its Origin belongs to (RawMembers), which retention and
 //   InvalidRawOrigin read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
@@ -30,7 +30,7 @@ namespace Kimi.Compiler;
 //   any other Type (MirValidator's Local row checks a MIR local's), so no premise, obligation or row names Holder or Unstated
 //   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only
 //   retention and the TyCtxt views read one, after Binding's last pass.
-// - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (RawStep and its readers); .Written.cs (the written
+// - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (a raw layer's step and its readers); .Written.cs (the written
 //   forms and their judgment); .Holder.cs (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers).
 // - Prohibitions: no region, Loan or retention facts beyond the member borrows, no Place walk of its own (PathOrigin is PlaceAuthority's),
 //   no access verdict, no message text.
