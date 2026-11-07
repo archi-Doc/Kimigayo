@@ -18,19 +18,44 @@ public sealed class BindingReportTest
     private static readonly SourceRef Other = new(0, 6);
     private static readonly DiagnosticRequirement Mismatch = DiagnosticRequirement.Binding(BindingFailure.TypeMismatch);
     private static readonly DiagnosticRequirement Located = DiagnosticRequirement.Binding(BindingFailure.Unsupported);
+    private static readonly DiagnosticRequirement Internal = DiagnosticRequirement.Binding(BindingFailure.Internal);
 
     [Fact]
     public void AKeyHasOneProblemAndKeepsItsFacts()
     {
         var report = new BindingReport();
         var first = report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Span, Subject, 1)]);
-        Assert.Equal(first, report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Span, Subject, 2)]));
+        Assert.Equal(first, report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Span, Subject, 1)]));
         Assert.Equal(1, report.Count);
         Assert.Equal(1, Assert.Single(report.Facts(first).ToArray()).Value);
         Assert.Equal(first, report.Find(Subject, Mismatch, 0));
         Assert.Equal(-1, report.Find(Subject, Mismatch, 1));
         Assert.Equal(-1, report.Find(Subject, Located, 0));
         Assert.Equal(-1, report.Find(Other, Mismatch, 0));
+    }
+
+    // DIAGNOSTICS 4.3: for one key the code and facts are equal, a Type-valued fact by its Type and not its kept index; anything else is a
+    // broken contract, and the problem keeps its first report.
+    [Theory]
+    [InlineData(DiagnosticCode.Unsupported_Kd, (byte)ProblemFactKind.Actual, 0, 1)]
+    [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Expected, 0, 1)]
+    [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 1, 1)]
+    [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 0, 0)]
+    [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 0, 2)]
+    public void ADifferingReportOfAKeyIsABrokenContract(DiagnosticCode code, byte kind, int type, int count)
+    {
+        var report = new BindingReport();
+        BoundType[] types = [BoundType.Boolean, BoundType.Unit];
+        var fact = new ProblemFact(ProblemFactKind.Actual, Other, report.Keep(types[0]));
+        var first = report.Add(Problem(Subject, Mismatch), [fact]);
+        Assert.Equal(first, report.Add(Problem(Subject, Mismatch), [fact with { Value = report.Keep(types[0]) }]));
+        Assert.Equal(1, report.Count);
+
+        var differing = Enumerable.Repeat(new ProblemFact((ProblemFactKind)kind, Other, report.Keep(types[type])), count).ToArray();
+        Assert.Equal(-1, report.Add(Problem(Subject, Mismatch) with { Code = code }, differing));
+        Assert.Equal([first, report.Find(Subject, Internal, 0)], Chain(report, Subject));
+        Assert.Equal(DiagnosticCode.InternalInvariant_Kd, report.Problem(report.Find(Subject, Internal, 0)).Code);
+        Assert.Same(types[0], report.Value(Assert.Single(report.Facts(first).ToArray())));
     }
 
     [Fact]

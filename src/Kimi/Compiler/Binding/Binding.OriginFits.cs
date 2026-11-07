@@ -48,20 +48,10 @@ public sealed partial class Binding
     private static Koto RelationAt(in BindingObligation obligation)
         => IsFitObligation(obligation) && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
 
-    // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first chain and its others, whose
-    // lists are kept, empty (furtherOriginLists), and the twin nodes.
+    // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first chain and the twin nodes.
     private void ResetOriginRecords()
     {
         this.originRelations?.Clear();
-        if (this.furtherOriginLists is { } lists)
-        {
-            foreach (var more in lists)
-            {
-                more.Clear();
-            }
-        }
-
-        this.furtherOriginRecords?.Clear();
         this.originTwins?.Clear();
     }
 
@@ -148,7 +138,7 @@ public sealed partial class Binding
             rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
             if (further || !all[i].Equals(recorded))
             {
-                this.RecordFurtherOriginRecord(node, new(all[i] with { At = at, Destination = destination }, null));
+                this.RecordFurtherOriginRecord(node, FirstOriginRecord(further), new(all[i] with { At = at, Destination = destination }, null));
             }
         }
 

@@ -4,11 +4,12 @@
 // (ProblemFact), one problem per check key (Subject, Requirement, Condition).
 // Input: Add calls of Binding's recorder (Binding.Problems.cs), each a problem and its facts; Keep calls, each a Type-valued fact's value;
 // Unlink and Restore calls of a retried or abandoned attempt.
-// Output: a subject's problems in recording order, a problem by its key, its facts, a fact's kept Type.
-// Invariants: a linked subject's rows and the key index agree, Unlink and Restore keeping them in step; a report of a linked key keeps the
-// first; an unlinked problem stays in its rows, unreachable, so that a saved chain can come back, and Count still counts it; a fact's Value
-// is the kind's (ProblemFact.cs), an index in the kept Types for a Type-valued kind; the storage stays between passes, so a warm pass
-// allocates nothing once its sizes are reached.
+// Output: a subject's problems in recording order, a problem by its key, its facts, a fact's kept value.
+// Invariants: a linked subject's rows and the key index agree, Unlink and Restore keeping them in step; a report of a linked key equals the
+// first, or it is a broken contract (DIAGNOSTICS 4.3): an InternalInvariant_Kd problem at its subject, as MirReport's; an unlinked problem
+// stays in its rows, unreachable, so that a saved chain can come back, and Count still counts it; a fact's Value is the kind's
+// (ProblemFact.cs), an index in the kept values for a value-holding kind; the storage stays between passes, so a warm pass allocates nothing
+// once its sizes are reached.
 // Must not decide a failure, derive a requirement from a code, or keep or render text.
 
 #pragma warning disable SA1402 // The problem and its report belong together.
@@ -55,6 +56,8 @@ internal sealed class BindingReport
     private readonly List<(int Start, int Count, int Next)> rows = []; // Each problem's facts and the next problem of its subject.
     private readonly List<ProblemFact> facts = [];
     private readonly List<BoundType> types = [];
+    private readonly List<BoundConstraint> constraints = [];
+    private readonly List<OriginRecord> origins = [];
 
     /// <summary>Gets the number of problems this pass added, unlinked ones included.</summary>
     internal int Count => this.problems.Count;
@@ -62,6 +65,11 @@ internal sealed class BindingReport
     /// <summary>Gets or sets the count of this pass's fact sites that no semantic write had numbered.</summary>
     [Transitional("R7", Reason = "The row of the fact-site hypothesis, until R7-N5 owns SourceRef.Of numbering an id-less node.")]
     internal int IdlessSites { get; set; }
+
+    /// <summary>Gets a problem.</summary>
+    /// <param name="problem">The problem's index.</param>
+    /// <returns>The problem.</returns>
+    internal BindingProblem Problem(int problem) => this.problems[problem];
 
     /// <summary>Gets the facts of a problem.</summary>
     /// <param name="problem">The problem's index.</param>
@@ -95,21 +103,73 @@ internal sealed class BindingReport
         return this.types.Count - 1;
     }
 
+    /// <summary>Keeps a Constraint fact's proposition: an interned reference.</summary>
+    /// <param name="constraint">The proposition.</param>
+    /// <returns>Its index, the fact's Value.</returns>
+    internal long Keep(BoundConstraint constraint)
+    {
+        this.constraints.Add(constraint);
+        return this.constraints.Count - 1;
+    }
+
+    /// <summary>Keeps an Origin record, whose fields are no facts of their own until E4's relation fact.</summary>
+    /// <param name="record">The record.</param>
+    /// <returns>Its index, the fact's Value.</returns>
+    [Transitional("R7", Reason = "An Origin record's row, until E4's relation fact takes both phases' records.")]
+    internal long Keep(in OriginRecord record)
+    {
+        this.origins.Add(record);
+        return this.origins.Count - 1;
+    }
+
     /// <summary>Gets a Type-valued fact's Type.</summary>
     /// <param name="fact">The fact.</param>
     /// <returns>The Type.</returns>
     internal BoundType Value(in ProblemFact fact) => this.types[(int)fact.Value];
 
-    /// <summary>Adds a problem with its facts, or finds the linked problem of its key, which keeps its own facts.</summary>
+    /// <summary>Gets a Constraint fact's proposition.</summary>
+    /// <param name="fact">The fact.</param>
+    /// <returns>The proposition.</returns>
+    internal BoundConstraint Constraint(in ProblemFact fact) => this.constraints[(int)fact.Value];
+
+    /// <summary>Gets an OriginRecord fact's record.</summary>
+    /// <param name="fact">The fact.</param>
+    /// <returns>The record.</returns>
+    internal OriginRecord Origin(in ProblemFact fact) => this.origins[(int)fact.Value];
+
+    /// <summary>Numbers an Origin record of a subject beyond its first: the condition after the subject's, in recording order.</summary>
+    /// <param name="subject">The subject.</param>
+    /// <param name="record">The record.</param>
+    /// <returns>Its condition, or 0 when the subject has the record.</returns>
+    internal ushort OriginCondition(SourceRef subject, in OriginRecord record)
+    {
+        ushort last = 0;
+        for (var i = this.First(subject); i >= 0; i = this.Next(i))
+        {
+            foreach (ref readonly var fact in this.Facts(i))
+            {
+                if (fact.Kind == ProblemFactKind.OriginRecord && this.Origin(fact) == record)
+                {
+                    return 0;
+                }
+            }
+
+            last = Math.Max(last, this.problems[i].Condition);
+        }
+
+        return (ushort)(last + 1);
+    }
+
+    /// <summary>Adds a problem with its facts. A second report of a linked key must equal the first (DIAGNOSTICS 4.3).</summary>
     /// <param name="problem">The problem.</param>
     /// <param name="facts">Its facts.</param>
-    /// <returns>The problem's index, the first one's when the key is linked.</returns>
+    /// <returns>The problem's index, the first one's when the key is linked; -1 for a defect.</returns>
     internal int Add(in BindingProblem problem, ReadOnlySpan<ProblemFact> facts = default)
     {
         ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.index, (problem.Subject, problem.Requirement, problem.Condition), out var exists);
         if (exists)
         {
-            return slot;
+            return this.Equal(slot, problem.Code, facts) ? slot : this.Defect(problem);
         }
 
         var added = slot = this.problems.Count;
@@ -179,6 +239,42 @@ internal sealed class BindingReport
         this.rows.Clear();
         this.facts.Clear();
         this.types.Clear();
+        this.constraints.Clear();
+        this.origins.Clear();
         this.IdlessSites = 0;
+    }
+
+    private bool Equal(int first, DiagnosticCode code, ReadOnlySpan<ProblemFact> reported)
+    {
+        var kept = this.Facts(first);
+        if (this.problems[first].Code != code || kept.Length != reported.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < kept.Length; i++)
+        {
+            if (kept[i].Kind != reported[i].Kind || kept[i].Site != reported[i].Site || !this.EqualValue(kept[i], reported[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool EqualValue(in ProblemFact kept, in ProblemFact reported) => kept.Kind switch
+    {
+        ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal => Equals(this.Value(kept), this.Value(reported)),
+        ProblemFactKind.Constraint => ReferenceEquals(this.Constraint(kept), this.Constraint(reported)),
+        _ => kept.Value == reported.Value,
+    };
+
+    // A recording rule's defect in place of a report (DIAGNOSTICS 4.3, as MirReport.Add's): one InternalInvariant_Kd problem at its subject;
+    // -1, Add's value for it.
+    private int Defect(in BindingProblem problem)
+    {
+        this.Add(new(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Binding(BindingFailure.Internal), problem.Subject, 0));
+        return -1;
     }
 }

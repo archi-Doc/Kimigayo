@@ -466,7 +466,7 @@ public sealed partial class Binding
         {
             if (facts[i].IsCondition)
             {
-                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i], node)));
+                this.RecordFurtherOriginRecord(node, FirstOriginRecord(failure.IsCondition), new(null, this.ContractFact(at, facts[i], node)));
             }
             else
             {
@@ -634,7 +634,6 @@ public sealed partial class Binding
         this.callableConstraints?.Clear();
         this.clauseConstraints?.Clear();
         this.pendingJudgments?.Clear();
-        this.operatorOperands?.Clear();
         this.arithmeticConformanceFailures?.Clear();
         this.arithmeticSelectionFailures?.Clear();
         this.arithmeticDirectionFailures?.Clear();

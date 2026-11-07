@@ -7,9 +7,11 @@ namespace Kimi.Compiler;
 
 // Binding's recorder (R7-E1; DIAGNOSTICS 4.1): a check records its failure as a problem with typed facts in BindingReport.
 // - Responsibility: Record, a check's problem; ClearFailure, how a failure leaves a node inside a pass; the one table from a failure to its
-//   code (CodeOf); the adapter's reads of a problem's facts (Mismatch, LocatedPart).
+//   code (CodeOf); the summary's walk of a node's problems beyond its slot's issue (CollectProblems); the adapter's reads of a problem's
+//   facts (ReportProblem, Mismatch, LocatedPart, FactOf).
 // - Inputs: a node, its failure and the facts its check read.
-// - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure.
+// - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure; a node's further
+//   issues, each by its own code and condition.
 // - Invariants: one way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one way in control:
 //   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem: a pass's
 //   reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves its chain; HirTables.Reset
@@ -190,6 +192,26 @@ public sealed partial class Binding
         return SourceRef.Of(at);
     }
 
+    // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
+    // its own, however the slot's failure stands. A node that consulted a recovery node derives every failure from the syntax error.
+    private void CollectProblems(Koto node)
+    {
+        if (this.report.Count == 0 || IsRecovery(node, out _) || this.RestsOnRecovery(node))
+        {
+            return;
+        }
+
+        var slot = this.SlotProblem(node);
+        for (var i = this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
+        {
+            if (i != slot)
+            {
+                var problem = this.report.Problem(i);
+                this.issues.Add(new(node, problem.Code) { Failure = (BindingFailure)problem.Requirement.Kind, Problem = i });
+            }
+        }
+    }
+
     // A valid program has no problem, so it pays this test and no dictionary operation.
     private (int First, int Last) UnlinkProblems(Koto node)
         => this.report.Count == 0 ? BindingReport.NoChain : this.report.Unlink(SourceRef.Written(node));
@@ -209,19 +231,45 @@ public sealed partial class Binding
 
     // The part of a located problem (its Span fact), or null for no problem.
     private SourceSpan? LocatedPart(int problem)
+        => problem >= 0 && this.FactOf(problem, ProblemFactKind.Span) is { } fact ? new((int)(fact.Value >> 32), (int)fact.Value) : null;
+
+    // A problem's fact of a kind, or null.
+    private ProblemFact? FactOf(int problem, ProblemFactKind kind)
     {
-        if (problem >= 0)
+        foreach (ref readonly var fact in this.report.Facts(problem))
         {
-            foreach (var fact in this.report.Facts(problem))
+            if (fact.Kind == kind)
             {
-                if (fact.Kind == ProblemFactKind.Span)
-                {
-                    return new((int)(fact.Value >> 32), (int)fact.Value);
-                }
+                return fact;
             }
         }
 
         return null;
+    }
+
+    // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it; false for a
+    // mismatch or a located part, whose ReportIssue arms read their facts.
+    private bool ReportProblem(Koto node, int index)
+    {
+        var problem = this.report.Problem(index);
+        if (this.FactOf(index, ProblemFactKind.Operand) is not null)
+        {
+            this.ReportOperatorOperand(node, index, problem);
+        }
+        else if (this.FactOf(index, ProblemFactKind.OriginRecord) is { } fact)
+        {
+            this.ReportFurtherOriginRecord(node, this.report.Origin(fact), problem);
+        }
+        else if (this.report.Facts(index).IsEmpty)
+        {
+            node.Report(problem.Requirement, problem.Code, condition: problem.Condition);
+        }
+        else
+        {
+            return false;
+        }
+
+        return true;
     }
 
     // A TypeMismatch problem's facts: the syntax that shows it and what it compared, a form as its text.

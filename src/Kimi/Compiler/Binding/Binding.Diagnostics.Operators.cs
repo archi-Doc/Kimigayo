@@ -5,57 +5,60 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Owns retained operator failure facts and their diagnostic projection. Binding supplies Types, the written operator,
-// location and any actual requirement/proof; publication renders these facts without deciding applicability.
-// The immutable operation key owns the written operator; pass reset/rebinding clears its facts. No inference or proof runs here.
+// Owns an operator failure's record and its diagnostic projection. A failed decision supplies Types, the location and any actual requirement;
+// its fields are the problem's facts (Binding.Problems), and publication renders them without deciding applicability.
+// The immutable operation key owns the written operator. No inference or proof runs here.
 public sealed partial class Binding
 {
     // SPEC 12.4.2, 13.3.1: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
 
-    private readonly record struct OperatorOperandFailure(
-        BoundType Operand, BoundType Terminal, Koto At, BoundConstraint? Requirement, ConstraintProof? Proof);
-
-    // Only failed operations retain facts. The ordinary Binding pass reset owns their lifetime.
-    private Dictionary<Koto, OperatorOperandFailure>? operatorOperands;
-
+    // Facts: the operand and its judged Type, and the proposition of a proof that is Unknown or Refuted; an Unknown proof is the UnprovenConstraint failure.
     private BoundType? FailOperator(Koto node, Koto at, OperatorApplicability decision)
-        => this.FailExplained(
-            ref this.operatorOperands,
-            node,
-            decision.Failure,
-            new(decision.Operand!, decision.Terminal!, at, decision.Requirement, decision.Proof),
-            decision.Proof == ConstraintProof.Unknown);
-
-    private void ReportOperatorOperand(Koto operation, OperatorOperandFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
+        var site = this.FactSite(at);
+        var judged = decision.Proof is ConstraintProof.Unknown or ConstraintProof.Refuted ? decision.Requirement : null;
+        ReadOnlySpan<ProblemFact> facts =
+        [
+            new(ProblemFactKind.Operand, site, this.report.Keep(decision.Operand!)),
+            new(ProblemFactKind.Terminal, site, this.report.Keep(decision.Terminal!)),
+            judged is null ? default : new(ProblemFactKind.Constraint, site, this.report.Keep(judged)),
+        ];
+        return this.Record(node, decision.Failure, judged is null ? facts[..2] : facts, unresolved: decision.Proof == ConstraintProof.Unknown);
+    }
+
+    private void ReportOperatorOperand(Koto operation, int problem, in BindingProblem record)
+    {
+        var (requirement, code) = (record.Requirement, record.Code);
+        var at = this.compilation.SyntaxOf(this.FactOf(problem, ProblemFactKind.Operand)!.Value.Site);
         var symbol = operation is BinaryKoto binary ? binary.InfixText.Trim() : ((UnaryKoto)operation).OperatorText;
-        var operand = fact.Operand;
+        var operand = this.report.Value(this.FactOf(problem, ProblemFactKind.Operand)!.Value);
         object[]? evidence = null;
         string? requirementNote = null;
-        if (fact.Requirement is { } condition && fact.Proof is ConstraintProof.Unknown or ConstraintProof.Refuted)
+        if (this.FactOf(problem, ProblemFactKind.Constraint) is { } proposition)
         {
+            var condition = this.report.Constraint(proposition);
             var subject = DiagnosticTypeName(condition.Subject!);
             var contract = condition.Contract!.Type is { } applied ? DiagnosticTypeName(applied) : condition.Contract.Name;
             var clause = $"{subject} is {contract}";
             evidence = [subject, symbol, clause];
             var shown = $"{DiagnosticText.Bound(subject).Text} is {DiagnosticText.Bound(contract).Text}";
-            requirementNote = fact.Proof == ConstraintProof.Unknown
+            requirementNote = code == DiagnosticCode.UnprovenConstraint_Kd
                 ? $"Required condition is not proven: {shown}" : $"Required condition is not satisfied: {shown}";
         }
 
         if (code is DiagnosticCode.UnprovenConstraint_Kd or DiagnosticCode.UnsatisfiedConstraint_Kd)
         {
-            operation.Report(requirement, code, note: requirementNote, evidence: evidence, at: fact.At);
+            operation.Report(requirement, code, note: requirementNote, evidence: evidence, at: at);
         }
         else if (code == DiagnosticCode.InvalidConstraint_Kd)
         {
-            operation.Report(requirement, code, at: fact.At);
+            operation.Report(requirement, code, at: at);
         }
         else
         {
             var note = requirementNote;
-            if (code == DiagnosticCode.NonNumericOperand_Kd && ReferenceTypes.EndsInString(fact.Terminal))
+            if (code == DiagnosticCode.NonNumericOperand_Kd && ReferenceTypes.EndsInString(this.report.Value(this.FactOf(problem, ProblemFactKind.Terminal)!.Value)))
             {
                 note = StringOperatorNote;
             }
@@ -70,7 +73,7 @@ public sealed partial class Binding
                 DiagnosticTypeName(operand),
                 symbol,
                 note: note,
-                at: fact.At,
+                at: at,
                 evidence: code == DiagnosticCode.NonIntegerOperand_Kd ? evidence : null);
         }
     }
