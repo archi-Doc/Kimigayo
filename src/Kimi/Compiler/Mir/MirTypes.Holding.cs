@@ -92,7 +92,8 @@ internal static partial class MirTypes
     /// (<see cref="MirDepths"/>, at most once per depth), and a raw layer is read at each meeting of its keyed parent. So a repeating
     /// recursive Type ends exactly, a Type shared in a DAG is walked once, and the answer is the same in every order of the parts. A level
     /// is one entry: a Case's payload component is one level below its enum and a Dictionary's K and V two, through its entry, so a Dictionary
-    /// nest reaches the bound at half the depth of a Tuple's, a named limit (the owner's O-47, PLAN G408), located at the call. A part past
+    /// nest reaches the bound at half the depth of a Tuple's, a named limit (the owner's O-47, PLAN G408), located at the call where a check
+    /// rests on the guard. A part past
     /// depth 32, where one grows (SPEC 15.3.5), gives yes for tracking and the guard's Deep where its mode reads the write fact, only where
     /// its key is never entered within the bound in that mode (for a LoanOnly part, nor in its full mode).</summary>
     /// <param name="type">The Type.</param>

@@ -40,8 +40,9 @@ public sealed partial class MirBorrowsTest
     }
 
     // The owner's O-47, PLAN G408: row 9's `(K, V)` entry stays and the bound stays 32, so a Dictionary level costs two steps and a nest reaches
-    // the bound at half a Tuple's depth: a named limit, A5's located OwnershipDepthLimit_Kd at the call, where Binding's folds are silent past
-    // theirs. With an exclusive reference at depth n the call may store y's Loan in `slot` (invalid, SPEC 15.6.4, 15.6.2): through 15 the
+    // the bound at half a Tuple's depth: a named limit, A5's located OwnershipDepthLimit_Kd at the call where a check rests on the guard; a
+    // program whose answer comes from Binding's row has no record from 17 on either analysis (rulings-4).
+    // With an exclusive reference at depth n the call may store y's Loan in `slot` (invalid, SPEC 15.6.4, 15.6.2): through 15 the
     // conflict is reported, from 16 the limit record alone, which stands for it (review B1). A Loan-free nest under an exclusive reference (valid)
     // is exact through 15 and limited from 16, by value through 16 and limited from 17: a Resource record, IMPL 21.3.2.
     [Theory]
