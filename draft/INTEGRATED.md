@@ -1309,6 +1309,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 26 (2026-11-08, plan §14; the Front's D-94): N2's row splits; G250 leaves N2. Nothing frozen.
 - Revision 27 (2026-11-08, plan §14; the Middle's D-96): rows Y1, Y2, Y3. Nothing frozen.
 - Revision 28 (2026-11-08, plan §14; the Front's D-98): E1's row. Nothing frozen.
+- Revision 29 (2026-11-08, plan §14; the Middle's D-99): row Y1. Nothing frozen.
 - Revision 30 (2026-11-08, plan §14; the Back's D-100): A1's row; `IntrinsicId` 27. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.

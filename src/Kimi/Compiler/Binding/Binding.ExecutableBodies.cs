@@ -44,6 +44,9 @@ public sealed partial class Binding
 {
     private ExecutableBody formingBody;
 
+    // SPEC 11.8: whether a Property is static storage, a group's (TypeContext's storage test).
+    internal static bool IsStatic(BindingSymbol? property) => property is { Kind: BindingSymbolKind.Property, Scope.Owner: GroupKoto };
+
     // A Closure's evaluating body (SPEC 15.3.4), recorded on its plan when it is bound; no body for any other.
     private static ExecutableBody EvaluatingBody(ExecutableBody body)
         => body.Definition?.Declaration is FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan } ? plan.EvaluatingBody : default;
@@ -58,9 +61,6 @@ public sealed partial class Binding
 
     // The layer unit of a struct's member (an instance Field or a constructor): its struct, the one body key of the layer's initializers.
     private static ExecutableBody LayerOf(BindingSymbol member) => new(member.Scope.Owner.BoundSymbol);
-
-    // SPEC 11.8: whether a Property is static storage, a group's (TypeContext's storage test).
-    private static bool IsStatic(BindingSymbol? property) => property is { Kind: BindingSymbolKind.Property, Scope.Owner: GroupKoto };
 
     // Enters a body, or with the default value a declaration, and returns the context it replaces, which the entry restores.
     private ExecutableBody EnterBody(ExecutableBody body)

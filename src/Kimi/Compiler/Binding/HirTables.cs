@@ -18,8 +18,8 @@ namespace Kimi.Compiler;
 /// Type or an Origin, which occupy different namespaces), selected symbol, erased Function Type and the index of its plan row.
 /// The module's <see cref="SyntaxTable"/> sizes them with its ids, keeps them across warm rebinds and moves each row, plan row
 /// included, with its node when it renumbers. A node without an id has the default row; its first write gives it one.
-/// The published columns, <see cref="Ops"/>, <see cref="Res"/>, <see cref="Completions"/>, <see cref="Adjusts"/> and
-/// <see cref="Places"/>, are empty until <see cref="Publish"/> fills them for a pass.
+/// The published columns, <see cref="Ops"/>, <see cref="Completions"/>, <see cref="Adjusts"/> and <see cref="Places"/>, are
+/// empty until <see cref="Publish"/> fills them for a pass.
 /// </summary>
 internal struct HirTables
 {
@@ -30,7 +30,6 @@ internal struct HirTables
     internal BoundType?[] ErasedTypes;
     internal int[] PlanIndexes;
     internal HirOp[]? Ops;
-    internal HirRes[]? Res;
     internal HirCompletion[]? Completions;
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
@@ -77,7 +76,18 @@ internal struct HirTables
     // A node the latest publish did not reach, such as one synthesized after it, reads as unpublished.
     internal static HirOp Op(Koto node) => node.SyntaxOwner?.Hir.Ops is { } ops && node.SyntaxId < ops.Length ? ops[node.SyntaxId] : default;
 
-    internal static HirRes ResOf(Koto node) => node.SyntaxOwner?.Hir.Res is { } res && node.SyntaxId < res.Length ? res[node.SyntaxId] : default;
+    // What a node's selected symbol names, derived from the symbol, so no column repeats it; a parameter read in the default of a later
+    // parameter of its function names the prepared slot (SPEC 7.2.3).
+    internal static HirRes ResOf(Koto node) => Symbol(node) is not { } symbol ? HirRes.None : symbol.Kind switch
+    {
+        BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate => HirRes.Local,
+        BindingSymbolKind.Parameter => DefaultParameters.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
+        BindingSymbolKind.Capture => HirRes.Capture,
+        BindingSymbolKind.Storage => HirRes.Field,
+        BindingSymbolKind.Property => Binding.IsStatic(symbol) ? HirRes.Static : HirRes.Field,
+        BindingSymbolKind.EnumCase => HirRes.Variant,
+        _ => HirRes.Decl,
+    };
 
     internal static HirCompletion CompletionOf(Koto node) => node.SyntaxOwner?.Hir.Completions is { } completions && node.SyntaxId < completions.Length ? completions[node.SyntaxId] : default;
 
@@ -93,7 +103,7 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
-    /// <summary>Publishes the Op, Res, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
+    /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>The pass the columns describe, 0 before the first.</returns>
     internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
