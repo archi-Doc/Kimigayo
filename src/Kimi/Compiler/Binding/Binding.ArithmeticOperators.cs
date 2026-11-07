@@ -81,8 +81,7 @@ public sealed partial class Binding
         // A fixed left provider can give the other operand a bounded expected Type after selection.
         var right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
         var rightCore = right is null ? null : this.ArithmeticTerminal(binary.Right, right);
-        if ((!leftLiteral && left is null && !this.IsWaitingPart(binary.Left) && !this.IsWaitingCallable(binary.Left)) ||
-            (!rightLiteral && right is null && !this.IsWaitingPart(binary.Right) && !this.IsWaitingCallable(binary.Right)))
+        if ((!leftLiteral && this.RestsOn(binary.Left, left)) || (!rightLiteral && this.RestsOn(binary.Right, right)))
         {
             // Missing inputs defer provider selection, while successful operand facts retain independent prohibitions.
             var decision = this.OperatorApplicabilityOf(binary, left, right, scope);
@@ -100,7 +99,7 @@ public sealed partial class Binding
                 var rejected = binary.ArithmeticStorage ??= new();
                 rejected.Candidates.Clear();
                 rejected.Sources.Clear();
-                this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, rightCore, leftCore, ArithmeticContract(operation, true), "A right provider requires a built-in numeric left operand"));
+                this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, rightCore, leftCore, ArithmeticContract(operation, true), ArithmeticSelectionCause.NonNumericLeft));
                 return true;
             }
 
@@ -161,6 +160,11 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 23.1.2, rule W (DECISIONS BU-79): a probed operand that bound to nothing and is no deferred call or waiting callable has failed,
+    // itself or through a part it rests on, so its operator rests at once; binding it again would bind the failed subtree again (PLAN G506).
+    private bool RestsOn(Koto operand, BoundType? bound)
+        => bound is null && !this.IsWaitingPart(operand) && !this.IsWaitingCallable(operand);
+
     private bool TryArithmetic(UnaryKoto unary, BindingScope scope, out BoundType? result)
     {
         result = null;
@@ -172,7 +176,14 @@ public sealed partial class Binding
         var operand = this.BindIndependentOperand(unary.Operand, scope);
         if (operand is null)
         {
-            return false;
+            // A waiting operand is bound once more by the ordinary path, on its own (SPEC 13.3.4); a failed one is not bound again (PLAN G506).
+            if (!this.RestsOn(unary.Operand, operand))
+            {
+                return false;
+            }
+
+            result = Complete(unary, null);
+            return true;
         }
 
         var self = this.ArithmeticTerminal(unary.Operand, operand);
@@ -236,8 +247,7 @@ public sealed partial class Binding
             if (other is not null)
             {
                 var expected = candidate.Type!.Components[0];
-                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) :
-                    counterpart is not null ? !FitsStructuralPart(counterpart, expected) : !this.IsWaitingPart(other) && !this.IsWaitingCallable(other))
+                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !FitsStructuralPart(counterpart, expected))
                 {
                     continue;
                 }
@@ -260,7 +270,7 @@ public sealed partial class Binding
 
         if (pending || count != 1)
         {
-            this.FailExplained(ref this.arithmeticSelectionFailures, use, BindingFailure.ArithmeticSelection, new(plan, self, counterpart, id, pending ? "A structurally fitting conditional conformance remains unproven" : count == 0 ? "No proven conformance fits the counterpart structure" : "Multiple proven conformances fit the counterpart structure"));
+            this.FailExplained(ref this.arithmeticSelectionFailures, use, BindingFailure.ArithmeticSelection, new(plan, self, counterpart, id, pending ? ArithmeticSelectionCause.Unproven : count == 0 ? ArithmeticSelectionCause.NoFit : ArithmeticSelectionCause.Ambiguous));
             return null;
         }
 

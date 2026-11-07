@@ -238,7 +238,6 @@ public sealed partial class Binding
                     return false;
                 }
 
-                pattern = this.SubstituteStoredOrigins(pattern, definition, binders.AsSpan(0, definitionOrigins.Count), inputs.AsSpan(0, count));
                 if (implementingType is not null && i == definition.BoundSymbol.ReceiverIndex)
                 {
                     // Only the receiver's core Self changes. Its public Origin is inherited unchanged.
@@ -264,7 +263,6 @@ public sealed partial class Binding
                 return false;
             }
 
-            result = this.SubstituteStoredOrigins(result, definition, binders.AsSpan(0, definitionOrigins.Count), inputs.AsSpan(0, count));
             var actualResult = BoundType.Unit;
             if (function.ReturnType is { } returnSyntax)
             {
@@ -313,9 +311,10 @@ public sealed partial class Binding
             this.originScratch.Return(inputs, clearArray: true);
         }
 
+        // The definition's Type slots, Origins and inputs in one pass (PLAN G457), then the declaring Type's slots.
         BoundType? BindContractType(BoundType type)
-            => this.SubstituteType(type, definition, arguments, lengths) is { } substituted && this.MemberType(substituted, declaringType) is { } member
-                ? this.ContractType(member, this.scopes[function]) : null;
+            => this.SubstituteType(type, definition, arguments, lengths, binders.AsSpan(0, definitionOrigins.Count), inputs.AsSpan(0, count)) is { } substituted &&
+                this.MemberType(substituted, declaringType) is { } member ? this.ContractType(member, this.scopes[function]) : null;
 
         BoundOrigin BindContractOrigin(BoundOrigin origin)
         {

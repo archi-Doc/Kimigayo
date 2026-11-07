@@ -153,12 +153,21 @@ the file when the run ends, passed or failed. A script running several heavy run
 
 `artifacts/verify/shared-base/<sha9>/` holds the bases of one commit, a dev commit or a branch head other units start
 from: `diagnostic-snapshot.json` (the snapshot step checks its fixed corpus whatever the selection, so
-`./scripts/verify.ps1 -DiagnosticSnapshot` alone, the build and that step, suffices), optionally `semantic/` (`KIMI_SEMANTIC_SNAPSHOT=write`
+`./scripts/verify.ps1 -DiagnosticSnapshot` alone, the build and that step, suffices), optionally `native-results.json` (a Session's
+`native-fixtures/native-results.json`), optionally `semantic/` (`KIMI_SEMANTIC_SNAPSHOT=write`
 output, with the `KIMI_SEMANTIC_HIR`/`KIMI_SEMANTIC_MIR` flags it used) and `README.txt` naming the commit, the commands, the
 evidence directory and the date. Reuse an existing base for the same commit; produce a missing one and copy it there
 (`mir-diff/`, the difference ledger's, ended at R6-check H10a; the last is W-17's `shared-base/382126932/mir-diff/`). Never edit a base in place: delete a wrong one whole and remake it. A unit compares
 against the base of the commit it starts from; pass `-DiagnosticBaseline` an absolute Windows path (`C:/...` or `C:\...`),
 since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
+
+`test-scalars.ps1` writes `native-results.json` beside `results.json`: an environment key (hashes of the LLVM tools, backend
+archive, kernel32 library, runner scripts and `profile.json`, the allowed symbols and the deadline) and, per fixture, a key over
+its `.ll`, `.stdout`, `.stderr`, `.exit` and `.observation` files, its status and when it last executed. `verify.ps1 -NativeReuse
+<base>/native-results.json` (the runner's `-ReuseResults`) skips a fixture whose entry has both keys equal, status `passed` and an
+execution within `-ReuseHours` (24); every other fixture executes, so each fixture runs at least daily and at once when an input
+changes. The success line reports the split (`N fixtures run, M reused`); a base without the file means a full native run. The keys
+do not see machine load or the inherited environment, so a flaky observation or deadline failure can stay hidden for up to a day.
 
 ## Specification acceptance and support boundaries
 

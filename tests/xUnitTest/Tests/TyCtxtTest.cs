@@ -102,9 +102,11 @@ public sealed class TyCtxtTest
     private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
         "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
 
-    // A generic function with a closure, called with two borrows of different Origins, and a nongeneric function with Origins.
+    // A generic function with a closure, called with two borrows of different Origins, one whose call binds an input Origin, and a
+    // nongeneric function with Origins.
     private const string EraseSource = "func keep<T>(value: T) -> T\n    T is Copy\n    let probe = func [] (x: T) -> T => x\n    return probe(value)\n" +
-        "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
+        "func view<T>(value: ref/T) -> i32 => 1\nfunc host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    _ = view(a)\n    return 0\n" +
+        "let x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
 
     // A raw Field and a Case payload stating `self`, and a raw Field stating a slot, held under a local's Origin and under `static`.
     private const string RawShapeSource = "struct Block\n    internal let data: raw/u8 during self\n    public init() => self.data = null\n" +
@@ -279,6 +281,18 @@ public sealed class TyCtxtTest
         var identity = c.Types.SubstOfClosure(closure.EnvironmentType!)!;
         Assert.Same(c.Types.Identity(function), identity);
         Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
+    }
+
+    // SPEC 15.3.1, 15.3.6 (PLAN G457): a call's instance maps each of the callee's Type and Origin slots once, so a Type argument naming the
+    // callee's own Origin in its own body keeps the caller's (it became the callee's image `j` before).
+    [Fact]
+    public void ACallsInstanceMapsEachSlotOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("func f<T>(t: T, y: ref/i32 during k, z: ref/i32 during j) -> (T, ref/i32 during k)\n    let p: (ref/i32 during k, ref/i32 during j) = f<ref/i32 during k>(y, z, z)\n    return (t@move, y)\npublic func main() => ()\n");
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var declared = nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "p").TypeKoto!.TypeOf();
+        var call = nodes.OfType<InvocationKoto>().Single().CallOf()!;
+        Assert.Same(declared, c.Binding.InstantiateStorageType(call.Target.Type!, call));
     }
 
     // SPEC 6.1.3, 8.1.3, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
@@ -1228,9 +1242,10 @@ public sealed class TyCtxtTest
         Assert.Equal((3, 2, tall, 2), (item.Height, tall.Height, subst.Self, subst.Height));
     }
 
-    // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in
-    // Origins only have one erased substitution, and every Type of the callee's body and closure, the closure's context included, erases
-    // alike in their instances; erasing is idempotent and keeps a Type without Origins; a binder that does not instantiate has none.
+    // DECISIONS R5-M39 (K package 4.1), R4-M180: Erase makes every Origin static and binds none of a substitution's (view's call binds an
+    // input Origin), and keeps everything else; two calls whose substitutions differ in Origins only have one erased substitution, and
+    // every Type of the callee's body and closure, the closure's context included, erases alike in their instances; erasing is idempotent
+    // and keeps a Type without Origins; a binder that does not instantiate has none.
     [Fact]
     public void EraseKeepsEverythingButOrigins()
     {
@@ -1246,7 +1261,9 @@ public sealed class TyCtxtTest
         Assert.Same(erased, types.Erase(calls[1]));
         Assert.Same(erased, types.Erase(erased));
         Assert.Equal((SemanticsKind.Ref, BoundOrigin.Static), (erased.Types[0]!.Semantics, erased.Types[0]!.Origin));
-        Assert.All(erased.Inputs.ToArray().Concat(erased.Origins.ToArray()), static x => Assert.Same(BoundOrigin.Static, x));
+        var viewed = types.SubstOf(nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Single(static x => x?.Target.Name == "view")!)!;
+        Assert.NotEmpty(viewed.Inputs.ToArray());
+        Assert.All([erased, types.Erase(viewed)!], static x => Assert.True(x.Origins.IsEmpty && x.Inputs.IsEmpty));
         var locals = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl?.Name == "keep" || (x.Key.Kind == MirBodyKind.Closure && x.Source.Module == 0))
             .SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).ToArray();
         Assert.True(locals.Length > 4);

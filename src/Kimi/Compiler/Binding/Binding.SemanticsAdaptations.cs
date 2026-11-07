@@ -228,7 +228,8 @@ public sealed partial class Binding
         _ => this.Form(whole.Semantics, target, origin),
     };
 
-    private BoundType? SubstituteFamilyArgument(BoundType family, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, int slot, BoundType whole)
+    private BoundType? SubstituteFamilyArgument(
+        BoundType family, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, int slot, BoundType whole)
     {
         var children = this.RentTypes(whole.Components.Count);
         var caseArguments = this.typeScratch.Rent(arguments.Length);
@@ -243,7 +244,7 @@ public sealed partial class Binding
                 {
                     cases[0] = new(whole.Symbol!, mode);
                     caseArguments[slot] = whole.Components[count];
-                    if (this.SubstituteType(family, binder, caseArguments.AsSpan(0, arguments.Length), lengths, origins) is not { } child)
+                    if (this.SubstituteType(family, binder, caseArguments.AsSpan(0, arguments.Length), lengths, origins, images, originBinder) is not { } child)
                     {
                         return null;
                     }

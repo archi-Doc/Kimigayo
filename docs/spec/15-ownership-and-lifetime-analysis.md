@@ -568,12 +568,19 @@ inspect(slot)
 
 Constraints whose proof involves Origins (`Owned`, Callable, Type identity, [§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)) are separate requirements that take part in applicability. The Origin part of a whole-contract comparison ([§8.6](08-generics-constraints-and-contracts.md#86-conformance), [§8.13](08-generics-constraints-and-contracts.md#813-explicit-full-function-specialization), [§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)) is judged under [§15.3.7](#1537-contract-comparison) from premises alone, so it is Proven or Unknown; Unknown is an error of the Proof category, or a Constraint failure inside a Callable Constraint.
 
-**Errors.** A Refuted Origin relation is an error. One still Unknown under Finality ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)) is an error of the Proof category: not proven, not false. A failed relation adds no constraint to region inference, so it causes no Loan conflict or result mismatch of its own. Clauses and well-formedness a body must establish are obligations, never premises.
+**Errors.** A Refuted Origin relation is an error. One still Unknown under Finality ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)) is an error of the Proof category: not proven, not false. A failed relation adds no constraint to region inference, so it causes no Loan conflict or result mismatch of its own. Clauses and well-formedness a body must establish are obligations, never premises: no proof from premises ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof), [§15.3.6](#1536-origin-inference)) uses them, so none proves itself or a chain between fixed Origins, also in a named nested function or a nested signature ([§15.3.4](#1534-names-scope-and-quantification)). A chain requiring an Origin to outlive a finite Origin is never Unknown or Refuted ([§15.6.5](#1565-judging-origin-relations)), so the well-formedness of the Type of a Borrow whose Origin is finite, such as a body-local one, needs no premise and constrains the body's region inference like every Proven relation.
 
 ```kimi
 // Holder<T> is a struct with the Field value: T.
 func get(b: objref/Holder<ref/i32 during c> during o) -> ref/i32 during o
     return b.value   // Valid: b's Type is well-formed, so c outlives o.
+```
+
+```kimi
+func relay(p: ref/i32, q: ref/i32) -> ref/i32 during q
+    let r = p
+    let rr = r@ref   // Valid: the Origin of r@ref is body-local, so its Type is well-formed.
+    return rr@follow // Error: p outlives q is not proven; no relation the body establishes is a premise.
 ```
 
 ### 15.6.2. Place overlap and conflicts

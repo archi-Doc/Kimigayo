@@ -24,6 +24,15 @@ public sealed class ErrorKoto : ExpressionKoto
     {
     }
 
+    /// <summary>Initializes a new instance of the <see cref="ErrorKoto"/> class that a walk after parsing makes, such as a cut of
+    /// <see cref="SyntaxNesting"/>.</summary>
+    /// <param name="codeContext">The source context.</param>
+    /// <param name="range">The invalid source span.</param>
+    internal ErrorKoto(CodeContext codeContext, SourceSpan range)
+        : base(codeContext, range)
+    {
+    }
+
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
         => builder.Append("Error");

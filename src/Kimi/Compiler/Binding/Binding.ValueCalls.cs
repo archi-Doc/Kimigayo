@@ -2,7 +2,8 @@
 
 // Value calls (SPEC 7.7, 8.10, 15.6.4, 15.8.2; DECISIONS R4-M148, R4-M152): a call of a callable value, a Function value or a Closure.
 // - Responsibility: the callee's acquisition by its receiver mode (AcquireValueCallee), each argument bound and adapted
-//   (AcquireValueCallArguments), the per-call inputs solved and substituted, and the result (ValueCallResult). P9: a Closure's result
+//   (AcquireValueCallPart): the evidence parts first (AcquireValueCallArguments), then, the per-call inputs solved from them, the waiting
+//   parts at their instantiated parameters (PLAN G494); the substitution, and the result (ValueCallResult). P9: a Closure's result
 //   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage) and its call result atom the call's Unbound atom,
 //   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
@@ -443,7 +444,9 @@ public sealed partial class Binding
 
         var parameters = signature.Components[0];
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
-        if (count != call.ArgumentNodes.Count)
+        // SPEC 10.1.1 (MapValueCallArguments): the arguments are matched before any part; the record reads no part, so the parts are then
+        // bound on their own (CompleteUnselected) and none is its prerequisite.
+        if (!MapValueCallArguments(call, signature).Valid)
         {
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
@@ -468,48 +471,72 @@ public sealed partial class Binding
             // R3 (DECISIONS BU-104): the arguments' root rows at the known parameter Types and their child rows, composed once before the
             // parts' completion and judged after it (JudgePositionRows).
             var solution = new SlotSolution { Binding = this, Call = call, Rows = rows.AsSpan(0, count), ChildSlice = ResetSlice(childSlice) };
-            if (!this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count), ref solution, out var acquired))
-            {
-                return null;
-            }
+            var formed = true;
+            this.AcquireValueCallArguments(call, scope, parameters, operations.AsSpan(0, count), instantiated.AsSpan(0, count), ref solution, ref formed);
 
-            // Collect the complete parameter structure, including nested slots, through the ordinary call solver.
-            // Scratch inputs hold acquired Types until substitution commits the one selected call's contract.
+            // Collect the complete parameter structure, including nested slots, through the ordinary call solver, from the evidence parts;
+            // a failed part and a waiting one are no evidence (rule W). Scratch inputs hold acquired Types until substitution commits the one
+            // selected call's contract.
             var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
-            if (ownBinder is not null && this.HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
+            if (ownBinder is not null && this.HasUnsubstitutedInput(signature, ownBinder))
             {
-                // The table explains the call's NoApplicableOverload_Kd only (FailExplained), never its acquisition record.
-                if (conditioned is not null && acquired)
-                {
-                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(conditioned, null, null)];
-                }
-
-                return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call, solution, scope);
             }
 
+            // SPEC 10.5.1, 10.5.4, 15.6.4 step 2 (PLAN G494): each waiting part is completed at its instantiated parameter, after the solve,
+            // as a named call completes its waiting parts and erasures after selection (CompleteWaiting, CompleteArguments); every taken
+            // part's operation takes its instantiated parameter.
             for (var i = 0; i < count; i++)
             {
-                var parameter = ownBinder is null ? parameters.Components[i] :
-                    this.SubstituteStoredOrigins(parameters.Components[i], ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
-                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-                if (!this.FailStaticBorrow(operations[i].Source!, operations[i].Kind, parameter.Semantics) &&
-                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!, out var failure))
+                if (operations[i] is not { Source: not null, ParameterType: { } declared })
                 {
-                    // SPEC 15.6.1, 23.1.2: a fit whose structure holds, or a Closure's or Function Item's erasure, is the argument's own record
-                    // (RecordMismatch; an erasure's failed condition is recorded where it is judged, ErasesToFunction), and the call rests on it.
+                    continue;
+                }
+
+                var parameter = ownBinder is null ? declared :
+                    this.SubstituteStoredOrigins(declared, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
+                if (operations[i].AdaptedType is null)
+                {
+                    this.AcquireValueCallPart(call, i, parameter, scope, IsUnfittedLiteral(call.ArgumentNodes[i]), operations, instantiated, ref formed);
+                }
+                else
+                {
+                    operations[i] = operations[i] with { ParameterType = parameter };
+                }
+            }
+
+            // SPEC 15.6.1, 23.1.2 (rule W, DECISIONS BU-79): each taken part's fit to its instantiated parameter. A fit whose structure holds,
+            // or a Closure's or Function Item's erasure, is the argument's own record (RecordMismatch; an erasure is decided at its
+            // completion, CompleteValueCallPart, which published its failed outcome and recorded a failed condition there); a structural
+            // misfit is the call's. Either way the part is a wildcard for the call's other judgments, and the call rests on it.
+            Koto? failedFit = null;
+            for (var i = 0; i < count; i++)
+            {
+                if (operations[i] is not { Source: { } at, ParameterType: { } parameter })
+                {
+                    continue;
+                }
+
+                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+                if (!this.FailStaticBorrow(at, operations[i].Kind, parameter.Semantics) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
+                {
                     var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
                     if (failure.Kind == ComparisonFailureKind.Shape && !erasure)
                     {
-                        return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                        this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    }
+                    else
+                    {
+                        this.RecordMismatch(at, at, instantiated[i], parameter, failure);
+                        failedFit ??= at;
                     }
 
-                    _ = erasure && this.ErasesToFunction(operations[i].Source!, instantiated[i], parameter);
-                    this.RecordMismatch(operations[i].Source!, operations[i].Source!, instantiated[i], parameter, failure);
-                    return this.CompleteDependent(call, operations[i].Source!);
+                    operations[i] = default;
+                    formed = false;
+                    continue;
                 }
 
                 instantiated[i] = parameter;
-                operations[i] = operations[i] with { ParameterType = parameter };
             }
 
             // SPEC 15.6.1, 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds, also
@@ -535,8 +562,13 @@ public sealed partial class Binding
 
             this.PublishCallRelations();
 
-            // A call whose argument was not acquired rests on that record and forms no result.
-            var result = !acquired ? null : this.ValueCallResult(
+            // A call with a part it did not take (failed, misfitting or not acquired) rests on that part's record and forms no result.
+            if (!formed)
+            {
+                return failedFit is null ? Complete(call, null) : this.CompleteDependent(call, failedFit);
+            }
+
+            var result = this.ValueCallResult(
                 call, signature, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount), receiverOperation);
             if (result is null)
             {
@@ -568,69 +600,91 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.4, 15.1.5: each argument of a value call, bound against its parameter and adapted to it: its operation and the Type it
-    // acquires, which the call's substitution then instantiates; false when one fails or misfits, which fails or leaves unresolved the
-    // call. An acquisition is deferred, as a payload's is (CompletePayloads): where the argument fits structurally, a bare Place without
-    // its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it supplies kept, and `acquired` tells the call.
-    private bool AcquireValueCallArguments(
+    // SPEC 15.6.4, 10.5.1 (PLAN G494): the first pass over a value call's arguments. Each is prepared, its rows composed, and a part whose
+    // Type is the solve's evidence is completed and adapted at its declared parameter (AcquireValueCallPart); a part that waits for the
+    // solve (WaitsForValueCallSolve) keeps an operation without an adapted Type, which BindValueCall completes at its instantiated
+    // parameter. Rule W (DECISIONS BU-79; SPEC 23.1.2): a failed part and a misfitting one (the call's record) take no operation and are
+    // no evidence; the pass goes on, and `formed` tells the call that it forms no result.
+    private void AcquireValueCallArguments(
         InvocationKoto call,
         BindingScope scope,
         BoundType parameters,
         Span<BoundArgumentOperation> operations,
         Span<BoundType> instantiated,
         ref SlotSolution solution,
-        out bool acquired)
+        ref bool formed)
     {
-        acquired = true;
         for (var i = 0; i < instantiated.Length; i++)
         {
-            if (call.GetArgumentLabel(i) is not null)
-            {
-                this.Fail(call, BindingFailure.NoApplicableCandidate);
-                return false;
-            }
-
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
             var literal = IsUnfittedLiteral(source);
             if (!this.PrepareArgument(source, scope, null, callableContext: true))
             {
-                Complete(call, null);
-                return false;
+                formed = false;
             }
-
-            solution.Rows[i] = new(i, -1, 0, source, parameter, parameter, this.PartContribution(source)); // Once the part is recorded.
-            this.RetainArgumentRows(ref solution, i); // R3: composed while the part is prepared, before its completion.
-            var actual = this.CompleteValueCallPart(source, parameter, scope);
-            if (actual is null || source.BindingState != BindingState.Resolved)
+            else
             {
-                Complete(call, null);
-                return false;
+                solution.Rows[i] = new(i, -1, 0, source, parameter, parameter, this.PartContribution(source)); // Once the part is recorded.
+                this.RetainArgumentRows(ref solution, i); // R3: composed while the part is prepared, before its completion.
+                if (this.WaitsForValueCallSolve(source, parameter))
+                {
+                    operations[i] = new(source, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: i);
+                }
+                else
+                {
+                    this.AcquireValueCallPart(call, i, parameter, scope, literal, operations, instantiated, ref formed);
+                }
             }
+        }
+    }
 
-            actual = this.ArgumentType(source, actual);
-            this.acquisitionFailure = null;
-            if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind, deferAcquisition: true) ||
-                (this.acquisitionFailure is not null && !this.FitsStructuralPartAt(adapted, parameter, source)))
-            {
-                this.Fail(call, BindingFailure.NoApplicableCandidate);
-                return false;
-            }
-
-            if (this.acquisitionFailure is { } acquisition)
-            {
-                this.FailAcquisition(call, acquisition.Kind, acquisition.Place, acquisition.Object, unresolved: true);
-                acquired = false;
-            }
-
-            // ArgumentType includes the already selected expected adaptation. Retain the original syntax
-            // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
-            operations[i] = new(
-                source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i, AdaptedType: adapted);
-            instantiated[i] = adapted;
+    // SPEC 15.6.4, 15.1.5: a prepared argument of a value call completed at `parameter` (CompleteValueCallPart) and adapted to it: its
+    // operation and the Type it acquires, which the call's substitution then instantiates; `literal` tells whether it was an unfitted
+    // literal before its preparation. An acquisition is deferred, as a payload's is (CompletePayloads): where the argument fits
+    // structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it supplies kept.
+    // A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the part is taken and
+    // acquired.
+    private void AcquireValueCallPart(
+        InvocationKoto call,
+        int i,
+        BoundType parameter,
+        BindingScope scope,
+        bool literal,
+        Span<BoundArgumentOperation> operations,
+        Span<BoundType> instantiated,
+        ref bool formed)
+    {
+        var source = call.ArgumentNodes[i];
+        operations[i] = default;
+        var actual = this.CompleteValueCallPart(source, parameter, scope);
+        if (actual is null || source.BindingState != BindingState.Resolved)
+        {
+            formed = false;
+            return;
         }
 
-        return true;
+        actual = this.ArgumentType(source, actual);
+        this.acquisitionFailure = null;
+        if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind, deferAcquisition: true) ||
+            (this.acquisitionFailure is not null && !this.FitsStructuralPartAt(adapted, parameter, source)))
+        {
+            this.Fail(call, BindingFailure.NoApplicableCandidate);
+            formed = false;
+            return;
+        }
+
+        if (this.acquisitionFailure is { } acquisition)
+        {
+            this.FailAcquisition(call, acquisition.Kind, acquisition.Place, acquisition.Object, unresolved: true);
+            formed = false;
+        }
+
+        // ArgumentType includes the already selected expected adaptation. Retain the original syntax
+        // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
+        operations[i] = new(
+            source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i, AdaptedType: adapted);
+        instantiated[i] = adapted;
     }
 
     // SPEC 15.6.4, 15.8.2 (DECISIONS R4-M152): a value call's result. Fresh input Origins and fixed shared capture results retain their

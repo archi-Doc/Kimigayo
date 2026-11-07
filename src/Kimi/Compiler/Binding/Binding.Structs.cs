@@ -86,15 +86,15 @@ public sealed partial class Binding
     internal BoundType? InstantiateStorageType(BoundType type, Subst subst)
         => this.StorageInstance(type, subst) is { } result && this.PrepareTypeStorage(result) != StorageOutcome.Limit ? result : null;
 
-    // A declared Type in the instance a substitution makes: its binder's slots, then its stored Origins substituted, normalized in the
-    // binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null where one of these
-    // steps does not complete. Its storage is not prepared.
+    // A declared Type in the instance a substitution makes: its binder's slots and stored Origins substituted in one pass (PLAN G457),
+    // normalized in the binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null
+    // where one of these steps does not complete. Its storage is not prepared.
     internal BoundType? StorageInstance(BoundType type, Subst subst)
     {
         var binder = subst.Binder;
         var originBinder = binder is FunctionKoto function ? function.OriginBinder : binder;
-        var result = this.MemberType(type, subst.Declaring) is { } member && this.SubstituteType(member, binder, subst.Types, subst.Lengths) is { } substituted
-            ? this.SubstituteStoredOrigins(substituted, originBinder, subst.Origins, subst.Inputs) : null;
+        var result = this.MemberType(type, subst.Declaring) is { } member
+            ? this.SubstituteType(member, binder, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, originBinder) : null;
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
@@ -145,6 +145,12 @@ public sealed partial class Binding
             Receiver(left) is not null ? receiver : null!;
         return function is not null;
     }
+
+    // SPEC 10.8.1, 6.5.2: the Origin arguments an expected result supplies to a construction of `declaration`, only by direct structural
+    // match with an owner Type of that declaration (never by inverting a borrow, object creation, upcast, conversion or associated
+    // projection); null for any other expected Type. Structure and Case constructions both read it.
+    private static IReadOnlyList<BoundOrigin>? ExpectedConstructionOrigins(BoundType? expected, BindingSymbol? declaration)
+        => expected is { Semantics: SemanticsKind.Owner } && ReferenceEquals(expected.Symbol, declaration) ? expected.OriginArguments : null;
 
     // SPEC 16.3.1: the Origin of the helper borrow, a borrow of the whole receiver of a row with Whole (the destruction row): the
     // destructor's HelperSlot Projection (H), so every value that carries the helper borrow carries H (SPEC 15.6), while the receiver's
@@ -484,8 +490,10 @@ public sealed partial class Binding
 
     // SPEC 6.3, 10.1: the constructed Type, its Origins formed from the arguments before the candidate's trial. Each argument is adapted
     // as the trial adapts it, a missing spelling deferred, and the probe keeps no acquisition fact: the trial records its own, which names
-    // the spelling only when it is the candidate's one obstacle (SPEC 10.1 step 5; PLAN G453).
-    private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping)
+    // the spelling only when it is the candidate's one obstacle (SPEC 10.1 step 5; PLAN G453). A slot no argument fixes is no mismatch
+    // (SPEC 10.8; PLAN G463): the expected result fills it by direct match with an owner Type of this declaration (SPEC 10.8.1), and any
+    // other one (after a Never or waiting argument, or none) is a region of the call (SPEC 15.3.6, DECISIONS BU-104), which its uses bound.
+    private BoundType ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping, BoundType? expected)
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
@@ -517,12 +525,10 @@ public sealed partial class Binding
                 }
             }
 
+            var supplied = ExpectedConstructionOrigins(expected, type.Symbol);
             for (var i = 0; i < count; i++)
             {
-                if (origins[i] is null)
-                {
-                    return null;
-                }
+                origins[i] ??= i < supplied?.Count ? supplied[i] : this.CallRegion(call.Method, i);
             }
 
             return this.WithOrigins(type, null, origins.AsSpan(0, count));
