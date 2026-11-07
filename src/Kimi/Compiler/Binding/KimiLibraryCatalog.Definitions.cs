@@ -145,6 +145,10 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: None),
         new(KimiDeclarationId.Indexable, "Indexable"),
         new(KimiDeclarationId.UniqIndexable, "UniqIndexable"),
+        // IMPL 21.1.3: the structs that state the handles' inline components, by identity for Layout and the tests.
+        new(KimiDeclarationId.ArrayRepr, "ArrayRepr", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.SliceRepr, "SliceRepr", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StringRepr, "StringRepr", KimiLibraryContainer.Storage),
         // SPEC 22.2: the standard storage boundary; the exclusive borrow of each family is borrowStorageUniq (SPEC 7.4), and
         // the overload index counts the declarations of one Name in source order (Array, Dictionary, fixed array).
         new(KimiDeclarationId.RefRemainder, "RefRemainder", KimiLibraryContainer.Storage),
