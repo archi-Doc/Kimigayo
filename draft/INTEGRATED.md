@@ -1288,6 +1288,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 8 (2026-11-07, plan §14, the R7 restart; the Front's D-47): phases A and B become one queue, since H5, H10, H12 and H14 are
   passed; I3, D1 and D3 state where they stand; G416 joins the Front's lane; the Position Rows links point to `draft/Changes/`. No
   unit's rule changed. The plan stays 一部取り込み (open), nothing frozen.
+- Revision 9 (2026-11-07, plan §14; the owner's request to check the plan against dev, verbatim 「精査して、今後の作業に支障がある箇所があれば、
+  Implementation Planを修正してください。」): the position, arrangement, order, gates and unit states follow dev `efe7f0b6c`; the Full and Owner
+  labels became Major; §5.1 and §5.4 follow each issue's state; the mir ledger's rows go. No unit's rule changed. The plan stays 一部取り込み
+  (open), nothing frozen.
+- Revision 10 (2026-11-07, plan §14; the Front's D-49): §5.1 names the units revision 9 left open. The plan stays 一部取り込み (open), nothing
+  frozen.
+- Revision 11 (2026-11-07, plan §14; the Middle's D-51): §5.4 and §7.1 follow PLAN G396 and the A5 oracle's new place. Nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
