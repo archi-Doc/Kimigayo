@@ -4,7 +4,8 @@
 // Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor). Output:
 // the paths numbered in pre-order, so a subtree is the range [path, End), each with its step from its parent, and the path of each Place.
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and argument;
-// a constructor's _0 has a child per Field and its base. A PairLayer step is transparent: it is the Place itself in the owner case, and the
+// a constructor's _0 has a child per Field with a stored Type, the Fields it places (MirBuilder.Stored; SPEC 23.1.2), and its base. A
+// PairLayer step is transparent: it is the Place itself in the owner case, and the
 // accesses of a reference case end before it (MirInit). Deref and Index end a path: an access through them is an access of the prefix's
 // path, and a Move through them has no Move Path, except through a raw pointer, however read (an untracked Take). Roots whose events all
 // lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and numbered after the flow
@@ -106,8 +107,11 @@ internal sealed class MirMoveData
             var self = body.Locals[0].Type;
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
-                var field = this.Child(0, MirProjectionKind.Field, i);
-                this.once[field] = AdtDef.PlacedOnce(self, i);
+                if (AdtDef.FieldType(self, i) is not null)
+                {
+                    var field = this.Child(0, MirProjectionKind.Field, i);
+                    this.once[field] = AdtDef.PlacedOnce(self, i);
+                }
             }
 
             if (AdtDef.Base(self) is not null)
