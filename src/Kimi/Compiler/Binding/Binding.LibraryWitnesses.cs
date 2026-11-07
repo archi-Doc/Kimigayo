@@ -25,6 +25,7 @@ internal enum WitnessMembers : byte
 {
     FixedArray,
     IntegerPosition,
+    String,
 }
 
 public sealed partial class Binding
@@ -89,12 +90,13 @@ public sealed partial class Binding
     }
 
     // SPEC 22.1, 4.6.1, 8.7: the receiver a group's functions state: some `[N of E]`, in the ref, uniq or owning form (PLAN G32); an integer
-    // or a Type parameter (SPEC 4.6.1). A new group states its own; none is another's by default.
+    // or a Type parameter (SPEC 4.6.1); string below any one layer (SPEC 13.4.1). A new group states its own; none is another's by default.
     private static bool WitnessReceiver(WitnessMembers members, BoundType type) => members switch
     {
         WitnessMembers.FixedArray => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },
         WitnessMembers.IntegerPosition
             => type is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner } or { IsInteger: true, Semantics: SemanticsKind.Owner },
+        WitnessMembers.String => ReferenceEquals(EffectiveCore(type), BoundType.String),
         _ => throw new InvalidOperationException($"The group {members} states no receiver."),
     };
 
