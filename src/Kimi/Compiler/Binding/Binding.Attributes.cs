@@ -59,7 +59,7 @@ public sealed partial class Binding
 
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
-        attribute.BindingFailure = BindingFailure.None;
+        this.ClearFailure(attribute);
         attribute.BindingState = BindingState.Unvisited;
         attribute.BoundType = null;
         this.nodes.Add(attribute);
@@ -292,7 +292,7 @@ public sealed partial class Binding
 
         if (unsupported is not null)
         {
-            this.FailExplained(ref this.unsupportedSpans, attribute, BindingFailure.Unsupported, unsupported.Span);
+            this.FailUnsupportedAt(attribute, unsupported.Span);
             return null;
         }
 
@@ -446,7 +446,7 @@ public sealed partial class Binding
 
             // The published facts, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
             var selected = mode == "C" && valid;
-            var unavailable = selected && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0);
+            var unavailable = selected && ((container.Modifier & ModifierKind.Open) != 0 || container.BaseClause is not null || instanceFields == 0);
             var adt = container.BoundSymbol!.Adt ??= new();
             adt.IsCLayout = selected && !unavailable;
             adt.CLayoutUnavailable = unavailable;

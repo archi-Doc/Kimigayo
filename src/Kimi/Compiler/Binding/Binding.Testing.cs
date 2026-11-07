@@ -53,7 +53,7 @@ public sealed partial class Binding
 
     private void IndexInvalidTestAttribute(AttributeKoto attribute)
     {
-        attribute.BindingFailure = BindingFailure.None;
+        this.ClearFailure(attribute);
         this.Fail(attribute, BindingFailure.InvalidTestDefinition);
         this.nodes.Add(attribute);
     }

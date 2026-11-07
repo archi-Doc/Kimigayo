@@ -65,8 +65,8 @@ public sealed partial class Binding
         private bool exclusive;
         private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
 
-        // By SyntaxId: whether a take of a node needs exclusive capability of it, recorded by Claim at every take, its consumer's (Use,
-        // FixAdjust) and its container's discard (DiscardRow), and read by ChildAdjust's claimed and ExclusiveUse.
+        // By SyntaxId: whether a take of a node needs exclusive capability of it, recorded by Claim from each take's row, its consumer's
+        // (FixAdjust) and its container's discard (DiscardRow), and read by ChildAdjust's claimed and ExclusiveUse.
         private bool[] claims = [];
 
         // Binding's structural completion with its Never evidence, one per body.

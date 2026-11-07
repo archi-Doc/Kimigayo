@@ -255,7 +255,7 @@ public sealed partial class HirFormsTest
         var nodes = Reachable(c.Kotonoha);
         var box = nodes.Single(static x => x.ToString() == "box" && x.Parent?.ToString() == "box.count");
         Assert.Equal(
-            (new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow), new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow)),
+            (new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow, ExclusiveMode: true), new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow)),
             (HirTables.AdjustOf(box), HirTables.PlanOf(box).Adjust));
         Assert.Equal(default, HirTables.PlanOf(nodes.Single(static x => x.ToString() == "box.n")).Adjust);
         var receiver = nodes.Single(static x => x.ToString() == "t" && x.Parent?.ToString() == "t.item");

@@ -41,7 +41,7 @@ internal func allocationSizeExceeded() -> Never
 // writable (SPEC 5.2.1). `Raw.release` accepts it as the start of an `allocate` result, never as a zero-byte result
 // even when `bytes` is 0, so it is released at most once.
 internal func tryAllocateBytes(bytes: isize) -> raw/u8
-/// Copies `count` bytes from `source` into the raw storage at `destination` and runs no user code; it may relocate the
+/// Copies `count` bytes from `source` into the storage at `destination` and runs no user code; it may relocate the
 /// values in the source range (SPEC 5.2), whatever the initialization state of the bytes.
 ///
 /// - safety: `count >= 0`, the two ranges do not overlap and each lies within its pointer's provenance, `source` is

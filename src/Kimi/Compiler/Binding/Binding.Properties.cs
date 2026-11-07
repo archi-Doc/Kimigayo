@@ -260,7 +260,7 @@ public sealed partial class Binding
 
         // The shared header has two position-sensitive meanings. Reuse syntax temporarily,
         // retaining only the getter's annotation on it and the setter's complete semantic Type.
-        var visitor = this.propertyTypeVisitor ??= new();
+        var visitor = this.propertyTypeVisitor ??= new(this);
         var start = visitor.Snapshots.Count;
         visitor.Visit(syntax);
         try
@@ -507,14 +507,14 @@ public sealed partial class Binding
         return true;
     }
 
-    private sealed class PropertyTypeVisitor : KotoVisitor
+    private sealed class PropertyTypeVisitor(Binding binding) : KotoVisitor
     {
         // Type and Origin share one semantic slot; restoring them separately would erase the saved Type.
-        internal List<(Koto Node, object? Meaning, BindingSymbol? Symbol, BindingState State, BindingFailure Failure)> Snapshots { get; } = new();
+        internal List<Snapshot> Snapshots { get; } = new();
 
         public override void Visit(Koto node)
         {
-            this.Snapshots.Add((node, node.BoundMeaning, node.BoundSymbol, node.BindingState, node.BindingFailure));
+            this.Snapshots.Add(new(node, node.BoundMeaning, node.BoundSymbol, node.BindingState, node.BindingFailure, binding.UnlinkProblems(node)));
             node.BoundMeaning = null;
             node.BindingState = BindingState.Unvisited;
             node.BindingFailure = BindingFailure.None;
@@ -530,9 +530,13 @@ public sealed partial class Binding
                 saved.Node.BoundSymbol = saved.Symbol;
                 saved.Node.BindingState = saved.State;
                 saved.Node.BindingFailure = saved.Failure;
+                binding.RestoreProblems(saved.Node, saved.Problems);
             }
 
             this.Snapshots.RemoveRange(start, this.Snapshots.Count - start);
         }
+
+        internal readonly record struct Snapshot(
+            Koto Node, object? Meaning, BindingSymbol? Symbol, BindingState State, BindingFailure Failure, (int First, int Last) Problems);
     }
 }

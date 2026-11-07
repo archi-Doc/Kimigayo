@@ -127,6 +127,8 @@ public class ArchitectureRulesTest
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
+    // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
+    [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
     // R7-N1a (RP6): ResolvePath is the one evaluation of a Type name and PublishPath its one writer, so these entries stay gone.
     [InlineData("Lookup entries replaced by ResolvePath", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:RootTypeName|LookupImportedType|StopInheritedLookup|SelectTypeCandidate)\b", 0)]
     // G416 Q2: HoldStep absorbed RawStep, so one vocabulary names a layer's step (RP6).
@@ -168,6 +170,9 @@ public class ArchitectureRulesTest
     // names no attribute by string (its two hits are the Kimi.Test group's Name). A Name the compiler reads joins the second pattern.
     [InlineData("Reads of an attribute's Name", "src/Kimi/Compiler", @"\bIdentifierKoto\b", "Parsing/Koto/Expressions/UnaryKoto.cs=2")]
     [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test)""", "KimiLibrary.cs=2")]
+    // R7-N2a (RP6): a struct has one base clause (SPEC 6.2.2), read through StructKoto.BaseClause. `.Bases` stays only where the container may
+    // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
+    [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]
     // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
     // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
     [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.AssociatedTypes.cs=1;Binding.Diagnostics.cs=1;Binding.Imports.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.Qualification.cs=1;Binding.ResolvePath.cs=4")]

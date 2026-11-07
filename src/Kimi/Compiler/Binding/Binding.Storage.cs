@@ -67,18 +67,7 @@ public sealed partial class Binding
             return enumeration;
         }
 
-        if (owner is StructKoto { Bases: { } bases } declared)
-        {
-            foreach (var parent in bases)
-            {
-                if (IsWithin(use, parent))
-                {
-                    return declared;
-                }
-            }
-        }
-
-        return null;
+        return owner is StructKoto { BaseClause: { } clause } declared && IsWithin(use, clause) ? declared : null;
 
         static bool IsWithin(Koto node, Koto? root)
         {
@@ -116,7 +105,7 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.PartsBase = declaration.Bases.Count == 1 ? this.KeptType(declaration.Bases[0], type) : null;
+            instance.PartsBase = declaration.BaseClause is { } clause ? this.KeptType(clause, type) : null;
             instance.Base = this.WithoutRawOrigins(instance.PartsBase);
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)

@@ -75,7 +75,7 @@ internal sealed class BoundFormatting(Koto root)
         return node;
     }
 
-    internal InvocationKoto Call(BindingSymbol target, ReadOnlySpan<Koto> arguments, BoundType? declaringType, bool never)
+    internal InvocationKoto Call(Binding binding, BindingSymbol target, ReadOnlySpan<Koto> arguments, BoundType? declaringType, bool never)
     {
         var index = this.nextCall++;
         if (index == this.calls.Count)
@@ -92,12 +92,12 @@ internal sealed class BoundFormatting(Koto root)
         var callee = (FormattingKoto)(call.Method is GenericsKoto generic ? generic.Identifier! : call.Method);
         callee.BoundSymbol = target;
         callee.BoundMeaning = null;
-        callee.BindingFailure = BindingFailure.None;
+        binding.ClearFailure(callee);
         callee.DeclaringType = declaringType;
         callee.BindingState = BindingState.Resolved;
         arguments.CopyTo((Koto[])call.ArgumentNodes);
         call.BindingState = BindingState.Unvisited;
-        call.BindingFailure = BindingFailure.None;
+        binding.ClearFailure(call);
         call.BoundMeaning = null;
         call.BoundSymbol = null;
         call.ErasedFunctionType = null;
@@ -252,7 +252,7 @@ public sealed partial class Binding
         // Never needs only an acquisition check; no formatter can run for it.
         var never = identity == KimiDeclarationId.WriterWrite && arguments.Length == 2 && !IsUnfittedLiteral(arguments[1]) &&
             ReferenceEquals(this.BindNode(arguments[1], scope), BoundType.Never);
-        var call = root.Formatting!.Call(target, arguments, declaringType, never);
+        var call = root.Formatting!.Call(this, target, arguments, declaringType, never);
         this.nodes.Add(call);
         this.BindCall(call, scope, null);
         return call;

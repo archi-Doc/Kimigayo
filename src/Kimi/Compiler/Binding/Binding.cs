@@ -20,10 +20,15 @@ namespace Kimi.Compiler;
 /// <summary>Owns reusable Binding storage and updates semantic fields on the existing Koto tree.</summary>
 public sealed partial class Binding
 {
+    // One capacity for `symbols` (one entry per declaration) and `scopes` (one per scope). The library alone fills about 1,400 and 900, which leaves
+    // about 2,600 and 3,100 entries for a program at this size (the prime 4,049). Starting here skips the doubling chain and its rehashing. Past it a
+    // table doubles as before, and a library that grows moves that step too, so review this size then.
+    private const int DeclarationTableCapacity = 4000;
+
     private readonly Compilation compilation;
     private readonly List<Koto> nodes = new(256);
-    private readonly Dictionary<object, BindingScope> scopes = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<object, BindingSymbol> symbols = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, BindingScope> scopes = new(DeclarationTableCapacity, ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, BindingSymbol> symbols = new(DeclarationTableCapacity, ReferenceEqualityComparer.Instance);
     private readonly List<BindingIssue> issues = new();
     private readonly List<LibraryImport> libraryImports = new();
     private readonly TyCtxt types;
