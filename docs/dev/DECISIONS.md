@@ -15595,3 +15595,20 @@ R8-M* and R9-M* by the stage of the recording unit.
     theory's handle rows, which can then no longer fail.
   - Rejected: the plan's R1 as one unit (it edits about 15 offset sites that A1 deletes, changes every fixture's IR text and exceeds an
     hour); a Place sentence on each bodiless operation (several statements of one rule, gone at G1); the text in SPEC 22.1 (O-41).
+- **R8-M2 `append`, `reserve` and `setArrayLength` are Kimigayo bodies** (2026-11-07; R8-A1a; plan RP20, RQ9; prototype R8-L0p; on R8-M1)
+  SPEC 4.9.3, 4.9.5, 4.9.6, 4.9.8, 23.1.2; IMPL 21.1.3.
+  - Adopted: the three are bodies over `Storage.ArrayRepr<T>`. `Storage.growArray`, non-generic over `raw/ArrayRepr<u8>` and a stride,
+    is the one Array growth rule, beside `DictionaryStorage.grow`; its `data` accesses are punned ones, which IMPL 21.1.3 covers. Its
+    three bounded products use `Wrapping<isize>`, each after the bound that makes it representable: checked products left three dead
+    Abort blocks. `append` keeps `Row: None` and `reserve` gains it (SPEC 4.9.6), which `EachRowOperationsBodyStaysWithinItsRow` now checks.
+  - RP20 for `CompilerFunctionKind.ArrayReserve`, `ArrayAppend` and `StorageSetArrayLength` is implemented by removal: they no longer
+    exist, so no zero-reference row guards them (RP6). `stride<T>` is `IntrinsicId.Stride`'s first producer, with the `CompilerFunctionKind`
+    `StorageStride` until G1 removes the kinds; `IntrinsicWriter.Unproduced` gives way to a `Stride` row.
+  - Ruling under Q13 and SPEC 23.1.2 ("How failures are grouped into diagnostic records ... are implementation-defined; grouping never
+    changes acceptance"; the planning session, 2026-11-07; for the A1, K1 and later body families): a layout failure of an element Type
+    reached through a body is one failed requirement, grouped per instance, as `truncate` and every body already report it. The surviving
+    record stands at a user site and acceptance does not move.
+  - Counts (RQ9): `CompilerFunctionKind` 76 → 74; `KimiDeclarationId` 198 → 200 (`StorageStride`, `StorageGrowArray`, the latter because each
+    helper on an Abort path needs a `CallerLocation` catalog row until G1). `IntrinsicId` is unchanged.
+  - Rejected: a generic `growArray<T>` (one routine per element Type); an intrinsic for growth (expressible; the unit's O2 A/B shows no need).
+  - Temporary: `__kimi_array_grow` stays for Insert, Place and the literal until A1b.

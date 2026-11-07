@@ -1300,6 +1300,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 13 (2026-11-07, plan §14; the owner's O-42, verbatim 「O-42はaで決定します」): §5.1 gains N7. Nothing frozen; SPEC 8.2.1 registers when it lands.
 - Revision 14 (2026-11-07, plan §14; the owner's O-44, verbatim 「(a) 有効とする」): §5.1 gains V5. Nothing frozen.
 - Revision 15 (2026-11-07, plan §14; the Back's D-60): R8-S1's first stop and split. Nothing frozen.
+- Revision 20 (2026-11-07, plan §14; the owner's O-50, verbatim 「(A) 候補 A を採用する」): R8-S1's adopted design. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
