@@ -148,6 +148,10 @@ public class ArchitectureRulesTest
     // that reads the thread's counter itself can be charged a runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks
     // (src/Benchmark) are not tests. A letter in brackets keeps the pattern from matching its source.
     [InlineData("Allocation windows outside AllocationMeasurement", "tests", @"\bGC\.GetAllocatedBytesForCurrentThrea[d]\b", "xUnitTest/AllocationMeasurement.cs=7")]
+    // R7-N4 (RP6): the parser classifies an attribute by its Name once, so AttributeKoto.Classify is the one read of the Name, and Binding
+    // names no attribute by string (its two hits are the Kimi.Test group's Name). A Name the compiler reads joins the second pattern.
+    [InlineData("Reads of an attribute's Name", "src/Kimi/Compiler", @"\bIdentifierKoto\b", "Parsing/Koto/Expressions/UnaryKoto.cs=2")]
+    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test)""", "KimiLibrary.cs=2")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

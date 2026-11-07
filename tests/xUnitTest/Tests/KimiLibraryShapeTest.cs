@@ -132,7 +132,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(191, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(194, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -476,6 +476,9 @@ public partial class KimiLibraryShapeTest
     [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
     [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal let storage: raw/u8 during self\ninternal let stride: isize\ninternal var link: isize\ninternal var tail: isize\ninternal var count: isize\ndrop")]
     [InlineData("DictionaryStorage.Handle", "struct Handle\npublic var buffer: raw/u8 during self\npublic var used: isize\npublic var capacity: isize\npublic var length: isize\npublic var head: isize\npublic var tail: isize\npublic var free: isize")]
+    [InlineData("Storage.ArrayRepr", "internal struct ArrayRepr<T>\ninternal var data: raw/T during self\ninternal var length: isize\ninternal var capacity: isize")]
+    [InlineData("Storage.SliceRepr", "internal struct SliceRepr<T>\ninternal var data: raw/T\ninternal var length: isize")]
+    [InlineData("Storage.StringRepr", "internal struct StringRepr\ninternal var data: raw/u8\ninternal var length: isize\ninternal var releaseKind: u8")]
     [InlineData("Storage.InlineStorage", "internal struct InlineStorage<A>\ninternal var value: A")]
     [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize\ninternal var count: isize\ndrop")]
     [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
