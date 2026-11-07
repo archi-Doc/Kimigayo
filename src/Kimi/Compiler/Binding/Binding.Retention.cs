@@ -63,6 +63,7 @@ public sealed partial class Binding
     // a Callable bound's, whose raw layers read their kind, RawStepAt: SPEC 5.2.1 caps a layer written in a function's own signature); the (Origin, input) pairs whose content that walk has added and the positions its atom walk has met
     // (RetentionWalk), so each is walked once; and whether a member walk was incomplete (CallRetention.Limit).
     private readonly List<BoundType> retentionErasedScope = new();
+    private readonly HashSet<BoundClosure> retentionCaptured = new(); // The Closure parts read with a captured local region (ClosureEnvironment).
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
     private List<BoundType> retentionScope = new();
@@ -107,7 +108,6 @@ public sealed partial class Binding
             }
 
             var nodes = this.RetentionNodes(environment);
-            this.ReturnedRegions(environment, callee, nodes);
             this.ExtractOriginPremises(environment, use.Parent);
             return this.RetentionRows(environment, nodes, inputs, result, callee, premises);
         }
@@ -243,6 +243,7 @@ public sealed partial class Binding
         }
 
         this.retentionRawVisits.Clear();
+        this.retentionCaptured.Clear();
         this.retentionPositions.Clear();
         this.retentionLimit = false;
         for (var i = 0; i < inputs.Length; i++)
@@ -531,9 +532,20 @@ public sealed partial class Binding
     }
 
     // Each atom's node, interned before the catalog's walk, so its local-Place premises (R5) reach them; a carrier's hidden Origins outlive
-    // the layer above each of its occurrences (R2, SPEC 15.6.1).
+    // the layer above each of its occurrences (R2, SPEC 15.6.1). Each local region of a Closure part the contract reads reaches the meet of
+    // its sources as of the literal (BoundClosure.CapturedRegions; SPEC 7.7.2, 15.3.6, 15.8.2; PLAN G553), which the published result and
+    // this region then name alike: the capture is a snapshot of that meet, and a position that reaches the meet may hold it. A may-fact of
+    // this contract's rows, no relation of the Origins: a later source shrinks the solved region below that meet, and no proof reads the edge.
     private int[] RetentionNodes(OriginPremiseEnvironment environment)
     {
+        foreach (var closure in this.retentionCaptured)
+        {
+            foreach (var (region, sources) in closure.CapturedRegions)
+            {
+                AddPremiseEdge(environment, this.PremiseNode(environment, region), this.PremiseNode(environment, sources), OriginPremiseRule.Input);
+            }
+        }
+
         var atoms = this.retentionAtoms;
         var nodes = new int[atoms.Count];
         for (var i = 0; i < atoms.Count; i++)
@@ -546,24 +558,6 @@ public sealed partial class Binding
         }
 
         return nodes;
-    }
-
-    // SPEC 15.8.2 (PLAN G553): a Closure's result names its returned values' local regions by their sources and its environment by themselves,
-    // so each region its body returned reaches each result position: one fact of this contract, from the body, no relation of the Origins.
-    private void ReturnedRegions(OriginPremiseEnvironment environment, FunctionKoto callee, int[] nodes)
-    {
-        var atoms = this.retentionAtoms;
-        for (var r = 0; callee.ClosureDefinition is { } closure && r < closure.ReturnedRegions.Count; r++)
-        {
-            var region = this.PremiseNode(environment, closure.ReturnedRegions[r]);
-            for (var i = 0; i < atoms.Count; i++)
-            {
-                if (atoms[i] is { Input: CallRetention.ResultOutput, Origin: not null })
-                {
-                    AddPremiseEdge(environment, region, nodes[i], OriginPremiseRule.Input);
-                }
-            }
-        }
     }
 
     // An erased signature (the head's contract): the instantiated signature Type and the Binder of its per-call Origins.

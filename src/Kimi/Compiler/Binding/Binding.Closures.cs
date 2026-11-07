@@ -275,7 +275,7 @@ public sealed partial class Binding
         plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
-        plan.ReturnedRegions.Clear();
+        plan.CapturedRegions.Clear();
         var symbol = this.symbols[function];
         plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
@@ -390,12 +390,7 @@ public sealed partial class Binding
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
-            this.ReturnedRegions(symbol.Type, closureBody, plan.ReturnedRegions, this.visitedParts.Begin(this.storageVersion));
             symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type));
-        }
-        else
-        {
-            this.StatedResultRegions(function, closureBody, plan);
         }
 
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
@@ -413,9 +408,11 @@ public sealed partial class Binding
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
             plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
+            var query = this.visitedParts.Begin(this.storageVersion);
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;
+                this.CapturedRegions(buffer[i], plan, query);
             }
 
             plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
@@ -434,84 +431,47 @@ public sealed partial class Binding
         return Complete(function, plan.EnvironmentType);
     }
 
-    // SPEC 15.8.2 (PLAN G553): a stated result's regions: what the values the body fits into it name, a walk of the bound body, which keeps
-    // no list of its returns for a stated result.
-    private void StatedResultRegions(FunctionKoto function, ExecutableBody body, BoundClosure plan)
-    {
-        var holds = false;
-        for (var i = 0; i < plan.Storage.Count && !holds; i++)
-        {
-            holds = plan.Storage[i].Environment.Type is { } capture && this.HasLocalRegion(capture);
-        }
-
-        if (!holds)
-        {
-            return;
-        }
-
-        var regions = plan.ReturnedRegions;
-        var query = this.visitedParts.Begin(this.storageVersion);
-        if (function.ExpressionBody?.BoundType is { } value)
-        {
-            this.ReturnedRegions(value, body, regions, query);
-        }
-
-        function.Body?.VisitChildren(new ReturnedValues(this, function, body, regions, query));
-    }
-
-    // A stated result's returned values (StatedResultRegions): each `return` of the Closure's own body.
-    private sealed class ReturnedValues(Binding binding, FunctionKoto function, ExecutableBody body, List<BoundOrigin> regions, uint query) : KotoVisitor
-    {
-        public override void Visit(Koto node)
-        {
-            if (node is FunctionKoto)
-            {
-                return;
-            }
-
-            if (node is JumpKoto { Expression.BoundType: { } returned } jump && ReferenceEquals(BindTransferTarget(jump), function))
-            {
-                binding.ReturnedRegions(returned, body, regions, query);
-            }
-
-            node.VisitChildren(this);
-        }
-    }
-
-    // SPEC 15.8.2 (PLAN G553): the local regions outside the Closure's body that a returned value's Type names, a part of it included; a
-    // Function Type part keeps its own Origins (HasLocalRegion's walk).
-    private void ReturnedRegions(BoundType type, ExecutableBody body, List<BoundOrigin> regions, uint query)
+    // SPEC 7.7.2, 15.8.2 (PLAN G553): each local region a capture's Type names, a part of it included, with the meet of its sources now, at
+    // the literal, the moment the published result resolves them (BoundClosure.CapturedRegions); a Function Type part keeps its own Origins.
+    private void CapturedRegions(BoundType type, BoundClosure plan, uint query)
     {
         if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
         {
             return;
         }
 
-        ReturnedRegion(type.Origin ?? type.RawOrigin, body, regions);
+        this.CapturedRegion(type.Origin ?? type.RawOrigin, plan);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            ReturnedRegion(type.OriginArguments[i], body, regions);
+            this.CapturedRegion(type.OriginArguments[i], plan);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
         {
             if (this.FirstVisit(type.Components[i], query))
             {
-                this.ReturnedRegions(type.Components[i], body, regions, query);
+                this.CapturedRegions(type.Components[i], plan, query);
             }
         }
+    }
 
-        static void ReturnedRegion(BoundOrigin? origin, ExecutableBody body, List<BoundOrigin> regions)
+    // An Origin of a capture's Type (CapturedRegions): its operands, and a local region with sources (none: the region names itself).
+    private void CapturedRegion(BoundOrigin? origin, BoundClosure plan)
+    {
+        for (var i = 0; origin is not null && i < origin.Operands.Count; i++)
         {
-            for (var i = 0; origin is not null && i < origin.Operands.Count; i++)
+            this.CapturedRegion(origin.Operands[i], plan);
+        }
+
+        if (origin is not null && IsLocalRegion(origin) && this.LocalRegionSources(origin) is { IsEmpty: false } sources)
+        {
+            var meet = sources[0];
+            for (var i = 1; i < sources.Length; i++)
             {
-                ReturnedRegion(origin.Operands[i], body, regions);
+                meet = this.Meet(meet, sources[i]);
             }
 
-            if (origin is not null && IsLocalRegion(origin) && !RegionIn(origin, body) && !regions.Contains(origin))
-            {
-                regions.Add(origin);
-            }
+            plan.CapturedRegions.Add((origin, meet));
         }
     }
 }

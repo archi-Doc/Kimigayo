@@ -34,7 +34,10 @@ public sealed partial class MirBorrowsTest
     // live: with and without a capture list, in a block whose Closure is dead, in a struct, in a Closure's environment. An owned Array
     // replaced under r is the use after destruction. A Consuming call "transfers its Origin and capability": a struct holding the shared
     // reference, an exclusive reference, and that one from a `let` binding. A result naming a source of the capture carries a read through
-    // the receiver even when its body returns the parameter, retention being per argument (15.6.4), over a `var` as over a `let`.
+    // the receiver even when its body returns the parameter, retention being per argument (15.6.4), over a `var` as over a `let`. A Closure
+    // read through another keeps all this: called in its environment, through a borrow of it, defined in its body, held in a Field of it.
+    // An annotation `during r` names the region itself, and a call adds to it: stored in a `var` binding, and the argument the result may
+    // hold though the body returns the capture.
     [Theory]
     [InlineData(OverParameter + Arrow + TwoLive, "let r2 = h()", "h")]
     [InlineData(OverParameter + "    var h = func [v] ()\n        return v\n" + TwoLive, "let r2 = h()", "h")]
@@ -69,6 +72,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("func f() -> ()\n    var x: i32 = 1\n    let v = x@uniq\n    var h = func [v@move] () => v@move\n    let r = h@move()\n    x = 5\n    r@follow = 1\n" + Main, "x = 5", null)]
     [InlineData("func f(value: uniq/i32 during q, other: uniq/i32 during q) -> ()\n    var v = value@move\n    var h = func [v] (p: uniq/i32 during q) -> uniq/i32 during q => p\n    let a = h(other)\n    v@follow = 3\n    a@follow = 1\n" + Main, "v@follow = 3", null)]
     [InlineData("func f(value: uniq/i32 during q, other: uniq/i32 during q) -> ()\n    let v = value\n    var h = func [v] (p: uniq/i32 during q) -> uniq/i32 during q => p\n    let a = h(other)\n    v@follow = 3\n    a@follow = 1\n" + Main, "v@follow = 3", null)]
+    [InlineData(See + "func t()\n    var x: i32 = 1\n    var r = x@ref\n    let inner = func [r] () => r\n    let outer = func [inner] () => inner()\n    let v = outer()\n    x = 2\n    see(v)\n" + Main, "x = 2", null)]
+    [InlineData("func t()\n    var x: i32 = 1\n    var r = x@uniq\n    var inner = func [r] () => r\n    var outer = func [inner@uniq] () => inner@follow()\n    let a = outer()\n    let b = outer()\n    a@follow = 2\n    b@follow = 3\n" + Main, "let b = outer()", "outer")]
+    [InlineData(See + "func t()\n    var x: i32 = 1\n    var r = x@ref\n    let outer = func [r] ()\n        let inner = func [r] () => r\n        return inner()\n    let v = outer()\n    x = 2\n    see(v)\n" + Main, "x = 2", null)]
+    [InlineData("struct H<F>\n    public var f: F\n    public init(f: F)\n        self.f = f@move\n" + See + "func t()\n    var x: i32 = 1\n    var r = x@ref\n    let h = H.init(func [r] () => r)\n    let d = func [h@ref] () => h.f()\n    let v = d()\n    x = 2\n    see(v)\n" + Main, "x = 2", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var r = a@ref\n    var c = func [var r] (p: ref/i32 during r) -> ref/i32 during r\n        r = p\n        return r\n    _ = c(b@ref)\n    b = 3\n    let v = c(a@ref)\n    see(v)\n" + Main, "b = 3", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var r = a@ref\n    let c = func [r] (p: ref/i32 during r) -> ref/i32 during r => r\n    let v = c(b@ref)\n    b = 3\n    see(v)\n" + Main, "b = 3", null)]
     public void AResultOverACapturedRegionKeepsTheReceiverAndTheCapture(string source, string context, string? subject)
         => MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(context, subject)));
 
