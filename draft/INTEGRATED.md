@@ -1285,6 +1285,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 7 (2026-11-07, plan §14, the R7 restart; the Middle's D-46 and the owner's O-21 「(ii) で決定」): Y2 takes G251 (5) with the
   explicit SPEC §7.7.3 revision and drops `EffectBounds.PlaceAccess`; Y3 and the Y1–Y5 line drop G233; §5.4 drops X-1a. The plan
   stays 一部取り込み (open), nothing frozen.
+- Revision 8 (2026-11-07, plan §14, the R7 restart; the Front's D-47): phases A and B become one queue, since H5, H10, H12 and H14 are
+  passed; I3, D1 and D3 state where they stand; G416 joins the Front's lane; the Position Rows links point to `draft/Changes/`. No
+  unit's rule changed. The plan stays 一部取り込み (open), nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
