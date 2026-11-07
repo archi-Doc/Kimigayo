@@ -94,6 +94,25 @@ internal static class CompilationTestHelper
         return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
     }
 
+    // An acceptance row's verdict (SPEC 8.3, 23.1.2): `records` is empty for a valid program, which has no Error and generates. Otherwise it
+    // lists the program's Errors as `Code: source line`, trimmed and separated by ` | `, each pair once: SPEC 23 fixes neither the span inside
+    // a line nor how many records one failed rule gives. `*` for a code or a line leaves it to the implementation, `Resource` for a code is
+    // any code of that category, and a last entry `...` leaves open the records resting on the listed ones. Neither wildcard admits
+    // Unsupported_Kd (the form is valid, SPEC 23.1.1) or InternalInvariant_Kd (a defect): an entry must name them.
+    internal static void AssertRecordsAtLines(string form, string program, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(program);
+        AssertLines(form, program, records, PublishedErrors(c));
+        if (records.Length == 0)
+        {
+            Assert.True(c.Generate(TextWriter.Null), $"{form}: {MinimalEmissionTest.Describe(c)}");
+        }
+    }
+
+    // The same verdict over Binding's own records, for a rule a later phase's Unsupported_Kd would hide.
+    internal static void AssertBindingRecordsAtLines(string form, string program, string records)
+        => AssertLines(form, program, records, BindingErrors(MinimalEmissionTest.Analyze(program)));
+
     // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (the census pairs, MirCensusTest.Pairs).
     internal static bool IsLoanConflict(this DiagnosticCode code)
         => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;
@@ -112,5 +131,32 @@ internal static class CompilationTestHelper
     {
         var path = node?.CodeContext?.SourceDocument?.Path;
         return path is null ? "?" : path.StartsWith("compiler://", StringComparison.Ordinal) ? Library + path[(path.LastIndexOf('/') + 1)..] : path;
+    }
+
+    private static void AssertLines(string form, string program, string records, TestDiagnostic[] errors)
+    {
+        var actual = errors.Select(x => (x.Code, Line: LineAt(program, x.Span.Start))).Distinct().ToArray();
+        var entries = records.Split(" | ", StringSplitOptions.RemoveEmptyEntries);
+        var expected = entries.Where(static x => x != "...").ToArray();
+        var named = expected.All(e => actual.Any(a => NamesRecord(e, a.Code, a.Line)));
+        var unnamed = actual.Any(a => a.Code is nameof(DiagnosticCode.Unsupported_Kd) or nameof(DiagnosticCode.InternalInvariant_Kd) && !expected.Any(e => e.StartsWith($"{a.Code}: ", StringComparison.Ordinal)));
+        var counted = entries.LastOrDefault() == "..." || actual.Length == expected.Length;
+        Assert.True(named && !unnamed && counted, $"{form}: expected [{records}], found [{string.Join(" | ", actual.Select(static x => $"{x.Code}: {x.Line}"))}]");
+    }
+
+    private static bool NamesRecord(string entry, string code, string line)
+    {
+        var colon = entry.IndexOf(": ", StringComparison.Ordinal);
+        var (wanted, at) = (entry[..colon], entry[(colon + 2)..]);
+        var category = wanted == "Resource" && Enum.TryParse<DiagnosticCode>(code, out var parsed) && DiagnosticEntries.TryGet(parsed, out var written) &&
+            written.Category == Kimi.Diagnostics.DiagnosticCategory.Resource;
+        return (wanted == code || wanted == "*" || category) && (at == "*" || at == line);
+    }
+
+    private static string LineAt(string text, int offset)
+    {
+        var start = text.LastIndexOf('\n', Math.Max(offset - 1, 0)) + 1;
+        var end = text.IndexOf('\n', offset);
+        return text[start..(end < 0 ? text.Length : end)].Trim();
     }
 }

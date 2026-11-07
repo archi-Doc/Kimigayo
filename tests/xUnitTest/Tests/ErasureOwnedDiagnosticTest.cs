@@ -16,6 +16,16 @@ namespace XunitTest;
 // OwnedOrigins and, when one is displayable, that Origin, which is related at its syntax. These were TypeMismatch_Kd with a Note.
 public class ErasureOwnedDiagnosticTest
 {
+    private const string HeldPair = "contract Has2\n    associate Out\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\n";
+
+    private const string CaptureY = "    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n";
+
+    private const string CaptureYV = "    func inspect(a: S<Y, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n";
+
+    private const string MixedChain = "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\n";
+
+    private const string MixedStore = "struct S<Z, V>\n    Z is Has2\n    V is Has2\n    Z is Owned\n    V is Owned\n    Z.(Has2).Out is Q<PH<V>>\n    V.(Has2).Out is Q<H<H<H<H<H<H<H<H<i32>>>>>>>>>\n    let p: PH<Z>\n";
+
     private const string Main = "public func main() -> ()\n";
 
     // A join's arms are erased at the join's expected Type, each where it is bound, and a failing arm is its own record (SPEC 10.2,
@@ -291,6 +301,24 @@ public class ErasureOwnedDiagnosticTest
         Assert.Empty(RawPointerSyntaxTest.Records(Declarations));
         Assert.Contains("h", MinimalEmissionTest.GeneratedBodies(Declarations + "\npublic func main() => ()\n", OutputKind.Library, accepted: true));
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 15.2.3, 8.3.2: a premise proves a stored projection Owned, through an identity step too; without it the erasure's Owned is Unknown.
+    [InlineData("guard", "hp-ctl", HeldPair + "struct S<Y>\n    Y is Has2\n    Y is Owned\n    Y.(Has2).Out is Owned\n    let p: PH<Y>\n" + CaptureY, "")]
+    [InlineData("guard", "hp-mo2", HeldPair + "struct S<Y, V>\n    Y is Has2\n    V is Has2\n    Y is Owned\n    V is Owned\n    Y.(Has2).Out is PH<V>\n    V.(Has2).Out is Owned\n    let p: PH<Y>\n" + CaptureYV, "")]
+    [InlineData("guard", "hp-deep", HeldPair + "struct S<Y>\n    Y is Has2\n    Y is Owned\n    Y.(Has2).Out is Has2\n    Y.(Has2).Out is Owned\n    Y.(Has2).Out.(Has2).Out is Owned\n    let p: PH<Y.(Has2).Out>\n" + CaptureY, "")]
+    [InlineData("guard", "hp-n", HeldPair + "struct S<Y, V>\n    Y is Has2\n    V is Has2\n    Y is Owned\n    V is Owned\n    Y.(Has2).Out is PH<V>\n    let p: PH<Y>\n" + CaptureYV, "UnprovenConstraint_Kd: let g: () -> () = func [a@move] () => ()")]
+
+    // SPEC 8.2.3, 15.2.3, 8.3.3: each identity step resolves and every stored Type ends at i32, so Owned is Proven, at an erasure and at a call, and no
+    // limit is reached. An unresolved stored Type stays its own failure (mp-bad).
+    [InlineData("guard", "mp", MixedChain + MixedStore + "    func inspect(a: S<Z, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
+    [InlineData("C6", "mp-call", MixedChain + "func need<T>(x: T) -> ()\n    T is Owned\n    return\n" + MixedStore + "    func inspect(a: S<Z, V>) -> ()\n        need(a@move)\n        return\n", "", Explicit = true)]
+    [InlineData("guard", "mp-two", MixedChain + MixedStore + "    func inspect(a: S<Z, V>, b: S<Z, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        let h: () -> () = func [b@move] () => ()\n        return\n", "")]
+    [InlineData("guard", "mp-bad", MixedChain + MixedStore + "    let q: Missing\n    func inspect(a: S<Z, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "*: let q: Missing | ...")]
+    public void OwnedReachesAStoredProjection(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     private static string[] Records(string source) => [.. DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")];
 
