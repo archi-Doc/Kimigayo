@@ -1299,6 +1299,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   G338. Nothing frozen.
 - Revision 13 (2026-11-07, plan §14; the owner's O-42, verbatim 「O-42はaで決定します」): §5.1 gains N7. Nothing frozen; SPEC 8.2.1 registers when it lands.
 - Revision 14 (2026-11-07, plan §14; the owner's O-44, verbatim 「(a) 有効とする」): §5.1 gains V5. Nothing frozen.
+- Revision 15 (2026-11-07, plan §14; the Back's D-60): R8-S1's first stop and split. Nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
