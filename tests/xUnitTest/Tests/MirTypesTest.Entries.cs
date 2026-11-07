@@ -87,7 +87,8 @@ public sealed partial class MirTypesTest
 
     // IMPL 21.3.2 (the limit is implementation-defined; fact.md §1, row 9; PLAN G416 U2): a level is one entry. A Case's payload component
     // is one level below its enum, so the exclusive reference at depth n is the write fact through 31 and past the bound from 32, where its
-    // referent lies, and an i32 is exact through 32. A Dictionary's K and V are two levels below it, through its `(K, V)` entry, so the
+    // referent lies, and an i32 is exact through 32. A Dictionary's K and V are two levels below it, through its `(K, V)` entry (the owner's
+    // O-47, PLAN G408: a named limit, the records in MirBorrowsTest's ADictionaryNestPastTheBoundIsALocatedLimit), so the
     // reference is past the bound from 16, and a nest of integers, whose innermost entry's key is never entered, from 17.
     [Theory]
     [InlineData(16, "Through", "-", "Deep", "-")]

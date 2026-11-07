@@ -2,13 +2,12 @@
 
 namespace Kimi.Compiler;
 
-// A5's views of the raw layers an instance stores (SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-39, BU-41, BU-46; R4's constraint
-// 2): the authority such a layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers)
-// and whether a declaration states it without an Origin (RawStated), with the stored parts through which a walk reaches the instance
-// storing it (StoredParts), for G148 (1)'s per-part guard (R4-M76), read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs,
-// .Keepers.cs) and Binding's instance storage (Binding.Storage.cs); the Type a declaration writes at a stored part's inline positions
-// (WrittenAt, DECISIONS BU-58), for A5's walks over them; and whether a Type states Unstated (StatesUnstated), which only a kept part
-// does (MirValidator's Local row).
+// The raw layers an instance stores, read after Binding over Raw Origins (Binding.RawOrigins.Steps.cs, .Keepers.cs) and Binding's instance
+// storage (Binding.Storage.cs; SPEC 5.7, 5.2.1 condition 3; DECISIONS BU-24, BU-39, BU-41, BU-46; R4's constraint 2): the authority such a
+// layer's Origin can keep (StoredStep, which A5's addresses read), the borrows it belongs to (RawMembers, A5's holding walk), whether a
+// declaration states it without an Origin (RawStated, Binding's), the stored parts through which a walk reaches the instance storing it
+// (StoredParts, retention's), the Type a declaration writes at a stored part's inline positions (WrittenAt, DECISIONS BU-58, A5's
+// addresses), and whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row).
 internal sealed partial class TyCtxt
 {
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
@@ -83,7 +82,7 @@ internal sealed partial class TyCtxt
     internal bool RawMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
         => binding.StoredMembers(layer, written, holder, members);
 
-    // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24, BU-41, BU-46; G148 (1)): a struct's or enum's stored parts under its substitution with
+    // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24, BU-41, BU-46): a struct's or enum's stored parts under its substitution with
     // the raw Origins it gives, `self` as Holder and Unstated on each raw layer its declaration writes without `during` (RawStated), by the
     // `part` StoredStep and RawMembers take (a struct's Fields, an enum's Case payload Tuples), its base in `parent`; empty for any other
     // Type. AdtDef's FieldType, CaseTypes and Base are these WithoutRawOrigins, null exactly where they are. A walk reaches through them
