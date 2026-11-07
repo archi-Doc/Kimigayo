@@ -20,9 +20,9 @@ namespace Kimi.Compiler;
 /// <summary>Owns reusable Binding storage and updates semantic fields on the existing Koto tree.</summary>
 public sealed partial class Binding
 {
-    // The capacity of `symbols`, keyed by declaration, and of `scopes`, keyed by Patterns, guards, blocks and iteration bodies. The library alone
-    // fills about 1,400 and 900 of them, and this size, the prime 4,049, leaves about 2,000 entries for a program. Past it a table doubles as before,
-    // and a library that grows past this moves that step again, so review the size then.
+    // One capacity for `symbols` (one entry per declaration) and `scopes` (one per scope). The library alone fills about 1,400 and 900, which leaves
+    // about 2,600 and 3,100 entries for a program at this size (the prime 4,049). Starting here skips the doubling chain and its rehashing. Past it a
+    // table doubles as before, and a library that grows moves that step too, so review this size then.
     private const int DeclarationTableCapacity = 4000;
 
     private readonly Compilation compilation;
