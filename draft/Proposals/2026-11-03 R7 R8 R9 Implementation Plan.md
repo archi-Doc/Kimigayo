@@ -364,7 +364,7 @@ Front's lane and its U2 in the Middle's, under the owner's 「(a) 今 ACCEPT」.
 §3.3. Slot: U0 and U1 now, before R7-E1's implementation.
 
 **Unit states at R7's start.** Done: D0, N0, C0, P0 and E0 (evidence under `artifacts/verify/r7-*/`, base 2026-11-03: re-run a census
-before relying on a count), D2a (W-23), D1 as D1a (BU-105) and I3's position rows; I0 is absorbed. In flight: V1a, E1, C1a, G416 U0 with U1. The
+before relying on a count), D2a (W-23), D1 as D1a (BU-105), N4 (BU-118, net +105/−55) and I3's position rows; I0 is absorbed. In flight: V1a, E1, C1a, G416 U0 with U1. The
 other units have not started. Plan units that need an owner are named in the tables; the board is the live record.
 
 **R6-check's items moved to R7 (§14 rows 3 and 4).** Each closes in the unit named:

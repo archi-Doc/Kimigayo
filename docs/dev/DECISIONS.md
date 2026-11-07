@@ -10042,6 +10042,13 @@ resumed by R4-M86 (2026-10-20).
   - Not covered: 7.7.4 names only the result, so a raw layer without an Origin that the Closure writes through a parameter still
     erases, though its concrete call retains the receiver there (T29/I30 probe w05); decided by the owner's O-33, 「(a)」: the write-through retention counts too (PLAN G532, a later unit).
   - Rejected: a second reading of rule A's trigger (a walk for an unstated raw result layer) beside `Binding.Retention`.
+- **BU-118 An attribute is classified once, by the parser: `AttributeKind`** (2026-11-07; R7-N4, plan §5.1 N4 and §6, adopted with the plan; Major; one review, ACCEPT)
+  - `AttributeKoto.Kind` is closed: Unknown, Layout, Test, LibraryImport. `Classify` is the one read of an attribute's Name, and that read moved from Binding to Parsing.
+    Binding and `TestDefinition` read the kind. `Koto.FindAttribute` replaces `IsLibraryImport`, `HasLibraryImport` and `Marker`'s loop.
+  - No kind without a reader: R8-G1 adds the lang family as one enum member, one `Classify` arm and one word in the ArchitectureRulesTest row.
+  - The kind is stored, and `Koto.ReplaceChild` classifies again, because a parse recovery replaces the Name. Rejected: a computed `Kind` (design §3); without the
+    re-classification a nesting cut gives a false `InvalidLayoutAttribute_Kd`, and `#Test(1)` loses its `UnresolvedBinding_Kd`.
+  - `"C"` and `"Kimigayo"` stay strings: they are argument values, not names.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

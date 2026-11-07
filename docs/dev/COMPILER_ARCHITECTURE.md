@@ -57,6 +57,7 @@ a SPEC basis and owner approval.
 | `OwnershipValueKind` | 31 |
 | `CompilerFunctionKind` | 76 |
 | `BindingFailure` | 89 |
+| `AttributeKind` | 4 |
 | `HirOp` | 40 |
 | `HirRes` | 9 |
 | `HirAcquire` | 8 |
