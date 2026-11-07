@@ -22,17 +22,13 @@ public sealed partial class Binding
         // invalid bases through the ordinary inheritance walk.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is StructKoto structure)
+            if (this.nodes[i] is StructKoto { BaseClause: { } syntax } structure)
             {
-                for (var b = 0; b < structure.Bases.Count; b++)
+                var scope = this.scopes[structure];
+                var type = this.BindType(syntax, scope);
+                if (mode is { } bindingMode && type is not null)
                 {
-                    var syntax = structure.Bases[b];
-                    var scope = this.scopes[structure];
-                    var type = this.BindType(syntax, scope);
-                    if (mode is { } bindingMode && type is not null)
-                    {
-                        this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope), bindingMode);
-                    }
+                    this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope), bindingMode);
                 }
             }
         }
@@ -57,11 +53,10 @@ public sealed partial class Binding
         }
 
         this.inheritanceStates.Add(symbol, 1);
-        var valid = structure.Bases.Count <= 1;
+        var valid = true;
         var scope = this.scopes[structure];
-        for (var i = 0; i < structure.Bases.Count; i++)
+        if (structure.BaseClause is { } syntax)
         {
-            var syntax = structure.Bases[i];
             var type = this.BindType(syntax, scope);
             if (syntax.BindingState == BindingState.Invalid ||
                 type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } ||
@@ -71,7 +66,7 @@ public sealed partial class Binding
                 this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 valid = false;
             }
-            else if (valid && structure.BindingState != BindingState.Invalid && !this.ValidateInheritedNames(structure, type, scope))
+            else if (structure.BindingState != BindingState.Invalid && !this.ValidateInheritedNames(structure, type, scope))
             {
                 valid = false;
             }
@@ -362,6 +357,11 @@ public sealed partial class Binding
             return new(null, type, path, Hidden: hidden);
         }
 
+        if (structure.BaseClause is not { } syntax)
+        {
+            return new(null, null, null, Hidden: hidden);
+        }
+
         if (!this.memberLookupVisiting.Add(symbol))
         {
             return new(null, type, path, true);
@@ -369,38 +369,14 @@ public sealed partial class Binding
 
         try
         {
-            MemberSelection result = default;
-            for (var i = 0; i < structure.Bases.Count; i++)
+            var baseType = syntax.BoundType ?? this.BindType(syntax, scope);
+            if (baseType is null || this.PartType(baseType, type) is not { } substituted)
             {
-                var syntax = structure.Bases[i];
-                var baseType = syntax.BoundType ?? this.BindType(syntax, scope);
-                if (baseType is null || this.PartType(baseType, type) is not { } substituted)
-                {
-                    return new(null, type, path, Pending: true);
-                }
-
-                var next = this.MemberPath(path, syntax, substituted);
-                var candidate = this.LookupTypeMember(substituted, name, use, receiver, next, typeRole);
-                if (candidate.Ambiguous || candidate.Pending)
-                {
-                    return candidate;
-                }
-
-                if (candidate.Member is null)
-                {
-                    hidden ??= candidate.Hidden;
-                    continue;
-                }
-
-                if (result.Member is not null)
-                {
-                    return new(null, type, path, true);
-                }
-
-                result = candidate;
+                return new(null, type, path, Pending: true);
             }
 
-            return result.Member is null ? result with { Hidden = result.Hidden ?? hidden } : result;
+            var candidate = this.LookupTypeMember(substituted, name, use, receiver, this.MemberPath(path, syntax, substituted), typeRole);
+            return candidate.Member is null && !candidate.Ambiguous && !candidate.Pending ? new(null, null, null, Hidden: hidden ?? candidate.Hidden) : candidate;
         }
         finally
         {

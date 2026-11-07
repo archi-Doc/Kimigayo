@@ -300,29 +300,23 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
-        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable))
+        // SPEC 4.6.1, 8.7, 22.1: a conformance the library witness table records for a built-in Type.
+        if (this.contractHeadersReady && WitnessGroup(type, contract.LibraryDeclaration) is not null)
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable &&
+            ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Equatable))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
-                : ComparisonTypes.IsBuiltin(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+                : ComparisonTypes.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
         {
             return contract.Declaration.BindingState == BindingState.Invalid
                 ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false, out _);
-        }
-
-        // SPEC 4.6.1, 8.7: every integer Type conforms to the closed Contract Position through the Kimi integer witness.
-        if (this.contractHeadersReady && IsIntegerPosition(type, contract))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
-
-        // SPEC 22.1 (PLAN G32): the compiler records the fixed array's borrowing entry conformances; their witnesses are the
-        // members of the Kimi fixed-array group.
-        if (this.contractHeadersReady && IsFixedArrayEntry(type, contract))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
         // SPEC 8.3: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting

@@ -11,6 +11,8 @@ namespace Kimi.Compiler;
 /// <summary>Owns compilation-local Kimi identities over embedded library sources.</summary>
 public sealed partial class KimiLibrary
 {
+    private static readonly WitnessMembers[] WitnessGroups = Enum.GetValues<WitnessMembers>();
+
     private readonly BindingSymbol?[] symbols; // By catalog index.
     private readonly List<BindingSymbol> registeredSymbols;
     private readonly Dictionary<KimiLibraryContainer, BindingScope> formattingScopes = new();
@@ -248,10 +250,36 @@ public sealed partial class KimiLibrary
     internal DeclarationContainerKoto? IntegerPositionMembers { get; }
 
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
-    /// built-in Type: the fixed-array members (PLAN G32) or the integer Position witness.</summary>
+    /// built-in Type, a group of the witness table.</summary>
     /// <param name="owner">A declaration container.</param>
     /// <returns>Whether its functions receive a built-in Type through <c>self</c>.</returns>
-    internal bool IsBuiltinMemberGroup(Koto owner) => ReferenceEquals(owner, this.FixedArrayMembers) || ReferenceEquals(owner, this.IntegerPositionMembers);
+    internal bool IsBuiltinMemberGroup(Koto owner) => this.MembersOf(owner) is not null;
+
+    /// <summary>Gets the declared group of the witness table, the one lookup.</summary>
+    /// <param name="members">The group.</param>
+    /// <returns>The declared group, or null when the library lacks it.</returns>
+    internal DeclarationContainerKoto? Members(WitnessMembers members) => members switch
+    {
+        WitnessMembers.FixedArray => this.FixedArrayMembers,
+        WitnessMembers.IntegerPosition => this.IntegerPositionMembers,
+        _ => throw new InvalidOperationException($"The group {members} has no declaration."),
+    };
+
+    /// <summary>Gets the group of the witness table a declaration is, the inverse of <see cref="Members"/>.</summary>
+    /// <param name="owner">A declaration container.</param>
+    /// <returns>Its group, or null.</returns>
+    internal WitnessMembers? MembersOf(Koto owner)
+    {
+        foreach (var members in WitnessGroups)
+        {
+            if (ReferenceEquals(owner, this.Members(members)))
+            {
+                return members;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>Gets the internal Kimi group whose functions construct prefix <c>^</c> and range syntax values and resolve
     /// position and range keys (SPEC 4.6.1-4.6.4).</summary>

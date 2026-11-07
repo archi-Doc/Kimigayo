@@ -298,6 +298,7 @@ public class MinimalEmissionTest
         c.Bind();
         c.Binding.CheckStartup(output);
         c.Analyze();
+        Assert.Equal(0, c.Binding.IdlessFactSites); // R7-E1: a fact site is a node the check read, so a semantic write numbered it.
         return c;
     }
 

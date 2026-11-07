@@ -13,7 +13,7 @@
 // Output: RequirementTarget(Kind, Target, Subst, Access), one per (requirement, contract, subst), kept across passes with no edit and
 // discarded at an edit (ResetViews). Body: a function with a MIR body under its instance: a conformance witness (inherited ones included)
 // under its declaring instance with the call's Types, lengths and its Origins in the call's terms (Binding.WitnessOrigin), an accessor-call
-// witness's executing accessor under its implementing Type's instance, a fixed-array or integer Position member under its own slots.
+// witness's executing accessor under its implementing Type's instance, a library group's function under its own slots.
 // Builtin: a compiler function under the call's substitution, whose bound reference instantiates the requirement's signature. Storage: a
 // standard property witness's implementing Field under the call's substitution, Access its operation (Copy, Borrow or Set; AccessorCall for
 // every other kind). Refused: OCC-X. Limit: the conforming Self's storage nests past its bound (PrepareTypeStorage's Limit); a Self whose
@@ -49,8 +49,7 @@ internal sealed partial class TyCtxt
 {
     private readonly Dictionary<(BindingSymbol Requirement, BindingSymbol? Contract, Subst Subst), RequirementTarget> witnesses = new();
 
-    // A witness instance's Types and Origins before interning, reused.
-    private BoundType?[] witnessTypes = [];
+    // A witness instance's Origins before interning, reused.
     private BoundOrigin[] witnessOrigins = [];
 
     // SPEC 8.6.1: the Contract that declares a requirement, also of a built-in target, which keeps its requirement's declaration and scope
@@ -111,8 +110,7 @@ internal sealed partial class TyCtxt
             Binding.RequirementWitnessKind.Builtin => new(RequirementTargetKind.Builtin, witness.Target, subst, default),
             Binding.RequirementWitnessKind.Conformance => this.Conformance(requirement, witness, subst),
             Binding.RequirementWitnessKind.Property => this.Property(requirement, witness, subst),
-            Binding.RequirementWitnessKind.FixedArrayEntry => this.FixedArrayEntry(witness.Target!, self, subst),
-            Binding.RequirementWitnessKind.IntegerPosition => this.IntegerPosition(witness.Target!, self, subst),
+            Binding.RequirementWitnessKind.LibraryWitness => this.LibraryWitness(witness, self, subst),
             Binding.RequirementWitnessKind.Refused => new(RequirementTargetKind.Refused, null, null, default),
             _ => default,
         };
@@ -157,10 +155,11 @@ internal sealed partial class TyCtxt
         return Body(accessor, this.Intern(accessor, null, witness.Declaring, [], [], origins[..at], origins[at..]));
     }
 
-    // SPEC 21.3.1: the fixed array's entry member at the array's element Type and length (InstantiateFixedArrayEntry).
-    private RequirementTarget FixedArrayEntry(BindingSymbol target, BoundType self, Subst subst)
+    // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness).
+    private RequirementTarget LibraryWitness(in Binding.RequirementWitness witness, BoundType self, Subst subst)
     {
-        if (!binding.RentFixedArrayArguments((FunctionKoto)target.Declaration, self, out var types, out var lengths, out var count))
+        var target = witness.Target!;
+        if (!binding.RentWitnessArguments(witness.Group, target, self, out var types, out var lengths, out var count))
         {
             return default;
         }
@@ -171,21 +170,7 @@ internal sealed partial class TyCtxt
         }
         finally
         {
-            binding.ReturnFixedArrayArguments(types, lengths);
+            binding.ReturnWitnessArguments(types, lengths);
         }
-    }
-
-    // SPEC 4.6.1, 21.3.1: the integer Position witness at the integer Type (InstantiateIntegerPosition).
-    private RequirementTarget IntegerPosition(BindingSymbol target, BoundType self, Subst subst)
-    {
-        if (binding.IntegerPositionSlot(target) is not (>= 0 and var slot))
-        {
-            return default;
-        }
-
-        var types = Fit(ref this.witnessTypes, slot + 1);
-        types.Clear();
-        types[slot] = self;
-        return Body(target, this.Intern(target, null, null, types, [], subst.Origins, subst.Inputs));
     }
 }

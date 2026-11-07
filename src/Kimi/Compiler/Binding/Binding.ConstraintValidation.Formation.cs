@@ -156,7 +156,6 @@ public sealed partial class Binding
     // reference. Its Proven is a declaration query (DeclQueryKind.SignatureVerdict; PLAN G375), which leaves nothing to its reader. Any
     // other answer depends on who asks (a cause written to the channel), so each use computes it in its own scope (PLAN G375, until R7-C2).
     // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C2.
-    // Contract matching calls FormSignature directly until R7-V5 (PLAN G556).
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
     {
         if (this.activeRequirementContract is not null)
