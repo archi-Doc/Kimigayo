@@ -10,12 +10,12 @@ namespace XunitTest;
 // The Array family of MIR code generation (R5 C8d; SPEC 4.3, 4.5, 4.9.3, 4.9.5, 4.9.7, 7.7.4, 16.3.2, 22.2; DECISIONS R5-M121): each operation
 // and storage kind calls its LegacyRow item's routine (P1b's helper of its kind over the element, or a capacity routine given the element's
 // stride) with the call's operands by slot, its result slot and location, at a direct call, an Item's Value call and an adapter's entry;
-// `append`, `reserve` and `setArrayLength` are Kimigayo bodies (R8-A1a), called the same way; an Array from none and capacity are written in
+// `append` and `reserve` are Kimigayo bodies (R8-A1a), called the same way; an Array from none and capacity are written in
 // place; an Array's glue calls its Drop helper, which destroys the elements by their glue; natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library over Arrays of i32, a 16-byte struct, a drop-needing struct, a 24-byte Copy struct, string and Unit: the eight operations, the
-    // storage kinds through the library's iteration, setArrayLength through a repeating construction, capacity, an Array from none, an Array
+    // storage boundary through the library's iteration, a length's write through a repeating construction, capacity, an Array from none, an Array
     // glue, Items and an erased Item.
     private const string Arrays =
         "struct Pair\n    public let a: i64\n    public let b: i64\n    public init(a: i64, b: i64)\n        self.a = a\n        self.b = b\n" +
@@ -194,36 +194,32 @@ public sealed partial class FunctionCodegenTest
         Assert.Empty(FunctionsOf(ir, c, "pop"));
     }
 
-    // SPEC 4.3, 4.9.5, 22.2 (DECISIONS R5-M121): an Array from none is the runtime's empty handle at its Place; capacity's body loads the
-    // handle's capacity word; setArrayLength's body stores the length in its length word; the storage boundary's helpers write the remainder's
-    // Fields.
+    // SPEC 4.3, 4.9.5, 22.2: an Array from none zeroes the handle's three words at its Place, with no call; capacity's body loads the handle's
+    // capacity word; a repeating construction's body stores the length in its length word; the storage boundary's bodies read the handle's
+    // length word (R8-A1d).
     [Fact]
     public void TheStorageBoundaryAndTheInPlaceRowsWriteTheHandlesWords()
     {
         var c = Analyze(Arrays, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
         var none = Assert.Single(FunctionsOf(ir, c, "arNone"));
-        var init = Assert.Single(CallsOf(none));
-        Assert.Same(ir.Function("__kimi_array_init"), init.Callee);
-        Assert.Same(none.Parameters[0], init.Operands[0]);
+        Assert.Empty(CallsOf(none));
+        Assert.Equal(3, none.Instructions.Count(static x => x.Shape == "store i64 0, ptr %, align 8"));
         var size = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "arSize")))).Callee!;
         Assert.Contains(FunctionsOf(ir, c, "arrayCapacity"), x => x == size);
         Assert.Contains(size.Instructions, static x => x.Shape == "load i64, ptr %, align 8" && x.Operands[0].Shape == "getelementptr i8, ptr %, i64 16");
 
-        var published = FunctionsOf(ir, c, "setArrayLength").SelectMany(static x => x.Instructions);
+        var published = FunctionsOf(ir, c, "initRepeating").SelectMany(static x => x.Instructions);
         Assert.Contains(published, static x => x.Shape == "store i64 %, ptr %, align 8" && x.Operands[^1].Shape == "getelementptr i8, ptr %, i64 8");
 
-        var borrows = FunctionsOf(ir, c, "iterate").SelectMany(CallsOf).Where(static x => x.Callee!.Signature == "internal void (ptr, ptr)").ToArray();
-        Assert.Contains(borrows, static x => x.Callee!.Instructions.Where(static y => y.Opcode == "store").Select(static y => y.Shape)
-            .SequenceEqual(["store ptr %, ptr %, align 8", "store i64 0, ptr %, align 8", "store i64 %, ptr %, align 8"]));
-        var owns = FunctionsOf(ir, c, "intoIterator").SelectMany(CallsOf).Where(static x => x.Callee!.Signature == "internal void (ptr, ptr)");
-        Assert.Contains(owns, static x => x.Callee!.Instructions.Count(static y => y.Opcode == "store") == 4); // Storage, position, count, capacity.
-        Assert.Contains(FunctionsOf(ir, c, "intoIterator").SelectMany(CallsOf), static x => x.Shape == "call void @(ptr %, i64 3, ptr %)");
+        var borrows = FunctionsOf(ir, c, "borrowStorage").SelectMany(static x => x.Instructions);
+        Assert.Contains(borrows, static x => x.Shape == "load i64, ptr %, align 8" && x.Operands[0].Shape == "getelementptr i8, ptr %, i64 8");
+        Assert.Contains(FunctionsOf(ir, c, "intoIterator").SelectMany(static x => x.Instructions), static x => x.Shape == "store i64 3, ptr %, align 8");
     }
 
-    // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array literal is the runtime's empty handle at its Place, one growth to its count
-    // given the element's stride, its length, and each element put in the buffer at its position, with no helper call; `[]` is the empty
-    // handle alone, and a zero-sized element is put nowhere (fail-before: a reserve call and one append helper call per element).
+    // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array literal is the empty handle at its Place, one call of growArray, the aggregate's
+    // target, to its count given the element's stride, its length, and each element put in the buffer at its position, with no helper call;
+    // `[]` is the empty handle alone, and a zero-sized element is put nowhere (fail-before: a reserve call and one append helper call per element).
     [Fact]
     public void AnArrayLiteralGrowsOnceAndPutsItsElements()
     {
@@ -232,7 +228,7 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(Literals, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var (init, grow) = (ir.Function("__kimi_array_init"), ir.Function("__kimi_array_grow"));
+        var grow = Assert.Single(FunctionsOf(ir, c, "growArray"));
         foreach (var (name, site, stride, count, stores) in new[]
         {
             ("arLit", "[x, 2, 3]", 4, 3,
@@ -242,14 +238,14 @@ public sealed partial class FunctionCodegenTest
         {
             var function = Assert.Single(FunctionsOf(ir, c, name));
             var calls = CallsOf(function);
-            Assert.Equal([init, grow], calls.Select(static x => x.Callee));
-            Assert.Equal($"call void @(ptr %, i64 {stride}, i64 {count}, ptr @, i64 {LocationText(Literals, site).Length})", calls[1].Shape);
-            Assert.Equal(stores, function.Instructions.SkipWhile(x => x != calls[1]).Where(static x => x.Opcode == "store").Select(static x => x.Shape));
+            Assert.Equal([grow], calls.Select(static x => x.Callee));
+            Assert.Equal($"call void @(ptr %, i64 {stride}, i64 {count}, ptr @, i64 {LocationText(Literals, site).Length})", calls[0].Shape);
+            Assert.Equal(stores, function.Instructions.SkipWhile(x => x != calls[0]).Where(static x => x.Opcode == "store").Select(static x => x.Shape));
         }
 
-        Assert.Equal([init], CallsOf(Assert.Single(FunctionsOf(ir, c, "arLitNone"))).Select(static x => x.Callee));
+        Assert.Empty(CallsOf(Assert.Single(FunctionsOf(ir, c, "arLitNone"))));
         var texts = CallsOf(Assert.Single(FunctionsOf(ir, c, "arLitTexts")));
-        Assert.Equal([init, grow], texts.Where(x => x.Callee == init || x.Callee == grow).Select(static x => x.Callee));
+        Assert.Equal([grow], texts.Where(x => x.Callee == grow).Select(static x => x.Callee));
         Assert.Equal(
             $"call void @(ptr %, i64 24, i64 2, ptr @, i64 {LocationText(Literals, "[s@move, \"t\"]").Length})", texts.Single(x => x.Callee == grow).Shape);
         Assert.Empty(FunctionsOf(ir, c, "append")); // A literal places its elements through one growth and never appends.
@@ -292,38 +288,32 @@ public sealed partial class FunctionCodegenTest
         Assert.True(function.Instructions.IndexOf(copy) < function.Instructions.IndexOf(append));
     }
 
-    // PD8, R5-M46 (DECISIONS R5-M121): the helpers and the Array runtime precede every definition, each helper written once; the runtime is
-    // written only for a row that declares it, so a module whose only Array call clears has none.
+    // R8-A1d (DECISIONS R5-M121's rows are gone): no Array operation has a helper, and growth is a body, so a module whose only Array call clears
+    // holds no growth routine.
     [Fact]
-    public void ArrayHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare()
+    public void ArraysHoldNoHelperAndOnlyGrowthHoldsItsRoutine()
     {
-        var text = Generate(Analyze(Arrays, OutputKind.Library));
-        var first = Regex.Match(text, @"define internal \S+ @__kimi_f\d+\(").Index;
-        var helpers = Regex.Matches(text, @"define internal \S+ @(__kimi_array_[a-z]+_\d+|__kimi_fixed_own_\d+)\(").ToArray();
-        Assert.NotEmpty(helpers);
-        Assert.All(helpers, x => Assert.True(x.Index < first, x.Value));
-        Assert.Equal(helpers.Length, helpers.Select(static x => x.Groups[1].Value).Distinct().Count());
-        var grow = Regex.Match(text, @"define internal void @__kimi_array_grow\(");
-        Assert.True(grow.Success && grow.Index < first);
-
-        var cleared = Generate(Analyze("func arEmptyInts(values: uniq/Array<i32>) => values.clear()\n", OutputKind.Library));
-        Assert.DoesNotContain("@__kimi_array_grow", cleared, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"define internal \S+ @(__kimi_array_[a-z]+_\d+|__kimi_fixed_own_\d+)\(", Generate(Analyze(Arrays, OutputKind.Library)));
+        var c = Analyze("func arEmptyInts(values: uniq/Array<i32>) => values.clear()\n", OutputKind.Library);
+        Assert.Empty(FunctionsOf(GeneratedIr.Parse(Generate(c)), c, "growArray"));
     }
 
-    // R5-M46 (DECISIONS R5-M121): borrow and own declare no Array runtime, since they only load and store the handle's words, so a module whose
-    // only Array calls are an iteration's borrowStorage or ownStorage defines their helper and none of the capacity routines.
+    // R5-M46 (R8-A1d): a borrow and an owning iteration only load and store the handle's words, so a module whose only Array calls are an
+    // iteration's holds their bodies and no capacity routine.
     [Theory]
-    [InlineData("func arTotal(values: ref/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n", "borrow")]
-    [InlineData("func arDrain(values: Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n", "own")]
-    public void BorrowAndOwnWriteNoArrayRuntime(string source, string helper)
+    [InlineData("func arTotal(values: ref/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n", "borrowStorage")]
+    [InlineData("func arDrain(values: Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n", "intoIterator")]
+    public void BorrowAndOwnWriteNoArrayRuntime(string source, string body)
     {
-        var text = Generate(Analyze(source, OutputKind.Library));
-        Assert.Matches($@"define internal \S+ @__kimi_array_{helper}_\d+\(", text);
-        Assert.DoesNotMatch(@"@__kimi_array_(grow|reserve|shrink)\b", text);
+        var c = Analyze(source, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        Assert.NotEmpty(FunctionsOf(ir, c, body));
+        Assert.Empty(FunctionsOf(ir, c, "growArray"));
+        Assert.Empty(FunctionsOf(ir, c, "shrinkArray"));
     }
 
-    // SPEC 22.2, IMPL 21.1.1 (DECISIONS R5-M121): a consumed fixed array whose storage has no bytes, of a zero-sized element or of no element,
-    // moves in by its length alone: its helper takes no value, so the call passes the length and the result slot.
+    // SPEC 22.2, IMPL 21.1.1 (R8-A1d): a consumed fixed array whose storage has no bytes, of a zero-sized element or of no element, moves in
+    // by its length alone: its remainder's init takes no value, so the call passes the result slot and the length.
     [Theory]
     [InlineData("[2 of Token]", 2)]
     [InlineData("[0 of Res]", 0)]
@@ -335,8 +325,9 @@ public sealed partial class FunctionCodegenTest
             $"func drain(values: {array}) -> i64\n    var n: i64 = 0\n    for v in values@move => n += 1\n    return n\n",
             OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
-        var calls = FunctionsOf(ir, c, "intoIterator").SelectMany(CallsOf).Where(static x => x.Callee!.Signature == "internal void (i64, ptr)").ToArray();
-        Assert.Equal($"call void @(i64 {length}, ptr %)", Assert.Single(calls.Select(static x => x.Shape).Distinct()));
+        var bodies = FunctionsOf(ir, c, "intoIterator").ToArray();
+        Assert.Contains(bodies.SelectMany(CallsOf), static x => x.Callee!.Signature == "internal void (ptr, i64)");
+        Assert.Contains(bodies.SelectMany(static x => x.Instructions), x => x.Shape == $"store i64 {length}, ptr %, align 8");
     }
 
     // SPEC 7.7.4, 4.9.3 (DECISIONS R5-M121, ruling Q6): an erased append over an element in memory (a struct) or over a reference (ref/string)

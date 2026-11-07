@@ -25,6 +25,17 @@ internal sealed partial class ModuleCodegen
     /// <returns>The helper's signature; null after a record at the item's site.</returns>
     internal FunctionAbi? DictionaryDrop(int glue) => this.Dictionary(glue, DictionaryHelperKind.Drop)?.Abi;
 
+    /// <summary>Gets the routine of a LegacyRow item, placeEntry's Place helper (DECISIONS R5-M124), which its calls and its function's
+    /// Item's adapter call.</summary>
+    /// <param name="item">The LegacyRow item.</param>
+    /// <returns>The routine; null after a record at the item's site.</returns>
+    internal FunctionAbi? PlaceRow(int item)
+    {
+        this.Requested(item);
+        this.Request(LegacyRuntimeHelpers.Row(this.set.Items[item].Key.Body.Def.Decl!.CompilerFunction)!.Value.Needs);
+        return this.Dictionary(item, DictionaryHelperKind.Place)?.Abi;
+    }
+
     // The helper of a placeEntry LegacyRow item or of a Dictionary DropGlue item, once per Write, its text written then: kept while its
     // descriptor matches, else made and named after the item (only then, so a warm module allocates nothing). Null after a record.
     private DictionaryHelper? Dictionary(int item, DictionaryHelperKind kind)

@@ -12,10 +12,8 @@ namespace XunitTest;
 // escaping the counters.
 internal static class NativeAllocationAudit
 {
-    // The runtime's two transfer routines, which generated code calls (DECISIONS R5-M145): Array growth (RuntimeAbi.ArrayGrow) and the
-    // Dictionary source's private byte copy (RuntimeAbi.TransferBytes, Storage.transferBytes) each copy high-water storage once, at their
-    // anchor.
-    private const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
+    // The runtime's transfer routine, which generated code calls (DECISIONS R5-M145): the private byte copy (RuntimeAbi.TransferBytes,
+    // Storage.transferBytes), through which Array and Dictionary growth copy high-water storage once, at its anchor.
     private const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
 
     // Besides LLVM intrinsics, an audited module declares only the runtime's imports and the backend helpers (IMPL 21.4.7);
@@ -61,12 +59,10 @@ internal static class NativeAllocationAudit
             // A bound with neither routine would count nothing, and a program whose bodies transfer bytes counts them only through calls
             // of its module's byte copy: a module that writes its transfers in any other form, with or without the routine defined (the
             // storage byte primitives are defined as a pair), fails here instead of passing a bound vacuously.
-            var grows = ir.Contains(RuntimeAbi.ArrayGrow.Name, StringComparison.Ordinal);
             var copies = ir.Contains(RuntimeAbi.TransferBytes.Name, StringComparison.Ordinal);
-            Assert.True(grows || copies, "A transfer bound needs a routine to count.");
+            Assert.True(copies, "A transfer bound needs a routine to count.");
             var calls = ir.Contains("call void @" + RuntimeAbi.TransferBytes.Name + "(", StringComparison.Ordinal);
             Assert.True(calls || !TransfersBytes(source), "A program that transfers bytes needs its module to call the byte copy it counts.");
-            ir = CountTransfers(ir, RuntimeAbi.ArrayGrow.Name, CopyAnchor, CopyAnchor + Transferred("%used"));
             ir = CountTransfers(ir, RuntimeAbi.TransferBytes.Name, TransferAnchor, Transferred("%size") + TransferAnchor);
         }
 

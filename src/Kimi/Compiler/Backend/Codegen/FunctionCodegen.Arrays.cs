@@ -5,38 +5,38 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.7, 16.3.2, 22.2; R5 plan C8d; DECISIONS R5-M121, R5-M129), beside the
-// storage kinds whose call runs their LegacyRow item's routine (FunctionCodegen.Intrinsics' Routine): an Array aggregate's storage
-// (ArrayBuffer: the runtime's empty handle at its Place with its location, for n elements one growth to n and the length n), whose buffer
+// The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.7, 16.3.2; R5 plan C8d; DECISIONS R5-M129): an Array aggregate's storage
+// (ArrayBuffer: the empty handle at its Place, for n elements one growth to n, the aggregate's target, and the length n), whose buffer
 // the aggregate writer puts the elements in; destroyValues' counted loop over T's glue (PLAN G126); and an Array's glue level, the
 // destroyArray instance its glue item targets, called with the glue's own parameters (the string row's form). A Dictionary's glue and a
 // Dictionary from none are FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
 internal sealed partial class FunctionCodegen
 {
-    // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array aggregate's storage at its handle: the runtime's empty handle, then for its n
-    // elements one growth to n (the Array runtime's grow, as the old generator called it) and the length n in the handle's length word; its
-    // buffer, where the aggregate writer puts each element, the handle for `[]`, which allocates nothing; null after a record. No element is
-    // observable before all are put: the puts run no user code and cannot fail.
+    // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array aggregate's storage at its handle: the handle's words zero, then for its n
+    // elements one growth to n, the site's target, growArray's instance, and the length n in the handle's length word; its buffer, where the
+    // aggregate writer puts each element, the handle for `[]`, which allocates nothing; null after a record. No element is observable before
+    // all are put: the puts run no user code and cannot fail.
     private Value? ArrayBuffer(in SourceInfo source, Value handle, BoundType array, ValueLowering record, int count)
     {
-        if (!this.Location(source, out var site))
+        var word = Layout.Row(BoundType.ISize).Layout;
+        foreach (var offset in record.Layout.FieldOffsets.Span)
         {
-            return null; // Recorded.
+            this.StoreAt(this.Offset(handle, offset), word, new('\0', 0)); // The empty handle: null, 0, 0 (IMPL 21.1.3).
         }
 
-        _ = this.WriteCall(RuntimeAbi.ArrayInit, [handle, site.Text, site.Length]);
         if (count == 0)
         {
             return handle;
         }
 
-        if (this.Laid(array.Components[0]) is not { } element)
+        var target = this.Target(new(this.at, this.position));
+        if (!this.Location(source, out var site) || this.Laid(array.Components[0]) is not { } element || target < 0 ||
+            this.module.Signature(target) is not { } grow)
         {
             return null; // Recorded.
         }
 
-        this.module.Request(HelperNeeds.ArrayRuntime);
-        _ = this.WriteCall(RuntimeAbi.ArrayGrow, [handle, new('\0', element.Layout.Stride), new('\0', count), site.Text, site.Length]);
+        _ = this.WriteCall(grow, [handle, new('\0', element.Layout.Stride), new('\0', count), site.Text, site.Length]);
         this.StoreAt(this.Offset(handle, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), Layout.Row(BoundType.ISize).Layout, new('\0', count));
         return this.LoadAt(handle, RuntimeAbi.StringReference.Layout); // The buffer word, a pointer (IMPL 21.1.3).
     }
@@ -62,7 +62,7 @@ internal sealed partial class FunctionCodegen
             var output = this.output;
             output.Write("  ");
             this.WriteValue(empty);
-            output.Write(" = icmp eq i64 ");
+            output.Write(" = icmp sle i64 ");
             this.WriteValue(count);
             output.Write(", 0\n  br i1 ");
             this.WriteValue(empty);

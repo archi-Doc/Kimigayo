@@ -94,7 +94,7 @@ internal static partial class LegacyRuntimeHelpers
             static (output, helper, _, append) => WriteEntryPlacement(output, helper, append!),
             DictionaryCallee.None,
             DictionaryCallee.Append,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.Memory),
         new(
             DictionaryHelperKind.Drop,
             static (suffix, _, _) => Located("__kimi_dictionary_drop" + suffix, []),

@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Backend;
 // symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory declarations, the Array runtime (DECISIONS R5-M121), the
 // formatting runtime (DECISIONS R5-M128), the storage byte primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92, R5-M145),
 // the string-comparison routines (DECISIONS R5-M118) and the object runtime (DECISIONS R5-M110) are written only when a definition
-// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Array helpers (ModuleCodegen.Arrays) before every definition
+// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Dictionary helpers (ModuleCodegen.Dictionaries) before every definition
 // (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an Application's its startup root, a test build's each
 // test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry; DECISIONS R5-M136), whose runtime is the template's
 // test variant followed by the test runtime's routines (TestRuntime.Text, with the memory declarations it calls).
@@ -53,10 +53,6 @@ internal sealed partial class ModuleCodegen
         /// <summary>The string-comparison routines (LegacyRuntimeHelpers.StringComparisons), for a string comparison (DECISIONS R5-M118).</summary>
         Strings = 16,
 
-        /// <summary>The Array runtime (LegacyRuntimeHelpers.WriteArrayRuntime: the capacity routine), for an Array row that declares it (DECISIONS
-        /// R5-M46, R5-M121).</summary>
-        Arrays = 32,
-
         /// <summary>The formatting runtime (LegacyRuntimeHelpers.WriteFormattingRuntime), for a formatting row (DECISIONS R5-M30, R5-M128).</summary>
         Formatting = 64,
 
@@ -70,14 +66,14 @@ internal sealed partial class ModuleCodegen
     internal void Request(Needs need) => this.needs |= need;
 
     /// <summary>Requests the module parts that a legacy row's declared runtime needs name (X4; DECISIONS R5-M46, R5-M128), the one map from a
-    /// row's needs to the frame's parts: the Array runtime and the formatting runtime, each with the memory declarations. The other needs name
+    /// row's needs to the frame's parts: the memory declarations, and the formatting runtime with them. The other needs name
     /// no part: the element glue is an item, the collector's target.</summary>
     /// <param name="needs">The row's needs.</param>
     internal void Request(HelperNeeds needs)
     {
-        if ((needs & HelperNeeds.ArrayRuntime) != 0)
+        if ((needs & HelperNeeds.Memory) != 0)
         {
-            this.Request(Needs.Arrays | Needs.Memory);
+            this.Request(Needs.Memory);
         }
 
         if ((needs & HelperNeeds.FormattingRuntime) != 0)
@@ -107,11 +103,6 @@ internal sealed partial class ModuleCodegen
         if ((this.needs & Needs.Memory) != 0)
         {
             output.Write(LlvmModuleText.MemoryDeclarations);
-        }
-
-        if ((this.needs & Needs.Arrays) != 0)
-        {
-            LegacyRuntimeHelpers.WriteArrayRuntime(output);
         }
 
         if ((this.needs & Needs.Formatting) != 0)
