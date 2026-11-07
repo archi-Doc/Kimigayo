@@ -305,3 +305,50 @@ internal group Storage
         internal var data: raw/u8
         internal var length: isize
         internal var releaseKind: u8
+
+    /// Grows the storage to at least `minimum` elements of `stride` bytes (SPEC 4.9.5, 4.9.8), one routine for every
+    /// element Type, whose `data` accesses through `ArrayRepr<u8>` are punned ones (IMPL 21.1.3). A failure Aborts at the
+    /// standard operation's caller location.
+    ///
+    /// - safety: `handle` addresses a live Array whose elements have `stride` bytes each, and `minimum` exceeds its
+    ///   capacity.
+    internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)
+        unsafe
+            let capacity = (*handle).capacity
+            let largest: i64 = 9223372036854775807
+            // SPEC 4.5, 4.9.5: zero-sized elements need no bytes, so every count fits without allocation.
+            if stride == 0
+                (*handle).data = Raw.allocate<u8>(0)
+                (*handle).capacity = largest@isize
+                return
+            let maximum = (largest / stride@i64)@isize
+            if minimum > maximum
+                Storage.allocationSizeExceeded()
+            // SPEC 4.9.8: amortized doubling, clamped; optional rounding never rejects a representable minimum.
+            var target = maximum
+            // `capacity <= maximum / 2` bounds the product.
+            if capacity <= maximum / 2
+                target = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
+            if target < 4
+                target = 4
+            if target < minimum
+                target = minimum
+            if target > maximum
+                target = maximum
+            // `target <= maximum` bounds the product.
+            let memory = Raw.allocate<u8>((target@Wrapping<isize> * stride@Wrapping<isize>)@isize)
+            let buffer = (*handle).data
+            let length = (*handle).length
+            if length != 0
+                // `length <= capacity < minimum <= maximum` bounds the product.
+                Storage.transferBytes(memory, buffer, (length@Wrapping<isize> * stride@Wrapping<isize>)@isize)
+            Raw.release(buffer)
+            (*handle).data = memory
+            (*handle).capacity = target
+
+    /// Publishes `length` completed elements within the existing allocation; it neither reads nor destroys any element.
+    ///
+    /// - safety: `length` is within the capacity, each `data[i]` of `value`'s `ArrayRepr` below it designates a distinct
+    ///   Place holding a complete value, and the storage holds no other value.
+    internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)
+        unsafe => (*(value@follow@raw@raw/ArrayRepr<E>)).length = length

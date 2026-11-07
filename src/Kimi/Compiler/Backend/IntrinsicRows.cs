@@ -33,6 +33,7 @@ internal enum IntrinsicWriter : byte
     Fail, // A fixed SPEC 22.5.2 code's Abort reason and the location to the row's routine (the runtime Abort).
     Initialize, // Raw.initialize: the value put at the storage.
     Slice, // Raw.slice: the Slice record of the storage and the length.
+    Stride, // stride<T>: the element's stride as a constant (IMPL 21.1.3).
     Ensure, // staticEnsure: its slot's state tested inline, the slot's ensure function off the Initialized path (FunctionCodegen.Statics).
     Create, // makeObj, makeRc, makeArc: Routine's, the factory of the call's target descriptor with its control value (FunctionCodegen.Objects).
     Clone, // clone: Routine's, the runtime's retain of the result handle's counting (FunctionCodegen.Objects).
@@ -73,7 +74,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.RawSlice, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Slice, null),
         new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TryAllocateBytes),
         new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Requested, RuntimeAbi.TransferBytes),
-        new(IntrinsicId.Stride, IntrinsicTarget.None, LayoutNeed.TypeArguments, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
+        new(IntrinsicId.Stride, IntrinsicTarget.None, LayoutNeed.TypeArguments, IntrinsicWriter.Stride, null),
         new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LayoutNeed.TypeArguments, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
         new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Unproduced, null), // No MIR producer yet.
         new(IntrinsicId.Abort, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),

@@ -10,8 +10,6 @@ public init(! capacity: isize)
 /// The compiler supplies this constructor's definition from `initRepeating` (SPEC 4.9.5, 22.1).
 public init(! repeating: T, count: isize)
     T is Copy
-public func reserve(self: uniq/Self, additional: isize)
-public func append(self: uniq/Self, value: T)
 internal func insertAt(self: uniq/Self, index: isize, value: T)
 public func pop(self: uniq/Self) -> Option<T>
 internal func removeAt(self: uniq/Self, index: isize) -> T

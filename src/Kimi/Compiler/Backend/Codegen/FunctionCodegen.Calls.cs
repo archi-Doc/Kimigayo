@@ -251,7 +251,7 @@ internal sealed partial class FunctionCodegen
     // its call's LegacyRow item's in the function's instance (Routine; DECISIONS R5-M121, R5-M124) or a formatting routine
     // (FunctionCodegen.Formatting; DECISIONS R5-M128), the call's operands at its parameters' slots placed by the call's own key and the call
     // site's location; a whole-value update (FunctionCodegen.Updates); a fixed array's or a Dictionary's storage kernel
-    // (FunctionCodegen.Storage); setArrayLength's length (FunctionCodegen.Arrays). The call's substitution is its direct call's or its Item's
+    // (FunctionCodegen.Storage). The call's substitution is its direct call's or its Item's
     // (SubstOfItem), whose Types a row's TypeArguments need names (LayoutNeeds; DECISIONS R5-M149).
     private void Legacy(in MirTerminator call, LegacyRow row, int target, Subst? subst)
     {
@@ -282,9 +282,6 @@ internal sealed partial class FunctionCodegen
         {
             case LegacyWriter.FixedStorage:
                 this.FixedStorage(call);
-                return;
-            case LegacyWriter.Length:
-                this.ArrayLength(call);
                 return;
             default:
                 throw new InvalidOperationException($"The legacy writer {row.Writer} has no code generation row.");
