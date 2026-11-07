@@ -19,7 +19,7 @@ namespace Kimi.Compiler.Mir;
 /// <param name="reach">The one reachability walk, which the analyses share.</param>
 internal sealed class MirLints(MirReach reach)
 {
-    private readonly List<MirFact> causes = []; // A problem's Cause facts.
+    private readonly List<ProblemFact> causes = []; // A problem's Cause facts.
 
     /// <summary>Reports each failure body of a body whose end a runtime path from its entry reaches.</summary>
     /// <param name="body">A validated body.</param>
@@ -45,7 +45,7 @@ internal sealed class MirLints(MirReach reach)
                 this.causes.Clear();
                 foreach (var site in body.GuessedSites.Slice(rows[i].Start, rows[i].Count))
                 {
-                    this.causes.Add(new(MirFactKind.Cause, site, -1)); // A Binding cause at the site.
+                    this.causes.Add(new(ProblemFactKind.Cause, site, -1)); // A Binding cause at the site.
                 }
 
                 var problem = new MirProblem(
