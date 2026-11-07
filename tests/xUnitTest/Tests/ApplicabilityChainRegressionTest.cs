@@ -12,7 +12,7 @@ using Xunit;
 namespace XunitTest;
 
 // PLAN G76: the blocking review cases, with expectations from SPEC 10.4, 10.5, 10.7 and 23.1.2.
-public class ApplicabilityChainRegressionTest
+public partial class ApplicabilityChainRegressionTest
 {
     private const string ControlFlowDeclarations =
         "func identity<T>(value: T) -> T => value@move\nfunc keep<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\n" +
