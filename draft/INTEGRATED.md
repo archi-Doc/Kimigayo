@@ -1297,6 +1297,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 11 (2026-11-07, plan §14; the Middle's D-51): §5.4 and §7.1 follow PLAN G396 and the A5 oracle's new place. Nothing frozen.
 - Revision 12 (2026-11-07, plan §14; the owner's O-39 and O-40, verbatim 「(a) GO」 and 「(a) walk を恒久の部品として残す」): the HIR publisher stays; Y1 shrinks; G339 goes ahead with
   G338. Nothing frozen.
+- Revision 13 (2026-11-07, plan §14; the owner's O-42, verbatim 「O-42はaで決定します」): §5.1 gains N7. Nothing frozen; SPEC 8.2.1 registers when it lands.
 
 ## 2026-11-03 — G216 (a) position rows
 
