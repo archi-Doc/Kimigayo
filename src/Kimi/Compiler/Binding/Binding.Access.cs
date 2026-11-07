@@ -108,15 +108,11 @@ public sealed partial class Binding
         => this.TypeAccessCovers(qualifier, domain, intersection ?? domain) && AccessCovers(contract, domain, intersection ?? domain) &&
             (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, intersection ?? domain));
 
-    // A fixed-array member receives some `[N of E]`, in the ref, uniq or owning form (PLAN G32); the integer Position
-    // witness receives an integer Type parameter (SPEC 4.6.1).
+    // A library group's function receives what the group states (WitnessReceiver).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
         => type is not null && type.Semantics is not (SemanticsKind.Raw or SemanticsKind.Parameter) &&
-            (ReferenceEquals(owner.Declaration, this.Library.FixedArrayMembers)
-                ? EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
-                : ReferenceEquals(owner.Declaration, this.Library.IntegerPositionMembers)
-                ? type is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner } or { IsInteger: true, Semantics: SemanticsKind.Owner }
-                : SameType(EffectiveCore(type), this.DeclarationSelf(owner)));
+            (this.Library.MembersOf(owner.Declaration) is { } members
+                ? WitnessReceiver(members, type) : SameType(EffectiveCore(type), this.DeclarationSelf(owner)));
 
     private void ValidateConstraintProjectionAccess()
     {

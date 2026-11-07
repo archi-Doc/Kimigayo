@@ -8,10 +8,10 @@ namespace Kimi.Compiler;
 // - Responsibility: the one rule from a requirement, a Self that is not abstract, the Contract reference the call selected and a premise
 //   scope to what the requirement runs.
 // - Inputs: verified conformance paths under the caller's scope; the built-in targets, which take their requirements' signatures once
-//   per pass after headers (PrepareBuiltinTargets); the Kimi fixed-array and integer Position members.
+//   per pass after headers (PrepareBuiltinTargets); the library witness table (Binding.LibraryWitnesses).
 // - Outputs: Builtin; Conformance (the witness, its declaring instance and verified mapping with its base path); Property (the
-//   verified path and operation, the implementing Type's instance); FixedArrayEntry; IntegerPosition; Refused (a base-path witness
-//   whose requirement receiver is not `ref`, OCC-X); None.
+//   verified path and operation, the implementing Type's instance); LibraryWitness (a group's function and its row); Refused (a
+//   base-path witness whose requirement receiver is not `ref`, OCC-X); None.
 // - Invariants: a caller forwards an abstract Self before it calls the core (SPEC 8.15) and keeps its own premise scope: the
 //   materializer its call's ConstraintScope, Witnesses its definition's EffectPremises, TyCtxt.Witness the library root's.
 // - Prohibitions: no member lookup, CallPlan, Origin translation, receiver projection, bridge or diagnostic; no written state beyond
@@ -25,19 +25,21 @@ public sealed partial class Binding
         Builtin,
         Conformance,
         Property,
-        FixedArrayEntry,
-        IntegerPosition,
+        LibraryWitness,
         Refused,
     }
 
-    // Target: the built-in target, the conformance witness or the Kimi member; Declaring: a conformance or Property witness's declaring
-    // instance; Function: a conformance witness's verified mapping; Path and Property: a Property requirement's verified path and operation.
+    // Target: the built-in target, the conformance witness or the group's function; Declaring: a conformance or Property witness's declaring
+    // instance; Function: a conformance witness's verified mapping; Path and Property: a Property requirement's verified path and operation;
+    // Group: a library witness's row.
     internal readonly record struct RequirementWitness(
         RequirementWitnessKind Kind, BindingSymbol? Target, BoundType? Declaring = null, BoundFunctionWitness? Function = null)
     {
         internal BoundConformancePath? Path { get; init; }
 
         internal BoundPropertyWitness Property { get; init; }
+
+        internal LibraryWitnessGroup Group { get; init; }
     }
 
     // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, under the Contract reference the call selected (null when it
@@ -55,21 +57,16 @@ public sealed partial class Binding
             return new(RequirementWitnessKind.Builtin, builtin);
         }
 
+        // Keyed on the requirement's own Contract: a built-in Type's conformance has no declaration for a selected reference to name.
+        if (WitnessGroup(self, requirement.Scope.Owner.BoundSymbol?.LibraryDeclaration) is { } group)
+        {
+            return this.GroupWitness(group, requirement.Name) is { Declaration: FunctionKoto } member
+                ? new(RequirementWitnessKind.LibraryWitness, member) { Group = group } : default;
+        }
+
         if (contract is null)
         {
             return default;
-        }
-
-        if (IsFixedArrayEntry(self, contract))
-        {
-            // PLAN G32.
-            return this.FixedArrayWitness(contract) is { Declaration: FunctionKoto } entry ? new(RequirementWitnessKind.FixedArrayEntry, entry) : default;
-        }
-
-        if (IsIntegerPosition(self, contract))
-        {
-            // SPEC 4.6.1.
-            return this.IntegerPositionWitness() is { Declaration: FunctionKoto } position ? new(RequirementWitnessKind.IntegerPosition, position) : default;
         }
 
         if (this.ConformanceWitness(requirement, self, contract, scope, out var witness) is not { } declaring)

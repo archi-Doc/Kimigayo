@@ -15,7 +15,7 @@ public sealed partial class Binding
     // witness when the Type is closed, its requirement in every instance when it has an abstract part.
     internal static ComparisonKind ComparisonKindOf(BoundType self, KimiDeclarationId? contract, bool operators)
         => ComparisonTypes.IsComposite(self) ? ComparisonKind.Composite
-            : ComparisonTypes.IsBuiltin(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
+            : ComparisonTypes.OperatorTableRuns(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
             : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
 
     // The legacy composition under the Contract's mapping: CallPlan leaves from RequirementImplementation under the built-in target's scope,

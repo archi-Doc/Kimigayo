@@ -61,6 +61,11 @@ public class ArchitectureRulesTest
     // matching its source.
     private const string DeletedByH10b2 = @"\b(?:ControlFlowAnalysi[s]|ControlFlowIssu[e]|ControlFlowNodeInf[o]|AnalyzeControlFlo[w]|LintError[s])\b";
 
+    // R8-S1a (RP6): the paths the library witness table replaced, one rule and one witness kind for a built-in Type's library conformance.
+    private const string ReplacedByWitnessTable = @"\w*FixedArrayEntry\b|" +
+        @"\b(?:FixedArrayWitness|RentFixedArrayArguments|ReturnFixedArrayArguments|FixedArraySlots)\b|" +
+        @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
+
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 0)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
@@ -93,6 +98,8 @@ public class ArchitectureRulesTest
     [InlineData("Test references to the old control-flow analysis", "tests", "*.cs", DeletedByH10b2, 0)]
     [InlineData("Benchmark references to the old control-flow analysis", "src/Benchmark", "*.cs", DeletedByH10b2, 0)]
     [InlineData("Playground references to the old control-flow analysis", "src/Playground", "*.cs", DeletedByH10b2, 0)]
+    // R8-S1a (RP6): no second statement of a table row; the test class FixedArrayEntryTest keeps its own name.
+    [InlineData("Compiler references to the paths the library witness table replaced", "src/Kimi", "*.cs", ReplacedByWitnessTable, 0)]
     // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
     [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Backend reads of Koto semantic slots", "src/Kimi/Compiler/Backend", "*.cs", SemanticSlotReads, 0)]
@@ -149,9 +156,9 @@ public class ArchitectureRulesTest
     // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
     [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
     [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=4;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
-    // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row, its requirement exclusion and contract matching;
-    // the walk's declaration is the third count. ContractMatching's two go at R7-V5 (PLAN G556), and the other three at R7-C2 (PLAN G375).
-    [InlineData("Computes of a declared signature", "src/Kimi/Compiler", @"\bFormSignature\(", "Binding/Binding.ConstraintValidation.Formation.cs=3;Binding/Binding.ContractMatching.cs=2")]
+    // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row and its requirement exclusion; the walk's declaration
+    // is the third count. All three go at R7-C2 (PLAN G375). A conformance computes none (the owner's O-44).
+    [InlineData("Computes of a declared signature", "src/Kimi/Compiler", @"\bFormSignature\(", "Binding/Binding.ConstraintValidation.Formation.cs=3")]
     // AllocationMeasurement's contract: every allocation window of the tests goes through Measure, MeasureOnce for one run that cannot
     // repeat, or MeasureHops for a compile-stack hop (DECISIONS R4-M178), which retire the thread's allocation context first; a window
     // that reads the thread's counter itself can be charged a runtime pause's unused context tail (up to ~8 KB) under load. Benchmarks
@@ -166,7 +173,7 @@ public class ArchitectureRulesTest
     [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]
     // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
     // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
-    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.AssociatedTypes.cs=1;Binding.Diagnostics.cs=1;Binding.FixedArrays.cs=1;Binding.Imports.cs=2;Binding.IntegerPositions.cs=1;Binding.Modules.cs=2;Binding.Qualification.cs=1;Binding.ResolvePath.cs=4")]
+    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.AssociatedTypes.cs=1;Binding.Diagnostics.cs=1;Binding.Imports.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.Qualification.cs=1;Binding.ResolvePath.cs=4")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.Imports.cs=1;Binding.ResolvePath.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
