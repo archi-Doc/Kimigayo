@@ -135,7 +135,7 @@ public sealed partial class Binding
     }
 
     // SPEC 3.2.1, 15.3.4, 15.6.4 (DECISIONS R4-M159): the Type of the Closure `function` with its environment and call signature: its Origin
-    // arguments are each atom of an enclosing Closure the signature names (FixedAtoms), in first-occurrence order. The bound pass and the
+    // arguments are each atom or local region of an enclosing Closure the signature names (FixedAtoms), in first-occurrence order. The bound pass and the
     // fill pass are each one query of `visitedParts`.
     private BoundType ClosureType(BindingSymbol symbol, FunctionKoto function, BoundType signature, ReadOnlySpan<BoundType> environment)
     {
@@ -229,9 +229,14 @@ public sealed partial class Binding
         // The binder class: an anonymous function enclosing the subject, other than the subject, or a container enclosing it.
         static bool Binds(BoundOrigin origin, Koto subject, BinderClass binders)
             => binders == BinderClass.EnclosingAnonymous
-                ? origin.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Parameter &&
-                    origin.Binder is FunctionKoto { IsAnonymous: true } binder && !ReferenceEquals(binder, subject) && IsWithin(subject, binder)
+                ? AnonymousBinder(origin) is { IsAnonymous: true } binder && !ReferenceEquals(binder, subject) && IsWithin(subject, binder)
                 : origin.Binder is DeclarationContainerKoto container && IsWithin(subject, container);
+
+        // The function an Origin belongs to: a signature atom's binder, or the body of a local region, which a Closure leaving that body
+        // reads through its Origin arguments like any other atom of it (DECISIONS: G570).
+        static FunctionKoto? AnonymousBinder(BoundOrigin origin)
+            => (origin.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Parameter ? origin.Binder
+                : IsLocalRegion(origin) ? origin.Body.Definition?.Declaration : null) as FunctionKoto;
     }
 
     // SPEC 6.1.3, 8.1.3: the closures of the instance a substitution makes closed in it (Close). One call is one query of the closing table,

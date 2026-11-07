@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The Types of locals over the local-region graph (SPEC 15.4.4): a mutable local's Type opened into region slots (LocalBorrowType), a
-// result's local regions resolved to their sources (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts
+// result's own body's regions resolved to their sources (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts
 // (HasLocalRegion, which also counts a pending atom, HasRegionBounds, CarrierOf).
 public sealed partial class Binding
 {
@@ -44,9 +44,6 @@ public sealed partial class Binding
     // Whether an Origin of the Type's parts has region bounds; each distinct part is visited once per query (DECISIONS BU-19).
     internal bool HasRegionBounds(BoundType type) => this.RegionBoundsPart(type, this.visitedParts.Begin(this.storageVersion));
 
-    // The Origin a Type's own layer states, in either role (DECISIONS BU-24).
-    private static BoundOrigin? LayerOrigin(BoundType type) => type.Origin ?? type.RawOrigin;
-
     // A pending atom (SPEC 15.6.5; DECISIONS R4-M126 §2.5) is fitted as a local region is: the fit checks the structure now and leaves
     // its Origin positions as obligations, judged once the Closure is classified.
     private static bool HasLocalRegion(BoundOrigin origin)
@@ -78,7 +75,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (LayerOrigin(type) is { } origin && HasLocalRegion(origin))
+        if ((type.Origin ?? type.RawOrigin) is { } origin && HasLocalRegion(origin))
         {
             return true;
         }
@@ -178,7 +175,9 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType ResolveLocalResultOrigins(BoundType type)
+    // SPEC 15.3.6, 15.8.2 (DECISIONS: G570): a Closure's result with the regions of its own body resolved. An enclosing region is fixed in
+    // `body` (BU-28), so it stays: the result and the environment name one Origin, solved over all its bounds.
+    private BoundType ResolveLocalResultOrigins(BoundType type, ExecutableBody body)
     {
         if (!this.HasLocalRegion(type))
         {
@@ -191,7 +190,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.ResolveLocalResultOrigins(type.Components[i]);
+                components[i] = this.ResolveLocalResultOrigins(type.Components[i], body);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
@@ -226,7 +225,7 @@ public sealed partial class Binding
                 return resolved;
             }
 
-            if (!IsLocalRegion(origin))
+            if (!RegionIn(origin, body))
             {
                 return origin;
             }
