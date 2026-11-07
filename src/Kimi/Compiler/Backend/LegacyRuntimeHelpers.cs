@@ -40,7 +40,7 @@
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
 // writer: writeLine's runtime routine, the whole-value updates, the fixed-array storage kernel, the Array operations and storage kinds in
 // their function's instance (Instance: the Array helper of its kind, or a capacity routine, through its call's LegacyRow item; DECISIONS
-// R5-M121), setArrayLength's length, placeEntry in its function's instance (Place: the Dictionary Place helper, which calls the item's
+// R5-M121), placeEntry in its function's instance (Place: the Dictionary Place helper, which calls the item's
 // declared callee, append), the other Dictionary storage kinds as the P2a kernels over their call's entry layout (DECISIONS R5-M124) and
 // the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
@@ -104,9 +104,6 @@ internal enum LegacyWriter : byte
     /// Array helper of the row's <see cref="LegacyRow.Helper"/> kind, or the row's capacity routine given the element's stride (DECISIONS
     /// R5-M121).</summary>
     Instance,
-
-    /// <summary>SPEC 22.2: setArrayLength, the length stored in the Array handle's length word (FunctionCodegen.Arrays).</summary>
-    Length,
 
     /// <summary>SPEC 4.9.6, 22.2: placeEntry, P1c's Place helper in its function's instance, its call's LegacyRow item's (ModuleCodegen.Row),
     /// which calls the item's declared callee, append (DECISIONS R5-M124).</summary>
@@ -234,9 +231,7 @@ internal static partial class LegacyRuntimeHelpers
         CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive => new(LegacyWriter.FixedStorage),
 
         // SPEC 4.9.3, 4.9.5, 22.2 (DECISIONS R5-M121): the Array operations and storage kinds in their function's instance.
-        CompilerFunctionKind.ArrayReserve => new(LegacyWriter.Instance, RuntimeAbi.ArrayReserve),
         CompilerFunctionKind.ArrayShrinkToFit => new(LegacyWriter.Instance, RuntimeAbi.ArrayShrink),
-        CompilerFunctionKind.ArrayAppend => Instance(ArrayHelperKind.Append),
         CompilerFunctionKind.ArrayInsert => Instance(ArrayHelperKind.Insert),
         CompilerFunctionKind.ArrayPop => Instance(ArrayHelperKind.Pop),
         CompilerFunctionKind.ArrayRemove => Instance(ArrayHelperKind.Remove),
@@ -246,7 +241,6 @@ internal static partial class LegacyRuntimeHelpers
             Instance(ArrayHelperKind.BorrowStorage),
         CompilerFunctionKind.StorageOwn => Instance(ArrayHelperKind.OwnStorage),
         CompilerFunctionKind.StorageOwnFixed => Instance(ArrayHelperKind.OwnFixedStorage),
-        CompilerFunctionKind.StorageSetArrayLength => new(LegacyWriter.Length),
 
         // SPEC 4.9.6, 22.2 (DECISIONS R5-M124): the Dictionary storage kinds, placeEntry in its function's instance, the others inline kernels.
         CompilerFunctionKind.StoragePlaceDictionaryEntry => new(LegacyWriter.Place),

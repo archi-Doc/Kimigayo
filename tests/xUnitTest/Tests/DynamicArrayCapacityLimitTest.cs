@@ -43,8 +43,77 @@ public class DynamicArrayCapacityLimitTest
         WriteProbe("Overshoot" + stride, ir, body, 0, string.Empty);
     }
 
+    // R8-A1a: append's body reaches the same limit from source, its buffer null: the checked sum Aborts before any buffer access, at the call.
+    [Fact]
+    public void AppendChecksTheIncreasedLengthBeforeBufferAccess()
+    {
+        const string Source = """
+            #Layout("C")
+            struct Words
+                public var data: raw/u8
+                public var length: isize
+                public var capacity: isize
+
+            var values: Array<u8> = []
+            let largest: i64 = 9223372036854775807
+            let words = values@raw@raw/Words
+            unsafe
+                (*words).length = largest@isize
+                (*words).capacity = largest@isize
+            values.append(1)
+            """;
+        ScalarEmissionTest.EmitFixture("DynamicArrayCapacityAppend", Source, string.Empty, 1, "Hello.kimi:13:1: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+    }
+
+    // R8-A1a, SPEC 4.9.5, 22.5.2: `reserve`'s Abort paths through `growArray`, each with its code at the call: a negative request, a sum past
+    // `isize` (also over zero-sized elements), a byte size past the limit (the unrepresentable minimum among them) and a failed allocation.
     [Theory]
-    [InlineData("Append", "__kimi_array_append_", "(ptr %handle, i8 1, ptr @probe_location, i64 5)")]
+    [InlineData("Negative", "var values: Array<i32> = []\nvalues.reserve(additional: -1)", 2, "KIMI_E_ARG_RANGE: Argument out of range")]
+    [InlineData("Sum", "var values: Array<i32> = [1]\nlet count: i64 = 9223372036854775807\nvalues.reserve(additional: count@isize)", 3, "KIMI_E_INT_OVERFLOW: Integer overflow")]
+    [InlineData("ZeroSizedSum", "var values: Array<()> = []\nvalues.append(())\nlet count: i64 = 9223372036854775807\nvalues.reserve(additional: count@isize)", 4, "KIMI_E_INT_OVERFLOW: Integer overflow")]
+    [InlineData("Size", "var values: Array<i64> = []\nlet count: i64 = 2305843009213693952\nvalues.reserve(additional: count@isize)", 3, "KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
+    [InlineData("UnrepresentableMinimum", "var values: Array<(i64, i64)> = []\nlet count: i64 = 576460752303423488\nvalues.reserve(additional: count@isize)", 3, "KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
+    [InlineData("Allocation", "var values: Array<u8> = []\nlet count: i64 = 4611686018427387904\nvalues.reserve(additional: count@isize)", 3, "KIMI_E_ALLOC: Failed to allocate memory")]
+    public void ReserveAbortsAtItsCall(string name, string source, int line, string abort)
+        => ScalarEmissionTest.EmitFixture("DynamicArrayCapacityReserve" + name, source, string.Empty, 1, $"Hello.kimi:{line}:1: abort {abort}\n");
+
+    // R8-A1a: `growArray`'s optional doubling cannot reject a representable minimum, from source: the capacity is past half the maximum, a test
+    // allocator takes the clamped request without reserving exabytes, and the program restores an empty handle before its destruction.
+    [Theory]
+    [InlineData("u8", 1)]
+    [InlineData("[3 of u8]", 3)]
+    [InlineData("(i64, i64)", 16)]
+    [InlineData("[2147483647 of u8]", 2147483647)]
+    public void ReserveOvershootDoesNotRejectARepresentableMinimum(string element, long stride)
+    {
+        var maximum = long.MaxValue / stride;
+        var capacity = (maximum / 2) + 1;
+        var source = $$"""
+            #Layout("C")
+            struct Words
+                public var data: raw/u8
+                public var length: isize
+                public var capacity: isize
+
+            var values: Array<{{element}}> = []
+            let words = values@raw@raw/Words
+            let capacity: i64 = {{capacity}}
+            let minimum: i64 = {{capacity + 1}}
+            let maximum: i64 = {{maximum}}
+            unsafe => (*words).capacity = capacity@isize
+            values.reserve(additional: minimum@isize)
+            unsafe
+                let grown = (*words).capacity@i64
+                require grown >= minimum and grown <= maximum else => $abort("capacity")
+                (*words).data = null
+                (*words).capacity = 0
+            """;
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
+        ir = ReplaceDefinition(ir, "__kimi_alloc", $"define internal ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length) {{\nentry:\n  %right = icmp eq i64 %size, {maximum * stride}\n  br i1 %right, label %done, label %wrong\nwrong:\n  call void @__kimi_exit(i32 93)\n  unreachable\ndone:\n  ret ptr @probe_memory\n}}");
+        ScalarEmissionTest.WriteFixture("DynamicArrayCapacityReserveOvershoot" + stride, ir + "\n@probe_memory = private global i8 0\n", string.Empty);
+    }
+
+    [Theory]
     [InlineData("Insert", "__kimi_array_insert_", "(ptr %handle, i64 0, i8 1, ptr @probe_location, i64 5)")]
     public void IncreasedLengthIsCheckedBeforeBufferAccess(string name, string helper, string arguments)
     {

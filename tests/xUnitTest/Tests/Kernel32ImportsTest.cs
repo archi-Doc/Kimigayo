@@ -116,7 +116,7 @@ public sealed class Kernel32ImportsTest
     [Theory]
     [InlineData("{{__kimi_array_grow}}\n", "")]
     [InlineData("{{__kimi_array_shrink}}\n", "")]
-    [InlineData("{{__kimi_array_reserve}}\n", "{{__kimi_array_reserve}}\n{{__kimi_array_reserve}}\n")]
+    [InlineData("{{__kimi_array_shrink}}\n", "{{__kimi_array_shrink}}\n{{__kimi_array_shrink}}\n")]
     public void BrokenArrayRuntimeTemplateFails(string marker, string replacement)
     {
         var template = LegacyRuntimeHelpers.ArrayRuntimeTemplate;

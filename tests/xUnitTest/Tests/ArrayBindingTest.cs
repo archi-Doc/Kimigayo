@@ -189,10 +189,18 @@ public class ArrayBindingTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
-        foreach (var id in new[] { KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend, KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove, KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit })
+        foreach (var id in new[] { KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove, KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit })
         {
             var symbol = c.Library.GetSymbol(id)!;
             Assert.NotEqual(CompilerFunctionKind.None, symbol.CompilerFunction);
+            Assert.Same(c.Library.DynamicArray.Declaration, symbol.Declaration.Parent);
+        }
+
+        // R8-A1a: these two are Kimigayo bodies of the same declaration.
+        foreach (var id in new[] { KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend })
+        {
+            var symbol = c.Library.GetSymbol(id)!;
+            Assert.Equal(CompilerFunctionKind.None, symbol.CompilerFunction);
             Assert.Same(c.Library.DynamicArray.Declaration, symbol.Declaration.Parent);
         }
     }

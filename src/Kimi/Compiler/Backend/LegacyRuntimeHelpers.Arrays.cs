@@ -9,7 +9,6 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum ArrayHelperKind : byte
 {
-    Append,
     Insert,
     Pop,
     Remove,
@@ -143,28 +142,6 @@ internal static partial class LegacyRuntimeHelpers
         done:
           ret void
         }
-        {{__kimi_array_reserve}}
-        entry:
-          ; SPEC 4.9.5: a nonnegative additional count; the checked total is the minimum capacity.
-          %negative = icmp slt i64 %additional, 0
-          br i1 %negative, label %argument_failure, label %total
-        total:
-          %length_ptr = getelementptr i8, ptr %handle, i64 8
-          %length = load i64, ptr %length_ptr, align 8
-          %pair = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %length, i64 %additional)
-          %minimum = extractvalue { i64, i1 } %pair, 0
-          %overflow = extractvalue { i64, i1 } %pair, 1
-          br i1 %overflow, label %overflow_failure, label %grow
-        grow:
-          call void @__kimi_array_grow(ptr %handle, i64 %stride, i64 %minimum, ptr %location, i64 %location_length)
-          ret void
-        argument_failure:
-          call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
-          unreachable
-        overflow_failure:
-          call void @__kimi_abort(i32 {{reason_overflow}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
-          unreachable
-        }
         {{__kimi_array_shrink}}
         entry:
           ; SPEC 4.9.5: a failed candidate allocation leaves the handle unchanged.
@@ -212,7 +189,7 @@ internal static partial class LegacyRuntimeHelpers
         """;
 
     /// <summary>The routines whose definitions ArrayRuntimeTemplate splices, each at its one marker line.</summary>
-    internal static readonly FunctionAbi[] ArrayRuntimeDefinitions = [RuntimeAbi.ArrayGrow, RuntimeAbi.ArrayReserve, RuntimeAbi.ArrayShrink];
+    internal static readonly FunctionAbi[] ArrayRuntimeDefinitions = [RuntimeAbi.ArrayGrow, RuntimeAbi.ArrayShrink];
 
     private const string ArrayHelperPrologue = """
         entry:
@@ -247,14 +224,6 @@ internal static partial class LegacyRuntimeHelpers
     // through the main runtime, and the storage boundary only loads and stores the handle's words.
     private static readonly ArrayHelperRow[] ArrayRows =
     [
-        new(
-            ArrayHelperKind.Append,
-            "__kimi_array_append_",
-            static (name, element, _) => AppendShape(name, element),
-            ArrayHelperPrologue,
-            WriteArrayAppend,
-            HelperNeeds.ArrayRuntime,
-            ArrayHelperResult.None),
         new(
             ArrayHelperKind.Insert,
             "__kimi_array_insert_",
@@ -376,9 +345,6 @@ internal static partial class LegacyRuntimeHelpers
         : new("ptr", name, AbiParameterKind.OwnedSlot, slot);
 
     // A zero-sized element has no slot, so its helpers take no value, source or result pointer (SPEC 4.5).
-    private static FunctionAbi AppendShape(string name, StoredValue element)
-        => element.IsZeroSized ? Located(name, []) : Located(name, [Argument(element, "value", 1)]);
-
     private static FunctionAbi InsertShape(string name, StoredValue element)
         => element.IsZeroSized ? Located(name, [Index]) : Located(name, [Index, Argument(element, "value", 2)]);
 
@@ -404,19 +370,6 @@ internal static partial class LegacyRuntimeHelpers
         : Slotted(name, [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), new("i64", "count"), Result]);
 
     private static long Stride(ArrayHelper helper) => helper.Element.Value.Layout.Stride;
-
-    // Grows to hold one more element and places it at buffer + length * stride (SPEC 4.9.3, 4.9.8).
-    private static void WriteArrayAppend(TextWriter output, ArrayHelper helper)
-    {
-        WriteArrayIncrease(output);
-        output.Write("  call void @__kimi_array_grow(ptr %handle, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", i64 %needed, ptr %location, i64 %location_length)\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
-        WriteStoredArgument(output, helper.Element, "%value", "%slot", "%stored");
-        output.Write("  store i64 %needed, ptr %length_ptr, align 8\n  ret void\n");
-    }
 
     // Requires 0 <= index <= length, then shifts the tail up by one element before placing the value.
     private static void WriteArrayInsert(TextWriter output, ArrayHelper helper)
