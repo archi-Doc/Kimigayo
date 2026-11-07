@@ -34,12 +34,8 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.MakeRc, "public func makeRc<T>(value: T) -> rc/T\nT is ObjectPayload"),
         (KimiDeclarationId.MakeArc, "public func makeArc<T>(value: T) -> arc/T\nT is ObjectPayload"),
         (KimiDeclarationId.Clone, "public func clone<s/T>(value: ref/(s/T)) -> s/T\ns is rc or arc"),
-        (KimiDeclarationId.ArrayInsert, "internal func insertAt(self: uniq/Self, index: isize, value: T)"),
-        (KimiDeclarationId.ArrayPop, "public func pop(self: uniq/Self) -> Option<T>"),
-        (KimiDeclarationId.ArrayRemove, "internal func removeAt(self: uniq/Self, index: isize) -> T"),
         (KimiDeclarationId.ArrayClear, "public func clear(self: uniq/Self)"),
         (KimiDeclarationId.ArrayShrinkToFit, "public func shrinkToFit(self: uniq/Self)"),
-        (KimiDeclarationId.ArraySwap, "internal func swapAt(self: uniq/Self, first: isize, second: isize)"),
         (KimiDeclarationId.ArrayWithCapacity, "public init(! capacity: isize)"),
         (KimiDeclarationId.ArrayRepeating, "public init(! repeating: T, count: isize)\nT is Copy"),
         (KimiDeclarationId.TextFixed, "public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer"),
@@ -341,7 +337,7 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(
             [
                 "Replace  -1 0 True -1", "ArrayReserve  -1 -1 False -1", "ArrayAppend  -1 -1 False -1", "ArrayInsert  -1 -1 False -1", "ArrayPop  -1 -1 False -1", "ArrayRemove  -1 -1 False -1",
-                "ArrayClear  -1 0 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
+                "ArrayClear  -1 0 False -1", "ArraySwap  -1 -1 False -1", "ArrayCapacityImplementation  -1 -1 False -1", "ArrayRepeatingImplementation  -1 -1 False -1",
                 "TextToString format 0 -1 False -1", "TextTryFormat format 0 -1 False -1", "WriterWrite format 1 -1 False -1", "DictionaryReserve  -1 -1 False -1",
                 "DictionaryTryInsert equals 1 -1 False -1", "DictionaryInsertOrReplace equals 1 1 False -1", "DictionaryRemove equals 1 -1 False -1",
                 "DictionaryTryGet equals 1 -1 False -1", "DictionaryClear  -1 0 False -1", "DictionaryShrinkToFit  -1 -1 False -1",
@@ -429,12 +425,16 @@ public partial class KimiLibraryShapeTest
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Library.Value.Library.GetSymbol(id)!.Declaration));
 
-    // SPEC 4.9.3, 4.9.5, 22.2 (R8-A1a): the operations that became bodies keep the headers their compiler function rows held.
+    // SPEC 4.9.3, 4.9.5, 22.2 (R8-A1a, A1b): the operations that became bodies keep the headers their compiler function rows held.
     [Theory]
     [InlineData(KimiDeclarationId.ArrayReserve, "public func reserve(self: uniq/Self, additional: isize)")]
     [InlineData(KimiDeclarationId.ArrayAppend, "public func append(self: uniq/Self, value: T)")]
     [InlineData(KimiDeclarationId.StorageSetArrayLength, "internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)")]
     [InlineData(KimiDeclarationId.StorageGrowArray, "internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)")]
+    [InlineData(KimiDeclarationId.ArrayInsert, "internal func insertAt(self: uniq/Self, index: isize, value: T)")]
+    [InlineData(KimiDeclarationId.ArrayPop, "public func pop(self: uniq/Self) -> Option<T>")]
+    [InlineData(KimiDeclarationId.ArrayRemove, "internal func removeAt(self: uniq/Self, index: isize) -> T")]
+    [InlineData(KimiDeclarationId.ArraySwap, "internal func swapAt(self: uniq/Self, first: isize, second: isize)")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
         => Assert.Equal(header, Line(Library.Value.Library.GetSymbol(id)!.Declaration));
 

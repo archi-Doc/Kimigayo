@@ -70,12 +70,8 @@ public enum CompilerFunctionKind : byte
     MakeArc,
     Clone,
     TestTempDirectory,
-    ArrayInsert,
-    ArrayPop,
-    ArrayRemove,
     ArrayClear,
     ArrayShrinkToFit,
-    ArraySwap,
     TextFixed,
     TextHeap,
     TextWriter,
@@ -212,8 +208,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or
-            CompilerFunctionKind.Swap or CompilerFunctionKind.ArrayInsert or CompilerFunctionKind.ArrayPop or
-            CompilerFunctionKind.ArrayRemove or CompilerFunctionKind.ArrayClear or CompilerFunctionKind.ArrayShrinkToFit or CompilerFunctionKind.ArraySwap or
+            CompilerFunctionKind.Swap or CompilerFunctionKind.ArrayClear or CompilerFunctionKind.ArrayShrinkToFit or
             CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextHeap or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or CompilerFunctionKind.TextToString or
             CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or CompilerFunctionKind.FixedBufferBytes or CompilerFunctionKind.FixedBufferText or
             CompilerFunctionKind.FixedBufferValidate or CompilerFunctionKind.FixedBufferClear or CompilerFunctionKind.FixedBufferReserve or CompilerFunctionKind.FixedBufferIntoText or
@@ -254,7 +249,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.ArrayInsert and <= CompilerFunctionKind.TextValidateUtf8 =>
+        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.ArrayClear and <= CompilerFunctionKind.TextValidateUtf8 =>
             CompilerFunctionEffect.Inputs,
         >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or
             >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,

@@ -1153,13 +1153,13 @@ public sealed partial class InstanceCollectorTest
     public void AnArrayOperationIsItsFunctionInstancesLegacyRow()
     {
         var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
-            "func p(values: uniq/Array<i32>)\n    _ = values.pop()\nfunc w(values: uniq/Array<isize>)\n    _ = values.pop()\n" +
+            "func p(values: uniq/Array<i32>) => values.shrinkToFit()\nfunc w(values: uniq/Array<isize>) => values.shrinkToFit()\n" +
             "func c(values: uniq/Array<Res>) => values.clear()\nfunc n(values: uniq/Array<i32>) => values.clear()\n" +
             "func v(values: uniq/Array<i32>)\n    let f = Array<i32>.shrinkToFit\n    f(values)\n" +
             "func a() -> (uniq/Array<Res>) -> () => Array<Res>.clear\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["LegacyRow Array<i32> ArrayPop"], AtCalls(program, set, "Fn p"));
-        Assert.Equal(["LegacyRow Array<isize> ArrayPop"], AtCalls(program, set, "Fn w"));
+        Assert.Equal(["LegacyRow Array<i32> ArrayShrinkToFit"], AtCalls(program, set, "Fn p"));
+        Assert.Equal(["LegacyRow Array<isize> ArrayShrinkToFit"], AtCalls(program, set, "Fn w"));
         Assert.Equal(["LegacyRow Array<Res> ArrayClear"], AtCalls(program, set, "Fn c"));
         Assert.All(RowTargets(program, set, "LegacyRow Array<Res> ArrayClear"), static x => Assert.Equal(["DropGlue Res"], x));
         Assert.Empty(Targets(program, set, "LegacyRow Array<i32> ArrayClear"));

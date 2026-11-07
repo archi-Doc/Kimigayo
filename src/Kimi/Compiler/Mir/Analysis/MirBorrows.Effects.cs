@@ -36,23 +36,23 @@ internal sealed partial class MirBorrows
     private static bool Bit(ReadOnlySpan<ulong> row, int bit) => (row[bit >> 6] & (1UL << bit)) != 0;
 
     // What decides an effect on the Field A4 numbers f in a key row and classes: a write key, else Unknown, else a read key; null for none.
-    private static MirFactKind? Decided(ReadOnlySpan<ulong> row, byte classes, int field)
+    private static ProblemFactKind? Decided(ReadOnlySpan<ulong> row, byte classes, int field)
     {
         if (Bit(row, (2 * field) + 1))
         {
-            return MirFactKind.EffectWrite;
+            return ProblemFactKind.EffectWrite;
         }
 
         if ((classes & MirEffects.Unknown) != 0)
         {
-            return MirFactKind.EffectUnknown;
+            return ProblemFactKind.EffectUnknown;
         }
 
-        return Bit(row, 2 * field) ? MirFactKind.EffectRead : null;
+        return Bit(row, 2 * field) ? ProblemFactKind.EffectRead : null;
     }
 
     // The conflicts relation's row of an effect decided so: a read key reads, a write key and Unknown write.
-    private static AccessKind EffectRow(MirFactKind? fact) => fact == MirFactKind.EffectRead ? AccessKind.EffectRead : AccessKind.EffectWrite;
+    private static AccessKind EffectRow(ProblemFactKind? fact) => fact == ProblemFactKind.EffectRead ? AccessKind.EffectRead : AccessKind.EffectWrite;
 
     // The effect rule at a location whose effect access is listed, on that access's check set: nothing unless an effect root has a
     // candidate or the location drops a mutable static; else the reservations it activates stamped (W6, Unique), then per view of the run
@@ -128,13 +128,13 @@ internal sealed partial class MirBorrows
             }
         }
 
-        var outcome = MirEffects.Outcome(classes).Join(decided == MirFactKind.EffectWrite ? MirOutcome.Decided : MirOutcome.None);
+        var outcome = MirEffects.Outcome(classes).Join(decided == ProblemFactKind.EffectWrite ? MirOutcome.Decided : MirOutcome.None);
         if (outcome.IsDecided || outcome.IsNone)
         {
             return;
         }
 
-        var read = decided == MirFactKind.EffectRead;
+        var read = decided == ProblemFactKind.EffectRead;
         for (var u = this.First(root); u != None; u = this.candidates[u].Next)
         {
             if (this.Conflicts(u, root, [], AccessKind.EffectWrite, taking) && !(read && this.Conflicts(u, root, [], AccessKind.EffectRead, taking)))
@@ -179,7 +179,7 @@ internal sealed partial class MirBorrows
     // Language problem (PD12 (ii) as written); a key both a proved initializer and the site itself may produce counts as proved, since keys
     // do not record their source (P5). Null where no initializer without a validator finding proves it and one the proof consults has a
     // finding, which no consumer reads (R5-M183): the answer rests on that finding.
-    private bool? Proved(MirLocation at, int taking, ReadOnlySpan<ulong> row, MirFactKind fact, int field)
+    private bool? Proved(MirLocation at, int taking, ReadOnlySpan<ulong> row, ProblemFactKind fact, int field)
     {
         var terminator = this.body.Blocks[at.Block].Terminator;
         MirBody? ensured = null;
@@ -188,7 +188,7 @@ internal sealed partial class MirBorrows
             ensured = this.program.StaticInit(this.body, this.body.Operands[terminator.Start]);
         }
 
-        var bit = fact == MirFactKind.EffectWrite ? (2 * field) + 1 : 2 * field;
+        var bit = fact == ProblemFactKind.EffectWrite ? (2 * field) + 1 : 2 * field;
         bool? proved = false;
         this.Work += this.body.Statics.Length;
         for (var d = 0; d < this.body.Statics.Length; d++)
@@ -214,7 +214,7 @@ internal sealed partial class MirBorrows
             for (var view = 0L; view < MirCases.Count(initializer); view++)
             {
                 var summary = effects.Summary(initializer, view, out var classes);
-                if (fact == MirFactKind.EffectUnknown ? (classes & MirEffects.Unknown) != 0 : Bit(summary, bit))
+                if (fact == ProblemFactKind.EffectUnknown ? (classes & MirEffects.Unknown) != 0 : Bit(summary, bit))
                 {
                     return true;
                 }
@@ -228,21 +228,21 @@ internal sealed partial class MirBorrows
     // key that no initializer the proof covers may produce (Proved); null where none is left. Rests where a proof consulted an initializer
     // with a validator finding (R5-M183), Fact then meaningless: the initializers a proof consults do not depend on the kind, so its proofs
     // are all true or null, or all true or false, and the first not proved decides both.
-    private (MirFactKind? Fact, bool Rests) Unproved(MirLocation at, int taking, ReadOnlySpan<ulong> row, byte classes, int field)
+    private (ProblemFactKind? Fact, bool Rests) Unproved(MirLocation at, int taking, ReadOnlySpan<ulong> row, byte classes, int field)
     {
-        if (Bit(row, (2 * field) + 1) && this.Proved(at, taking, row, MirFactKind.EffectWrite, field) is not true and var write)
+        if (Bit(row, (2 * field) + 1) && this.Proved(at, taking, row, ProblemFactKind.EffectWrite, field) is not true and var write)
         {
-            return (MirFactKind.EffectWrite, write is null);
+            return (ProblemFactKind.EffectWrite, write is null);
         }
 
-        if ((classes & MirEffects.Unknown) != 0 && this.Proved(at, taking, row, MirFactKind.EffectUnknown, field) is not true and var unknown)
+        if ((classes & MirEffects.Unknown) != 0 && this.Proved(at, taking, row, ProblemFactKind.EffectUnknown, field) is not true and var unknown)
         {
-            return (MirFactKind.EffectUnknown, unknown is null);
+            return (ProblemFactKind.EffectUnknown, unknown is null);
         }
 
-        if (Bit(row, 2 * field) && this.Proved(at, taking, row, MirFactKind.EffectRead, field) is not true and var read)
+        if (Bit(row, 2 * field) && this.Proved(at, taking, row, ProblemFactKind.EffectRead, field) is not true and var read)
         {
-            return (MirFactKind.EffectRead, read is null);
+            return (ProblemFactKind.EffectRead, read is null);
         }
 
         return (null, false);
@@ -267,5 +267,5 @@ internal sealed partial class MirBorrows
         => terminator is { Kind: MirTerminatorKind.Drop, Place: { IsStatic: true } place } && this.body.Statics[~place.Root].Mutable ? ~place.Root : -1;
 
     // An effect fact on a static root: what decided it, at its Field's declaration (its initializer's source).
-    private MirFact Effect(MirFactKind kind, int root) => new(kind, this.program.StaticInit(this.body, root - this.body.Locals.Length)!.Source);
+    private ProblemFact Effect(ProblemFactKind kind, int root) => new(kind, this.program.StaticInit(this.body, root - this.body.Locals.Length)!.Source);
 }

@@ -215,7 +215,7 @@ public sealed partial class Binding
 
                 return this.BindType(conversion.Right, conversionScope);
             case IdentifierNameKoto name:
-                var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
+                var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name);
                 if (symbol?.Kind == BindingSymbolKind.Function)
                 {
                     // A declaration's Type is its return contract, not the Type of a reference to that declaration.
@@ -250,7 +250,7 @@ public sealed partial class Binding
 
                 return null;
             case InvocationKoto { Method: IdentifierNameKoto callee }:
-                var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee, false);
+                var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee);
                 return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? this.CallResultEvidence(function.Type, scope, readConversions) : null;
             case InvocationKoto { Method: MemberAccessKoto member } when !this.MayBeValueQualifier(member.Left is GenericsKoto generic ? generic.Identifier! : member.Left, this.NodeScope(member, scope)):
                 // A Type-qualified, fully formed container supplies its constructor/Case result without surveying arguments

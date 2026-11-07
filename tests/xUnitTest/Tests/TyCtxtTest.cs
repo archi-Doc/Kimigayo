@@ -10,7 +10,7 @@ namespace XunitTest;
 /// <summary>The Type context (<c>Compilation.Types</c>, docs/dev/COMPILER_ARCHITECTURE.md, R2b): a substitution is interned, so a warm
 /// lookup returns the same object and allocates nothing, and a call's, closure's or function item's substitution applied to a declared
 /// Type is the instantiation Binding makes for it, over the Kimi library and every milestone program.</summary>
-public sealed class TyCtxtTest
+public sealed partial class TyCtxtTest
 {
     // Generic functions whose requirement calls, in the closed calls below, run each witness kind: a conformance witness, an inherited one, one
     // through a conditional conformance of a Type with an Origin slot, one through a bound Contract reference (also written in a generic Type's
@@ -387,7 +387,7 @@ public sealed class TyCtxtTest
             "func probe(y: uniq/i32, g: G, h: H during y, k: K during y) => ()\npublic func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
-        Assert.Equal([RawStep.Static, RawStep.Shared, RawStep.Exclusive], [c.Types.RawStep(p[1], 0, []), c.Types.RawStep(p[2], 1, []), c.Types.RawStep(p[3], 1, [])]);
+        Assert.Equal([HoldStep.Static, HoldStep.Shared, HoldStep.Exclusive], [c.Types.StoredStep(p[1], 0, []), c.Types.StoredStep(p[2], 1, []), c.Types.StoredStep(p[3], 1, [])]);
     }
 
     // SPEC 15.3.5, 5.2.1 condition 3, 5.7 Origins (DECISIONS BU-44): a raw layer stating a slot only conditional pair slots use steps by
@@ -403,8 +403,8 @@ public sealed class TyCtxtTest
         foreach (var (at, part) in ConditionalRows)
         {
             var members = new List<RawMember>();
-            Assert.True(types.RawMembers(p[at], part, [], members));
-            rows.Add($"{types.RawStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
+            Assert.True(MembersAt(types, p[at], part, [], members));
+            rows.Add($"{types.StoredStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
         }
 
         Assert.Equal(
@@ -428,8 +428,8 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal(
-            [RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared],
-            [c.Types.RawStep(p[3], 1, []), c.Types.RawStep(p[4], 1, []), c.Types.RawStep(p[5], 1, []), c.Types.RawStep(p[6], 1, []), c.Types.RawStep(p[7], 0, []), c.Types.RawStep(p[8], 0, [])]);
+            [HoldStep.Exclusive, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Shared],
+            [c.Types.StoredStep(p[3], 1, []), c.Types.StoredStep(p[4], 1, []), c.Types.StoredStep(p[5], 1, []), c.Types.StoredStep(p[6], 1, []), c.Types.StoredStep(p[7], 0, []), c.Types.StoredStep(p[8], 0, [])]);
     }
 
     // DECISIONS BU-44: a binder after 64 pair slots keeps its cases (its ordinal has no width limit): a nested declaration's raw Field
@@ -444,8 +444,8 @@ public sealed class TyCtxtTest
         foreach (var (at, part) in new[] { (2, 1), (3, 1), (4, 1), (5, 1) })
         {
             var members = new List<RawMember>();
-            Assert.True(types.RawMembers(p[at], part, [], members));
-            rows.Add($"{types.RawStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
+            Assert.True(MembersAt(types, p[at], part, [], members));
+            rows.Add($"{types.StoredStep(p[at], part, [])} [{string.Join(", ", members.Select(static x => x.Referent.Name + (x.Exclusive ? " excl" : string.Empty)))}]");
         }
 
         Assert.Equal(["Exclusive []", "Shared []", "Exclusive [i32 excl]", "Shared [i32]"], rows);
@@ -464,7 +464,7 @@ public sealed class TyCtxtTest
         {
             c.Binding.Bind(BindingMode.Final);
             members.Clear();
-            if (types.RawStep(p[2], 1, []) != RawStep.Exclusive || types.RawStep(p[5], 1, []) != RawStep.Shared || !types.RawMembers(p[4], 1, [], members))
+            if (types.StoredStep(p[2], 1, []) != HoldStep.Exclusive || types.StoredStep(p[5], 1, []) != HoldStep.Shared || !MembersAt(types, p[4], 1, [], members))
             {
                 throw new InvalidOperationException("Wide raw steps changed.");
             }
@@ -482,8 +482,8 @@ public sealed class TyCtxtTest
         var steps = 0;
         foreach (var (at, part) in ConditionalRows)
         {
-            steps += (int)types.RawStep(p[at], part, []);
-            types.RawMembers(p[at], part, [], members);
+            steps += (int)types.StoredStep(p[at], part, []);
+            MembersAt(types, p[at], part, [], members);
         }
 
         var count = members.Count;
@@ -493,8 +493,8 @@ public sealed class TyCtxtTest
             var again = 0;
             foreach (var (at, part) in ConditionalRows)
             {
-                again += (int)types.RawStep(p[at], part, []);
-                types.RawMembers(p[at], part, [], members);
+                again += (int)types.StoredStep(p[at], part, []);
+                MembersAt(types, p[at], part, [], members);
             }
 
             if (again != steps || members.Count != count)
@@ -517,9 +517,9 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
-        Assert.True(c.Types.RawMembers(p[1], 0, [], members));
+        Assert.True(MembersAt(c.Types, p[1], 0, [], members));
         Assert.Empty(members);
-        Assert.True(c.Types.RawMembers(p[2], 1, [], members) && c.Types.RawMembers(p[3], 1, [], members));
+        Assert.True(MembersAt(c.Types, p[2], 1, [], members) && MembersAt(c.Types, p[3], 1, [], members));
         Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
     }
 
@@ -542,7 +542,7 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
-        Assert.True(c.Types.RawMembers(p[1], 0, [], members));
+        Assert.True(MembersAt(c.Types, p[1], 0, [], members));
         Assert.Equal([new(0, BoundType.I32, false)], members);
     }
 
@@ -580,8 +580,8 @@ public sealed class TyCtxtTest
         var (types, p) = StoredLayers();
         (BoundType Instance, int Part, int[] Positions)[] layers = [(p[3], 0, []), (p[4], 0, [0]), (p[5], 1, []), (p[6], 1, []), (p[7], 0, []), (p[8], 0, [0]), (p[8], 1, [1])];
         Assert.Equal(
-            [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
-            layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
+            [HoldStep.Own, HoldStep.Own, HoldStep.Shared, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Own, HoldStep.Own],
+            layers.Select(x => types.StoredStep(x.Instance, x.Part, x.Positions)));
         Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
@@ -603,17 +603,17 @@ public sealed class TyCtxtTest
             (p[16], 0, [0]), (p[17], 0, [0]), (p[18], 0, [0]), (p[19], 0, [0]), (p[21], 0, []),
         ];
         Assert.Equal(
-            [RawStep.Unstated, RawStep.Exclusive, RawStep.Static, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Unstated,
-                RawStep.Unstated, RawStep.Unstated, RawStep.Unstated, RawStep.Exclusive, RawStep.Exclusive, RawStep.Unstated],
-            layers.Select(x => types.RawStep(x.Instance, x.Part, x.Positions)));
+            [HoldStep.Address, HoldStep.Exclusive, HoldStep.Static, HoldStep.Address, HoldStep.Address, HoldStep.Address, HoldStep.Address,
+                HoldStep.Address, HoldStep.Address, HoldStep.Address, HoldStep.Exclusive, HoldStep.Exclusive, HoldStep.Address],
+            layers.Select(x => types.StoredStep(x.Instance, x.Part, x.Positions)));
         Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
         var members = new List<RawMember>();
-        Assert.Equal((false, true, true), (types.RawMembers(p[10], 0, [], members), types.RawMembers(p[9], 0, [], members), types.RawMembers(p[21], 0, [], members)));
+        Assert.Equal((false, true, true), (MembersAt(types, p[10], 0, [], members), MembersAt(types, p[9], 0, [], members), MembersAt(types, p[21], 0, [], members)));
         Assert.Empty(members);
         Assert.Same(p[13], p[21]);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(p[20], 0, [])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(p[20], 0, [])).Message, StringComparison.Ordinal);
         var supplied = types.Intern(BoundTypeKind.Constructed, p[9].Symbol, SemanticsKind.Owner, [types.Pointer(BoundType.I32, BoundOrigin.Holder)]);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(supplied, 0, [])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(supplied, 0, [])).Message, StringComparison.Ordinal);
     }
 
     // DECISIONS BU-58: WrittenAt is the Type a part's declaration writes at inline positions while it is a Tuple, a fixed array or a raw
@@ -664,11 +664,11 @@ public sealed class TyCtxtTest
         Assert.Equal(
             ["raw/i32 during Parameter Shared True 1", "- Exclusive False 0", "raw/i32 during Parameter Shared True 1", "- Exclusive False 0",
                 "raw/ref/i32 during Parameter Shared True 0", "raw/ref/i32 during Static Static True 0"],
-            rows.Select(x => $"{Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))} {types.RawStep(x.Instance, x.Part, x.Positions)} " +
-                $"{types.RawMembers(x.Instance, x.Part, x.Positions, Cleared(members))} {members.Count}"));
+            rows.Select(x => $"{Shown(TyCtxt.WrittenAt(x.Instance, x.Part, x.Positions))} {types.StoredStep(x.Instance, x.Part, x.Positions)} " +
+                $"{MembersAt(types, x.Instance, x.Part, x.Positions, Cleared(members))} {members.Count}"));
         Assert.Equal(
             [Binding.StepOf(KeptLayer(types, q[1], 1, [0]).RawOrigin), Binding.StepOf(KeptLayer(types, q[2], 2, [0]).RawOrigin)],
-            [types.RawStep(q[1], 1, [0]), types.RawStep(q[2], 2, [0])]);
+            [types.StoredStep(q[1], 1, [0]), types.StoredStep(q[2], 2, [0])]);
         (BoundType Instance, int Part)[] roots = [(q[2], 1), (q[2], 2), (q[1], 0)];
         Assert.Equal(["(raw/i32, i32)", "-", "-"], roots.Select(static x => Shown(TyCtxt.WrittenAt(x.Instance, x.Part, []))));
 
@@ -695,7 +695,7 @@ public sealed class TyCtxtTest
             kept = k < 8 ? kept.Components[0] : kept;
         }
 
-        Assert.Equal(RawStep.Static, c.Types.RawStep(holder, 1, path));
+        Assert.Equal(HoldStep.Static, c.Types.StoredStep(holder, 1, path));
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-41): an instance's stored parts (StoredParts) are its substitution of the declared Fields,
@@ -722,7 +722,7 @@ public sealed class TyCtxtTest
         var q = KotoTree.Walk(failed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         Assert.Equal([false, true, true, true, false], Kept(failed, q[1]).Concat(Kept(failed, q[2])).Select(static x => x is null));
         Assert.True(Kept(failed, q[1])[0]!.CarriesRawOrigin && Kept(failed, q[2])[1]!.CarriesRawOrigin);
-        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.RawStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => failed.Types.StoredStep(q[2], 0, [1])).Message, StringComparison.Ordinal);
 
         // A struct's kept Fields and kept base, or an enum's kept Case payload Tuples, each AdtDef's WithoutRawOrigins.
         static BoundType?[] Kept(Compilation c, BoundType holder)
@@ -755,24 +755,24 @@ public sealed class TyCtxtTest
         var members = new List<RawMember>();
         var wrap = Kept(1);
         Assert.Equal(
-            (RawStep.Exclusive, false, false),
-            (types.RawStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), types.RawMembers(wrap, 0, [], members)));
-        Assert.Equal(RawStep.Unstated, types.RawStep(AdtDef.FieldType(p[1], 0)!, 0, []));
+            (HoldStep.Exclusive, false, false),
+            (types.StoredStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), MembersAt(types, wrap, 0, [], members)));
+        Assert.Equal(HoldStep.Address, types.StoredStep(AdtDef.FieldType(p[1], 0)!, 0, []));
         Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
         var option = Kept(9);
         var some = Array.FindIndex(option.Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 });
         (BoundType Instance, int Part, int[] Positions)[] layers =
             [(option, some, [0]), (Kept(10), 0, [0]), (Kept(10), 0, [1]), (Kept(11), 0, [1]), (Kept(11), 1, [0]), (Kept(12), 0, [1]), (Kept(13), 0, [])];
         Assert.Equal(
-            ["Exclusive False False", "Unstated True True", "Exclusive False False", "Exclusive False False", "Unstated True True",
-                "Exclusive False False", "Unstated False True"],
-            layers.Select(x => $"{types.RawStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
-                $"{types.RawMembers(x.Instance, x.Part, x.Positions, members)}"));
+            ["Exclusive False False", "Address True True", "Exclusive False False", "Exclusive False False", "Address True True",
+                "Exclusive False False", "Address False True"],
+            layers.Select(x => $"{types.StoredStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
+                $"{MembersAt(types, x.Instance, x.Part, x.Positions, members)}"));
         Assert.Empty(members);
         Assert.Same(AdtDef.FieldType(p[13], 0), Kept(13));
         (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
         Assert.All(broken, x => Assert.Contains(
-            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.RawStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
+            "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
 
         // The first kept part of the probe's parameter i.
         BoundType Kept(int i) => types.StoredParts(p[i], out _)[0]!;
@@ -1015,17 +1015,17 @@ public sealed class TyCtxtTest
         int[] zero = [0], one = [1];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, one) != RawStep.Own ||
-                types.RawStep(p[19], 0, zero) != RawStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
-                !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.RawStep(nested, 0, []) != RawStep.Exclusive ||
-                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || types.RawMembers(nested, 0, [], members) ||
+            if (types.StoredStep(p[3], 0, []) != HoldStep.Own || types.StoredStep(p[6], 1, []) != HoldStep.Shared || types.StoredStep(p[8], 1, one) != HoldStep.Own ||
+                types.StoredStep(p[19], 0, zero) != HoldStep.Exclusive || types.StoredParts(p[19], out _).Length != 2 ||
+                !ReferenceEquals(types.StoredParts(p[22], out _)[0], nested) || types.StoredStep(nested, 0, []) != HoldStep.Exclusive ||
+                TyCtxt.RawStated(types.StoredParts(nested, out _)[0]!) || MembersAt(types, nested, 0, [], members) ||
                 TyCtxt.RawStated(types.StoredParts(p[3], out _)[0]!))
             {
                 throw new InvalidOperationException("Stored raw steps changed.");
             }
 
-            if (!ReferenceEquals(declared.Types.StoredParts(holder2, out _)[0], wrap) || declared.Types.RawStep(wrap, 0, []) != RawStep.Unstated ||
-                !TyCtxt.RawStated(declared.Types.StoredParts(wrap, out _)[0]!) || !declared.Types.RawMembers(wrap, 0, [], members))
+            if (!ReferenceEquals(declared.Types.StoredParts(holder2, out _)[0], wrap) || declared.Types.StoredStep(wrap, 0, []) != HoldStep.Address ||
+                !TyCtxt.RawStated(declared.Types.StoredParts(wrap, out _)[0]!) || !MembersAt(declared.Types, wrap, 0, [], members))
             {
                 throw new InvalidOperationException("A declared raw layer's reads changed.");
             }
@@ -1739,7 +1739,7 @@ public sealed class TyCtxtTest
         _ => Binding.DiagnosticTypeName(type),
     };
 
-    // The raw layer an instance stores at a part and inline positions, as RawStep reads it: its kept part (an enum Case's payload Tuple),
+    // The raw layer an instance stores at a part and inline positions, as StoredStep reads it: its kept part (an enum Case's payload Tuple),
     // then per position a Tuple's component or a fixed array's element.
     private static BoundType KeptLayer(TyCtxt types, BoundType instance, int part, int[] positions)
     {
@@ -1751,6 +1751,10 @@ public sealed class TyCtxtTest
 
         return layer;
     }
+
+    // RawMembers of the raw layer an instance stores at a part and inline positions, by the key a Holdings read gives it.
+    private static bool MembersAt(TyCtxt types, BoundType instance, int part, int[] positions, List<RawMember> members)
+        => types.RawMembers(KeptLayer(types, instance, part, positions), TyCtxt.WrittenAt(instance, part, positions), instance, members);
 
     // The compilation of DeclaredSource and its `probe`'s parameter Types by name.
     private static (Compilation C, Dictionary<string, BoundType> Parameters) DeclaredLayers()

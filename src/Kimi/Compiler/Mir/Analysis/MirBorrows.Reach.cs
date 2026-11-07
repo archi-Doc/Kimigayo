@@ -31,6 +31,7 @@ internal sealed partial class MirBorrows
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
     private readonly Dictionary<MirHoldingKey, MirModeDepths> walked = new(); // HoldsLoans' scratch.
     private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
+    private readonly List<Hold> holds = []; // HoldsLoans' scratch for the entries it reads.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
@@ -244,7 +245,7 @@ internal sealed partial class MirBorrows
     }
 
     // Whether a local's case Type may hold a Loan, with what a call may write past it (MirTypes.HoldsLoans, one walk per distinct case Type
-    // and program version): the answer is a function of the interned Type and of Binding's stored raw steps (TyCtxt.RawStep), which a
+    // and program version): the answer is a function of the interned Type and of what Binding publishes it holds (TyCtxt.Holdings), which a
     // version fixes, so the memo is cleared when the program's version changes (DECISIONS R4-M140).
     private bool Holding(int local)
     {
@@ -259,7 +260,7 @@ internal sealed partial class MirBorrows
         ref var known = ref CollectionsMarshal.GetValueRefOrAddDefault(this.holding, type, out var exists);
         if (!exists)
         {
-            known.Holds = MirTypes.HoldsLoans(type, types, this.walked, this.members, out known.Writes);
+            known.Holds = MirTypes.HoldsLoans(type, types, this.walked, this.members, this.holds, out known.Writes);
         }
 
         this.writable[local] = known.Writes;
