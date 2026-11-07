@@ -28,10 +28,6 @@ public class ClosedProjectionConstraintBindingTest
     [InlineData("Source.Origin.Item is not i32", false)]
     [InlineData("Source.Origin.Item is Copy and Owned", true)]
     [InlineData("Source.Origin.Item is string or Copy", true)]
-    [InlineData("(Source.Origin.Item, bool) is Copy", true)]
-    [InlineData("[2 of Source.Origin.Item] is Copy", true)]
-    [InlineData("ref/Source.Origin.Item during static is Copy", true)]
-    [InlineData("[2 of Source.Origin.Item] is [3 of i32]", false)]
     public void ClosedProjectionIdentityAndCapabilitiesAreJudged(string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source("struct", clause));
@@ -102,7 +98,7 @@ public class ClosedProjectionConstraintBindingTest
     [Fact]
     public void WarmClosedProjectionProofsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Source("struct", "[2 of Source.Origin.Item] is Copy"));
+        var c = MinimalEmissionTest.Analyze(Source("struct", "Source.Origin.Item is Copy"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

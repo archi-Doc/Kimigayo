@@ -82,7 +82,7 @@ public sealed partial class Binding
     {
         public override void Visit(Koto node)
         {
-            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Layout" } } layout)
+            if (node is AttributeKoto { Kind: AttributeKind.Layout } layout)
             {
                 binding.IndexLayoutAttribute(layout);
                 if (layout.AttributeChain is { } precedingAttribute)
@@ -94,7 +94,7 @@ public sealed partial class Binding
             }
 
             var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
-            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } attribute &&
+            if (node is AttributeKoto { Kind: AttributeKind.Test } attribute &&
                 (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null) &&
                 attribute.CodeContext.RecoveryCause(attribute) is null)
             {
@@ -223,7 +223,7 @@ public sealed partial class Binding
                     {
                         if (!ReferenceEquals(attribute, marker))
                         {
-                            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "Layout" })
+                            if (attribute.Kind == AttributeKind.Layout)
                             {
                                 // The syntax visitor reports Layout's wrong target below.
                                 continue;
@@ -255,7 +255,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } invalidTest)
+            if (node is AttributeKoto { Kind: AttributeKind.Test } invalidTest)
             {
                 if (invalidTest.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(testOwner) && TestDefinition.IsValidSyntax(testOwner))
                 {
@@ -280,7 +280,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Layout" } } layout)
+            if (node is AttributeKoto { Kind: AttributeKind.Layout } layout)
             {
                 binding.IndexLayoutAttribute(layout);
                 if (layout.AttributeChain is { } precedingAttribute)
@@ -291,7 +291,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } import && AttributeTarget(import) is FunctionKoto)
+            if (node is AttributeKoto { Kind: AttributeKind.LibraryImport } import && AttributeTarget(import) is FunctionKoto)
             {
                 // SPEC 22.6: the operand names a library and symbol; it is validated, never evaluated.
                 import.BindingFailure = BindingFailure.None;

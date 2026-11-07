@@ -307,8 +307,8 @@ internal group Storage
         internal var releaseKind: u8
 
     /// Grows the storage to at least `minimum` elements of `stride` bytes (SPEC 4.9.5, 4.9.8), one routine for every
-    /// element Type, whose `data` accesses through `ArrayRepr<u8>` are punned ones (IMPL 21.1.3). A failure Aborts at the
-    /// standard operation's caller location.
+    /// element Type, whose `data` accesses through `ArrayRepr<u8>` are punned ones (IMPL 21.1.3). A failure Aborts at
+    /// the standard operation's caller location.
     ///
     /// - safety: `handle` addresses a live Array whose elements have `stride` bytes each, and `minimum` exceeds its
     ///   capacity.
@@ -348,7 +348,7 @@ internal group Storage
 
     /// Publishes `length` completed elements within the existing allocation; it neither reads nor destroys any element.
     ///
-    /// - safety: `length` is within the capacity, each `data[i]` of `value`'s `ArrayRepr` below it designates a distinct
-    ///   Place holding a complete value, and the storage holds no other value.
+    /// - safety: `length` is within the capacity, each `data[i]` of `value`'s `ArrayRepr` below it designates a
+    ///   distinct Place holding a complete value, and the storage holds no other value.
     internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)
         unsafe => (*(value@follow@raw@raw/ArrayRepr<E>)).length = length

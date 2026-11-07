@@ -5248,6 +5248,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Removes: `calleeDeclaration` of `CheckTypeConstraints` and `FormedPart` (R4-M162's patch) with its count line; G374's input-side
     call record (b2in: `UnprovenConstraint_Kd` at the call -1, the Closure's `TypeMismatch_Kd` +1).
   - Stays: the per-use re-proof of a declared signature at its three uses, G375's remaining item.
+  - Superseded in part by BU-120 (2026-11-07): the 'Stays' bullet holds only for an answer other than Proven and for contract matching; the rejection of a published-verdict column stands for a publication.
   - nin (`f: (Box<Array<i32>>) -> i32` under `T is Copy`): the declaration's `UnsatisfiedConstraint_Kd` records stay; the call's
     re-proof `NoApplicableOverload_Kd` goes; the selected call's instantiated input and the Closure's parameter add
     `UnsatisfiedConstraint_Kd` (+2). All dependent on the declaration's record (Q13).
@@ -9642,7 +9643,7 @@ resumed by R4-M86 (2026-10-20).
   - A kind is a row: its owner and writer, its output (kept where the owner publishes it), its re-entry rule (a SPEC cycle error at
     the declaration, or no evidence) and its not-ready path (Abandon to NotStarted). Kind: `Signature` (`BindHeader`): an inferred
     stored Property's re-entry is `CyclicBinding_Kd`, another header's re-entry reads no evidence, a header waiting on an associated
-    Type is abandoned. BU-95's set demand (`Binding.Types.cs`) is an ordinary demand inside its suspended consultation frame; its
+    Type is abandoned. `SignatureVerdict` (BU-120): Done means Proven; no column. BU-95's set demand (`Binding.Types.cs`) is an ordinary demand inside its suspended consultation frame; its
     state guard, a second copy of `BindHeader`'s entry rule, is deleted.
   - Interims: the cycle record stays at today's demanders (`BindReference`, `BindVariableCore`) until D2 d2 moves it into the row
     with the Error state; the header and variable guards read each other's Running state (`Resolving`) until D2 d4 makes the
@@ -9657,6 +9658,30 @@ resumed by R4-M86 (2026-10-20).
     an alias no Bind count reaches); an Error state before its writer (d2); memoizing the abandoned header (a wait, not a failure); a
     `SourceCheck` kind now (its rounds recompute a Running declaration, not once per pass); a `Variable` kind now (its callers re-bind
     a failed local on each use; d4); a state read at BU-95's site (a second copy of the entry rule).
+- **BU-120 A declared signature's Proven is a declaration query, `DeclQueryKind.SignatureVerdict`; any other answer is computed at each read**
+  (2026-11-07; R7-V1, plan §5.1, PLAN G375; ruling 3, the owner's O-44 for contract matching) SPEC 8.1.3, 8.3.3, 15.3.7, 15.6.1, 23.1.2.
+  Supersedes in part R4-M163: its "Stays: the per-use re-proof" holds now only for an answer other than Proven and for contract matching.
+  Its rejection of a published-verdict column stands for a publication, whose coverage reason still holds, and does not reach a demand query.
+  Extends BU-105 with a row. BU-57, BU-59 unchanged.
+  - Row: owner, the formation file. Output, the state: Done means Proven in this pass; no column. Re-entry, Unknown (SPEC 8.3.3); `case
+    Running` closes `BeginQuery`'s switch and is unreachable by reading on this form. Not ready: any other answer, or a demand before the
+    first `ValidateConformances` (`contractHeadersReady`, whose reproducer is a failure before the bodies), abandoned and computed at the next
+    read in the reader's scope. A header-state guard has no reproducer. Removal condition: R7-C2's `Enumerate` (G170's C3 in BU-59's and BU-105's words).
+  - Only Proven is kept because a failed answer depends on who asks and writes the channel. Storing it gave valid-U programs a new Language
+    error (review 1, B1 and B2).
+  - G375's second owner remains on the failing path, on calls and references, until R7-C2 makes a failed answer final.
+  - Contract matching calls the compute directly and reads no row, until R7-V5 removes that gate (O-44, PLAN G556).
+  - A demand under `activeRequirementContract` is outside the query: a requirement's call is proven under its reference, not as its
+    declaration (o4a). Removal condition: R7-C2, with the compute.
+  - The row has no reader inside verification, which is why `conformanceChecks` cannot change a kept Proven. A row reader inside verification
+    would end this reason.
+  - A Proven stays read after a later failure, by calls and references. That failure keeps its own record; `ValidateConstraintUses` and
+    `CheckCallTypeConstraints` read no row. `RevalidateImplicitConstructors` reads it, so a record resting on a declaration that fails after the
+    bodies goes, by rule W (Q13: w1's `Unsupported_Kd`). A program of that shape proving valid, or an independent record lost, reopens this.
+  - The declaration walk hands no clause fact on while sigref1 stays open (PLAN G375).
+  - Rejected: the row at contract matching (five dependent record moves at a reader R7-V5 deletes); settled verdicts (B1, B2); `declarationFailed`
+    (a bool for one commit); a `SourceStates` publication; a verdict epoch (BU-105); the reporting check as the only judge (it runs after every
+    reader); a header-state guard without a reproducer; a flag steering `RevalidateImplicitConstructors`' read (a symptom fix).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
@@ -10042,6 +10067,21 @@ resumed by R4-M86 (2026-10-20).
   - Not covered: 7.7.4 names only the result, so a raw layer without an Origin that the Closure writes through a parameter still
     erases, though its concrete call retains the receiver there (T29/I30 probe w05); decided by the owner's O-33, 「(a)」: the write-through retention counts too (PLAN G532, a later unit).
   - Rejected: a second reading of rule A's trigger (a walk for an unstated raw result layer) beside `Binding.Retention`.
+- **BU-118 An attribute is classified once, by the parser: `AttributeKind`** (2026-11-07; R7-N4, plan §5.1 N4 and §6, adopted with the plan; Major; one review, ACCEPT)
+  - `AttributeKoto.Kind` is closed: Unknown, Layout, Test, LibraryImport. `Classify` is the one read of an attribute's Name, and that read moved from Binding to Parsing.
+    Binding and `TestDefinition` read the kind. `Koto.FindAttribute` replaces `IsLibraryImport`, `HasLibraryImport` and `Marker`'s loop.
+  - No kind without a reader: R8-G1 adds the lang family as one enum member, one `Classify` arm and one word in the ArchitectureRulesTest row.
+  - The kind is stored, and `Koto.ReplaceChild` classifies again, because a parse recovery replaces the Name. Rejected: a computed `Kind` (design §3); without the
+    re-classification a nesting cut gives a false `InvalidLayoutAttribute_Kd`, and `#Test(1)` loses its `UnresolvedBinding_Kd`.
+  - `"C"` and `"Kimigayo"` stay strings: they are argument values, not names.
+- **BU-119 Constraint subjects by the grammar** (owner, 2026-11-07, verbatim 「O-42はaで決定します」, confirmed 「(a) のまま進める」; R7-N7, plan §5.1 N7; Major; one review, ACCEPT at re-check) A Type written with Type arguments, such as `W<Y>`, is no Constraint subject:
+  the parser follows Appendix F's `ConstraintSubject`, which restores the line R4-M115's rejected list took from proposal B 7.2 ("constructed Constraint subjects"; `Option<U> is Option<i32>` would be a second spelling of `U is i32`).
+  - `Parser.ParseTypeConstraint` keeps its Type path, because an `AssociatedTypeReference`'s qualifier may be a constructed Type (`W<Y>.(Has2).Out`, `::W<Y>.(Has2).Out`), and `IsConstraintSubject` is the one owner of the shape: a Type with no Type
+    arguments or an `AssociatedTypeReference`, rooted or not. Any other Type is `ExpectedSyntax_Kd` with `Syntax.Constraint` at the subject.
+  - The clause is a recovery, so nothing rests on its proposition, and its requirement still binds, against no subject, as a failed selector's does: its records are independent (SPEC 23.1.2). An `associate` item is no Constraint clause and has
+    its own entry, `ParseAssociatedConstraint`. No alias reaches the form: SPEC 18.2.1 targets only a Kotonoha or a group, and an alias creates no Core.
+  - SPEC 8.2.1's sentence and Appendix F's production follow, with `"::"? Name` and `PrimitiveType`, which the parser keeps.
+  - Rejected: a new `SyntaxForm` (the clause block already reports `Syntax.Constraint`); a grammar path with no Type path (it would repeat the Type grammar for qualifiers).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -15530,3 +15570,45 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Plan: RP7 and RP21 end (Q14); RQ6's units run one prototype-first candidate unless the owner instructs otherwise; R8-R1 and
     R8-G1 are Major units under their approved design.
   - Reason: the middle session ran the windows besides its defect stream, and three sessions edited the same documents.
+- **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
+  on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
+  - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
+    Kotonoha, are the one component of an Array, a Slice and a string; IMPL 21.1.3 states the Place and each `data` pointer's guarantee
+    in SPEC 5.5's shape, so a raw Field access through them is an ordinary access. `Array`, `Slice` and `string` keep their Type
+    semantics. `during self` stands only on `ArrayRepr.data`, where the value owns the storage (SPEC 5.7, 5.2.1).
+  - Stages (option (b)): R1a now, the structs and the text; R1b, `Layout`'s handle rows derived from the structs' placement, after the
+    A1 and K1 families, when fewer offset sites remain; R1c, the fixed-array boundary, with A1d.
+  - O-41 (a): the contract lives in IMPL 21.1.3, SPEC unchanged for this fact: user code cannot name the structs, SPEC 3.1.2 leaves the
+    layout implementation-defined, and SPEC 5.5's hook is a guarantee documented by the implementation.
+  - O-43 (A), a lasting exception: `Storage.StringRepr` and the runtime's statement (`RuntimeAbi.String`, `%kimi.string`, the runtime
+    IR's Field order) are a lasting pair at the runtime boundary. The plan keeps `__kimi_destroy_string` as IR, `TestRuntime.ll` and
+    `FunctionCodegen.Stores.cs:Text` read the same words, and `RuntimeAbi` is process-wide and cannot read a compilation's placement.
+    No Transitional tag and no removal stage. The guard is permanent, and each part holds one thing: `LayoutTest`'s `StringRepr` row and
+    `RecordFieldsAreFixed` hold `StringRepr` against `RuntimeAbi.String`; `MinimalEmissionTest.cs:34` holds `%kimi.string`'s definition;
+    `FunctionCodegenTest.Strings.cs:164-167` and `.Updates.cs:115, 144` hold `Stores.cs:Text`; the templates' Field order
+    (`WindowsRuntime.ll.in:104, :264, :299`, `TestRuntime.ll`) has only native runs: `String*`, `Utf*` and `Abort*`.
+  - Supersedes: the plan's §5.2 SP1 row for this fact (the rest of SP1 stays with its units), and §2.2's RQ11 "the punnable list of
+    Appendix E gains the pairs", which names no existing list (it is SPEC 5.2's) and needs no pair once the Fields are ordinary Places.
+  - Vocabulary: `KimiDeclarationId` 195 → 198 (`ArrayRepr`, `SliceRepr`, `StringRepr`; the lang-item set at G1, RQ9). `[Transitional("R8")]`
+    tags stay 29.
+  - Temporary, each removed at R1b: `Layout.Handles` beside the structs (already tagged; words pinned equal for all three), and the pin
+    theory's handle rows, which can then no longer fail.
+  - Rejected: the plan's R1 as one unit (it edits about 15 offset sites that A1 deletes, changes every fixture's IR text and exceeds an
+    hour); a Place sentence on each bodiless operation (several statements of one rule, gone at G1); the text in SPEC 22.1 (O-41).
+- **R8-M2 `append`, `reserve` and `setArrayLength` are Kimigayo bodies** (2026-11-07; R8-A1a; plan RP20, RQ9; prototype R8-L0p; on R8-M1)
+  SPEC 4.9.3, 4.9.5, 4.9.6, 4.9.8, 23.1.2; IMPL 21.1.3.
+  - Adopted: the three are bodies over `Storage.ArrayRepr<T>`. `Storage.growArray`, non-generic over `raw/ArrayRepr<u8>` and a stride,
+    is the one Array growth rule, beside `DictionaryStorage.grow`; its `data` accesses are punned ones, which IMPL 21.1.3 covers. Its
+    three bounded products use `Wrapping<isize>`, each after the bound that makes it representable: checked products left three dead
+    Abort blocks. `append` keeps `Row: None` and `reserve` gains it (SPEC 4.9.6), which `EachRowOperationsBodyStaysWithinItsRow` now checks.
+  - RP20 for `CompilerFunctionKind.ArrayReserve`, `ArrayAppend` and `StorageSetArrayLength` is implemented by removal: they no longer
+    exist, so no zero-reference row guards them (RP6). `stride<T>` is `IntrinsicId.Stride`'s first producer, with the `CompilerFunctionKind`
+    `StorageStride` until G1 removes the kinds; `IntrinsicWriter.Unproduced` gives way to a `Stride` row.
+  - Ruling under Q13 and SPEC 23.1.2 ("How failures are grouped into diagnostic records ... are implementation-defined; grouping never
+    changes acceptance"; the planning session, 2026-11-07; for the A1, K1 and later body families): a layout failure of an element Type
+    reached through a body is one failed requirement, grouped per instance, as `truncate` and every body already report it. The surviving
+    record stands at a user site and acceptance does not move.
+  - Counts (RQ9): `CompilerFunctionKind` 76 → 74; `KimiDeclarationId` 198 → 200 (`StorageStride`, `StorageGrowArray`, the latter because each
+    helper on an Abort path needs a `CallerLocation` catalog row until G1). `IntrinsicId` is unchanged.
+  - Rejected: a generic `growArray<T>` (one routine per element Type); an intrinsic for growth (expressible; the unit's O2 A/B shows no need).
+  - Temporary: `__kimi_array_grow` stays for Insert, Place and the literal until A1b.

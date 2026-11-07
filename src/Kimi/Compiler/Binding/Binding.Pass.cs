@@ -17,6 +17,7 @@ public sealed partial class Binding
         this.inferredConstructorTargets.Clear();
         this.callInferenceFailures?.Clear();
         this.storageVersion++;
+        this.signatureWalks = 0;
         this.storageMarks.Clear();
         this.storageStack.Clear();
         this.issues.Clear();

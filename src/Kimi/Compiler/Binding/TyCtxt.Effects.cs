@@ -19,7 +19,7 @@ internal sealed partial class TyCtxt
     {
         { CompilerFunction: not CompilerFunctionKind.None } => IntrinsicDisposition.Effect(function.CompilerFunction),
         { Declaration.BindingState: not BindingState.Resolved } => CompilerFunctionEffect.Dependent,
-        { Declaration: FunctionKoto declaration } when Binding.IsLibraryImport(declaration) => CompilerFunctionEffect.Environment,
+        { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => CompilerFunctionEffect.Environment,
         _ => CompilerFunctionEffect.Unclassified,
     };
 

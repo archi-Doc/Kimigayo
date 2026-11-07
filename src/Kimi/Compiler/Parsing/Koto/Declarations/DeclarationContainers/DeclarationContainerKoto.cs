@@ -726,7 +726,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             reader.Advance();
             if (Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
             {
-                var associated = Parser.ParseTypeConstraint(ref reader, finishLine: false);
+                var associated = Parser.ParseAssociatedConstraint(ref reader);
                 if (associated is not null)
                 {
                     associated.IsAssociatedConstraint = true;
