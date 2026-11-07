@@ -182,6 +182,19 @@ public sealed partial class RetentionTest
     public void DeclaredRelationsDecideTheResult(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 15.8.2, PLAN G553: a Closure over a `var` local reads as one over a `let` binding or a stated Origin: its signature names the
+    // local region's sources where its environment keeps the region, a source assigned after the capture included. An exclusive capture's
+    // result keeps the receiver's own value, a shared one's what a read through the receiver carries, tied.
+    [Theory]
+    [InlineData("func f(value: uniq/i32 during q)\n    var v = value@move\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during q)\n    let v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during q)\n    var v: uniq/i32 during q = value@move\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Value}")]
+    [InlineData("func f(value: uniq/i32 during p, other: uniq/i32 during q)\n    var v = value@move\n    var h = func [v] () => v\n    _ = h()\n    v = other@move\n", "result {0 Value}")]
+    [InlineData("func f(value: ref/i32 during q)\n    var v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Content}")]
+    [InlineData("func f(value: ref/i32 during q)\n    let v = value\n    var h = func [v] () => v\n    _ = h()\n", "result {0 Content}")]
+    public void ACapturedLocalRegionReadsAsItsSources(string source, string expected)
+        => Assert.Equal([expected], ValueCalls(Bind(source)));
+
     // SPEC 15.6.4, 15.6.1, 15.3.4: a nested function or closure is read under the premises its body is checked under, its enclosing
     // function's included: an input's well-formedness (c outlives o) there makes `value` reach the result, through a direct call, a
     // Closure called by its declared signature (C8; its parameter after its call receiver at input 0, DECISIONS R4-M148) and an enclosing

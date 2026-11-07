@@ -530,7 +530,7 @@ public sealed partial class Binding
     }
 
     // Each atom's node, interned before the catalog's walk, so its local-Place premises (R5) reach them; a carrier's hidden Origins outlive
-    // the layer above each of its occurrences (R2, SPEC 15.6.1).
+    // the layer above each of its occurrences (R2, SPEC 15.6.1); a captured local region reaches its sources (CapturedRegion).
     private int[] RetentionNodes(OriginPremiseEnvironment environment)
     {
         var atoms = this.retentionAtoms;
@@ -542,9 +542,34 @@ public sealed partial class Binding
             {
                 AddPremiseEdge(environment, nodes[i], this.PremiseNode(environment, layer), OriginPremiseRule.Input);
             }
+
+            if (atoms[i] is { Captured: true, Origin: { } origin })
+            {
+                this.CapturedRegion(environment, origin);
+            }
         }
 
         return nodes;
+    }
+
+    // SPEC 15.8.2, 15.3.6 (PLAN G553): a Closure's published signature names a local region's sources (ResolveLocalResultOrigins), its
+    // environment the region, which the Closure's Type keeps: one Origin in two forms. A capture may hold a value of any source, so a
+    // position naming a source reaches the region, and every source is an edge: one that a later assignment adds names nothing the
+    // signature does. A may-fact of this contract, no relation of the Origins.
+    private void CapturedRegion(OriginPremiseEnvironment environment, BoundOrigin origin)
+    {
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            this.CapturedRegion(environment, origin.Operands[i]);
+        }
+
+        if (IsLocalRegion(origin))
+        {
+            foreach (var source in this.LocalRegionSources(origin))
+            {
+                AddPremiseEdge(environment, this.PremiseNode(environment, origin), this.PremiseNode(environment, source), OriginPremiseRule.Input);
+            }
+        }
     }
 
     // An erased signature (the head's contract): the instantiated signature Type and the Binder of its per-call Origins.
