@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 // abstract part keeps a raw source's own value by rule 3's fills (HoldsRaw, Occurs; DECISIONS BU-66); Binding.Retention.Rows.cs reads
 // them into a storage's Value kinds and pairs, and the hold walk reads HoldsRaw.
 // Inputs: the contract's instantiated inputs, the walk's visits, the nodes of a Type's own layers and arguments (OwnNodes), the parts a
-// value holds (HeldParts) and the pair layers' admitted cases (LayerAdmitted).
+// value holds (Holdings) and the pair layers' admitted cases (LayerAdmitted).
 // Outputs: per computation, the sources by node (retentionSources, with their layer paths, retentionPaths); per question, whether a
 // position's Type can hold a source.
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
@@ -69,10 +69,9 @@ public sealed partial class Binding
     // (its referent, Through), as a shared layer held by value is too. Returns the node past which a source goes through the Type's
     // layer (-1: none, also below a shared layer reached through another): each path forms its own sources (form (b)), the walk visiting
     // a Type once per path (`at.Source.Path`, an interned id), so one reached through two layers forms the borrows of both.
-    private int Source(OriginPremiseEnvironment environment, BoundType type, StorageAt at)
+    private int Source(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run)
     {
-        var referent = Abstract(type) ? null : this.BorrowTarget(type);
-        var exclusive = referent is not null && (IsInvariantLayer(type, this) || type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice);
+        var referent = this.Referent(run, out var exclusive);
         if (!at.Source.Held && !exclusive)
         {
             return -1;
@@ -140,67 +139,42 @@ public sealed partial class Binding
             return true;
         }
 
-        return source.Through is { } referent && this.Borrows(position, referent, 0);
+        return source.Through is { } referent && this.Borrows(position, null, null, referent, 0);
     }
 
     // Whether a position, or a part it carries (Holds), is a borrow of a part a referent holds by value: one formed through a source's
     // layer.
-    private bool Borrows(BoundType? position, BoundType referent, int depth)
+    private bool Borrows(BoundType? position, BoundType? written, BoundType? holder, BoundType referent, int depth)
     {
         if (position is null || depth > StorageBound)
         {
             return false;
         }
 
-        if (this.BorrowTarget(position) is { } target)
+        var run = this.BodyRun(position, written, holder, out _);
+        var borrows = false;
+        if (this.Referent(run, out _) is { } target)
         {
             this.retentionParts.Clear();
-            return this.Holds(referent, target, carried: false, 0);
+            borrows = this.Holds(referent, target, carried: false, 0);
         }
-
-        if (Abstract(position) || IsCallable(position))
+        else
         {
-            return false;
-        }
-
-        _ = this.HeldParts(position, null, null, carried: true, out var run);
-        var borrows = false;
-        for (var i = run.Start; !borrows && i < run.End; i++)
-        {
-            borrows = this.retentionHeld[i].Addressed && this.Borrows(this.retentionHeld[i].Type, referent, depth + 1);
+            for (var i = run.Start; !borrows && i < run.End; i++)
+            {
+                var part = this.retentionHeld[i];
+                borrows = (this.ByValue(position, part) || RawStorage(part) || (part.Flags & HoldFlags.ReadOnly) != 0) &&
+                    this.Borrows(part.Part, part.Written, part.Holder, referent, depth + 1);
+            }
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return borrows;
     }
 
-    // A library Type whose storage the compiler implements: a nominal Type that keeps no part, no base and no Type argument (HeapBuffer).
-    private bool Opaque(BoundType type) => type is { Symbol.LibraryDeclaration: not null, Components.Count: 0 } && this.KeepsNoPart(type);
-
-    // A struct or enum whose instance keeps no part and no base (Instance): a compiler-managed collection, whose Type arguments are its
-    // elements (SPEC 4.5, 4.9), or, with none, storage the compiler implements (Opaque).
-    private bool KeepsNoPart(BoundType type)
-        => (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) && this.Readable(type, this.PrepareTypeStorage(type)) &&
-            this.Instance(type) is { Parts.Length: 0, PartsBase: null };
-
-    // What a borrow-shaped Type refers to, through which a borrow of it is formed (SPEC 15.6.3): a borrow, Slice or UniqSlice
-    // (BorrowReferent), a pair layer admitting a borrow, or a raw layer stating an Origin, which retains as the borrow that Origin belongs
-    // to would (SPEC 5.7); null for any other.
-    private BoundType? BorrowTarget(BoundType type)
-    {
-        if (TryPairLayer(type, out _, out var target))
-        {
-            return (this.LayerAdmitted(type) & SemanticsMask.Borrow) != 0 ? target : null;
-        }
-
-        var stated = type.Semantics == SemanticsKind.Raw && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) };
-        return stated ? type.Components[0] : this.BorrowReferent(type, out _, out _);
-    }
-
-    // Whether a storage holds a value of a Type as itself or a part (HeldParts; `carried`: also a shared handle's payload, which a new value
-    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36),
-    // a library Type keeping no part (compiler-implemented storage, Opaque) and raw storage a value holds (an Admitted part: `during self`
-    // content, an unstated raw layer's pointee; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
+    // Whether a storage holds a value of a Type as itself or a part (its entries; `carried`: also a shared handle's payload, which a new value
+    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
+    // and raw storage a value holds (RawStorage; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
     // as an implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
     private bool Holds(BoundType? storage, BoundType value, bool carried, int depth)
     {
@@ -214,22 +188,18 @@ public sealed partial class Binding
             return false;
         }
 
-        if (Abstract(storage) || this.Fits(storage, value) || this.Opaque(storage))
+        if (this.Fits(storage, value))
         {
             return true;
         }
 
-        if (IsCallable(storage) || this.BorrowShaped(storage) is not null)
-        {
-            return false;
-        }
-
-        _ = this.HeldParts(storage, null, null, carried, out var run);
+        var run = this.BodyRun(storage, null, null, out _);
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {
             var part = this.retentionHeld[i];
-            holds = part.Place == PartPlace.Admitted || (part.Addressed && this.Holds(part.Type, value, carried, depth + 1));
+            holds = part.Step == HoldStep.Abstract || RawStorage(part) ||
+                ((this.ByValue(storage, part) || (carried && (part.Flags & HoldFlags.ReadOnly) != 0)) && this.Holds(part.Part, value, carried, depth + 1));
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);

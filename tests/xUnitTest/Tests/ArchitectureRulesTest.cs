@@ -21,7 +21,7 @@ public class ArchitectureRulesTest
         "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.OriginSummaries.cs=2;" +
         "Binding/Binding.PlaceAuthority.Raw.cs=1;" +
         "Binding/Binding.RawOrigins.Holder.cs=4;Binding/Binding.RawOrigins.Steps.cs=3;Binding/Binding.RawOrigins.cs=4;" +
-        "Binding/Binding.Retention.Atoms.cs=1;Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
+        "Binding/Binding.Storage.cs=3;Binding/Binding.TypeOrigins.cs=3;" +
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
@@ -120,6 +120,10 @@ public class ArchitectureRulesTest
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
+    // G416 Q2: HoldStep absorbed RawStep, so one vocabulary names a layer's step (RP6).
+    [InlineData("The RawStep vocabulary", "src/Kimi/Compiler", "*.cs", @"\bRawStep\b", 0)]
+    // G416 U1: a value's parts are Holdings' entries, read by every fit and fold; the private walks stay gone (RP6).
+    [InlineData("Private walks of what a value holds", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:HeldParts|BorrowShaped|BorrowTarget|PartPlace|HeldPart|Stores)\b(?=\()|\bPartPlace\b", 0)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
@@ -132,7 +136,7 @@ public class ArchitectureRulesTest
     // G160-1 gives its raw arm (Storage, TypeRelations, OriginDeclarations, LocalRegions.Types, TypeRelations.Origins), a closure instance's
     // context change, which passes the raw role on, or an array literal's formation, never a raw layer. The raw role (BoundType.RawOrigin,
     // a Pointer that states one) is read and written only at its named sites; review checks the Intern calls whose Semantics is a variable.
-    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.RawStep, a stored layer's from its declaration (design-final §15).
+    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.StoredStep, a stored layer's from its declaration (design-final §15).
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
