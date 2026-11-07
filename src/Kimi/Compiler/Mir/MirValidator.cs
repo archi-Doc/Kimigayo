@@ -47,8 +47,9 @@ internal enum MirViolation : byte
     // Types a Tuple's token, its text a string).
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
-    // marked Use of another operand, a function item constant other than the operand of an Assign's Use, the collector's site (G154), or
-    // a Copy, other than a case site's operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88).
+    // marked Use of another operand, a function item constant other than the operand of an Assign's Use, the collector's site (G154), a
+    // constant record other than an input of a Fn call that keeps nothing of it (ConstantRecords), or a Copy, other than a case site's
+    // operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88).
     StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10),
     // or, over the program, its static without a StaticInit body (G191).
     Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names, or, where a
@@ -165,6 +166,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         private int opaqueValues;
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
+        private bool calling; // Whether they are a Call's, whose constant records it checks itself (ConstantRecords).
         private bool delivering; // Whether they are a Move's into _0's whole Place, a Result local's one read (MirValidator.Tables).
         private bool byCase; // Whether they are a case site's, which its views acquire (Views), the Copy rule's one exemption (BU-88).
 

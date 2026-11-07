@@ -13,8 +13,8 @@ namespace XunitTest;
 public sealed partial class FunctionCodegenTest
 {
     // A Library whose generic comparisons and arithmetic run on built-in Types: equality of i32, f64, Unit, bool, char, Wrapping<u8>, a ref
-    // layer, a Tuple and a Tuple holding a user witness; ordering of string, u8, char and a Tuple; addition of i32 and Wrapping<u8>; division
-    // of i32; negation of f64.
+    // layer, a Tuple and a Tuple holding a user witness; ordering of string, which is a library body and no shim, u8, char and a Tuple;
+    // addition of i32 and Wrapping<u8>; division of i32; negation of f64.
     private const string Shims =
         "func equal<T>(left: ref/T, right: ref/T) -> bool\n    T is Equatable\n    return left == right\n" +
         "func order<T>(left: ref/T, right: ref/T) -> i32\n    T is Comparable\n    return left.compare(right)\n" +
@@ -87,10 +87,10 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(text);
         var shims = ShimsOf(ir, text);
 
-        // i32, f64, (), bool, char, Wrapping<u8>, ref/i32, (i32, string), (Key, i32) equals; string, u8, char, (i32, string) compare; i32,
+        // i32, f64, (), bool, char, Wrapping<u8>, ref/i32, (i32, string), (Key, i32) equals; u8, char, (i32, string) compare; i32,
         // Wrapping<u8> added; i32 divided; f64 negated.
-        Assert.Equal(17, shims.Length);
-        Assert.Equal([3, .. Enumerable.Repeat(4, 16)], shims.Select(static x => x.Parameters.Count).Order());
+        Assert.Equal(16, shims.Length);
+        Assert.Equal([3, .. Enumerable.Repeat(4, 15)], shims.Select(static x => x.Parameters.Count).Order());
         Assert.All(shims, static x => Assert.Equal(["ptr", "i64"], x.Parameters.Skip(x.Parameters.Count - 2).Select(static p => p.Shape.Split(' ')[0])));
         foreach (var shim in shims)
         {
@@ -104,7 +104,8 @@ public sealed partial class FunctionCodegenTest
     // an integer's equality is Eq or both values unequal to themselves (constant false for an integer, folded at O2), char's, bool's
     // (narrowed) and a wrapping integer's on the unsigned integer column; a floating one's is fcmp oeq or both une with themselves, so all
     // NaNs are one value and +0.0 == -0.0; Unit's is the rows' Reflexive constants without a load, true; a ref layer's loads its referents
-    // first. An order is zext Gt - zext Lt, unsigned for u8 and char; a string's is StringCompare's i32 itself.
+    // first. An order is zext Gt - zext Lt, unsigned for u8 and char; a string's is no leaf: its generic caller calls the witness itself,
+    // whose i32 it returns.
     [Fact]
     public void BuiltinLeavesAreTheOperatorTablesEntries()
     {
@@ -132,9 +133,9 @@ public sealed partial class FunctionCodegenTest
             Assert.Equal(["zext", "zext", "sub", "ret"], unsigned.Instructions.Skip(4).Select(static x => x.Opcode));
         }
 
-        var order = ir.Function(LegacyRuntimeHelpers.StringCompare.Name);
-        var texts = Assert.Single(shims, x => x.Instructions.Any(y => y.Callee == order) && x.Blocks.Count == 1);
-        Assert.Same(texts.Instructions.Single(x => x.Callee == order), texts.Blocks[^1].Terminator.Operands[0]);
+        var order = StringWitnesses(ir, c).Order;
+        Assert.DoesNotContain(shims, x => x.Blocks.Count == 1 && x.Instructions.Any(y => y.Callee == order));
+        Assert.Contains(FunctionsOf(ir, c, "order"), x => x.Instructions.Any(y => y.Callee == order));
     }
 
     // SPEC 13.4 (DECISIONS R5-M126): a Tuple compares its parts left to right; a part that is not equal decides and its value is returned
@@ -147,18 +148,17 @@ public sealed partial class FunctionCodegenTest
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
         var shims = ShimsOf(ir, text);
-        var equal = ir.Function(LegacyRuntimeHelpers.StringEqual.Name);
+        var (equal, order) = StringWitnesses(ir, c);
         var pairs = Assert.Single(shims, x => x.Instructions.Any(y => y.Callee == equal));
         Assert.Equal(3, pairs.Blocks.Count);
         Assert.Equal("ret i1 %", pairs.Blocks[1].Terminator.Shape);
         Assert.Same(pairs.Blocks[0].Terminator.Operands[0], pairs.Blocks[1].Terminator.Operands[0]);
-        var order = ir.Function(LegacyRuntimeHelpers.StringCompare.Name);
         var ranks = Assert.Single(shims, x => x.Blocks.Count == 3 && x.Instructions.Any(y => y.Callee == order));
         Assert.Contains("icmp eq i32 %, 0", Shapes(ranks));
         Assert.Equal("ret i32 %", ranks.Blocks[1].Terminator.Shape);
         var keys = Assert.Single(
             shims,
-            static x => x.Instructions.Any(static y => y.Callee?.Signature.StartsWith("internal i1 (", StringComparison.Ordinal) is true));
+            x => x != pairs && x.Instructions.Any(static y => y.Callee?.Signature.StartsWith("internal i1 (", StringComparison.Ordinal) is true));
         var witness = keys.Instructions.Single(static x => x.Opcode == "call");
         Assert.Equal(["argument", "argument"], witness.Operands.Select(static x => x.Opcode));
     }

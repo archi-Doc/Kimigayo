@@ -18,8 +18,9 @@ public sealed partial class Binding
             : ComparisonTypes.OperatorTableRuns(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
             : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
 
-    // The legacy composition under the Contract's mapping: CallPlan leaves from RequirementImplementation under the built-in target's scope,
-    // null where a leaf does not resolve there (a Type parameter's), retained per storage version (DECISIONS R5-M68).
+    // The legacy composition under the Contract's mapping: CallPlan leaves from RequirementImplementation under the built-in target's scope (a
+    // built-in Type's library witness among them, LeafTarget), null where a leaf does not resolve there (a Type parameter's), retained per
+    // storage version (DECISIONS R5-M68).
     [Transitional("R7", Reason = "The legacy comparison composition beside TyCtxt.Comparison, read by A4's Witnesses until A-12 reads the view, else R7.")]
     private BoundComparison? ComparisonPlan(BindingSymbol site, BoundType self, KimiDeclarationId identity)
     {

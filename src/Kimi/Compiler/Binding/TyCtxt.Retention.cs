@@ -121,6 +121,27 @@ internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundO
     internal ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)> Pairs => this.pairs;
 
     internal bool Untied => this.untied;
+
+    /// <summary>Whether this storage may hold an input, by any kind or under a condition.</summary>
+    /// <param name="input">The input slot.</param>
+    /// <returns>Whether a row names it.</returns>
+    internal bool Holds(int input)
+    {
+        if ((uint)input < (uint)this.kinds.Length && this.kinds[input] != RetentionKind.None)
+        {
+            return true;
+        }
+
+        foreach (var pair in this.pairs)
+        {
+            if (pair.Input == input)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 /// <summary>What a call may retain in the storage it may write through one input (<see cref="Output"/>; DECISIONS R4-M154): its root
@@ -160,6 +181,28 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention[] 
     private readonly int[] referentStores = referentStores;
 
     internal bool IsLimit => this.result is null;
+
+    /// <summary>Whether the call may keep an input past its end: its result or a storage it may write holds it, and the Limit, which states
+    /// nothing, may. False is what an inspection means (SPEC 13.4: the `bool` result keeps none).</summary>
+    /// <param name="input">The input slot.</param>
+    /// <returns>Whether the input may outlive the call in any output.</returns>
+    internal bool Keeps(int input)
+    {
+        if (this.result is null || this.result.Holds(input))
+        {
+            return true;
+        }
+
+        foreach (var written in this.writes)
+        {
+            if (written.Own.Holds(input) || written.All.Holds(input))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     internal StorageRetention Result => this.result ?? throw new InvalidOperationException("The Limit retention has no result.");
 
