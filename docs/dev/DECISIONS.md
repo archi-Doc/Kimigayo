@@ -9962,6 +9962,23 @@ resumed by R4-M86 (2026-10-20).
     Closure values admitted only by the caller's clause, at value and named calls (y02c, y02cn). A5's input moves: such calls are
     accepted and publish their relations. Open: a Typed callable is still no evidence at the root or a leaf (PLAN G537, §2).
 
+- **BU-116 A Closure whose result retains its receiver is not erased** (2026-11-07; PLAN G516, O-28, BU #56 by Middle's unit
+  r4-oi-o28; Major, no design review required (RI30 B-1)) SPEC 7.7.4, 15.6.4, 5.7 Calls. The owner's O-28 (a), verbatim 「O-28は、(a)：規則 A の保持も「呼び出し元への依存」と数える、で決定します」:
+  rule A's retention of a Closure's call receiver (R4-M131, BU-40) is a dependence of its result contract on the receiver, so 7.7.4
+  does not erase the Closure. No SPEC edit.
+  - Owner: `Binding.ErasesToFunction`, after selection, once the Shared receiver, the signature and the Owned environment hold. Its
+    one source is the concrete call's retention, `TyCtxt.Retains` over `ClosureDefinitionSignature` (the record A5 reads):
+    `ResultDependsOnReceiver` holds where the result retains input 0, the receiver (`TyCtxt.HasReceiverInput`), by `Value`. A
+    Function Item has no receiver; Content (a captured reference's external Origin) is no dependence; a result naming the receiver
+    atom still fails the signature first.
+  - Record: the erasure part `Dependence`, the consumer's `TypeMismatch_Kd` with its own Note, as for the receiver part; a
+    retention past its limits is the located `Unsupported_Kd` at the value. No code, `BindingFailure`, requirement or IR form.
+  - Tests (the owner's O-37, verbatim 「(a) の承認」): the library ABI test's Closure states `-> raw/u8 during static` (a 5.7 claim) and
+    Front's RawPointerSyntaxTest row uses a Function Item; the old forms are invalid rows of the erasure test.
+  - Not covered: 7.7.4 names only the result, so a raw layer without an Origin that the Closure writes through a parameter still
+    erases, though its concrete call retains the receiver there (T29/I30 probe w05); decided by the owner's O-33, 「(a)」: the write-through retention counts too (PLAN G532, a later unit).
+  - Rejected: a second reading of rule A's trigger (a walk for an unstated raw result layer) beside `Binding.Retention`.
+
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
