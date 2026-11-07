@@ -572,7 +572,10 @@ public sealed partial class Binding
             return Holding.None;
         }
 
-        var (step, refers, stepped, hidden) = ((HoldStep?)null, run.End > run.Start, false, false);
+        HoldStep? step = null;
+        var refers = run.End > run.Start;
+        var stepped = false;
+        var hidden = false;
         for (var i = run.Start; i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
@@ -606,14 +609,16 @@ public sealed partial class Binding
         for (var i = run.Start; i < run.End; i++)
         {
             var part = this.retentionHeld[i];
-            met |= part.Step == HoldStep.Abstract ? this.HeldComponents(type, output, kept, below) : this.Held(part.Part, part.Written, part.Holder, output, kept, below);
+            met |= part.Step == HoldStep.Abstract ? this.HeldComponents(type, output, kept, below)
+                : this.Held(part.Part, part.Written, part.Holder, output, kept, below);
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return met;
     }
 
-    // An abstract part's components (a projection's base, an adaptation's cases), which the hold walk goes through.
+    // An abstract part's components (a projection's base and Contract, an adaptation's cases), which rule A's hold walk goes through though
+    // row 17 publishes none: dev's answer, removed at U3b, where rule A reads entries (G416).
     private Holding HeldComponents(BoundType type, int output, RetentionKind[] kept, bool lent)
     {
         var met = Holding.None;

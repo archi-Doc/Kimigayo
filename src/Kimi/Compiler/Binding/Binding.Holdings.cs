@@ -4,7 +4,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The storage a value of a Type holds, SPEC 3.3.4's table (G416's unit S writes it; fact.md rows 1-21) one level at a time (DECISIONS BU-41, BU-46, BU-58, BU-91).
+// The storage a value of a Type holds, SPEC 3.3.4's table (G416's unit S writes it; fact.md rows 1-21) one level at a time (DECISIONS
+// BU-41, BU-46, BU-58, BU-91).
 // Responsibility: the one reading of a held part's step, flags and stater, each row a value of Hold.
 // Inputs: the Type and, for a stored part, the Type its declaration writes there and the holding instance (the keys a reader's memo holds).
 // Outputs: a run appended to the caller's list, in stack order; false at Binding's Limit (a struct's or enum's storage past its limits),
@@ -202,6 +203,19 @@ public sealed partial class Binding
         }
     }
 
+    // The one enumeration of what a `during self` layer's AnyOf entry admits (row 13): any value of the holder's Origin arguments, U4 widening
+    // it to every Origin of its Type. Each fold reads this, never the arguments.
+    private static IReadOnlyList<BoundOrigin> AnyOfOrigins(BoundType holder) => holder.OriginArguments;
+
+    // A nominal Type's Type arguments (row 3b, SPEC 15.3.5: a dependency, no Places).
+    private static void TypeArguments(BoundType type, BoundType? holder, List<Hold> into)
+    {
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            into.Add(new(type.Components[i], HoldStep.Loan, HoldContent.Its, HoldFlags.None, null, holder));
+        }
+    }
+
     // SPEC 8.1.1: a pair layer holds one entry per admitted case.
     private void PairHoldings(BoundType type, BoundType target, List<Hold> into)
     {
@@ -243,12 +257,12 @@ public sealed partial class Binding
                 into.Add(new(pointee, HoldStep.Address, TyCtxt.RawStated(layer) ? HoldContent.Any : HoldContent.Its, HoldFlags.Raw, null, null));
                 break;
             case var step:
-                into.Add(new(pointee, step, HoldContent.Members, HoldFlags.Raw, written, holder));
+                into.Add(new(pointee, step, HoldContent.Members, HoldFlags.Raw, null, null));
                 break;
         }
     }
 
-    // A nominal Type: a UniqSlice as a view; HeapBuffer by SPEC 22.9 (its declared Fields are not read); else a struct or enum.
+    // A nominal Type: a UniqSlice as a view; a struct or enum; a Contract, which only a projection's components name, by its Type arguments.
     private bool NominalHoldings(BoundType type, BoundType? holder, List<Hold> into)
     {
         if (type is { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice, Components: [var elements], OriginArguments: [_] })
@@ -257,32 +271,29 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Symbol?.LibraryDeclaration == KimiDeclarationId.HeapBuffer)
+        if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
         {
-            into.Add(new(BoundType.Primitives["u8"], HoldStep.Own, HoldContent.Its, HoldFlags.Repeated, null, null));
+            return this.StoredHoldings(type, holder, into);
+        }
+
+        if (type.Symbol?.Declaration is ContractKoto)
+        {
+            TypeArguments(type, holder, into);
             return true;
         }
 
-        if (!AdtDef.IsStruct(type) && !AdtDef.IsEnum(type))
-        {
-            into.Add(new(type, HoldStep.Unsupported, HoldContent.Nothing, HoldFlags.None, null, null));
-            return true;
-        }
-
-        return this.StoredHoldings(type, holder, into);
+        into.Add(new(type, HoldStep.Unsupported, HoldContent.Nothing, HoldFlags.None, null, null));
+        return true;
     }
 
-    // A struct's or enum's Type arguments (SPEC 15.3.5: a dependency, no Places), base, Fields and every substituted Case's payloads, in the
-    // instance's kept parts, each holding through the Type its declaration writes there.
+    // A struct's or enum's Type arguments, base, Fields and every substituted Case's payloads, in the instance's kept parts, each holding
+    // through the Type its declaration writes there.
     private bool StoredHoldings(BoundType type, BoundType? holder, List<Hold> into)
     {
         var readable = this.Readable(type, this.PrepareTypeStorage(type));
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            into.Add(new(type.Components[i], HoldStep.Loan, HoldContent.Its, HoldFlags.None, null, holder));
-        }
-
-        var (stored, adt) = (this.Instance(type), type.Symbol!.Adt!);
+        TypeArguments(type, holder, into);
+        var stored = this.Instance(type);
+        var adt = type.Symbol!.Adt!;
         if (stored.PartsBase is { } parent)
         {
             into.Add(new(parent, HoldStep.Inline, HoldContent.Its, HoldFlags.None, null, null));
