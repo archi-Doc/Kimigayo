@@ -78,7 +78,7 @@ internal enum HirOp : byte
     TestVerification,
 }
 
-/// <summary>What a node's selected symbol names: the Res column of <see cref="HirTables"/>.</summary>
+/// <summary>What a node's selected symbol names: <see cref="HirTables.ResOf"/>, a read of the symbol.</summary>
 internal enum HirRes : byte
 {
     None,
