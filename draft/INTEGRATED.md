@@ -1292,6 +1292,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Implementation Planを修正してください。」): the position, arrangement, order, gates and unit states follow dev `efe7f0b6c`; the Full and Owner
   labels became Major; §5.1 and §5.4 follow each issue's state; the mir ledger's rows go. No unit's rule changed. The plan stays 一部取り込み
   (open), nothing frozen.
+- Revision 10 (2026-11-07, plan §14; the Front's D-49): §5.1 names the units revision 9 left open. The plan stays 一部取り込み (open), nothing
+  frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
