@@ -13,7 +13,8 @@ public sealed partial class Binding
     // SPEC 12.4.2, 13.3.1: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
 
-    // Facts: the operand and its judged Type, and the proposition of a proof that is Unknown or Refuted; an Unknown proof is the UnprovenConstraint failure.
+    // The facts: the operand and its judged Type, and the proposition of a proof that is Unknown or Refuted. An Unknown proof is the
+    // UnprovenConstraint failure, so the code tells the two.
     private BoundType? FailOperator(Koto node, Koto at, OperatorApplicability decision)
     {
         var site = this.FactSite(at);
@@ -30,9 +31,10 @@ public sealed partial class Binding
     private void ReportOperatorOperand(Koto operation, int problem, in BindingProblem record)
     {
         var (requirement, code) = (record.Requirement, record.Code);
-        var at = this.compilation.SyntaxOf(this.FactOf(problem, ProblemFactKind.Operand)!.Value.Site);
+        var shown = this.FactOf(problem, ProblemFactKind.Operand)!.Value;
+        var at = this.compilation.SyntaxOf(shown.Site);
         var symbol = operation is BinaryKoto binary ? binary.InfixText.Trim() : ((UnaryKoto)operation).OperatorText;
-        var operand = this.report.Value(this.FactOf(problem, ProblemFactKind.Operand)!.Value);
+        var operand = this.report.Value(shown);
         object[]? evidence = null;
         string? requirementNote = null;
         if (this.FactOf(problem, ProblemFactKind.Constraint) is { } proposition)
@@ -42,9 +44,9 @@ public sealed partial class Binding
             var contract = condition.Contract!.Type is { } applied ? DiagnosticTypeName(applied) : condition.Contract.Name;
             var clause = $"{subject} is {contract}";
             evidence = [subject, symbol, clause];
-            var shown = $"{DiagnosticText.Bound(subject).Text} is {DiagnosticText.Bound(contract).Text}";
+            var text = $"{DiagnosticText.Bound(subject).Text} is {DiagnosticText.Bound(contract).Text}";
             requirementNote = code == DiagnosticCode.UnprovenConstraint_Kd
-                ? $"Required condition is not proven: {shown}" : $"Required condition is not satisfied: {shown}";
+                ? $"Required condition is not proven: {text}" : $"Required condition is not satisfied: {text}";
         }
 
         if (code is DiagnosticCode.UnprovenConstraint_Kd or DiagnosticCode.UnsatisfiedConstraint_Kd)

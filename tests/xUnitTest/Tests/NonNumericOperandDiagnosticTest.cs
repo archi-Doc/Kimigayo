@@ -66,6 +66,36 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(type == "string" ? Note : null, error.Note);
     }
 
+    // SPEC 23.1.2: a compound assignment or update whose destination failed keeps its route a verdict (G509): the route reads neither the
+    // destination's authority nor its Holder, so both records stand.
+    [Theory]
+    [InlineData("func f(u: ref/string, n: i32) -> ()\n    u += n\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
+    [InlineData("func f(n: bool) -> ()\n    n += 1\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
+    [InlineData("func f() -> ()\n    let s = \"a\"\n    s += \"b\"\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
+    [InlineData("func f(n: i32, b: bool) -> ()\n    n += b\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
+    [InlineData("func f(b: bool) -> ()\n    b <<= 1\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
+    [InlineData("func f(b: bool) -> ()\n    b++\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
+    [InlineData("func f(x: f64) -> ()\n    x++\n", "InvalidAssignment_Kd", "NonIntegerOperand_Kd")]
+    [InlineData("func f<T>(x: T) -> ()\n    x++\n", "InvalidAssignment_Kd", "UnprovenConstraint_Kd")]
+    [InlineData("func f(items: uniq/Array<i32>, n: bool) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd", "NonNumericOperand_Kd")]
+    [InlineData("func f(items: uniq/Array<bool>) -> ()\n    for item in items\n        item++\n", "ExclusiveBindingAssignment_Kd", "NonNumericOperand_Kd")]
+    public void AFailedDestinationKeepsItsRoute(string source, string destination, string route)
+    {
+        var c = Analyze(source + "public func main() => ()");
+        Assert.Equal(new[] { destination, route }.Order(), Errors(c).Select(static x => x.Code).Order());
+    }
+
+    // The route holds, or an assignment has none: the destination's record stands alone.
+    [Theory]
+    [InlineData("func f(u: i32, n: i32) -> ()\n    u += n\n", "InvalidAssignment_Kd")]
+    [InlineData("func f(x: ref/i32) -> ()\n    x++\n", "InvalidAssignment_Kd")]
+    [InlineData("func f(items: uniq/Array<i32>, n: i32) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd")]
+    public void AHoldingRouteAddsNothing(string source, string destination)
+    {
+        var c = Analyze(source + "public func main() => ()");
+        Assert.Equal(destination, Assert.Single(Errors(c)).Code);
+    }
+
     // SPEC 13.3.1 and SPEC 13.3.4, 13.3: a bitwise operand that is no integer names the integer requirement, and an
     // arithmetic operand Type that neither is numeric nor provides the operator, such as an unconstrained or Position Type
     // parameter or a Tuple, selects no conformance; both are Language errors at the operation.

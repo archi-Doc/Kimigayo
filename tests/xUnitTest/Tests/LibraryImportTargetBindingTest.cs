@@ -174,8 +174,6 @@ public class LibraryImportTargetBindingTest
     [InlineData("(value: uniq/Array<i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
     [InlineData("(value: ref/Dictionary<i32, i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
     [InlineData("(value: (i32) -> i32)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
-    [InlineData("(a: bool, b: string)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
-    [InlineData("(value: string)", "bool", DiagnosticCode.InvalidImportSignature_Kd, null)]
     [InlineData("(value: bool)", "()", DiagnosticCode.Unsupported_Kd, "bool")]
     [InlineData("(value: char)", "()", DiagnosticCode.Unsupported_Kd, "char")]
     [InlineData("(value: isize)", "()", DiagnosticCode.Unsupported_Kd, "isize")]
@@ -203,6 +201,37 @@ public class LibraryImportTargetBindingTest
         var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> " + result, "codec");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         AssertImportRecord(c, code, at, code is null);
+    }
+
+    // SPEC 23.1.2, 22.6 (DIAGNOSTICS 4.3): each independent requirement of an import is its own record: the name's supply, each Type without a
+    // C counterpart with its ordinal as the condition, and the first Type outside the table, located at it. Every pass keeps them.
+    [Theory]
+    [InlineData("(a: bool, b: string)", "()", "codec", "InvalidImportSignature_Kd", "Unsupported_Kd")]
+    [InlineData("(value: string)", "bool", "codec", "InvalidImportSignature_Kd", "Unsupported_Kd")]
+    [InlineData("(a: string, b: string)", "()", "codec", "InvalidImportSignature_Kd", "InvalidImportSignature_Kd")]
+    [InlineData("(value: string)", "()", null, "MissingNativeRequirement_Kd", "InvalidImportSignature_Kd")]
+    [InlineData("(a: bool)", "()", null, "MissingNativeRequirement_Kd", "Unsupported_Kd")]
+    [InlineData("(a: bool, b: string)", "()", null, "MissingNativeRequirement_Kd", "InvalidImportSignature_Kd", "Unsupported_Kd")]
+    [InlineData("(a: i32)", "()", null, "MissingNativeRequirement_Kd")]
+    public void AnImportReportsEachIndependentRequirement(string parameters, string result, string? requirement, params string[] codes)
+    {
+        var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> " + result, requirement);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            Assert.Equal(codes.Order(), CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order());
+            Assert.False(c.Binding.Result.IsComplete);
+            c.Bind();
+        }
+    }
+
+    // The final symbol table's verdicts stay beside a failed supply: the second import conflicts with the first whatever else failed.
+    [Fact]
+    public void ASymbolConflictStaysBesideAMissingSupply()
+    {
+        var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func first(a: i32) -> i32\n    " + Import + "\n    public unsafe func second(a: i64) -> i32", null);
+        Assert.Equal(
+            ["ConflictingImportSignature_Kd", "MissingNativeRequirement_Kd", "MissingNativeRequirement_Kd"],
+            CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order());
     }
 
     // SPEC 22.6: a borrow of a C-layout struct whose Fields are all C-exchangeable passes as a pointer. The struct's published

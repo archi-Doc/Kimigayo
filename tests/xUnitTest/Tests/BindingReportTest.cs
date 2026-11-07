@@ -3,6 +3,7 @@
 using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -19,6 +20,7 @@ public sealed class BindingReportTest
     private static readonly DiagnosticRequirement Mismatch = DiagnosticRequirement.Binding(BindingFailure.TypeMismatch);
     private static readonly DiagnosticRequirement Located = DiagnosticRequirement.Binding(BindingFailure.Unsupported);
     private static readonly DiagnosticRequirement Internal = DiagnosticRequirement.Binding(BindingFailure.Internal);
+    private static readonly DiagnosticRequirement Unproven = DiagnosticRequirement.Binding(BindingFailure.UnprovenConstraint);
 
     [Fact]
     public void AKeyHasOneProblemAndKeepsItsFacts()
@@ -205,6 +207,82 @@ public sealed class BindingReportTest
         Assert.Equal(-1, report.Find(subject, Mismatch, 0));
         Assert.Equal(-1, report.First(subject));
     }
+
+    // An abandoned attempt gives each node of its syntax the chain it saved (PropertyTypeVisitor). A role's record at a Type node comes at the
+    // final judgment, after every attempt, so no program reaches this; the row drives the visitor on such a node.
+    [Fact]
+    public void AnAbandonedPropertyAttemptRestoresItsNodesProblems()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Holder<s/T, U>\n    let value: s/T\n    let other: s/U\n");
+        var issue = Assert.Single(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding)!;
+        var subject = SourceRef.Written(issue.Node);
+        var chain = Chain(report, subject);
+        Assert.Contains(issue.Problem, chain);
+
+        var visitorType = typeof(Binding).GetNestedType("PropertyTypeVisitor", BindingFlags.NonPublic)!;
+        var visitor = (KotoVisitor)Activator.CreateInstance(visitorType, c.Binding)!;
+        visitor.Visit(issue.Node);
+        Assert.Empty(Chain(report, subject));
+        visitorType.GetMethod("Restore", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(visitor, [0]);
+        Assert.Equal(chain, Chain(report, subject));
+        Assert.Equal(issue.Problem, report.Find(subject, Unproven, 0));
+    }
+
+    // A node's records beyond its first are issues of their own, each by its code and condition, in a report that keeps them through CheckBound.
+    [Fact]
+    public void AFurtherRecordIsAnIssueOfItsOwn()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(b: bool) -> ()\n    b++\npublic func main() => ()");
+        var issues = c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").ToArray();
+        Assert.Equal([DiagnosticCode.InvalidAssignment_Kd, DiagnosticCode.NonNumericOperand_Kd], issues.Select(static x => x.Code));
+        Assert.Equal(-1, issues[0].Problem);
+        Assert.True(issues[1].Problem >= 0);
+        Assert.False(c.Binding.CheckBound().IsComplete);
+        Assert.Equal(issues.Select(static x => x.Code), c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").Select(static x => x.Code));
+    }
+
+    // n parts at one node: a report takes one step (the key index, not the chain, DIAGNOSTICS 4.3), which a walk of the chain per report would
+    // not finish in the bound. Conditions stop at ushort, so the parts spread over requirements.
+    [Fact]
+    public void ManyPartsAtOneNodeAreOneStepEach()
+    {
+        const int Parts = 400_000;
+        var report = new BindingReport();
+        var time = System.Diagnostics.Stopwatch.StartNew();
+        for (var i = 0; i < Parts; i++)
+        {
+            report.Add(Problem(Subject, new(DiagnosticPartition.Binding, (ushort)(i >> 16)), (ushort)i));
+        }
+
+        var chain = report.Unlink(Subject);
+        report.Restore(Subject, chain);
+        Assert.Equal(Parts, report.Count);
+        Assert.InRange(time.ElapsedMilliseconds, 0, 30_000);
+    }
+
+    // The same, through the whole cold path: an import with n Types without a C counterpart has n records, at bytes linear in n.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void AnImportsPartsTakeLinearBytes()
+    {
+        int[] parts = [128, 256, 512];
+        var compilations = new Compilation[parts.Length];
+        var bytes = AllocationMeasurement.MeasureSeries(parts.Length, i =>
+        {
+            var c = compilations[i] = CompilationTestHelper.Parse(ManyParts(parts[i]));
+            return () => c.Bind();
+        });
+        Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
+        for (var i = 0; i < parts.Length; i++)
+        {
+            Assert.Equal(parts[i], compilations[i].Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidImportSignature_Kd));
+        }
+    }
+
+    private static string ManyParts(int count)
+        => "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(" +
+            string.Join(", ", Enumerable.Range(0, count).Select(static i => $"p{i}: string")) + ") -> i32\n";
 
     private static BindingProblem Problem(SourceRef subject, DiagnosticRequirement requirement, ushort condition = 0)
         => new(DiagnosticCode.TypeMismatch_Kd, requirement, subject, condition);

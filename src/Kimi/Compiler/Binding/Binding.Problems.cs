@@ -179,6 +179,11 @@ public sealed partial class Binding
             return;
         }
 
+        this.RecordLocated(node, part, unresolved);
+    }
+
+    private void RecordLocated(Koto node, SourceSpan part, bool unresolved = false)
+    {
         long value = ((long)part.Start << 32) | (uint)part.Length;
         this.Record(node, BindingFailure.Unsupported, [new(ProblemFactKind.Span, SourceRef.Of(node), value)], unresolved: unresolved);
     }
@@ -193,10 +198,10 @@ public sealed partial class Binding
     }
 
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
-    // its own, however the slot's failure stands. A node that consulted a recovery node derives every failure from the syntax error.
+    // its own, however the slot's failure stands.
     private void CollectProblems(Koto node)
     {
-        if (this.report.Count == 0 || IsRecovery(node, out _) || this.RestsOnRecovery(node))
+        if (this.report.Count == 0)
         {
             return;
         }
