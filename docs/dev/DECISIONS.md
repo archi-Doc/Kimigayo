@@ -5261,6 +5261,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (2026-11-02, PLAN a0e3e2a6e).
   - Rejected: a bool, mode or type parameter steering one walk (R4-M162's patch form); the clauses before the components (a proof
     scope keeps its first cause, so the order would move records).
+  - Superseded in part by BU-124 (R7-V5): contract matching reads no signature's formation, so its "Stays" for contract matching ended.
 - **R4-M164 Contributions at composed positions (G216 (a) U2.2)** (2026-11-03; the owner, verbatim 「候補 1 つで進める」, 2026-11-02: R4
   implements BU's design bu96; extends BU-51's one input-premise rule) SPEC 10.5.1, 10.3, 15.6.4 step 3. Later units extend this entry.
   - Superseded in part by BU-99 (2026-11-05): F1's Result value and its per-argument reading; a slot's solution is its contributor's by
@@ -9708,6 +9709,7 @@ resumed by R4-M86 (2026-10-20).
     error (review 1, B1 and B2).
   - G375's second owner remains on the failing path, on calls and references, until R7-C2 makes a failed answer final.
   - Contract matching calls the compute directly and reads no row, until R7-V5 removes that gate (O-44, PLAN G556).
+  - Superseded by BU-124: contract matching reads no signature's formation.
   - A demand under `activeRequirementContract` is outside the query: a requirement's call is proven under its reference, not as its
     declaration (o4a). Removal condition: R7-C2, with the compute.
   - The row has no reader inside verification, which is why `conformanceChecks` cannot change a kept Proven. A row reader inside verification
@@ -10169,6 +10171,14 @@ resumed by R4-M86 (2026-10-20).
     signature's scope, so no reader's memo stays sound); row 20 at U0 (it reopens BU-91); a Dictionary's K and V as direct parts (SPEC 4.9 stores
     the entry, and S2 needs `(K, V)`).
 - **BU-123 R7-E1a The fact vocabulary moves to Core** (2026-11-07; plan RP3, RP19, §5.1 E1; C-103). `MirFact` and `MirFactKind` become `ProblemFact(ProblemFactKind Kind, SourceRef Site, long Value = -1)` and `ProblemFactKind` in `Core/ProblemFact.cs`, unchanged in shape and numbering, one component, the fact vocabulary. Reason: Binding's problem records (E1b) use the same facts, and Binding may not reference Mir. `MirProblem`, `MirReport` and the publisher's logic stay; with E1b's record, two records over one fact vocabulary, no phase payload. `Cause` stays MIR-only with its contract unchanged. Every kind is written by the MIR analyses until E1b. `ProblemFactKind` is not an ARCH-closed vocabulary (R4-M92's reading). Rejected: a recorder private to Binding (a third record shape); one type with a phase payload. Earlier entries keep the old names as history.
+- **BU-124 A conformance proves no signature's formation** (2026-11-07; R7-V5, PLAN G556; the owner's O-44, verbatim 「(a) 有効とする」) SPEC 8.3.1, 8.3.2, 8.3.3, 8.6.3, 11.9.1, 15.6.1, 23.1.2.
+  Supersedes in part BU-120 (its "Contract matching calls the compute directly", and the removal it names) and R4-M163 (its "Stays" for contract matching).
+  - Rule: verifying a conformance reads no Type's formation from a function's or an accessor's signature, on the requirement's side or the implementation's. It proves 8.6.3's rows: Constraints, Inputs, Result Type, Result Origins, Access, Context and Effects.
+  - One read of a failed declaration: `SuppliesNoEvidence` (SPEC 8.3.1) over `CallableContract.Binder`, by `InvalidDeclarationContext`, for a function in `CompatibleRequirement` and an accessor in `MatchPropertyOperation`. It replaces the function's `BindingState` test and the four `ValidateAccessor` reads in `VerifyPropertyRequirement`. It reads a declaration's context, and it narrows too: a failed declaration that keeps its signature (`KeepsSignature`) supplies evidence, whose program stays rejected by its own record (k2, k5, Q13).
+  - Judge: `ValidateConstraintUses`, at the written Type, after the final `ValidateConformances`. `S is C` reads nothing of `Box<S>`, so `Box<S>` follows from it. `ValidateProperties` keeps judging every accessor, requirements included, and a Property whose certificate fails is a failed declaration, which the read above sees, so a malformed Property signature keeps `IsVerified` false where a function's does not. `SignatureVerdict` stays a reader's memo with no record of its own; G375's second owner on the failing path stays until R7-C2.
+  - `FormSignature` has one caller, `CheckSignatureTypeConstraints`, until R7-C2.
+  - Open until R7-V5b (PLAN G588): `VerifyConformance`'s formation of an associated binding stays, though O-54 decides that form valid, because it is also the only judge of a binding-only inline cycle (BU-65, SPEC 6.2). `ProveConformance`'s formation of a constructed subject stays.
+  - Rejected: the row at contract matching (BU-120); a revisited conformance as evidence (8.3.3); judging a signature after the conformance inside matching (a second judge); removing the reads with nothing in their place (a Property would supply evidence after its declaration failed, nine `IsVerified` rows); splitting `ValidateAccessor` and keeping the four reads (+27/−27 lines, two reads of one fact); removing S3 here (BU-65's judge, 16 rows).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
