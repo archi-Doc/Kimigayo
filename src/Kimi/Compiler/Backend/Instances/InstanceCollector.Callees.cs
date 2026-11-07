@@ -65,7 +65,7 @@ internal sealed partial class InstanceCollector
     // Type below a parameter (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on
     // that Type under the composed substitution; one whose published row destroys the Type below a parameter in place (replace, SPEC 15.7:
     // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); one whose
-    // legacy row writes its call in its instance (LegacyRow.InInstance: the Array operations and storage kinds, placeEntry), its LegacyRow
+    // legacy row writes its call in its instance (LegacyRow.InInstance: placeEntry), its LegacyRow
     // item (K 4.5 row 2; DECISIONS R5-M121, R5-M124, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an
     // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), read only for a
     // row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (a
@@ -124,13 +124,14 @@ internal sealed partial class InstanceCollector
         return this.Made(storage, subject) ? below : null;
     }
 
-    // X4, F2c (DECISIONS R5-M28, R5-M124): the body of the DictionaryStorage function a legacy row or the Dictionary runtime declares as its
-    // callee (placeEntry's append, a Dictionary from none's initialize, a Dictionary glue's clearEntries), named by TyCtxt's symbol view and
-    // admitted for a site under the substitution given (a generic one's over the entry Types; null for one that does not instantiate); a
-    // declared callee without a body is a broken contract.
-    private int Declared(MirProgram program, int item, SourceRef site, DictionaryCallee callee, Subst? subst)
+    // X4, F2c (DECISIONS R5-M28, R5-M124, R8-A1d): the one owner of a target the compiler names: the body of a library function (a
+    // DictionaryStorage function a legacy row or the Dictionary runtime declares as its callee, by TyCtxt's symbol view: placeEntry's append,
+    // a Dictionary from none's initialize, a Dictionary glue's clearEntries; a nonempty Array literal's growArray; an Array glue's destroyArray),
+    // admitted for a site under the substitution given (a generic one's; null for one that does not instantiate); a declared callee without
+    // a body is a broken contract.
+    private int Declared(MirProgram program, int item, SourceRef site, BindingSymbol function, Subst? subst)
     {
-        if (program[new(this.types.DictionaryStorage(callee), MirBodyKind.Fn)] is { } body)
+        if (program[new(function, MirBodyKind.Fn)] is { } body)
         {
             return this.Admit(item, site, body, subst);
         }

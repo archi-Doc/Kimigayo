@@ -1,16 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the legacy runtime helpers of the generated LLVM text until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b;
-// DECISIONS R5-M16): the per-element helper records of the Array, Dictionary and formatting runtime text, the element descriptor
-// of a stored collection value, the stored-value text kernels the helpers write through, the Array capacity routine and helpers
-// (LegacyRuntimeHelpers.Arrays.cs), a Dictionary entry's layout and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs),
+// DECISIONS R5-M16): the per-element helper records of the Dictionary and formatting runtime text, the element descriptor
+// of a stored collection value, the stored-value text kernels the helpers write through, a Dictionary entry's layout and the
+// Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs),
 // the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs),
 // the storage-boundary kernels written inline in their caller's body with their library record Field addressing
 // (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
 // the ones every call reads). MIR code generation writes the helpers through this static component (promoted, never copied).
-// Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name) and remainder Field
-// offsets; the compiled ABIs of the DictionaryStorage functions a Dictionary
-// helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
+// Input: helper records built from FunctionAbi, ValueLowering and StoredValue (drop routine name); the compiled ABIs of the
+// DictionaryStorage functions a Dictionary helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
 // formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
 // an owning interpolation's literal bytes and values' bounds, summed by its estimate (FormatEstimate); the runtime templates
 // (.ll.in); for
@@ -18,11 +17,9 @@
 // result record's Field offsets, the number naming its temporaries); a writer, LLVM SSA names and sizes.
 // Output: LLVM text written to the writer; per helper kind one row, readable
 // by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
-// collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
-// writer and HelperNeeds (the Array runtime for OwnFixedStorage, which copies the consumed array's bytes), and no Array row declares
-// a library callee, since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI shape, writer, HelperNeeds (the Array
-// runtime for Place, which copies its key and value; the element's drop glue for Drop) and its callees as DictionaryCallee values:
-// the generic function its helpers call over the entry Types (clearEntries for Drop) and the one the module resolves (append for
+// collector (X4). The rows land in P1c-P2b: each Dictionary kind's row (DictionaryRow; P1c) holds its ABI shape, writer, HelperNeeds (the
+// memory declarations for Place, which copies its key and value; the element's drop glue for Drop) and its callees as DictionaryCallee
+// values: the generic function its helpers call over the entry Types (clearEntries for Drop) and the one the module resolves (append for
 // Place). DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
 // for it; Construction (initialize) is the callee a Dictionary's construction runs.
 // Each formatting compiler function's row
@@ -36,10 +33,8 @@
 // (StorageRow; P2a) holds its writer over StorageKernelInput and HelperNeeds, which are none: its text is loads, stores and
 // address arithmetic in the caller's body, so it declares no callee. The one map from a compiler
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
-// writer: writeLine's runtime routine, the whole-value updates, the fixed-array storage kernel, the Array storage kinds in their
-// function's instance (Instance: the Array helper of its kind through its call's LegacyRow item; DECISIONS R5-M121), placeEntry in its
-// function's instance (Place: the Dictionary Place helper, which calls the item's
-// declared callee, append), the other Dictionary storage kinds as the P2a kernels over their call's entry layout (DECISIONS R5-M124) and
+// writer: writeLine's runtime routine, the whole-value updates, placeEntry in its function's instance (Place: the Dictionary Place helper,
+// which calls the item's declared callee, append), the other Dictionary storage kinds as the P2a kernels over their call's entry layout (DECISIONS R5-M124) and
 // the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
 // runtime needs come from its row; warm writes allocate nothing; whether a value travels as a scalar is decided once, by
@@ -61,8 +56,8 @@ internal enum HelperNeeds : byte
 {
     None = 0,
 
-    /// <summary>The Array capacity routine and the memory declarations (SPEC 4.9.5): a helper that copies elements needs them.</summary>
-    ArrayRuntime = 1,
+    /// <summary>The memory declarations: a helper that copies a value needs them.</summary>
+    Memory = 1,
 
     /// <summary>The element's drop glue: the helper destroys elements, a Dictionary helper through its Entries function, which it
     /// then calls only when an entry needs destruction (SPEC 4.9.7, 16.3.2).</summary>
@@ -94,13 +89,6 @@ internal enum LegacyWriter : byte
     /// <summary>SPEC 15.7: the two targets' values exchanged.</summary>
     Swap,
 
-    /// <summary>SPEC 22.2: a fixed array's remainder through the BorrowFixed kernel (FunctionCodegen.Storage).</summary>
-    FixedStorage,
-
-    /// <summary>SPEC 22.2: the row's routine in its function's instance, its call's LegacyRow item's (ModuleCodegen.Row): the Array helper of
-    /// the row's <see cref="LegacyRow.Helper"/> kind (DECISIONS R5-M121).</summary>
-    Instance,
-
     /// <summary>SPEC 4.9.6, 22.2: placeEntry, P1c's Place helper in its function's instance, its call's LegacyRow item's (ModuleCodegen.Row),
     /// which calls the item's declared callee, append (DECISIONS R5-M124).</summary>
     Place,
@@ -124,20 +112,18 @@ internal enum LegacyWriter : byte
     ValueAt,
 }
 
-/// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer, a routine row's runtime routine and an Instance
-/// row's Array helper kind.</summary>
+/// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer and a routine row's runtime routine.</summary>
 /// <param name="Writer">How MIR code generation writes a call.</param>
 /// <param name="Routine">The runtime routine of a <see cref="LegacyRow.Fixed"/> row.</param>
-/// <param name="Helper">The Array helper kind of an <see cref="LegacyWriter.Instance"/> row.</param>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null, ArrayHelperKind? Helper = null)
+internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Routine = null)
 {
     /// <summary>Gets a value indicating whether the row is a whole-value update (SPEC 15.7): the one place that names the update writers.</summary>
     internal bool Updates => this.Writer is LegacyWriter.Replace or LegacyWriter.Exchange or LegacyWriter.Swap;
 
     /// <summary>Gets a value indicating whether the row's call runs a routine in its function's instance, its LegacyRow item's (K 4.5 row 2;
     /// DECISIONS R5-M121, R5-M124): the one place that names those writers.</summary>
-    internal bool InInstance => this.Writer is LegacyWriter.Instance or LegacyWriter.Place;
+    internal bool InInstance => this.Writer == LegacyWriter.Place;
 
     /// <summary>Gets a value indicating whether the row's call is its row's own fixed-symbol routine (writeLine's, a formatting routine;
     /// DECISIONS R5-M128): the one place that names those writers.</summary>
@@ -151,19 +137,18 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     /// item, a type-driven item the collector lays out; every other row reads none.</summary>
     internal LayoutNeed Need => this.Updates || this.DictionaryKernel ? LayoutNeed.TypeArguments : LayoutNeed.None;
 
-    /// <summary>Gets the runtime needs a row declares (X4; DECISIONS R5-M46, R5-M121, R5-M124, R5-M128): an Array helper kind's row's,
-    /// placeEntry's Place row's, or the formatting runtime for a formatting routine, the need every formatting row declares (FormattingRow;
+    /// <summary>Gets the runtime needs a row declares (X4; DECISIONS R5-M46, R5-M124, R5-M128): placeEntry's Place row's, or the
+    /// formatting runtime for a formatting routine, the need every formatting row declares (FormattingRow;
     /// DECISIONS R5-M30).</summary>
     internal HelperNeeds Needs => this switch
     {
-        { Helper: { } kind } => LegacyRuntimeHelpers.ArrayRow(kind).Needs,
         { Writer: LegacyWriter.Place } => LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Place).Needs,
         { Writer: LegacyWriter.Formatting } => HelperNeeds.FormattingRuntime,
         _ => HelperNeeds.None,
     };
 
     /// <summary>Gets the library callee a row in its function's instance declares (X4, F2c; DECISIONS R5-M124): placeEntry's, its Place row's
-    /// Storage callee, append; None for every other row, since no Array helper calls one.</summary>
+    /// Storage callee, append; None for every other row.</summary>
     internal DictionaryCallee Callee
         => this.Writer == LegacyWriter.Place ? LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Place).Storage : DictionaryCallee.None;
 }
@@ -214,13 +199,6 @@ internal static partial class LegacyRuntimeHelpers
         CompilerFunctionKind.Replace => new(LegacyWriter.Replace),
         CompilerFunctionKind.Exchange => new(LegacyWriter.Exchange),
         CompilerFunctionKind.Swap => new(LegacyWriter.Swap),
-        CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive => new(LegacyWriter.FixedStorage),
-
-        // SPEC 22.2 (DECISIONS R5-M121): the Array storage kinds in their function's instance.
-        CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageBorrowUniqSlice =>
-            Instance(ArrayHelperKind.BorrowStorage),
-        CompilerFunctionKind.StorageOwn => Instance(ArrayHelperKind.OwnStorage),
-        CompilerFunctionKind.StorageOwnFixed => Instance(ArrayHelperKind.OwnFixedStorage),
 
         // SPEC 4.9.6, 22.2 (DECISIONS R5-M124): the Dictionary storage kinds, placeEntry in its function's instance, the others inline kernels.
         CompilerFunctionKind.StoragePlaceDictionaryEntry => new(LegacyWriter.Place),
@@ -289,11 +267,8 @@ internal static partial class LegacyRuntimeHelpers
         output.Write('\n');
     }
 
-    // An Instance row over the Array helper of a kind (DECISIONS R5-M121).
-    private static LegacyRow Instance(ArrayHelperKind kind) => new(LegacyWriter.Instance, Helper: kind);
-
     // Code generation's expanded runtime texts (G350), one part beside each text's rows: the CLR initializes this class when a writer
-    // (WriteArrayRuntime, WriteFormattingRuntime, StringComparisons) first reads one for a module, never on the check path, whose
+    // (WriteFormattingRuntime, StringComparisons) first reads one for a module, never on the check path, whose
     // collector reads the rows and ABIs (Row, DictionaryRow, Construction, IntrinsicRows) but no text; no other member reads them.
     private static partial class Texts
     {

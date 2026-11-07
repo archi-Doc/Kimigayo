@@ -58,12 +58,13 @@ public class DynamicArrayCleanupTest
     [InlineData(
         "OwnStorage",
         "func g(a: Array<i32>) -> isize\n    var n: isize = 0\n    for x in a@move\n        n = n + 1\n    return n\nlet m = g([])",
-        "__kimi_array_own_")]
+        "__kimi_drop")]
     public void HelpersWithoutGrowthHoldNoCapacityRoutine(string name, string source, string helper)
     {
-        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
+        var c = MinimalEmissionTest.Analyze(source);
+        var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("define internal void @" + helper, ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("@__kimi_array_grow(", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain(c.Instances!.Items.ToArray(), static x => x.Key.Body.Def.Decl?.Name == "growArray");
         ScalarEmissionTest.WriteFixture("DynamicArrayCleanupNoCapacity" + name, ir, string.Empty);
     }
 }

@@ -7,42 +7,6 @@ namespace XunitTest;
 
 public class DynamicArrayCapacityLimitTest
 {
-    [Theory]
-    [InlineData(1)]
-    [InlineData(3)]
-    [InlineData(16)]
-    [InlineData(2147483647)]
-    public void OptionalGrowthOvershootDoesNotRejectRepresentableMinimum(long stride)
-    {
-        var maximum = long.MaxValue / stride;
-        var capacity = (maximum / 2) + 1;
-        var minimum = capacity + 1;
-        var ir = RuntimeIr();
-        // A test allocator records the request and supplies an address without reserving exabytes.
-        // The synthetic handle is empty, so the runtime must not read the backing allocation.
-        ir = ReplaceDefinition(ir, "__kimi_alloc", "define internal ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length) {\nentry:\n  store i64 %size, ptr @probe_size, align 8\n  ret ptr @probe_memory\n}");
-        var body = $$"""
-            {{Handle(0, capacity)}}
-              call void @__kimi_array_grow(ptr %handle, i64 {{stride}}, i64 {{minimum}}, ptr @probe_location, i64 5)
-              %actual_capacity = load i64, ptr %capacity_ptr, align 8
-              %enough = icmp uge i64 %actual_capacity, {{minimum}}
-              %representable = icmp ule i64 %actual_capacity, {{maximum}}
-              %valid_capacity = and i1 %enough, %representable
-              %requested = load i64, ptr @probe_size, align 8
-              %expected_bytes = mul i64 %actual_capacity, {{stride}}
-              %valid_bytes = icmp eq i64 %requested, %expected_bytes
-              %valid = and i1 %valid_capacity, %valid_bytes
-              br i1 %valid, label %passed, label %failed
-            passed:
-              call void @__kimi_exit(i32 0)
-              unreachable
-            failed:
-              call void @__kimi_exit(i32 93)
-              unreachable
-            """;
-        WriteProbe("Overshoot" + stride, ir, body, 0, string.Empty);
-    }
-
     // R8-A1a: append's body reaches the same limit from source, its buffer null: the checked sum Aborts before any buffer access, at the call.
     [Fact]
     public void AppendChecksTheIncreasedLengthBeforeBufferAccess()
@@ -107,10 +71,6 @@ public class DynamicArrayCapacityLimitTest
         ScalarEmissionTest.WriteFixture("DynamicArrayCapacityReserveOvershoot" + stride, ir + "\n@probe_memory = private global i8 0\n", string.Empty);
     }
 
-    [Fact]
-    public void AnUnrepresentableMinimumStillAborts()
-        => WriteProbe("RequiredSize", RuntimeIr(), Handle(0, 0) + "\n  call void @__kimi_array_grow(ptr %handle, i64 16, i64 576460752303423488, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_ALLOC_SIZE: Allocation size exceeds limit\n");
-
     // SPEC 4.9.8: `clear` is O(1 + d), so over a cleanup-free element it walks nothing at any optimization level: an Array of the largest
     // length, its buffer null, clears at once at O0 and O2, and a cleanup-free destroyValues is no loop in the generated text.
     [Fact]
@@ -128,18 +88,6 @@ public class DynamicArrayCapacityLimitTest
     [Fact]
     public void CleanupFreeTruncateDoesNotWalkTheElements()
         => ScalarEmissionTest.EmitFixture("DynamicArrayCapacityConstantTruncate", FullArray("u8", long.MaxValue) + "values.truncate(1)\nrequire values.length == 1 else => $abort(\"length\")\nConsole.writeLine(\"ok\")", "ok\n");
-
-    internal static string RuntimeIr()
-    {
-        var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = [1]\nvalues@uniq.append(2)");
-        var ir = CompilationTestHelper.WriteIr(compilation);
-        return ir;
-    }
-
-    // The one Array helper of a kind the module defines, by its kind's prefix: its name is its generator's (the old one names it by its
-    // element, MIR code generation by its item; DECISIONS R5-M121), so the probe calls it whichever wrote the module.
-    internal static string Helper(string ir, string prefix)
-        => Assert.Single(Regex.Matches(ir, @"(?m)^define internal void @(" + Regex.Escape(prefix) + @"[A-Za-z0-9_]+)\(").Cast<Match>()).Groups[1].Value;
 
     internal static string ReplaceDefinition(string ir, string name, string replacement)
     {
@@ -165,21 +113,4 @@ public class DynamicArrayCapacityLimitTest
                 (*words).capacity = count@isize
 
             """;
-
-    private static string Handle(long length, long capacity)
-        => $$"""
-              %handle = alloca { ptr, i64, i64 }, align 8
-              store ptr null, ptr %handle, align 8
-              %length_ptr = getelementptr i8, ptr %handle, i64 8
-              store i64 {{length}}, ptr %length_ptr, align 8
-              %capacity_ptr = getelementptr i8, ptr %handle, i64 16
-              store i64 {{capacity}}, ptr %capacity_ptr, align 8
-            """;
-
-    private static void WriteProbe(string name, string ir, string body, int exit, string stderr)
-    {
-        ir = ReplaceDefinition(ir, "__kimi_start", "define void @__kimi_start() noreturn #0 {\nentry:\n" + body + "\n}");
-        ir += "\n@probe_location = private constant [5 x i8] c\"probe\"\n@probe_memory = private global i8 0\n@probe_size = private global i64 0\n";
-        ScalarEmissionTest.WriteFixture("DynamicArrayCapacity" + name, ir, string.Empty, exit, stderr);
-    }
 }

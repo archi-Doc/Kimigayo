@@ -1343,7 +1343,7 @@ public sealed partial class RetentionTest
     }
 
     // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47): the library's drops retain over their destruction receivers as their contracts say: the owning
-    // iterators' remainders store through the raw handles their receivers' storage holds (Content), HeapBuffer's release nothing; none
+    // iterators store through the raw handles their receivers' storage holds (Content), HeapBuffer's release nothing; none
     // has a Value row. Fail-before: no row.
     [Fact]
     public void LibraryDropsRetainOverTheirReceivers()
@@ -1352,7 +1352,7 @@ public sealed partial class RetentionTest
         var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
             .Select(x => $"{x.Parent!.SymbolOf()!.Name}: {Show(c.Types.Retains(x.SymbolOf()!, null, null))}");
         Assert.Equal(
-            ["HeapBuffer: ", "OwnedRemainder: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}"],
+            ["HeapBuffer: ", "ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}"],
             drops);
     }
 
