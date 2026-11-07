@@ -26,6 +26,7 @@ $roots = [ordered]@{
 }
 $expected = [ordered]@{
     Array = 'checksum 1917245123'; ArrayLiteral = 'checksum 996929325'; Dictionary = 'checksum 906592013'; ErasedCalls = 'checksum 1506170851'
+    ArrayMoves = 'checksum 2366022699'
     Interpolation = 'checksum 1676251827'; Iterators = 'checksum 2503774365'; SharedHandles = 'checksum 3194390882'
     Tuples = 'checksum 3620601396'; VirtualDispatch = 'checksum 3854058029'
 }

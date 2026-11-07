@@ -1,0 +1,94 @@
+// O2 timing corpus (O2Corpus.md): `insert` and `remove` over long tails, at the front and the middle of Arrays of 1,024
+// `i32` and of 1,024 32-byte structs. Each part is a function of its own: `main` calls each from two sites, so LLVM's
+// inliner keeps it apart and opt -O2 output reads per part.
+
+// The next state of a linear congruential generator modulo 2^31; its products stay within i64. Callers read bits
+// from 16 up, whose periods are long.
+func next(state: i64) -> i64 => (state * 1103515245 + 12345) & 0x7FFF_FFFF
+
+// Four words, so a move that loses or tears any of them changes the checksum.
+struct Record
+    public let key: i64
+    public let weight: i64
+    public let left: i64
+    public let right: i64
+    public init(key: i64)
+        self.key = key
+        self.weight = key * 3 + 1
+        self.left = key ^ 0x5555_5555
+        self.right = key + 7
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible,
+// so a wrong value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+// A removed Record's words, each with its own weight.
+func read(record: ref/Record) -> i64 => record.key + record.weight * 3 + record.left * 5 + record.right * 7
+
+// One round of each part: pairs of an `insert` and a `remove` at positions the state chooses among eight, so every move
+// has a long tail, the positions stay unknown to the optimizer and the elements keep changing places. The length returns
+// to 1,024 after each pair, so no pair grows the buffer.
+func frontInts(values: uniq/Array<i32>, state: uniq/i64) -> i64
+    var sum: i64 = 0
+    for step in 0..16
+        state@follow = next(state)
+        values.insert(((state >> 16) & 7)@isize, (state >> 16)@i32)
+        sum += step@i64 * values.remove(((state >> 20) & 7)@isize)@i64
+    return sum
+
+func middleInts(values: uniq/Array<i32>, state: uniq/i64) -> i64
+    var sum: i64 = 0
+    for step in 0..16
+        state@follow = next(state)
+        values.insert(508 + ((state >> 16) & 7)@isize, (state >> 16)@i32)
+        sum += step@i64 * values.remove(508 + ((state >> 20) & 7)@isize)@i64
+    return sum
+
+func frontRecords(values: uniq/Array<Record>, state: uniq/i64) -> i64
+    var sum: i64 = 0
+    for step in 0..4
+        state@follow = next(state)
+        values.insert(((state >> 16) & 7)@isize, Record.init(state))
+        sum += step@i64 * read(values.remove(((state >> 20) & 7)@isize))
+    return sum
+
+func middleRecords(values: uniq/Array<Record>, state: uniq/i64) -> i64
+    var sum: i64 = 0
+    for step in 0..4
+        state@follow = next(state)
+        values.insert(508 + ((state >> 16) & 7)@isize, Record.init(state))
+        sum += step@i64 * read(values.remove(508 + ((state >> 20) & 7)@isize))
+    return sum
+
+public func main()
+    var checksum: i64 = 0
+    var state: i64 = 1
+    var ints = Array<i32>.init(capacity: 1025)
+    var records = Array<Record>.init(capacity: 1025)
+    for i in 0..1024
+        state = next(state)
+        ints.append((state >> 16)@i32)
+        records.append(Record.init(state))
+
+    checksum = fold(checksum, frontInts(ints@uniq, state@uniq))
+    for round in 1..32768
+        checksum = fold(checksum, frontInts(ints@uniq, state@uniq) + round@i64)
+    checksum = fold(checksum, middleInts(ints@uniq, state@uniq))
+    for round in 1..32768
+        checksum = fold(checksum, middleInts(ints@uniq, state@uniq) + round@i64)
+    checksum = fold(checksum, frontRecords(records@uniq, state@uniq))
+    for round in 1..16384
+        checksum = fold(checksum, frontRecords(records@uniq, state@uniq) + round@i64)
+    checksum = fold(checksum, middleRecords(records@uniq, state@uniq))
+    for round in 1..16384
+        checksum = fold(checksum, middleRecords(records@uniq, state@uniq) + round@i64)
+
+    // Every element once more, so a move that broke one no later `remove` read still changes the line.
+    var sum: i64 = 0
+    for value in ints
+        sum += value@i64
+    for record in records
+        sum ^= read(record)
+    Console.writeLine("checksum \(fold(checksum, sum))")
