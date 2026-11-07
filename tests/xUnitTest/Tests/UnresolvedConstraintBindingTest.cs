@@ -140,9 +140,6 @@ public class UnresolvedConstraintBindingTest
     [InlineData("public struct Target\n    i32 is Future", "public struct Future", false)]
     [InlineData("public struct Target<T>\n    T is Future", "public contract Future", true)]
     [InlineData("group G\n    func take<T>()\n        T is Future\n        ()", "public contract Future", true)]
-    [InlineData("public struct Target\n    [2 of Future] is Copy", "public struct Future\n    Self is Copy", true)]
-    [InlineData("public struct Target\n    (Future, i32) is Copy", "public struct Future\n    Self is Copy", true)]
-    [InlineData("public struct Target\n    (Future) -> i32 is Owned", "public struct Future", true)]
     [InlineData("public struct Target<T>\n    T is [2 of Future]", "public struct Future", true)]
     [InlineData("public struct Target\n    Self is Future", "public contract Future", true)]
     [InlineData("public struct Target<T>\n    T is not Future", "public contract Future", true)]
@@ -176,7 +173,7 @@ public class UnresolvedConstraintBindingTest
 
     [Theory]
     [InlineData("public group Future\npublic struct Target\n    i32 is Future")]
-    [InlineData("public group Invalid\npublic struct Target\n    (Future, Invalid) is Copy")]
+    [InlineData("public group Invalid\npublic struct Target\n    Invalid is Copy")]
     [InlineData("public group Invalid\npublic struct Target<T>\n    T is Future or Invalid")]
     [InlineData("public struct Target<s/T>\n    s is Future")]
     public void AvailableViolationsRemainInvalidInProvisionalBinding(string source)
@@ -248,7 +245,7 @@ public class UnresolvedConstraintBindingTest
     [Fact]
     public void WarmMissingNamePassesAllocateNothing()
     {
-        var c = Parse("public struct Target\n    [2 of Future] is Copy");
+        var c = Parse("public struct Target\n    Future is Copy");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

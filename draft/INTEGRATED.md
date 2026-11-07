@@ -1303,6 +1303,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
+- Revision 18 (2026-11-07, plan §14; the Front's D-67): N7's row follows its landing. Nothing frozen. SPEC 8.2.1 and Appendix F's `ConstraintSubject`, an explicit revision on the owner's O-42 (a) (DECISIONS BU-119), take the sentence and the production no rule changes under: Appendix F
+  and §7.5 already excluded a constructed subject, and SPECJ follows.
 
 ## 2026-11-03 — G216 (a) position rows
 
