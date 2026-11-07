@@ -471,7 +471,7 @@ public sealed partial class Binding
                 var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
                 var structural = this.ResultStructure();
                 if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
-                    actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax, out var failure))
+                    actual is not null && accessor.Result is { } result && !this.FitsValueAt(actual, result, syntax, body, out var failure))
                 {
                     _ = failure.Kind == ComparisonFailureKind.Shape ? this.Fail(body, BindingFailure.TypeMismatch)
                         : this.RecordMismatch(body, body, actual, result, failure);
