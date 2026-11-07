@@ -266,7 +266,9 @@ public sealed partial class Binding
     }
 
     // SPEC 6.3.6: the declaration-time decisions must hold after bodies. The selection is judged again, and an existing synthesized
-    // constructor's bound base call selected the same constructor; a disagreement fails closed at the base clause.
+    // constructor's bound base call selected the same constructor; a disagreement fails closed at the base clause. A signature kept Proven
+    // stays Proven here (DeclQueryKind.SignatureVerdict): a declaration that failed after the bodies is seen through its own record, not
+    // through a disagreement of this selection (PLAN G375).
     private void RevalidateImplicitConstructors()
     {
         foreach (var constructor in this.judgedConstructors)
