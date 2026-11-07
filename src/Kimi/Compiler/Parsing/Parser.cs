@@ -6,7 +6,7 @@ using Kimi.Compiler.Lexing;
 namespace Kimi.Compiler;
 
 // The parser of SPEC Appendix F: a static recursive-descent grammar over one TokenReader, with a binding-power loop for expressions. This
-// file holds the contract and the token tables; each other Parser.<Concern>.cs part owns one part of the grammar.
+// file holds the contract and the token tables; each other Parser.<Concern>.cs part owns one concern, but Parser.Syntax.cs, mixed until R9-F2.
 // Input: a TokenReader over the Tokenizer's tokens, which carries the pending prefix of the next item, the layout region, the excluded-syntax
 // state and the CodeContext. The two parse entries reach the grammar through the declaration Kotos' Parse methods and item loops.
 // Output: Koto nodes with their spans; typed reports through the reader, a SyntaxForm or a DiagnosticCode (DIAGNOSTICS.md §4.4); recovery and
