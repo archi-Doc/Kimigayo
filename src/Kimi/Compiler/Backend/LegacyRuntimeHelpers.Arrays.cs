@@ -9,13 +9,8 @@ namespace Kimi.Compiler.Backend;
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum ArrayHelperKind : byte
 {
-    Insert,
-    Pop,
-    Remove,
-    Place,
     Clear,
     Drop,
-    Swap,
 
     // SPEC 22.2: the storage boundary over an Array handle and its remainder records.
     BorrowStorage,
@@ -26,13 +21,12 @@ internal enum ArrayHelperKind : byte
 }
 
 /// <summary>What an Array helper's descriptor reads of its function's result, which its item's instance gives (ModuleCodegen.ResultParts;
-/// DECISIONS R5-M121): nothing; the Option payload offset (Pop: the Some Case's element); or a remainder record's Fields and its storage
-/// Field's size (SPEC 22.2), an owned remainder's with its capacity, a fixed array's, whose routine is given the array's length.</summary>
+/// DECISIONS R5-M121): nothing; or a remainder record's Fields and its storage Field's size (SPEC 22.2), an owned remainder's with its
+/// capacity, a fixed array's, whose routine is given the array's length.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum ArrayHelperResult : byte
 {
     None,
-    OptionPayload,
     Remainder,
     OwnedRemainder,
     FixedRemainder,
@@ -44,38 +38,36 @@ internal enum ArrayHelperResult : byte
 internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
 
 /// <summary>The row of one Array helper kind, readable by kind before any representation exists (X4): the prefix of its helpers'
-/// names, its ABI shape over a helper's name, element descriptor and remainder Fields, its body's prologue and writer, its
-/// declared needs and what its descriptor reads of its function's result. No Array helper calls a library function (F2c), so no row
+/// names, its ABI shape over a helper's name and remainder Fields, its body's prologue and writer, its declared needs and what its
+/// descriptor reads of its function's result. No Array helper calls a library function (F2c), so no row
 /// declares a library callee.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record ArrayHelperRow(
     ArrayHelperKind Kind,
     string Prefix,
-    Func<string, StoredValue, RemainderFields, FunctionAbi> Shape,
+    Func<string, RemainderFields, FunctionAbi> Shape,
     string Prologue,
     Action<TextWriter, ArrayHelper> Write,
     HelperNeeds Needs,
     ArrayHelperResult Result);
 
-/// <summary>A generated Array helper for one element: its ABI, element descriptor, for pop the Option payload offset (the tag is
-/// at offset 0), and for the storage boundary its remainder record's Fields.</summary>
+/// <summary>A generated Array helper for one element: its ABI, element descriptor and, for the storage boundary, its remainder record's
+/// Fields.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, StoredValue Element, int? OptionPayload = null, RemainderFields Fields = default)
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, StoredValue Element, RemainderFields Fields = default)
 {
     /// <summary>Creates the helper of a kind for an element, named by the kind's row prefix and shaped by its row.</summary>
     /// <param name="kind">The helper kind.</param>
     /// <param name="element">The element descriptor.</param>
     /// <param name="elementName">The generator's name of the element, which follows the prefix.</param>
     /// <param name="recordsName">The generator's name of the helper's result and remainder records, or empty.</param>
-    /// <param name="optionPayload">For pop, the Option payload offset.</param>
     /// <param name="fields">For the storage boundary, the remainder record's Fields.</param>
     /// <returns>The helper.</returns>
-    internal static ArrayHelper Create(
-        ArrayHelperKind kind, StoredValue element, string elementName, string recordsName, int? optionPayload, RemainderFields fields)
+    internal static ArrayHelper Create(ArrayHelperKind kind, StoredValue element, string elementName, string recordsName, RemainderFields fields)
     {
         var row = LegacyRuntimeHelpers.ArrayRow(kind);
-        var abi = row.Shape(string.Concat(row.Prefix, elementName, recordsName), element, fields);
-        return new(kind, abi, element, optionPayload, fields);
+        var abi = row.Shape(string.Concat(row.Prefix, elementName, recordsName), fields);
+        return new(kind, abi, element, fields);
     }
 }
 
@@ -83,9 +75,9 @@ internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, Stored
 /// {buffer, length, capacity} handle (Windows x64 profile).</summary>
 internal static partial class LegacyRuntimeHelpers
 {
-    // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy. A
-    // runtime template (LlvmModuleText.ExpandRuntime): each routine's definition at its marker line, its abort reasons and the
-    // zero-sized buffer address at theirs.
+    // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy; grow's
+    // one caller is the literal (FunctionCodegen.ArrayBuffer). A runtime template (LlvmModuleText.ExpandRuntime): each routine's definition
+    // at its marker line, its abort reasons and the zero-sized buffer address at theirs.
     internal const string ArrayRuntimeTemplate = """
         {{__kimi_array_grow}}
         entry:
@@ -198,68 +190,22 @@ internal static partial class LegacyRuntimeHelpers
 
         """;
 
-    // Swap checks both indices before it touches a slot (SPEC 4.9.3).
-    private const string SwapIndexChecks = """
-          %first_negative = icmp slt i64 %first, 0
-          %first_beyond = icmp sge i64 %first, %length
-          %second_negative = icmp slt i64 %second, 0
-          %second_beyond = icmp sge i64 %second, %length
-          %first_invalid = or i1 %first_negative, %first_beyond
-          %second_invalid = or i1 %second_negative, %second_beyond
-          %invalid = or i1 %first_invalid, %second_invalid
-
-        """;
-
-    // The parameters take the internal convention's kinds and logical indices (IMPL 21.3.1): the handle a Value at slot 0, an index, a second
-    // input and an element at their slots, a value in memory an OwnedSlot, a stride or count given; MIR code generation's one call writer
-    // places a call's operands by them (R5 plan C8d), and a definition prints only their types and names.
+    // The parameters take the internal convention's kinds and logical indices (IMPL 21.3.1): the handle a Value at slot 0, a value in memory
+    // an OwnedSlot, a stride or count given; MIR code generation's one call writer places a call's operands by them (R5 plan C8d), and a
+    // definition prints only their types and names.
     private static readonly AbiParameter Handle = new("ptr", "handle", AbiParameterKind.Value, 0);
-
-    private static readonly AbiParameter Index = new("i64", "index", AbiParameterKind.Value, 1);
 
     private static readonly AbiParameter Result = new("ptr", "result", AbiParameterKind.ResultSlot);
 
     // One row per kind, in ArrayHelperKind order (SPEC 4.9.3, 4.9.7, 22.2); a new kind adds a row. A row declares the Array
-    // runtime only when its text grows the buffer or copies or moves elements: Clear and Drop destroy elements and release
-    // through the main runtime, and the storage boundary only loads and stores the handle's words.
+    // runtime only when its text copies elements: Clear and Drop destroy elements and release through the main runtime, and
+    // the storage boundary only loads and stores the handle's words.
     private static readonly ArrayHelperRow[] ArrayRows =
     [
         new(
-            ArrayHelperKind.Insert,
-            "__kimi_array_insert_",
-            static (name, element, _) => InsertShape(name, element),
-            ArrayHelperPrologue,
-            WriteArrayInsert,
-            HelperNeeds.ArrayRuntime,
-            ArrayHelperResult.None),
-        new(
-            ArrayHelperKind.Pop,
-            "__kimi_array_pop_",
-            static (name, _, _) => Slotted(name, [Handle, Result]),
-            ArrayHelperPrologue,
-            WriteArrayPop,
-            HelperNeeds.ArrayRuntime,
-            ArrayHelperResult.OptionPayload),
-        new(
-            ArrayHelperKind.Remove,
-            "__kimi_array_remove_",
-            static (name, element, _) => RemoveShape(name, element),
-            ArrayHelperPrologue,
-            WriteArrayRemove,
-            HelperNeeds.ArrayRuntime,
-            ArrayHelperResult.None),
-        new(
-            ArrayHelperKind.Place,
-            "__kimi_array_place_",
-            static (name, element, _) => PlaceShape(name, element),
-            ArrayHelperPrologue,
-            WriteArrayPlace,
-            HelperNeeds.ArrayRuntime,
-            ArrayHelperResult.None),
-        new(
             ArrayHelperKind.Clear,
             "__kimi_array_clear_",
-            static (name, _, _) => Located(name, []),
+            static (name, _) => Located(name, []),
             ArrayHelperPrologue,
             WriteArrayClear,
             HelperNeeds.ElementGlue,
@@ -267,23 +213,15 @@ internal static partial class LegacyRuntimeHelpers
         new(
             ArrayHelperKind.Drop,
             "__kimi_array_drop_",
-            static (name, _, _) => Located(name, []),
+            static (name, _) => Located(name, []),
             ArrayHelperPrologue,
             WriteArrayClear,
             HelperNeeds.ElementGlue,
             ArrayHelperResult.None),
         new(
-            ArrayHelperKind.Swap,
-            "__kimi_array_swap_",
-            static (name, _, _) => Located(name, [new("i64", "first", AbiParameterKind.Value, 1), new("i64", "second", AbiParameterKind.Value, 2)]),
-            ArrayHelperPrologue,
-            WriteArraySwap,
-            HelperNeeds.ArrayRuntime,
-            ArrayHelperResult.None),
-        new(
             ArrayHelperKind.BorrowStorage,
             "__kimi_array_borrow_",
-            static (name, _, _) => Slotted(name, [Handle, Result]),
+            static (name, _) => Slotted(name, [Handle, Result]),
             ArrayHelperPrologue,
             WriteArrayBorrow,
             HelperNeeds.None,
@@ -291,7 +229,7 @@ internal static partial class LegacyRuntimeHelpers
         new(
             ArrayHelperKind.OwnStorage,
             "__kimi_array_own_",
-            static (name, _, _) => Slotted(name, [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), Result]),
+            static (name, _) => Slotted(name, [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), Result]),
             "entry:\n",
             WriteArrayOwn,
             HelperNeeds.None,
@@ -299,7 +237,7 @@ internal static partial class LegacyRuntimeHelpers
         new(
             ArrayHelperKind.OwnFixedStorage,
             "__kimi_fixed_own_",
-            static (name, _, fields) => OwnFixedShape(name, fields),
+            static (name, fields) => OwnFixedShape(name, fields),
             "entry:\n",
             WriteFixedOwn,
             HelperNeeds.ArrayRuntime,
@@ -344,181 +282,10 @@ internal static partial class LegacyRuntimeHelpers
         ? new(value.Value.ComputationType, name, AbiParameterKind.Value, slot)
         : new("ptr", name, AbiParameterKind.OwnedSlot, slot);
 
-    // A zero-sized element has no slot, so its helpers take no value, source or result pointer (SPEC 4.5).
-    private static FunctionAbi InsertShape(string name, StoredValue element)
-        => element.IsZeroSized ? Located(name, [Index]) : Located(name, [Index, Argument(element, "value", 2)]);
-
-    private static FunctionAbi PlaceShape(string name, StoredValue element)
-        => element.IsZeroSized ? Located(name, []) : Located(name, [new("ptr", "source")]);
-
-    // A removed scalar is returned; another element moves into the caller's result slot.
-    private static FunctionAbi RemoveShape(string name, StoredValue element)
-    {
-        if (element.IsScalar)
-        {
-            return new(name, element.Value.ComputationType, [Handle, Index, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
-        }
-
-        return element.IsZeroSized
-            ? Located(name, [Index])
-            : Slotted(name, [Handle, Index, Result, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
-    }
-
     // The consumed fixed array moves in by address unless its storage has no bytes (SPEC 22.2).
     private static FunctionAbi OwnFixedShape(string name, RemainderFields fields) => fields.StorageSize == 0
         ? Slotted(name, [new("i64", "count"), Result])
         : Slotted(name, [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), new("i64", "count"), Result]);
-
-    private static long Stride(ArrayHelper helper) => helper.Element.Value.Layout.Stride;
-
-    // Requires 0 <= index <= length, then shifts the tail up by one element before placing the value.
-    private static void WriteArrayInsert(TextWriter output, ArrayHelper helper)
-    {
-        output.Write("""
-              %negative = icmp slt i64 %index, 0
-              %beyond = icmp sgt i64 %index, %length
-              %invalid = or i1 %negative, %beyond
-              br i1 %invalid, label %bounds_failure, label %increase
-            increase:
-
-            """);
-        WriteArrayIncrease(output);
-        output.Write("  call void @__kimi_array_grow(ptr %handle, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", i64 %needed, ptr %location, i64 %location_length)\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  %next = getelementptr i8, ptr %slot, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %tail_count = sub i64 %length, %index\n  %tail_bytes = mul i64 %tail_count, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  call void @llvm.memmove.p0.p0.i64(ptr %next, ptr %slot, i64 %tail_bytes, i1 false)\n");
-        WriteStoredArgument(output, helper.Element, "%value", "%slot", "%stored");
-        output.Write("  store i64 %needed, ptr %length_ptr, align 8\n  ret void\n");
-        WriteArrayBoundsFailure(output);
-    }
-
-    // Moves the last element into the Option payload with the Some tag, or writes the None tag (SPEC 4.9.3).
-    private static void WriteArrayPop(TextWriter output, ArrayHelper helper)
-    {
-        var payload = helper.OptionPayload ?? throw new InvalidOperationException("Array pop needs its Option payload offset.");
-        output.Write("""
-              %empty = icmp eq i64 %length, 0
-              br i1 %empty, label %none, label %some
-            some:
-              %last = sub i64 %length, 1
-              %buffer = load ptr, ptr %handle, align 8
-
-            """);
-        output.Write("  %offset = mul i64 %last, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  %payload = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, payload);
-        output.Write("\n  call void @llvm.memcpy.p0.p0.i64(ptr %payload, ptr %slot, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write("""
-            , i1 false)
-              store i32 0, ptr %result, align 4
-              store i64 %last, ptr %length_ptr, align 8
-              ret void
-            none:
-              store i32 1, ptr %result, align 4
-              ret void
-
-            """);
-    }
-
-    // Requires 0 <= index < length, moves the element out and shifts the tail down (SPEC 4.9.3).
-    private static void WriteArrayRemove(TextWriter output, ArrayHelper helper)
-    {
-        var scalar = helper.Element.IsScalar;
-        output.Write("""
-              %negative = icmp slt i64 %index, 0
-              %beyond = icmp sge i64 %index, %length
-              %invalid = or i1 %negative, %beyond
-              br i1 %invalid, label %bounds_failure, label %remove
-            remove:
-
-            """);
-        output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
-        if (scalar)
-        {
-            WriteArrayElementLoad(output, helper.Element.Value);
-        }
-        else
-        {
-            WriteStoredCopy(output, "%result", "%slot", Stride(helper));
-        }
-
-        output.Write("  %next = getelementptr i8, ptr %slot, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %last = sub i64 %length, 1\n  %tail_count = sub i64 %last, %index\n  %tail_bytes = mul i64 %tail_count, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  call void @llvm.memmove.p0.p0.i64(ptr %slot, ptr %next, i64 %tail_bytes, i1 false)\n  store i64 %last, ptr %length_ptr, align 8\n");
-        output.Write("  ret ");
-        output.Write(scalar ? helper.Element.Value.ComputationType : "void");
-        output.Write(scalar ? " %value\n" : "\n");
-        WriteArrayBoundsFailure(output);
-    }
-
-    // Loads a removed scalar from its slot into %value, narrowing a wider storage form (SPEC 21.3.1).
-    private static void WriteArrayElementLoad(TextWriter output, ValueLowering element)
-    {
-        var storage = element.Layout.StorageType;
-        var narrowed = storage != element.ComputationType;
-        output.Write(narrowed ? "  %loaded = load " : "  %value = load ");
-        output.Write(storage);
-        output.Write(", ptr %slot, align ");
-        WriteNumber(output, element.Layout.Alignment);
-        output.Write('\n');
-        if (narrowed)
-        {
-            output.Write("  %value = trunc ");
-            output.Write(storage);
-            output.Write(" %loaded to ");
-            output.Write(element.ComputationType);
-            output.Write('\n');
-        }
-    }
-
-    // Requires both indices in [0, length) and exchanges the two element slots through a stack buffer (SPEC 4.9.3).
-    private static void WriteArraySwap(TextWriter output, ArrayHelper helper)
-    {
-        var stride = Stride(helper);
-        if (stride == 0)
-        {
-            // Zero-sized elements have no bytes to exchange; the indices are still checked.
-            output.Write(SwapIndexChecks);
-            output.Write("  br i1 %invalid, label %bounds_failure, label %done\ndone:\n  ret void\n");
-            WriteArrayBoundsFailure(output);
-            return;
-        }
-
-        output.Write("  %scratch = alloca i8, i64 ");
-        WriteNumber(output, stride);
-        output.Write(", align 16\n");
-        output.Write(SwapIndexChecks);
-        output.Write("""
-              br i1 %invalid, label %bounds_failure, label %check
-            check:
-              %same = icmp eq i64 %first, %second
-              br i1 %same, label %done, label %exchange
-            exchange:
-              %buffer = load ptr, ptr %handle, align 8
-
-            """);
-        output.Write("  %first_offset = mul i64 %first, ");
-        WriteNumber(output, stride);
-        output.Write("\n  %first_slot = getelementptr i8, ptr %buffer, i64 %first_offset\n  %second_offset = mul i64 %second, ");
-        WriteNumber(output, stride);
-        output.Write("\n  %second_slot = getelementptr i8, ptr %buffer, i64 %second_offset\n");
-        WriteStoredCopy(output, "%scratch", "%first_slot", stride);
-        WriteStoredCopy(output, "%first_slot", "%second_slot", stride);
-        WriteStoredCopy(output, "%second_slot", "%scratch", stride);
-        output.Write("  br label %done\ndone:\n  ret void\n");
-        WriteArrayBoundsFailure(output);
-    }
 
     // SPEC 22.2: the remainder records the buffer and the whole length as its untaken range {storage, position, count}.
     private static void WriteArrayBorrow(TextWriter output, ArrayHelper helper)
@@ -587,20 +354,6 @@ internal static partial class LegacyRuntimeHelpers
         output.Write("_slot, align 8\n");
     }
 
-    // Moves an acquired payload slot into the next element of a literal whose capacity was reserved (SPEC 4.3).
-    private static void WriteArrayPlace(TextWriter output, ArrayHelper helper)
-    {
-        if (!helper.Element.IsZeroSized)
-        {
-            output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
-            WriteNumber(output, Stride(helper));
-            output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
-            WriteStoredCopy(output, "%slot", "%source", Stride(helper));
-        }
-
-        output.Write("  %next = add i64 %length, 1\n  store i64 %next, ptr %length_ptr, align 8\n  ret void\n");
-    }
-
     // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.9.7).
     private static void WriteArrayClear(TextWriter output, ArrayHelper helper)
     {
@@ -618,7 +371,7 @@ internal static partial class LegacyRuntimeHelpers
 
                 """);
             output.Write("  %offset = mul i64 %index, ");
-            WriteNumber(output, Stride(helper));
+            WriteNumber(output, helper.Element.Value.Layout.Stride);
             output.Write("\n  %element = getelementptr i8, ptr %buffer, i64 %offset\n");
             WriteStoredDestruction(output, helper.Element, "%element");
             output.Write("  br label %test\nend:\n");
@@ -631,37 +384,6 @@ internal static partial class LegacyRuntimeHelpers
         }
 
         output.Write("  ret void\n");
-    }
-
-    // The checked count of an append or insert; a full Array's count overflow Aborts before any growth (SPEC 4.9.3).
-    private static void WriteArrayIncrease(TextWriter output)
-    {
-        output.Write("""
-              %count_pair = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %length, i64 1)
-              %needed = extractvalue { i64, i1 } %count_pair, 0
-              %count_overflow = extractvalue { i64, i1 } %count_pair, 1
-              br i1 %count_overflow, label %count_failure, label %grow
-            count_failure:
-
-            """);
-        WriteArrayAbort(output, AbortReasons.IntegerOverflow);
-        output.Write("grow:\n");
-    }
-
-    private static void WriteArrayBoundsFailure(TextWriter output)
-    {
-        output.Write("bounds_failure:\n");
-        WriteArrayAbort(output, AbortReasons.IndexBounds);
-    }
-
-    // A helper's precondition failure Aborts at its caller's location with no operating-system error (SPEC 22.5.2).
-    private static void WriteArrayAbort(TextWriter output, int reason)
-    {
-        output.Write("  call void @__kimi_abort(i32 ");
-        WriteNumber(output, reason);
-        output.Write(", ptr %location, i64 %location_length, i64 ");
-        WriteNumber(output, RuntimeAbi.NoOsError);
-        output.Write(")\n  unreachable\n");
     }
 
     private static partial class Texts
