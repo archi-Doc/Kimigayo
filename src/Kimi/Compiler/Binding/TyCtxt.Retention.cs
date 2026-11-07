@@ -30,8 +30,8 @@
 // exception, which ends the check as CheckFaulted_Kd.
 // Invariants: one exception to the next sentence, a conservative limit: a Closure part's local region reaches the meet of its sources at
 // the literal for every occurrence of the region in the contract, which is no premise of any body, so a position reaching that meet
-// retains the capture though no body could move it there (the owner's O-51, DECISIONS: G553; removal R7-O2). No proof reads that edge.
-// A storage retains an input when the callee's body may move a value of the input there under the premises its body is
+// retains the capture though no body could move it there (the owner's O-51 and O-52, DECISIONS: G553; removal R7-O2). No proof reads
+// that edge. A storage retains an input when the callee's body may move a value of the input there under the premises its body is
 // checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins left as the
 // call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name one abstract
 // carrier. Per storage (SPEC 15.6.4 read as (iii) with (β′), DECISIONS R4-M154): a position retains the input's own value (Value) only

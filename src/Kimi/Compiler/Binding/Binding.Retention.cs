@@ -536,8 +536,9 @@ public sealed partial class Binding
     // its sources as of the literal (BoundClosure.CapturedRegions; SPEC 7.7.2, 15.3.6, 15.8.2; DECISIONS: G553), which the published result
     // and this region then name alike: the capture is a snapshot of that meet, and a position that reaches the meet may hold it. A may-fact
     // of this contract's rows, no relation of the Origins: a later source shrinks the solved region below that meet, and no proof reads the
-    // edge. It is conservative: the rows read it as a fit, and it sits on the region's one node, so it reaches every Closure's occurrence
-    // of the region (the owner's O-51; removal R7-O2).
+    // edge. It is conservative: the rows read it as a fit, it sits on the region's one node, so it reaches every Closure's occurrence of
+    // the region, and its meet is in source order, so a literal in a loop or a `defer` lacks a source below it (the owner's O-51 and O-52;
+    // removal R7-O2).
     private int[] RetentionNodes(OriginPremiseEnvironment environment)
     {
         foreach (var closure in this.retentionCaptured)

@@ -120,10 +120,29 @@ public sealed partial class MirBorrowsTest
     // (k2, O-51, R7-O2) one Closure's meet reaches another Closure's occurrence of the region (SPEC 7.7.2: each capture is its own snapshot);
     // (v7, O-51, R7-O2) a position naming the meet as of the literal where the region, solved over a later bound, could not hold the capture
     // (SPEC 15.3.6); (v7u, O-51, R7-O2) its exclusive form. R7-O2 turns these into accepted rows; until then each is this record, here.
+    // The class, widened by the owner's O-52 (verbatim 「a」; the same root fix): the meet is in source order, and a literal in a loop or a
+    // `defer` runs after statements below it, so a source assigned there reaches the literal missing from the meet, and the result, which
+    // only passes its parameter through, reads as holding the capture that does hold it, valid on either reading of `v7`: (z57, O-51, O-52,
+    // R7-O2) a `while`, where a position over a parameter can hold no local Borrow (SPEC 15.6.5); (z64, O-51, O-52, R7-O2) a `for`; (z34,
+    // O-51, O-52, R7-O2) a position over a local; (z67, O-51, O-52, R7-O2) a `defer`.
     [Theory]
     [InlineData(See + "func both<A, B, T>(x: ref/A, y: ref/B, t: T) -> T\n    return t@move\nfunc t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = a@ref\n    var r = s\n    let c1 = func [r] () => r\n    r = b@ref\n    let c2 = func [r] () => r\n    let v = both(c1@ref, c2@ref, s)\n    b = 3\n    see(v)\n" + Main, "b = 3", null)]
     [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var c: i32 = 3\n    let s = a@ref\n    let w = b@ref\n    var r = s\n    let h = func [r, w] (p: ref/i32 during s) -> ref/i32 during s => p\n    let v = h(s)\n    r = c@ref\n    b = 3\n    see(v)\n    see(r)\n" + Main, "b = 3", null)]
     [InlineData("func t(value: uniq/i32 during q, other: uniq/i32 during q, third: uniq/i32 during z)\n    var v = value@move\n    var h = func [v] (p: uniq/i32 during q) -> uniq/i32 during q => p\n    let a = h(other)\n    v@follow = 3\n    a@follow = 1\n    v = third@move\n" + Main, "v@follow = 3", null)]
+    [InlineData(See + "func f(q: ref/i32, n: i32)\n    var a: i32 = 1\n    var r = q\n    var v = q\n    var i: i32 = 0\n    while i < n\n        let c = func [r] (p: ref/i32 during q) -> ref/i32 during q => p\n        v = c(q)\n        r = a@ref\n        i += 1\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main, "a = 3", null)]
+    [InlineData(See + "func f(q: ref/i32)\n    var a: i32 = 1\n    var r = q\n    var v = q\n    for n in 0..2\n        let c = func [r] (p: ref/i32 during q) -> ref/i32 during q => p\n        v = c(q)\n        r = a@ref\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main, "a = 3", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let u = a@ref\n    let s = b@ref\n    var r = s\n    var v = s\n    var i: i32 = 0\n    while i < 2\n        let c = func [r] (p: ref/i32 during s) -> ref/i32 during s => p\n        v = c(s)\n        r = u\n        i += 1\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main, "a = 3", null)]
+    [InlineData(See + "func f(q: ref/i32)\n    var a: i32 = 1\n    var r = q\n    var v = q\n    defer\n        let c = func [r] (p: ref/i32 during q) -> ref/i32 during q => p\n        v = c(q)\n        a = 3\n        see(v)\n        see(a@ref)\n    r = a@ref\n" + Main, "a = 3", null)]
     public void ACapturedRegionsMeetIsAConservativeLimit(string source, string context, string? subject)
         => MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(context, subject)));
+
+    // Not this unit's limit: a hole it leaves as dev has it, the other direction of the same root (PLAN G570; the owner's O-52, verbatim 「a」;
+    // removal R7-O2). `ResolveLocalResultOrigins` publishes the result in source order too, so `q`, which reaches the literal on the next
+    // iteration, never reaches the Origin check, and z50 is accepted. SPEC 15.6.5 gives it the record its control has, `out = r` with no
+    // Closure, which this row states. It fails by design, so it is Explicit until R7-O2, its expectation unchanged: no row pins the acceptance.
+    [Fact(Explicit = true)]
+    public void ALaterSourceReachesTheOriginCheckPendingG570()
+        => MirTargetSide.Check(
+            "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    var r = p\n    var out = p\n    var i: i32 = 0\n    while i < 2\n        let c = func [r] () => r\n        out = c()\n        r = q\n        i += 1\n    return out\n" + Main,
+            (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At("return out", "out")));
 }
