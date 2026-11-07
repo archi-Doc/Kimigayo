@@ -260,6 +260,8 @@ public class DictionaryLibraryTest
         Assert.Equal(new[] { 0, 8, 16, 24, 32, 40, 48 }, layout.FieldOffsets.ToArray());
     }
 
+    // The Closure's result states `static` (a claim, SPEC 5.7), so it does not depend on the receiver and erases (7.7.4, the owner's
+    // O-28 (a)); the unstated form is ErasureAfterSelectionTest's e07.
     [Fact]
     public void PointerReturningCallbacksUseOrdinaryCallAbi()
     {
@@ -268,8 +270,8 @@ public class DictionaryLibraryTest
             unsafe
                 let address: usize = 4096
                 let expected = address@raw/u8
-                let concrete = func [address] (offset: isize) -> raw/u8
-                    unsafe => return address@raw/u8
+                let concrete = func [address] (offset: isize) -> raw/u8 during static
+                    unsafe => return address@raw/u8@(raw/u8 during static)
                 let erased: (isize) -> raw/u8 = concrete
                 require concrete(0) == expected and erased(0) == expected else => $abort("pointer result")
                 require invoke(erased@move) == expected else => $abort("forwarded result")
