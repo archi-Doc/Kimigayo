@@ -212,8 +212,7 @@ public sealed partial class Binding
         => ref CollectionsMarshal.GetValueRefOrAddDefault(this.argumentParts, SourceRef.Of(PartCore(part)), out _);
 
     private ArgumentPart RecordedPart(Koto node)
-        => PartCore(node) is { SyntaxOwner: { } owner } core && this.argumentParts.TryGetValue(new(owner.Module, core.SyntaxId), out var part)
-            ? part : default;
+        => this.argumentParts.TryGetValue(SourceRef.Written(PartCore(node)), out var part) ? part : default;
 
     // Whether the part still waits for its call as a deferred Call: not yet completed and with no failure of its own (KindOf).
     private bool IsWaitingPart(Koto node) => this.KindOf(node) == PartKind.Call;

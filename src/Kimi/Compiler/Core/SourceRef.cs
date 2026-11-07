@@ -15,6 +15,12 @@ namespace Kimi.Compiler;
 /// <param name="Id">The node's id in that module; 0 is no node.</param>
 internal readonly record struct SourceRef(ushort Module, int Id)
 {
+    /// <summary>Gets the reference of a node without numbering it, as a table's read does: no semantic write reached a node without an id, so
+    /// no table has it.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>Its module ordinal and id, or the default.</returns>
+    internal static SourceRef Written(Koto node) => node.SyntaxOwner is { } table ? new(table.Module, node.SyntaxId) : default;
+
     /// <summary>Gets the reference of a node, giving a node without an id the next id of its module.</summary>
     /// <param name="node">The node.</param>
     /// <returns>Its module ordinal and id.</returns>
