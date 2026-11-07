@@ -34,6 +34,8 @@ public sealed partial class RetentionTest
 
     internal const string Phantom = "struct Ph<T>\n";
 
+    internal const string CappedRaw = "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    public var b: raw/(raw/u8) during s\n";
+
     internal const string Handle = Bad + "struct Sx\n    public var x: rc/Bad\nfunc f(s: uniq/Sx, p: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n";
 
     internal const string Keep2 = Bad + "func keep2(x: ref/i32, b: uniq/Bad) -> ref/i32 during x => x\nfunc g(b: uniq/Bad)\n    var v = 1\n" +
@@ -261,22 +263,45 @@ public sealed partial class RetentionTest
     [InlineData(Cell + "func f(dst: rc/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
     [InlineData(Box + "func f(dst: ref/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => ()", "")]
     [InlineData(Phantom + "func f(dst: uniq/Ph<ref/i32 during q>, v: ref/i32 during q) => ()", "store 0: own {0 Content, 1 Content}, reached {}")]
-    [InlineData("func f(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()", "")]
+    [InlineData("func f(dst: uniq/Text.HeapBuffer, p: raw/u8) => ()", "store 0: own {1 Value}, reached {}")]
     [InlineData("func f(dst: uniq/Text.HeapBuffer, v: ref/u8) => ()", "")]
     public void ExclusiveInputsAreStores(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 5.2.1, 15.6.4 (G416 review B1): a raw layer's pointee is walked with no key of the layer, so a slot's cap steps only the layer its
+    // declaration states there, and a raw pointee below it stays stated by the Type: rule A keeps what a stored value brings (BU-1), and the
+    // twin's write conflicts while h lives.
+    [Theory]
+    [InlineData(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) => ()", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(
+        "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    let b: raw/(raw/u8 during static) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()",
+        "store 0: own {0 Content, 1 Value}, reached {} untied")]
+    public void ACapStepsOnlyTheLayerItsDeclarationStates(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    [Fact]
+    public void ACappedHoldersPointeeKeepsWhatARuleAStoreBrings()
+    {
+        const string Init = "    public init(l: ref/u8 during s)\n        self.loan = Loan.init(l)\n        self.b = null\n";
+        const string Form = "func put(h: uniq/HS, v: raw/u8, w: ref/i32) => ()\nfunc g()\n    var x = 1\n    var y: u8 = 2\n    var h = HS.init(y@ref)\n" +
+            "    put(h@uniq, null, x@ref)\n    x = 3\n    let k = h@ref\n";
+        Assert.Equal("ComparisonLoanConflict_Kd x = 3", MirBorrowsTest.Records(CappedRaw + Init + Form + "public func main() => ()\n"));
+        var result = Bind(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) -> HS => $abort(\"x\")\n");
+        Assert.StartsWith("result {0 Value, 1 Value Chain, 2 Content}", Declared(result, "f"), StringComparison.Ordinal);
+    }
+
     // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
     // call stores nothing there: phantomOk is valid and x's write is free; its twin stores T, so storedBad's write conflicts while h lives.
-    // SPEC 22.9 (row 20): a HeapBuffer holds UTF-8 bytes, so a call stores no raw input there (heapOk, valid); a raw Field does, and a value
-    // moved into raw storage keeps its Loans (SPEC 5.2.1, slotBad, invalid); the buffer's own borrow still conflicts (heapBytesBad, invalid).
+    // Guards of dev's answer at a HeapBuffer, which takes its declared Fields until G-1 judges SPEC 22.9 (G416): a call may store a raw input
+    // there as in a raw Field (heapOk beside slotBad; SPEC 5.2.1: a value moved into raw storage keeps its Loans), and the buffer's own
+    // borrow conflicts (heapBytesBad).
     [Theory]
     [InlineData("phantomOk", "func phantomOk()\n    var x = 1\n    var p = Ph<ref/i32>.init()\n    keep(p@uniq, x@ref)\n    x = 3\n    let k = p@ref\n", "")]
     [InlineData(
         "storedBad",
         "func storedBad()\n    var x = 1\n    var y = 2\n    var h = Hd<ref/i32>.init(y@ref)\n    keepH(h@uniq, x@ref)\n    x = 3\n    let k = h@ref\n",
         "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("heapOk", "func heapOk()\n    var h = Text.heap(8)\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    put(h@uniq, p)\n    x = 2\n    let k = h@ref\n", "")]
+    [InlineData("heapOk", "func heapOk()\n    var h = Text.heap(8)\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    put(h@uniq, p)\n    x = 2\n    let k = h@ref\n", "ComparisonLoanConflict_Kd x = 2")]
     [InlineData(
         "slotBad",
         "func slotBad()\n    var s = Slot.init()\n    var x: u8 = 1\n    let r = x@uniq\n    let p = r@follow@raw\n    s.put(p)\n    x = 2\n    let k = s@ref\n",

@@ -147,7 +147,7 @@ public sealed partial class Binding
 
     // What a Type's entries reach, by the first: a pair layer's one reading, until U3b reads its cases (G416 D2); what a borrow, shared handle
     // or raw layer refers to (Past; a raw layer by its position's step, `during self` content as Admitted); its parts by value (Parts); an
-    // abstract part or a callable, nothing; an unlisted form, the Limit.
+    // abstract part or a callable, nothing; an unlisted form, nothing past HeldRun's Limit.
     private void Reach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
         var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Signature = null };
@@ -172,7 +172,7 @@ public sealed partial class Binding
         var first = this.retentionHeld[run.Start];
         if ((first.Flags & HoldFlags.Raw) != 0)
         {
-            this.RawReach(environment, type, first.Part!, at, run, targets, layer);
+            this.RawReach(environment, type, at, run, targets, layer);
         }
         else if (first.Step is HoldStep.Shared or HoldStep.Exclusive)
         {
@@ -183,11 +183,7 @@ public sealed partial class Binding
         {
             this.Past(environment, first.Part!, targets, written: false, layer: -1, below with { Signature = DeclaredComponent(declared, type, 0) });
         }
-        else if (first.Step == HoldStep.Unsupported)
-        {
-            this.retentionLimit = true;
-        }
-        else if (first.Step is not (HoldStep.Abstract or HoldStep.Erased))
+        else if (first.Step is not (HoldStep.Abstract or HoldStep.Erased or HoldStep.Unsupported))
         {
             this.Parts(environment, type, at, run);
         }
@@ -195,8 +191,9 @@ public sealed partial class Binding
 
     // A raw layer. An input fold's walk names no write, so any step's layer is gone through. An output fold's steps by its position (RawStepAt,
     // as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-113), the cap of a contract's walk, which stays outside the fact.
-    private void RawReach(OriginPremiseEnvironment environment, BoundType type, BoundType pointee, StorageAt at, HeldRange run, int targets, int layer)
+    private void RawReach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
+        var pointee = this.retentionHeld[run.Start].Part!;
         var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Signature = null };
         if (at.Storage == NoStorage)
         {
@@ -208,7 +205,7 @@ public sealed partial class Binding
         below = below with { Signature = DeclaredComponent(at.Signature, type, 0) };
         if (step == HoldStep.Own)
         {
-            this.Admitted(environment, run, at.Holder, below);
+            this.Admitted(environment, run, below);
             return;
         }
 
@@ -223,7 +220,7 @@ public sealed partial class Binding
     // states in the same storage; an AnyOf entry, the write fact: any value at each Origin argument's node (a position of no Type), in the
     // same storage and in the Abstract one, what such a value may refer to. The input fold reads that content among the holder's parts by
     // value (SelfContent) and goes through the layer to its pointee.
-    private void Admitted(OriginPremiseEnvironment environment, HeldRange run, BoundType? holder, StorageAt at)
+    private void Admitted(OriginPremiseEnvironment environment, HeldRange run, StorageAt at)
     {
         for (var i = run.Start; i < run.End; i++)
         {
@@ -233,7 +230,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var argument in at.Writable && at.Storage >= 0 && at.Storage != ResultStorage ? holder!.OriginArguments : [])
+            foreach (var argument in at.Writable && at.Storage >= 0 && at.Storage != ResultStorage ? AnyOfOrigins(this.retentionHeld[i].Holder!) : [])
             {
                 var node = this.PremiseNode(environment, argument);
                 this.storagePositions.AddRange([(at.Storage, node, null), (AbstractStorage, node, null)]);
@@ -296,12 +293,7 @@ public sealed partial class Binding
         var declared = new HeldRange(run.End, run.End);
         if (!captured && Same(at.Signature, type))
         {
-            declared = this.HeldRun(at.Signature!, null, null, out var complete);
-            if (!complete)
-            {
-                this.retentionHeld.RemoveRange(declared.Start, declared.End - declared.Start);
-                declared = new(run.End, run.End);
-            }
+            declared = this.HeldRun(at.Signature!, null, null, out _);
         }
 
         var paired = declared.End - declared.Start == run.End - run.Start; // The declared Type's parts, in the same order.
@@ -326,7 +318,8 @@ public sealed partial class Binding
         {
             if (this.retentionHeld[i] is { Part: { } stored, Holder: { } owner } part && ReferenceEquals(owner, type) && ReferenceTypes.IsPointer(part.Written))
             {
-                this.SelfContent(environment, stored, part.Written, owner, at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured });
+                var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured };
+                this.SelfContent(environment, stored, part.Written, owner, below);
             }
         }
     }
@@ -619,11 +612,17 @@ public sealed partial class Binding
         => this.AtomNode(environment, new(CallRetention.ResultOutput, null, Writable: false, null, carrier, null));
 
     // A Type's entries (Holdings) as a run on retentionHeld, a stack: its caller reads it and removes it. At Binding's Limit, none, and false.
+    // An Unsupported entry is retention's undecided outcome for every reader: the contract's Limit (Q2's condition 4).
     private HeldRange HeldRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
     {
         var start = this.retentionHeld.Count;
         complete = this.Holdings(type, written, holder, this.retentionHeld);
         this.retentionHeld.RemoveRange(start, complete ? 0 : this.retentionHeld.Count - start);
+        for (var i = start; i < this.retentionHeld.Count; i++)
+        {
+            this.retentionLimit |= this.retentionHeld[i].Step == HoldStep.Unsupported;
+        }
+
         return new(start, this.retentionHeld.Count);
     }
 

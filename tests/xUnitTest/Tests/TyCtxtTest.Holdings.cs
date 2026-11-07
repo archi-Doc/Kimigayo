@@ -54,7 +54,7 @@ public sealed partial class TyCtxtTest
     [InlineData("parameter", "T Abstract Premised")]
     [InlineData("projection", "P.Item Abstract Premised")]
     [InlineData("function", "- Erased Nothing")]
-    [InlineData("heap", "u8 Own Its Repeated")]
+    [InlineData("heap", "raw/u8 Inline Its written holder; isize Inline Its written holder; isize Inline Its written holder; isize Inline Its written holder")]
     [InlineData("start", "")]
     public void EachFormHoldsItsRowsEntries(string parameter, string entries)
     {
@@ -74,8 +74,8 @@ public sealed partial class TyCtxtTest
         Assert.Equal("u8 Static Its Raw", ShownAt(c, p["cell"], 0, [1]));
         Assert.Equal("i64 Own Its Raw; bool Own Its Raw", ShownAt(c, p["selfOnly"], 0, []));
         Assert.Equal("i64 Own Its Raw; - Own AnyOf Raw, ExclusiveOrigin holder", ShownAt(c, p["selfOrigin"], 0, []));
-        Assert.Equal("i32 Shared Members Raw written holder", ShownAt(c, p["refSlot"], 1, []));
-        Assert.Equal("i64 Exclusive Members Raw written holder", ShownAt(c, p["uniqSlot"], 1, []));
+        Assert.Equal("i32 Shared Members Raw", ShownAt(c, p["refSlot"], 1, []));
+        Assert.Equal("i64 Exclusive Members Raw", ShownAt(c, p["uniqSlot"], 1, []));
     }
 
     // SPEC 8.1.1: a pair layer holds one entry per admitted case, by the view table (rows 5-8), its raw case unstepped until U3b (row 16); an
@@ -115,6 +115,16 @@ public sealed partial class TyCtxtTest
         var closure = LocalTypes(c).First(static x => x is { Kind: BoundTypeKind.Closure })!;
         Assert.Equal("raw/u8 Inline Its", Shown(Entries(c, closure, null, null)));
         Assert.Equal("u8 Address Its Raw", Shown(Entries(c, closure.Components[0], null, null)));
+    }
+
+    // A projection's Contract, which rule A's hold walk meets through the projection's components (row 3b's rule): its Type arguments.
+    [Fact]
+    public void AContractHoldsItsTypeArgumentsAsLoans()
+    {
+        var c = MinimalEmissionTest.Analyze("func probe<S>(x: S.(Indexable<isize>).Element) -> ()\n    S is Indexable<isize>\n    return ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var projection = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
+        Assert.Equal("isize Loan Its", Shown(Entries(c, projection.Components[1], null, null)));
     }
 
     // A growing Type is at Binding's Limit from its first level: the accessor answers false and its entries stay published, for a reader with
@@ -159,7 +169,7 @@ public sealed partial class TyCtxtTest
             }
 
             var parts = types.StoredParts(type, out _);
-            for (var i = 0; type.Symbol?.LibraryDeclaration is not (KimiDeclarationId.UniqSlice or KimiDeclarationId.HeapBuffer) && i < parts.Length; i++)
+            for (var i = 0; type.Symbol?.LibraryDeclaration != KimiDeclarationId.UniqSlice && i < parts.Length; i++)
             {
                 var enumCase = AdtDef.IsEnum(type);
                 for (var j = 0; parts[i] is { } part && j < (enumCase ? part.Components.Count : 1); j++)
