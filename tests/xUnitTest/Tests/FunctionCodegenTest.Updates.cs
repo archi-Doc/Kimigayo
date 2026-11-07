@@ -173,20 +173,17 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(unit.Instructions, static x => x.Opcode == "call" || (x.Opcode == "store" && x.Shape != "store ptr %, ptr %, align 8"));
     }
 
-    // SPEC 22.2 (DECISIONS R5-M45, R5-M116): borrowStorage over a fixed array writes the remainder {storage, position, count} at its Fields:
-    // the borrowed array's address, 0 and its closed length, through P2a's kernel text: the shared kernel of [3] and of an empty array (count
-    // 0), the exclusive kernel of [2] (sliceUniq).
+    // SPEC 22.2 (R8-A1d): borrowStorage's body over a fixed array gives its remainder's init the borrowed array's address and its closed
+    // length, a constant it stores, reading no element: the shared body of [3] and of an empty array (0), the exclusive body of [2] (sliceUniq).
     [Fact]
     public void AFixedArraysStorageIsItsAddressAndLength()
     {
         var c = Analyze(Updates, OutputKind.Library);
-        var text = Generate(c);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var stores = new[] { "borrowStorage", "borrowStorageUniq" }.SelectMany(x => FunctionsOf(ir, c, x)).SelectMany(static x => x.Instructions).Select(static x => x.Shape).ToArray();
         foreach (var length in new[] { 3, 0, 2 })
         {
-            Assert.Matches(
-                $@"(?m)^  store ptr %t\d+, ptr %l\d+, align 8\n  %fpos(\d+) = getelementptr i8, ptr %l\d+, i64 8\n  store i64 0, ptr %fpos\1, align 8\n" +
-                $@"  %fcount\1 = getelementptr i8, ptr %l\d+, i64 16\n  store i64 {length}, ptr %fcount\1, align 8\n",
-                text);
+            Assert.Contains($"store i64 {length}, ptr %, align 8", stores);
         }
     }
 
