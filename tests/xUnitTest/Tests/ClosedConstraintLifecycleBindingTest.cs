@@ -46,8 +46,6 @@ public class ClosedConstraintLifecycleBindingTest
     [Theory]
     [InlineData("i32 is Copy", true)]
     [InlineData("string is Copy", false)]
-    [InlineData("(i32) -> bool is (i32,) -> bool", true)]
-    [InlineData("() -> bool is (()) -> bool", false)]
     public void DeterminedConditionsKeepTheirStateAcrossPasses(string clause, bool valid)
     {
         var c = Parse("public contract Marker\npublic struct Target\n    " + clause + "\n    Self is Marker");

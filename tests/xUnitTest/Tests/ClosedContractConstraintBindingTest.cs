@@ -13,8 +13,6 @@ public class ClosedContractConstraintBindingTest
     [InlineData("string is Copy", false)]
     [InlineData("Source.Origin.Item is i32", true)]
     [InlineData("Source.Origin.Item is string", false)]
-    [InlineData("[2 of i32] is Copy", true)]
-    [InlineData("(i32, string) is Copy", false)]
     [InlineData("i32 is Copy and Owned", true)]
     [InlineData("i32 is string or Copy", true)]
     [InlineData("string is not Copy", true)]
@@ -62,8 +60,8 @@ public class ClosedContractConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("(Origin.Item, i32) is Copy", "i32", true)]
-    [InlineData("(Origin.Item, i32) is Copy", "string", false)]
+    [InlineData("Origin.Item is Copy", "i32", true)]
+    [InlineData("Origin.Item is Copy", "string", false)]
     [InlineData("i32 is Origin.Item", "i32", true)]
     [InlineData("i32 is Origin.Item", "string", false)]
     public void SelfDependentConditionsRemainImplementationObligations(string clause, string item, bool valid)
@@ -78,7 +76,6 @@ public class ClosedContractConstraintBindingTest
     [Theory]
     [InlineData("Hidden is Copy", "public", true)]
     [InlineData("Hidden is Copy", "internal", false)]
-    [InlineData("[2 of Hidden] is Copy", "internal", false)]
     public void ClosedSubjectsMustCoverTheContractApi(string clause, string access, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(access + " struct Hidden\n    Self is Copy\npublic contract R\n    " + clause);
@@ -92,7 +89,6 @@ public class ClosedContractConstraintBindingTest
 
     [Theory]
     [InlineData("Self")]
-    [InlineData("((Self))")]
     public void SelfClausesDoNotDeclareContractRefinement(string subject)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic contract R\n    " + subject + " is Origin");
@@ -125,7 +121,7 @@ public class ClosedContractConstraintBindingTest
     [Fact]
     public void WarmClosedContractChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract R\n    [2 of i32] is Copy\npublic struct Impl\n    Self is R");
+        var c = MinimalEmissionTest.Analyze("public contract R\n    i32 is Copy\npublic struct Impl\n    Self is R");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

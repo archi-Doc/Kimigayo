@@ -71,15 +71,7 @@ public sealed partial class Binding
     }
 
     private static bool IsSelfConstraint(IsKoto clause)
-    {
-        var subject = clause.Left;
-        while (subject is ParenthesizedTypeKoto parentheses)
-        {
-            subject = parentheses.Type;
-        }
-
-        return subject is IdentifierNameKoto { IdentifierName: "Self" } or TypeSemanticsKoto { Type: null, Identifier: "Self", OriginName: null, OriginExpression: null, OriginArguments: null };
-    }
+        => clause.Left is IdentifierNameKoto { IdentifierName: "Self" };
 
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
@@ -376,6 +368,12 @@ public sealed partial class Binding
             // Every entry path, including conditional premises, depends on the clause's complete syntax.
             clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
             this.Fail(clause, BindingFailure.InvalidConstraint);
+            if (IsRecovery(clause.Left, out _))
+            {
+                // A rejected subject (SPEC F.6) supplies none, and the requirement's own records stay (SPEC 23.1.2), as a failed selector's below.
+                this.BindRequirement(clause.Right, BoundType.Unit, false, this.NodeScope(clause, scope));
+            }
+
             return;
         }
 

@@ -4,7 +4,7 @@
 
 翻訳元：`8ee50bf7e36708f32cf308145c5cb0debca005bd`（2026年10月23日確認）。表記は[SPECJ_TERMINOLOGY](SPECJ_TERMINOLOGY.md)に従う。本書は非規範的な翻訳であり、解釈が異なる場合は英語の定義を優先する。コード、識別子、文字列、文法、JSONは原文の綴りを保つ。
 
-部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。
+部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。[§8.2.1](#s-8-2-1)の制約節の対象と付録Fの`ConstraintSubject`は、R7-N7（DECISIONS BU-119）に合わせた。
 
 ## 目次
 
@@ -2919,7 +2919,7 @@ let y = choose<Option<string>>(.None, .Some("a"))
 
 ### 8.2.1. 制約節
 
-`subject is requirement`が制約節。宣言の全制約を満たし、本体はその証明結果を利用できる。対象は役割に応じた完全な型、ペアバインダー、ペア対象、関連型射影、Selfで、宣言種別による制限にも従う。右辺はContract等の能力、完全な型による同一性、ペアバインダーならSemantics・カテゴリーを示す。
+`subject is requirement`が制約節。宣言の全制約を満たし、本体はその証明結果を利用できる。対象は、ジェネリックパラメーター、ペアバインダー、ペア対象、名前だけで書く型（プリミティブ型、または型引数を書かない型）、Self、関連型射影（付録Fの`ConstraintSubject`）のうち、要件の役割が認めるものである。`Option<U>`のような他の型は対象にならない。宣言種別による制限にも従う。右辺はContract等の能力、完全な型による同一性、ペアバインダーならSemantics・カテゴリーを示す。
 
 struct・enumでは制約をメンバーより前に置き、条件付き適合はメンバー位置に置く。型宣言のSelf is Cは適合宣言であり、組込みContractと特別な否定Self節は[§8.7.1](#s-8-7-1)に従う。
 
@@ -10084,7 +10084,7 @@ ConditionalImplementationItem := AttributedFunctionDefinition
                       | Directive<ConditionalImplementationItem>
 ConstraintClause     := ConstraintSubject "is" IsRequirement CallableEffects?
 CallableEffects      := IndentedList<EffectClause>
-ConstraintSubject    := Name | "Self" | AssociatedTypeReference
+ConstraintSubject    := "::"? Name | "Self" | PrimitiveType | AssociatedTypeReference
 IsRequirement        := "not" Requirement | PositiveRequirement
 PositiveRequirement  := RequirementAtom ("and" RequirementUnary)* ("or" RequirementAnd)*
 Requirement          := RequirementAnd ("or" RequirementAnd)*

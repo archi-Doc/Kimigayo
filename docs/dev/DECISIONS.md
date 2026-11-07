@@ -10049,6 +10049,14 @@ resumed by R4-M86 (2026-10-20).
   - The kind is stored, and `Koto.ReplaceChild` classifies again, because a parse recovery replaces the Name. Rejected: a computed `Kind` (design §3); without the
     re-classification a nesting cut gives a false `InvalidLayoutAttribute_Kd`, and `#Test(1)` loses its `UnresolvedBinding_Kd`.
   - `"C"` and `"Kimigayo"` stay strings: they are argument values, not names.
+- **BU-119 Constraint subjects by the grammar** (owner, 2026-11-07, verbatim 「O-42はaで決定します」, confirmed 「(a) のまま進める」; R7-N7, plan §5.1 N7; Major; one review, ACCEPT at re-check) A Type written with Type arguments, such as `W<Y>`, is no Constraint subject:
+  the parser follows Appendix F's `ConstraintSubject`, which restores the line R4-M115's rejected list took from proposal B 7.2 ("constructed Constraint subjects"; `Option<U> is Option<i32>` would be a second spelling of `U is i32`).
+  - `Parser.ParseTypeConstraint` keeps its Type path, because an `AssociatedTypeReference`'s qualifier may be a constructed Type (`W<Y>.(Has2).Out`, `::W<Y>.(Has2).Out`), and `IsConstraintSubject` is the one owner of the shape: a Type with no Type
+    arguments or an `AssociatedTypeReference`, rooted or not. Any other Type is `ExpectedSyntax_Kd` with `Syntax.Constraint` at the subject.
+  - The clause is a recovery, so nothing rests on its proposition, and its requirement still binds, against no subject, as a failed selector's does: its records are independent (SPEC 23.1.2). An `associate` item is no Constraint clause and has
+    its own entry, `ParseAssociatedConstraint`. No alias reaches the form: SPEC 18.2.1 targets only a Kotonoha or a group, and an alias creates no Core.
+  - SPEC 8.2.1's sentence and Appendix F's production follow, with `"::"? Name` and `PrimitiveType`, which the parser keeps.
+  - Rejected: a new `SyntaxForm` (the clause block already reports `Syntax.Constraint`); a grammar path with no Type path (it would repeat the Type grammar for qualifiers).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

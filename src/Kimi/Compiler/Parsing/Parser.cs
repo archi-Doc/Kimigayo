@@ -2207,7 +2207,7 @@ CloseParameters:
     /// </summary>
     /// <remarks>
     /// Requirement operands are retained as <see cref="IdentifierNameKoto"/> and Type
-    /// instances for later semantic analysis; there is no special constraint subject.
+    /// instances for later semantic analysis.
     /// </remarks>
     /// <param name="reader">The token reader positioned at the constraint subject.</param>
     /// <param name="finishLine">Whether to diagnose and consume trailing tokens on the clause's line.</param>
@@ -2215,8 +2215,65 @@ CloseParameters:
     public static IsKoto ParseTypeConstraint(ref TokenReader reader, bool finishLine = true)
     {
         var lastError = reader.Diagnostic.LastError;
-        var subject = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
+        var simple = HasSimpleConstraintSubject(ref reader);
+        var subject = simple ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
+        if (!simple && !IsConstraintSubject(subject) && !ReportedSince(ref reader, lastError, out _) && subject.Expected(SyntaxForm.Constraint) is { } rejected)
+        {
+            // The owner's O-42 (a): a constructed Type is no subject. The Constraint rests on this Error, and its requirement stays
+            // independent (BindConstraint); a failed Type has its own Error.
+            reader.CodeContext.RecordRecovery(subject, rejected);
+        }
 
+        return FinishConstraint(ref reader, subject, lastError, finishLine);
+    }
+
+    /// <summary>Parses an associated Type's specification after its <c>associate</c>: <c>AssociatedTypeName OriginParameters? is requirement</c>.</summary>
+    /// <param name="reader">The token reader positioned at the Name.</param>
+    /// <returns>The parsed specification, retained as a recovery when any required part is invalid.</returns>
+    internal static IsKoto ParseAssociatedConstraint(ref TokenReader reader)
+    {
+        var lastError = reader.Diagnostic.LastError;
+        var name = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
+        return FinishConstraint(ref reader, name, lastError, finishLine: false);
+    }
+
+    // SPEC F.6's ConstraintSubject, over what HasSimpleConstraintSubject leaves to the Type path: a Type with no Type arguments (a primitive
+    // Type, or a Name no `is` follows) or an AssociatedTypeReference, rooted or not, whose qualifier may be a constructed Type, ending in a
+    // Name with its Origins.
+    private static bool IsConstraintSubject(Koto type)
+    {
+        var rooted = false;
+        while (true)
+        {
+            if (type is TypeSemanticsKoto { IsTransparentWrapper: true, HasOrigin: false, Type: { } inner })
+            {
+                type = inner;
+            }
+            else if (type is SyntaxFormKoto { Akind: KotoKind.RootName } root)
+            {
+                rooted = true;
+                type = root.Operands[0];
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return type is TypeSemanticsKoto { Type: null, HasOrigin: false } name ? !rooted || name.IsNamedType :
+            (type is OriginApplicationKoto application ? application.Type : type) is MemberAccessKoto { Right: TypeSemanticsKoto { Type: null } };
+    }
+
+    // The keys are compared as values; comparing with the nullable key would box it for every Constraint after an Error.
+    private static bool ReportedSince(ref TokenReader reader, DiagnosticKey? before, out DiagnosticKey cause)
+    {
+        var last = reader.Diagnostic.LastError;
+        cause = last.GetValueOrDefault();
+        return last.HasValue && (before is not { } previous || !cause.Equals(previous));
+    }
+
+    private static IsKoto FinishConstraint(ref TokenReader reader, Koto subject, DiagnosticKey? lastError, bool finishLine)
+    {
         if (!reader.TryConsume(TokenKind.Is, out var isRange, false))
         {
             // A `when` list calls directly, without prefix lookahead. Keep the failed premise rather than weakening the list.
@@ -2228,10 +2285,9 @@ CloseParameters:
         var condition = ParseCondition(ref reader);
         reader.ConstraintRequirement = previousRequirement;
         var constraint = new IsKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, Math.Max(isRange.End, condition.Span.End)), subject, condition);
-        if (reader.Diagnostic.LastError is { } cause && (lastError is not { } previous || !cause.Equals(previous)))
+        if (ReportedSince(ref reader, lastError, out var cause))
         {
             // A part of the Constraint failed: the Constraint is a recovery, so Binding judges none of its parts (DIAGNOSTICS.md §4.3).
-            // The keys are compared as values; comparing with the nullable key would box it for every Constraint after an Error.
             reader.CodeContext.RecordRecovery(constraint, cause);
         }
 
@@ -2352,7 +2408,7 @@ CloseParameters:
     /// Determines whether the reader is positioned at the start of a type constraint.
     /// </summary>
     /// <param name="reader">The token reader to inspect.</param>
-    /// <param name="declarationContext">Whether grouped Type subjects are allowed in this dedicated declaration region.</param>
+    /// <param name="declarationContext">Whether any Type before <c>is</c> starts a Constraint in this dedicated declaration region, so that one that is no subject is reported as such.</param>
     /// <returns><see langword="true"/> for Type subject syntax followed by <c>is</c>.</returns>
     public static bool IsTypeConstraintStart(ref TokenReader reader, bool declarationContext = false)
     {
@@ -2363,7 +2419,7 @@ CloseParameters:
 
         var first = reader.CurrentTokenKind;
         // Preserve executable prefix recognition, including call results and parenthesized
-        // expressions. Complete Type subjects belong to dedicated declaration regions.
+        // expressions. Only a dedicated declaration region reads a Type before `is`.
         if (!declarationContext)
         {
             return first.IsPrimitiveType() && reader.PeekKind(1) == TokenKind.Is;

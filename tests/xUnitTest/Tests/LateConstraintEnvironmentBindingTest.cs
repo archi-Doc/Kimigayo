@@ -10,10 +10,8 @@ public class LateConstraintEnvironmentBindingTest
 {
     [Theory]
     [InlineData("string is Copy", false)]
-    [InlineData("() -> bool is (()) -> bool", false)]
     [InlineData("i32 is string", false)]
     [InlineData("string is not Copy", true)]
-    [InlineData("(i32) -> bool is (i32,) -> bool", true)]
     public void ContractConditionsControlExpandedConsumerPremises(string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public contract Marker: Copy\n    " + clause + Consumers);
