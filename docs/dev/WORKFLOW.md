@@ -182,6 +182,8 @@ Independent units continue.
 3. The commit states the root cause, the concept changed, the sites sharing the cause, the deletions, the rejected options and what
    remains unverified.
 4. The Coordinator lands queued units on dev in [windows](#windows).
+5. After a window lands, the Coordinator deletes its units' branches on `origin` and locally, and each session removes its own
+   worktrees of landed units. Unmerged and `held/` branches stay.
 
 ### Windows
 
