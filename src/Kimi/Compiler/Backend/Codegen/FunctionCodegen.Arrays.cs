@@ -7,8 +7,7 @@ namespace Kimi.Compiler.Backend;
 // The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.5, 16.3.2, 22.2; R5 plan C8d; DECISIONS R5-M121, R5-M129), beside the
 // operations and storage kinds whose call runs their LegacyRow item's routine (FunctionCodegen.Intrinsics' Routine): an Array aggregate's
 // storage (ArrayBuffer: the runtime's empty handle at its Place with its location, for n elements one growth to n and the length n), whose
-// buffer the aggregate writer puts the elements in; setArrayLength, the length stored in the handle's length word (Layout.LengthWord, the
-// word Length reads), reading or destroying no element; capacity, P2b's kernel over the handle, the legacy representation's
+// buffer the aggregate writer puts the elements in; capacity, P2b's kernel over the handle, the legacy representation's
 // capacity word of an Array or a Dictionary (PD2); and an Array's glue level, its glue item's Drop helper called with the glue's own
 // parameters (the string row's form). A Dictionary's glue and a Dictionary from none are FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
 internal sealed partial class FunctionCodegen
@@ -39,26 +38,6 @@ internal sealed partial class FunctionCodegen
         _ = this.WriteCall(RuntimeAbi.ArrayGrow, [handle, new('\0', element.Layout.Stride), new('\0', count), site.Text, site.Length]);
         this.StoreAt(this.Offset(handle, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), Layout.Row(BoundType.ISize).Layout, new('\0', count));
         return this.LoadAt(handle, RuntimeAbi.StringReference.Layout); // The buffer word, a pointer (IMPL 21.1.3).
-    }
-
-    // SPEC 22.2: setArrayLength(value, length) publishes the length in the handle its reference holds; it reads and destroys no element.
-    private void ArrayLength(in MirTerminator call)
-    {
-        var key = new MirDefKey(call.Callee.Symbol, MirBodyKind.Fn);
-        var handle = this.body.Operands[call.Start + ArgumentPosition(key, 0)];
-        var length = this.body.Operands[call.Start + ArgumentPosition(key, 1)];
-        if (this.ReferencedType(this.InstanceType(handle)) is not { } array || this.Laid(array) is not { } record || this.LoweringOf(length) is not { } isize)
-        {
-            return; // A broken contract, recorded.
-        }
-
-        if (!this.Operand(handle, out var address) || !this.Operand(length, out var value))
-        {
-            return; // A broken contract, recorded.
-        }
-
-        this.StoreAt(this.Offset(address, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), isize.Layout, value);
-        this.Finish(call, null);
     }
 
     // SPEC 4.9.5: capacity, from the shared view of the handle its one operand holds, by P2b's kernel (the legacy handle's capacity word).

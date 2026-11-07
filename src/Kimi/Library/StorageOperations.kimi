@@ -11,11 +11,6 @@
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
-/// Publishes `length` completed elements within the existing allocation; it neither reads nor destroys any element.
-///
-/// - safety: `length` is within the capacity, each `storage[i]` below it designates a distinct Place holding a complete
-///   value, and the storage holds no other value.
-internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)
 // For a Dictionary, the remainder's `storage` is the value of the Handle's `buffer` (see dictionaryStorage), `stride`
 // is the slot stride, and `link` and `count` are the first live link and the live count. ownStorage also gives the
 // last live link as `tail` and transfers the storage, the entries and their destruction responsibility.
@@ -71,6 +66,8 @@ internal func tryAllocateBytes(bytes: isize) -> raw/u8
 /// - safety: `count >= 0`, the two ranges do not overlap and each lies within its pointer's provenance, `source` is
 ///   readable and `destination` writable for its range.
 internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)
+/// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.
+internal func stride<T>() -> isize
 /// Appends one slot, growing the storage first, and places `key` and `value` in it (SPEC 5.2); growth failure Aborts at
 /// the standard operation's caller location.
 ///
