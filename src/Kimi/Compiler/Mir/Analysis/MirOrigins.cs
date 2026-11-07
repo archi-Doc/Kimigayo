@@ -47,7 +47,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
 {
     private readonly MirSteps steps = new(cases);
     private readonly List<Pending> pending = []; // The problems Judge found, in order, with their class's views.
-    private readonly List<MirFact> pendingFacts = [];
+    private readonly List<ProblemFact> pendingFacts = [];
     private readonly HashSet<ExecutableBody> included = []; // Findings: the layers some constructor body's slice includes.
     private MirStep[] walk = [];
     private Ref[] refs = []; // The body's Refs with an Origin outside every Inlined scope, in body order.

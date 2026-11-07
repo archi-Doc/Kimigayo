@@ -331,7 +331,7 @@ public sealed partial class MirBorrowsTest
             program.Problems.All.ToArray().Select((x, i) => (x, i))
                 .Where(static x => !x.x.IsRecord && x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
                 .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)
-                    .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
+                    .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown))}"));
     }
 
     // SPEC 15.6.2, 15.6.4 (R4-M92; DECISIONS BU-18, BU-21): an explicit Borrow of a qualified static's part is a Place's Borrow, never a

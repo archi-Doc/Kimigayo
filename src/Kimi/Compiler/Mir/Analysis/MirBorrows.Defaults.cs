@@ -129,7 +129,7 @@ internal sealed partial class MirBorrows
     // An R26 record (D6, D7): at its subject, with the parameter its slot-rooted Place is on as the Anchor fact and no witness.
     private void Default(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, int root)
     {
-        this.facts[0] = new(MirFactKind.Anchor, this.body.Subject(this.body.Locals[root].Source));
+        this.facts[0] = new(ProblemFactKind.Anchor, this.body.Subject(this.body.Locals[root].Source));
         this.Record(code, requirement, subject, this.facts.AsSpan(0, 1));
     }
 
