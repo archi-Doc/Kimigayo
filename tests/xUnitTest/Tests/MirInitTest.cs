@@ -142,14 +142,15 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 6.3.5, 23.1.2 (PLAN G105, G522): a Field Binding formed no stored Type for, its initializer failed in the parser or in
-    // Binding, is a part of a rejected declaration that its constructor places nothing into (MirBuilder.Stored), so no exit requires it:
-    // the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit one, a generic and a nested struct's report
-    // only the Field's own failure; another Field an explicit init leaves unset is still reported (fail-before: UninitializedPlace_Kd at
-    // the struct or the init for the failed Field).
+    // Binding or its Type annotation unresolved, is a part of a rejected declaration that its constructor places nothing into
+    // (MirBuilder.Stored), so no exit requires it: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit
+    // one, also one that never sets the annotated Field, a generic and a nested struct's report only the Field's own failure; another Field
+    // an explicit init leaves unset is still reported (fail-before: UninitializedPlace_Kd at the struct or the init for the failed Field).
     [Theory]
     [InlineData("struct Node\n    var next = (1 x)\n", "")]
     [InlineData("struct Node\n    var next = undefinedName\n", "")]
     [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    init(k: i32) => self.k = k\n", "")]
+    [InlineData("struct S\n    var a: Missing\n    var k: i32\n    init() => self.k = 1\n", "")]
     [InlineData("struct Box<T>\n    var next = (1 x)\nfunc f()\n    let b = Box<i32>.init()\n", "")]
     [InlineData("struct Outer\n    public let k: i32 = 1\n    struct Inner\n        var next = (1 x)\n", "")]
     [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    var m: i32\n    init(k: i32) => self.k = k\n", "UninitializedPlace_Kd init(k: i32) => self.k = k 1")]
