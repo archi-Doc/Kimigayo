@@ -28,8 +28,8 @@ public sealed partial class Binding
     // virtual group can supply an unqualified associated name; a qualified name needs no guess.
     private void PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
     {
-        if (!function.IsOverride || function.BoundSymbol?.Scope.Owner is not StructKoto { Bases.Count: 1, BoundSymbol: { } symbol } structure ||
-            this.BindType(structure.Bases[0], this.scopes[structure]) is null)
+        if (!function.IsOverride || function.BoundSymbol?.Scope.Owner is not StructKoto { BaseClause: { } clause, BoundSymbol: { } symbol } structure ||
+            this.BindType(clause, this.scopes[structure]) is null)
         {
             return;
         }
@@ -234,7 +234,7 @@ public sealed partial class Binding
 
             var self = this.SelfType(typeSymbol);
             var baseType = AdtDef.Base(self);
-            if (structure.BindingState == BindingState.Invalid || (structure.Bases.Count != 0 && baseType is null))
+            if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && baseType is null))
             {
                 this.CompleteDependent(function, structure);
                 continue;
@@ -255,7 +255,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var selection = baseType is null ? default : this.LookupTypeMember(baseType, function.Name, this.scopes[function], self, this.MemberPath(null, structure.Bases[0], baseType));
+            var selection = baseType is null ? default : this.LookupTypeMember(baseType, function.Name, this.scopes[function], self, this.MemberPath(null, structure.BaseClause!, baseType));
             FunctionKoto? first = null;
             FunctionKoto? second = null;
             var count = 0;
@@ -362,9 +362,9 @@ public sealed partial class Binding
 
         table.Version = this.storageVersion;
         table.Resolved = false;
-        var parent = structure.Bases.Count != 0 ? AdtDef.Declaration(AdtDef.Base(this.SelfType(symbol))) : null;
+        var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.SelfType(symbol)));
         var inherited = parent is null ? null : this.FillVTable(parent);
-        if (structure.BindingState == BindingState.Invalid || (structure.Bases.Count != 0 && inherited is null))
+        if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && inherited is null))
         {
             return null;
         }

@@ -123,60 +123,45 @@ public sealed partial class Binding
 
     private QualificationFact? InheritedStop(BindingScope container, BindingScope scope, Koto use, string name, bool type, TypeLookupRole role, int arity)
     {
-        if (role == TypeLookupRole.Semantics || container.Owner is not StructKoto structure || structure.Bases.Count == 0)
+        if (role == TypeLookupRole.Semantics || container.Owner is not StructKoto { BaseClause: { } clause } structure)
         {
             return null;
         }
 
-        for (var i = 0; i < structure.Bases.Count; i++)
+        if (IsWithin(use, clause))
         {
-            if (IsWithin(use, structure.Bases[i]))
-            {
-                return null; // A base clause never searches its own base layers, including its arguments.
-            }
+            return null; // A base clause never searches its own base layers, including its arguments.
         }
 
-        return this.InheritedDeclaration(structure, name, scope, type, role, out var baseClause) is { } member
-            ? new(container, scope, member, name, type, role, arity, BaseClause: baseClause) : null;
+        return this.InheritedDeclaration(structure, name, scope, type, role) is { } member
+            ? new(container, scope, member, name, type, role, arity, BaseClause: clause) : null;
     }
 
-    private BindingSymbol? InheritedDeclaration(StructKoto structure, string name, BindingScope scope, bool type, TypeLookupRole role, out Koto? baseClause)
+    private BindingSymbol? InheritedDeclaration(StructKoto structure, string name, BindingScope scope, bool type, TypeLookupRole role)
     {
-        baseClause = null;
-        if (!this.qualificationVisiting.Add(structure.BoundSymbol!))
+        if (structure.BaseClause is not { } syntax || !this.qualificationVisiting.Add(structure.BoundSymbol!))
         {
             return null;
         }
 
         try
         {
-            for (var i = 0; i < structure.Bases.Count; i++)
+            // Resolve only declaration names; no generic argument substitution or conditional proof selects a member.
+            var parent = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
+            if (parent?.Declaration is not StructKoto baseDeclaration || !this.scopes.TryGetValue(baseDeclaration, out var members))
             {
-                var syntax = structure.Bases[i];
-                // Resolve only declaration names; no generic argument substitution or conditional proof selects a member.
-                var parent = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
-                if (parent?.Declaration is not StructKoto baseDeclaration || !this.scopes.TryGetValue(baseDeclaration, out var members))
-                {
-                    continue;
-                }
+                return null;
+            }
 
-                for (var candidate = (type ? members.Types : members.Values).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
+            for (var candidate = (type ? members.Types : members.Values).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
+            {
+                if (!IsGenericParameter(candidate) && HasTypeLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
                 {
-                    if (!IsGenericParameter(candidate) && HasTypeLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
-                    {
-                        baseClause = syntax;
-                        return candidate;
-                    }
-                }
-
-                if (this.InheritedDeclaration(baseDeclaration, name, scope, type, role, out _) is { } inherited)
-                {
-                    baseClause = syntax;
-                    return inherited;
+                    return candidate;
                 }
             }
 
-            return null;
+            return this.InheritedDeclaration(baseDeclaration, name, scope, type, role);
         }
         finally
         {

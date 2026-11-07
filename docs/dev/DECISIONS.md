@@ -15669,6 +15669,12 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Plan: RP7 and RP21 end (Q14); RQ6's units run one prototype-first candidate unless the owner instructs otherwise; R8-R1 and
     R8-G1 are Major units under their approved design.
   - Reason: the middle session ran the windows besides its defect stream, and three sessions edited the same documents.
+- **R7-M5 A struct has one base clause, `StructKoto.BaseClause`, read under the binder's role** (2026-11-08; R7-N2a, b; Major; design review) SPEC 6.2.2, 8.7.3, 9.2, 9.4.2, 9.6.
+  - `StructKoto.BaseClause` is a struct's one clause; `.Bases` stays where the container may be an enum or a Contract.
+  - A base clause read as a declaration reads `NoContainer`, the binder's role, at every read.
+  - Moves: `n2`, `n6`, `rn3`, `rn4`, `rn5`, invalid, to `NotObjectPayload_Kd`; `rn7`, `rn8`, valid, to accepted; no test or library program.
+  - N2d, the query with N2c's walk, has its own design: a reader cannot tell a not-ready layer from the end of the chain, and `memberLookupVisiting` ends a recursion `resolvingTypes` does not see.
+  - Rejected: one commit for all three (the role needs no query, while the walk and the query need each other); keeping `Any` at the opt-out or at `DerivesFrom` (a second reading of one clause).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
