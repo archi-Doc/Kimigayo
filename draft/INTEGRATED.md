@@ -1294,6 +1294,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   (open), nothing frozen.
 - Revision 10 (2026-11-07, plan §14; the Front's D-49): §5.1 names the units revision 9 left open. The plan stays 一部取り込み (open), nothing
   frozen.
+- Revision 11 (2026-11-07, plan §14; the Middle's D-51): §5.4 and §7.1 follow PLAN G396 and the A5 oracle's new place. Nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 
