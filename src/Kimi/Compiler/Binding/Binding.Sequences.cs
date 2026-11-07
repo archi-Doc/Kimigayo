@@ -237,9 +237,9 @@ public sealed partial class Binding
         }
         else
         {
-            ResetSynthetic(call);
-            ResetSynthetic(call.Method);
-            ResetSynthetic(((MemberAccessKoto)call.Method).Right);
+            this.ResetSynthetic(call);
+            this.ResetSynthetic(call.Method);
+            this.ResetSynthetic(((MemberAccessKoto)call.Method).Right);
         }
 
         this.projectionUses.Add((source, subject, entry));
@@ -346,9 +346,9 @@ public sealed partial class Binding
         plan.Receiver.BoundSymbol = symbol;
         Complete(plan.Iterator, iterator);
         Complete(plan.Receiver, iterator);
-        ResetSynthetic(plan.Next);
-        ResetSynthetic(plan.Next.Method);
-        ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
+        this.ResetSynthetic(plan.Next);
+        this.ResetSynthetic(plan.Next.Method);
+        this.ResetSynthetic(((MemberAccessKoto)plan.Next.Method).Right);
         return this.BindCall(plan.Next, plan.Scope, null);
     }
 

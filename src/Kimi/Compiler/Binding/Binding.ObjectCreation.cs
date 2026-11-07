@@ -59,8 +59,8 @@ public sealed partial class Binding
         ((SyntheticKoto)generic.Identifier!).Resolve(factory, null, null);
         ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, source, null);
         ((Koto[])call.ArgumentNodes)[0] = conversion.Left;
-        ResetSynthetic(generic);
-        ResetSynthetic(call);
+        this.ResetSynthetic(generic);
+        this.ResetSynthetic(call);
         this.nodes.Add(call);
         if (selectedCase)
         {

@@ -59,7 +59,7 @@ public sealed partial class Binding
 
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
-        attribute.BindingFailure = BindingFailure.None;
+        this.ClearFailure(attribute);
         attribute.BindingState = BindingState.Unvisited;
         attribute.BoundType = null;
         this.nodes.Add(attribute);
@@ -292,7 +292,7 @@ public sealed partial class Binding
 
         if (unsupported is not null)
         {
-            this.FailExplained(ref this.unsupportedSpans, attribute, BindingFailure.Unsupported, unsupported.Span);
+            this.FailUnsupportedAt(attribute, unsupported.Span);
             return null;
         }
 

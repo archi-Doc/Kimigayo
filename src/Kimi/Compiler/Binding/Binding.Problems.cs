@@ -5,14 +5,30 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Binding's problem records (R7-E1).
-// - Responsibility: the one table from a node's failure to its code (CodeOf).
-// - Inputs: a failure and the node it is at.
-// - Outputs: the DiagnosticCode the failure reports.
-// - Invariants: the code is a function of the failure, but for the rows that read the node until their checks record their own (E3, E4).
+// Binding's recorder (R7-E1; DIAGNOSTICS 4.1): a check records its failure as a problem with typed facts in BindingReport.
+// - Responsibility: Record, a check's problem; ClearFailure, how a failure leaves a node inside a pass; the one table from a failure to its
+//   code (CodeOf); the adapter's reads of a problem's facts (Mismatch, LocatedPart).
+// - Inputs: a node, its failure and the facts its check read.
+// - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure.
+// - Invariants: one way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one way in control:
+//   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem: a pass's
+//   reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves its chain.
 // - Prohibitions: no failure is decided and no message rendered here.
 public sealed partial class Binding
 {
+    private readonly BindingReport report = new();
+
+    /// <summary>Gets the fact sites of this pass that no semantic write had numbered (R7-E1's hypothesis is none).</summary>
+    internal int IdlessFactSites => this.report.IdlessSites;
+
+    /// <summary>Clears a node's failure for a retried attempt: its problems go with it.</summary>
+    /// <param name="node">The node.</param>
+    internal void ClearFailure(Koto node)
+    {
+        node.BindingFailure = BindingFailure.None;
+        this.UnlinkProblems(node);
+    }
+
     // The code of a failure at a node: the one table, with the rows that read the node until their checks record their own (E3, E4).
     private DiagnosticCode CodeOf(Koto node, BindingFailure failure)
     {
@@ -115,5 +131,77 @@ public sealed partial class Binding
         }
 
         return code;
+    }
+
+    // A check's problem. Fail sets the state and slot of the node's first failure, and its state write numbers the node, so the subject numbers
+    // nothing new.
+    private BoundType? Record(Koto node, BindingFailure failure, ReadOnlySpan<ProblemFact> facts, ushort condition = 0, bool unresolved = false)
+    {
+        this.Fail(node, failure, unresolved);
+        this.report.Add(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), condition), facts);
+        return null;
+    }
+
+    // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee.
+    [Transitional("R7", Reason = "Records only at a node without a failure, for snapshot 0, until E2's located batch.")]
+    private void FailUnsupportedAt(Koto node, SourceSpan part, bool unresolved = false)
+    {
+        if (node.BindingFailure != BindingFailure.None)
+        {
+            this.Fail(node, BindingFailure.Unsupported, unresolved);
+            return;
+        }
+
+        long value = ((long)part.Start << 32) | (uint)part.Length;
+        this.Record(node, BindingFailure.Unsupported, [new(ProblemFactKind.Span, SourceRef.Of(node), value)], unresolved: unresolved);
+    }
+
+    // A fact's site is a node the check read, so normally numbered. One that is not takes its module's next id here, as a semantic write would,
+    // on a rejected program only, and is counted.
+    private SourceRef FactSite(Koto at)
+    {
+        this.report.IdlessSites += ReferenceEquals(at.SyntaxOwner, at.Kotonoha.Syntax) ? 0 : 1;
+        return SourceRef.Of(at);
+    }
+
+    // A valid program has no problem, so it pays this test and no dictionary operation.
+    private (int First, int Last) UnlinkProblems(Koto node)
+        => this.report.Count == 0 ? BindingReport.NoChain : this.report.Unlink(SourceRef.Written(node));
+
+    private void RestoreProblems(Koto node, (int First, int Last) chain)
+    {
+        if (this.report.Count != 0)
+        {
+            this.report.Restore(SourceRef.Written(node), chain);
+        }
+    }
+
+    // The problem of the node's slot, the issue's bridge to its facts; -1 without one.
+    [Transitional("R7", Reason = "Finds the slot's issue among a node's problems until the slot's reads and Binding.Issues go (R7-E5).")]
+    private int SlotProblem(Koto node)
+        => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(node.BindingFailure), 0);
+
+    // The part of a located problem (its Span fact), or null for no problem.
+    private SourceSpan? LocatedPart(int problem)
+    {
+        if (problem >= 0)
+        {
+            foreach (var fact in this.report.Facts(problem))
+            {
+                if (fact.Kind == ProblemFactKind.Span)
+                {
+                    return new((int)(fact.Value >> 32), (int)fact.Value);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // A TypeMismatch problem's facts: the syntax that shows it and what it compared.
+    private (Koto At, object Actual, object Expected) Mismatch(int problem)
+    {
+        var facts = this.report.Facts(problem);
+        return (this.compilation.SyntaxOf(facts[0].Site), this.report.Value(facts[0]), this.report.Value(facts[1]));
     }
 }

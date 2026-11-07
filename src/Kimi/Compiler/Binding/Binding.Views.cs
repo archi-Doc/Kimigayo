@@ -78,8 +78,8 @@ public sealed partial class Binding
         var member = receiver.Symbol?.Declaration is DeclarationContainerKoto group && this.scopes.TryGetValue(group, out var members) && members.Values.TryGetValue(name, out var selected) ? selected : null;
         ((SyntheticKoto)generic.Identifier!).Resolve(member, null, receiver);
         ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, key, null);
-        ResetSynthetic(call);
-        ResetSynthetic(generic);
+        this.ResetSynthetic(call);
+        this.ResetSynthetic(generic);
         this.nodes.Add(call);
         return this.BindCall(call, scope, null) is null ? null : call;
     }

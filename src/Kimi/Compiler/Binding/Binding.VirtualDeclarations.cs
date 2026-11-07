@@ -128,7 +128,7 @@ public sealed partial class Binding
         {
             if (function.BindingFailure == BindingFailure.None && ReceiverShape(function.BoundSymbol!) != SemanticsKind.ObjRef)
             {
-                this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, function.DispatchModifierSpan, true);
+                this.FailUnsupportedAt(function, function.DispatchModifierSpan, true);
             }
             else if (function.BindingFailure == BindingFailure.Unsupported)
             {

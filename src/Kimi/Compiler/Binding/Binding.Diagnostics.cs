@@ -24,9 +24,6 @@ public sealed partial class Binding
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
 
-    // SPEC 23.3: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
-    private Dictionary<Koto, (Koto At, object Actual, object Expected)>? mismatches;
-
     // SPEC 15.6.1: the Origin relation that an Origin-only fit failure leaves, at the value that supplies its longer end.
     private Dictionary<Koto, OriginRelationFact>? originRelations;
 
@@ -53,9 +50,6 @@ public sealed partial class Binding
     // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
-
-    // SPEC 23.1.1: the part of an unsupported node that shows the form, such as one capture entry or a callee.
-    private Dictionary<Koto, SourceSpan>? unsupportedSpans;
 
     // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
     // the generic container that declares it (Outer), with the declared and the written counts.
@@ -445,7 +439,18 @@ public sealed partial class Binding
                 : this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
         }
 
-        return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+        // Interim until E3 records the mismatch family's conditions: a node keeps its first failure, as a Fail does.
+        if (node.BindingFailure != BindingFailure.None)
+        {
+            return this.Fail(node, BindingFailure.TypeMismatch);
+        }
+
+        // SPEC 23.3: the Types the mismatch compared and the syntax that shows it.
+        var site = this.FactSite(at);
+        return this.Record(
+            node,
+            BindingFailure.TypeMismatch,
+            [new(ProblemFactKind.Actual, site, this.report.Keep(actual)), new(ProblemFactKind.Expected, site, this.report.Keep(expected))]);
     }
 
     // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
@@ -625,14 +630,13 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.caseBinders?.Clear();
-        this.mismatches?.Clear();
+        this.report.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();
-        this.unsupportedSpans?.Clear();
         this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
