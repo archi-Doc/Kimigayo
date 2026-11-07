@@ -595,7 +595,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("guard", "g152i", WrapDeclarations + "    let o = wrap(twice)\n    return 0\n", "")]
 
     // SPEC 10.7 (PLAN G159 (3)): an implementation result R fits Q when R <: Q or R is Never, for erasure and Callable alike; it does not bridge a
-    // parameter (n3b...) and a common Function Type relates only by subtyping (n3sub, SPEC 3.8).
+    // parameter (n3b...) and a common Function Type relates only by subtyping (n3suba; SPEC 3.8's `let` form is NeverContinuationTest's).
     [InlineData("guard", "n3item", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = stopAt\n    return 0\n", "")]
     [InlineData("I3", "n3arg", NeverDeclarations + "func k() -> i32\n    return h(stopAt)\n", "", Explicit = true)]
     [InlineData("I3", "n3cl", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = func [] (x: i32) -> Never => $abort(\"no\")\n    return 0\n", "", Explicit = true)]
@@ -607,7 +607,6 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData("guard", "n3bl", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = stopB\n    return 0\n", "*: let f: (i32) -> i32 = stopB | ...")]
     [InlineData("guard", "n3bc", NeverDeclarations + "func k() -> i32\n    let f: (i32) -> i32 = func [] (x: bool) -> Never => $abort(\"no\")\n    return 0\n", "*: let f: (i32) -> i32 = func [] (x: bool) -> Never => $abort(\"no\") | ...")]
     [InlineData("guard", "n3cbb", NeverDeclarations + "func k() -> i32\n    return cb(stopB)\n", "*: return cb(stopB) | ...")]
-    [InlineData("guard", "n3sub", NeverDeclarations + "func f(handler: (i32) -> Never) -> i32\n    let g: (i32) -> i32 = handler@move\n    return 0\n", "*: let g: (i32) -> i32 = handler@move | ...")]
     [InlineData("guard", "n3suba", NeverDeclarations + "func f(handler: (i32) -> Never) -> i32\n    return h(handler@move)\n", "*: return h(handler@move) | ...")]
     public void AReferencesAndANeverResultsFitFollowSignatureCompatibility(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);

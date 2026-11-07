@@ -22,6 +22,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string NestedCalls = "func inner(x: i32) -> i32 => x\nfunc inner(x: i64) -> i64 => x\nfunc g<T>(v: T) -> i32 => 0\nfunc h2<T>(a: T, b: T) -> i32 => 0\nfunc k() -> i32\n";
 
+    private const string LiteralAtReference = "func see(target: ref/i32) -> i32 => 0\nfunc mk() -> i32 => 1\nfunc k() -> i32\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -89,7 +91,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "w13w", Sources + SourcesBody + "    r = g(if c => [identity(y)] else => [u@ref])\n    return r\n", "*: r = g(if c => [identity(y)] else => [u@ref]) | ...")]
     [InlineData("guard", "w14", Sources + SourcesBody + "    r = g(if c => [2 of y] else => [y, y])\n    return r\n", "*: r = g(if c => [2 of y] else => [y, y]) | ...")]
     [InlineData("guard", "w08a", Sources + SourcesBody + "    let t = identity(if c => [2 of u@ref] else => [2 of y])\n    return r\n", "*: let t = identity(if c => [2 of u@ref] else => [2 of y]) | ...")]
-    [InlineData("guard", "w09a", Sources + SourcesBody + "    let t = identity(if c => [2 of u@ref] else => [2 of 1])\n    return r\n", "*: let t = identity(if c => [2 of u@ref] else => [2 of 1]) | ...")]
+    [InlineData("I2", "w09a", Sources + SourcesBody + "    let t = identity(if c => [2 of u@ref] else => [2 of 1])\n    return r\n", "", Explicit = true)]
     [InlineData("guard", "w18a", Sources + SourcesBody + "    let t = identity(if c => ([2 of u@ref], 1) else => ([2 of y], 2))\n    return r\n", "*: let t = identity(if c => ([2 of u@ref], 1) else => ([2 of y], 2)) | ...")]
     [InlineData("guard", "a05", Sources + SourcesBody + "    let t = identity(if c => [y, 1] else => [u@ref])\n    return r\n", "*: let t = identity(if c => [y, 1] else => [u@ref]) | ...")]
     [InlineData("guard", "a05m", Sources + SourcesBody + "    let t = identity(if c => [u@ref] else => [y, 1])\n    return r\n", "*: let t = identity(if c => [u@ref] else => [y, 1]) | ...")]
@@ -189,6 +191,36 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "na1", NestedCalls + "    return g(inner(1))\n", "*: return g(inner(1)) | ...")]
     [InlineData("guard", "na2", NestedCalls + "    return h2(inner(1), 5@i64)\n", "")]
     [InlineData("guard", "na3", NestedCalls + "    return h2(5@i64, inner(1))\n", "")]
+
+    // SPEC 10.2 row 2, 10.2.2: an owner temporary at `ref/U` is materialized once and shared-borrowed, a literal's default included, at a call
+    // argument (lr1) and an aggregate element (lr2); w09a above is the same fit at a fill the join's other source types.
+    [InlineData("guard", "lr1", LiteralAtReference + "    return see(1)\n", "")]
+    [InlineData("guard", "lr2", LiteralAtReference + "    let a: [2 of ref/i32] = [2 of mk()]\n    return 0\n", "")]
+
+    // SPEC 14.9.2, 10.5.1 (PLAN G159): at a fixed parameter, Tuple sources differing in an element's reference layer are valid under either reading
+    // of step 2: value-read to the common Type, or no common Type, so the argument waits and each source fits the selected Type. Without a fixed
+    // Type the reading is open (labels-log.md, question 4).
+    [InlineData("I2", "g159t", FlowSources + "    let y: i64 = 1\n    takeT(if c => (y, x@ref) else => (y, x))\n    return 0\n", "", Explicit = true)]
+    [InlineData("I2", "g159tm", FlowSources + "    let y: i64 = 1\n    takeT(if c => (y, x) else => (y, x@ref))\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "g159ta", FlowSources + "    let y: i64 = 1\n    let t: (i64, i64) = if c => (y, x@ref) else => (y, x)\n    return 0\n", "")]
+    [InlineData("guard", "g159tn", FlowSources + "    let y: i64 = 1\n    takeT(if c => (y, x@ref) else => (y, true))\n    return 0\n", "*: takeT(if c => (y, x@ref) else => (y, true)) | ...")]
+
+    // SPEC 14.9.2 steps 2-3, 10.2 row 1 (PLAN G394): a source holding a literal default takes the typed source's Type, and a Place at a reference
+    // element is a new shared borrow, as in the plain form g394p.
+    [InlineData("I2", "g394", Sources + SourcesBody + "    let j = if c => [(u@ref, y)] else => [(y, 2)]\n    return r\n", "", Explicit = true)]
+    [InlineData("I2", "g394m", Sources + SourcesBody + "    let j = if c => [(y, 2)] else => [(u@ref, y)]\n    return r\n", "", Explicit = true)]
+    [InlineData("I2", "g394a", Sources + SourcesBody + "    let t = identity(if c => [(u@ref, y)] else => [(y, 2)])\n    return r\n", "", Explicit = true)]
+    [InlineData("guard", "g394p", Sources + SourcesBody + "    let a: (ref/i32, i32) = (y, 2)\n    return r\n", "")]
+
+    // SPEC 14.9.2 step 1, 10.2: the e rows' invalid twins: a value read reaches i32, not the fixed i64.
+    [InlineData("guard", "e11n", Sources + SourcesBody + "    r = g<Array<i64>>(if c => [y] else => [u@ref])\n    return r\n", "*: r = g<Array<i64>>(if c => [y] else => [u@ref]) | ...")]
+    [InlineData("guard", "e12n", Sources + SourcesBody + "    r = ga<i64>([u@ref])\n    return r\n", "*: r = ga<i64>([u@ref]) | ...")]
+    [InlineData("guard", "e13n", Sources + SourcesBody + "    r = ga<i64>(if c => [u@ref] else => [y])\n    return r\n", "*: r = ga<i64>(if c => [u@ref] else => [y]) | ...")]
+    [InlineData("guard", "e17n", Sources + SourcesBody + "    let a: Array<i64> = if c => [u@ref] else => [y]\n    return r\n", "*: let a: Array<i64> = if c => [u@ref] else => [y] | ...")]
+
+    // SPEC 14.9.2 steps 2-4 (PLAN G540): x13o's other order, and its invalid twin, where no source supplies a Type.
+    [InlineData("I2", "x13r", "func k(c: bool, w: ref/i32) -> i32\n    let j = if c => Option.None else => Option.Some(w)\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "x13n", "func k(c: bool) -> i32\n    let j = if c => Option.None else => Option.None\n    return 0\n", "*: let j = if c => Option.None else => Option.None | ...")]
     public void ACommonTypeFormationHasItsVerdict(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 

@@ -85,7 +85,9 @@ public class InferenceSlotScalingTest
     }
 
     // The cold rows: from 32 to 512 calls a first Bind's inference work grows by one amount per call (272 lies halfway, so the two steps compare),
-    // and its allocation is linear as CallableRegionScalingTest's V16 rows define it: three sizes, each double the one before, within factor 3.
+    // and its allocation is linear as CallableRegionScalingTest's V16 rows define it: three sizes, each double the one before, within factor 3. That
+    // passes a mixed term, an added 4n^2 bytes on all five workloads, so a second series spans the plan's 32 to 512: its sizes each quadruple, so
+    // linear gives 4, and factor 6 keeps V16's headroom. There an added 3n^2 bytes fails `calls` and `parts`; a smaller term passes both series.
     [Theory]
     [InlineData("calls")]
     [InlineData("waiting")]
@@ -98,24 +100,21 @@ public class InferenceSlotScalingTest
         long[] work = [.. new[] { 32, 272, 512 }.Select(calls => Work(Bound(CallWorkload(workload, calls))))];
         Assert.True(work[0] < work[1], $"work {string.Join(", ", work)}");
         Assert.Equal(work[2] - work[1], work[1] - work[0]);
-        int[] sizes = [128, 256, 512];
-        var compilations = new Compilation[sizes.Length];
-        var bytes = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var c = compilations[i] = CompilationTestHelper.Parse(CallWorkload(workload, sizes[i]));
-            return () => c.Bind();
-        });
-        Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
-        Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
+        var doubling = ColdBytes(workload, [128, 256, 512]);
+        Assert.True(doubling[0] < doubling[1] && MirBorrowsTest.Grows(doubling, 3), $"bytes {string.Join(", ", doubling)}");
+        var span = ColdBytes(workload, [32, 128, 512]);
+        Assert.True(span[0] < span[1] && MirBorrowsTest.Grows(span, 6), $"bytes {string.Join(", ", span)}");
     }
 
     // The n = 40 rows (SPEC 10.5.1: inner calls are never resolved once per outer candidate; 10.3): a nested call that waits is checked at the
-    // Type its position gives, once, so the inference work at depth 10, 20 and 40 is linear: nested generic calls, an overloaded call at every
-    // level, and a join in every nested call. A unit other than guard is the plan's unit that makes the row pass: the row is Explicit until that
-    // unit lands and removes the marker (dev's work is quadratic: 874, 1214, 2494 and 1114, 2094, 5854).
+    // Type its position gives, once, so the count of candidate evaluations at depth 10, 20 and 40 is linear: nested generic calls, an overloaded
+    // call at every level, and a join in every nested call. The count does not read the join walks (labels-log.md, G335), so jn pins the calls
+    // around its joins only. A unit other than guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and
+    // removes the marker. P3 owns "prepare arguments once": dev's PrepareCallArguments probes a Call part again at each completion, so its count
+    // at depth d is 734 + 4d + d^2 (id) and 734 + 8d + 3d^2 (ov).
     [Theory]
-    [InlineData("I2", "id", Explicit = true)]
-    [InlineData("I2", "ov", Explicit = true)]
+    [InlineData("P3", "id", Explicit = true)]
+    [InlineData("P3", "ov", Explicit = true)]
     [InlineData("guard", "jn")]
     public void NestedArgumentsTakeWorkLinearInTheirDepth(string unit, string form)
     {
@@ -167,6 +166,18 @@ public class InferenceSlotScalingTest
 
         return "func identity<T>(v: T) -> T => v@move\nfunc take(value: i64) -> i32 => 0\nfunc pick(v: i32) -> i32 => v\nfunc pick(v: i64) -> i64 => v\n" +
             $"func k(c: bool) -> i32\n    return take({argument})\n()";
+    }
+
+    private static long[] ColdBytes(string workload, int[] calls)
+    {
+        var compilations = new Compilation[calls.Length];
+        var bytes = AllocationMeasurement.MeasureSeries(calls.Length, i =>
+        {
+            var c = compilations[i] = CompilationTestHelper.Parse(CallWorkload(workload, calls[i]));
+            return () => c.Bind();
+        });
+        Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
+        return bytes;
     }
 
     private static Compilation Bound(string source)
