@@ -90,6 +90,26 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.Equal([source.Contains("origin a = b", StringComparison.Ordinal) ? "OriginRelationOperator_Kd" : "OriginBindingSetTarget_Kd", "TypeMismatch_Kd"], errors.Select(static x => x.Code));
     }
 
+    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G530): a function reference whose structure fits reads the contract its failed clause made
+    // unavailable, so it rests on that clause, as a local initializer, a Tuple element, a join arm or an assignment; a structure that
+    // differs stays its own record, and under a valid clause the reference converts.
+    [Theory]
+    [InlineData("a = b", "let f: (ref/i32, ref/i32) -> i32 = g", "OriginRelationOperator_Kd")]
+    [InlineData("a == c", "let f: (ref/i32, ref/i32) -> i32 = g", "MissingOriginBinding_Kd")]
+    [InlineData("a = b", "let t: ((ref/i32, ref/i32) -> i32, i32) = (g, 1)", "OriginRelationOperator_Kd")]
+    [InlineData("a = b", "let c = true\n    let f: (ref/i32, ref/i32) -> i32 = if c => g else => g", "OriginRelationOperator_Kd")]
+    [InlineData("a = b", "var f: (ref/i32, ref/i32) -> i32 = g\n    f = g", "OriginRelationOperator_Kd")]
+    [InlineData("a = b", "let f: (ref/i64, ref/i32) -> i32 = g", "OriginRelationOperator_Kd TypeMismatch_Kd")]
+    [InlineData("a == b", "let f: (ref/i32, ref/i32) -> i32 = g", "")]
+    public void AFunctionReferenceOverAnInvalidOriginContractRestsOnItsCause(string clause, string use, string codes)
+    {
+        var c = MinimalEmissionTest.Analyze("func g(x: ref/i32 during a, y: ref/i32 during b) -> i32\n    origin " + clause + "\n    return 0\nfunc h()\n    " + use + "\nlet wrong: i32 = true");
+        c.Binding.ReportDiagnostics();
+        var errors = c.Diagnostics.Finalize(rejected: true).Diagnostics;
+        output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span + " " + x.Message)));
+        Assert.Equal([.. codes.Split(' ', StringSplitOptions.RemoveEmptyEntries), "TypeMismatch_Kd"], errors.Select(static x => x.Code));
+    }
+
     [Fact]
     public void AnInvalidContractCannotHideAnIndependentlyRefutedLifetime()
     {

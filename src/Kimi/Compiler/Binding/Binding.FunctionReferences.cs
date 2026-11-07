@@ -135,7 +135,9 @@ public sealed partial class Binding
                 // SPEC 10.5.3, 10.7: the one candidate's record reads the signature its trial substituted, its Item over the arguments the
                 // trial bound (the written ones where given) and its container; with a slot unbound there is none, and the declaration's
                 // own signature is a Type mismatch whose Note names the slot. When only its Origin contract fails, the record names that
-                // contract (SPEC 15.6.1), with the candidate's own inputs instantiated: a member, else a condition of the candidate.
+                // contract (SPEC 15.6.1), with the candidate's own inputs instantiated: a member, else a condition of the candidate. A
+                // contract its failed clause made unavailable is a failed input of that comparison, so the record rests on the clause
+                // (SPEC 23.1.2, DECISIONS Q13 rule W).
                 if (count == 1 && evaluated[0].Symbol is { Declaration: FunctionKoto function } single)
                 {
                     var bound = slotFailure.Failure == ReferenceSlotFailure.None && (trialArguments is null || ReferenceSlotsComplete(function, trialArguments, trialLengths!));
@@ -144,8 +146,9 @@ public sealed partial class Binding
                     if (this.FunctionItemSignature(candidateItem) is { } actual)
                     {
                         var contract = ComparisonFailure.Shape;
-                        return bound && ReferenceTypes.StorageMatches(required, actual) &&
-                            !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
+                        var structure = bound && ReferenceTypes.StorageMatches(required, actual);
+                        return structure && this.FailedOriginClause(function) is { } clause ? this.CompleteDependent(use, clause)
+                            : structure && !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
