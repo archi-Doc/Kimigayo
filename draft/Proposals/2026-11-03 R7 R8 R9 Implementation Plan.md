@@ -361,9 +361,10 @@ prototype, and the planning session's reading of the output is its own hour.
 
 **G416 (beside stream V).** The holdings unit (PLAN G416) is not an R7 unit, but its S, U0, U1, U3 and shared U4, U5 run in the
 Front's lane and its U2 in the Middle's, under the owner's 「(a) 今 ACCEPT」. It counts against the one shared-representation unit of
-§3.3. Slot: U0 and U1 now, before R7-E1's implementation.
+§3.3. U0 and U1 landed (BU-121); U2 is the Middle's next.
 
 **Unit states at R7's start.** Done: D0, N0, C0, P0 and E0 (evidence under `artifacts/verify/r7-*/`, base 2026-11-03: re-run a census
+before relying on a count), D2a (W-23), D1 as D1a (BU-105), N4 (BU-118, net +105/−55), N7 (BU-119), C1's tests and I3's position rows; I0 is absorbed. In flight: V1a, E1. The
 before relying on a count), D2a (W-23), D1 as D1a (BU-105), N4 (BU-118, net +105/−55), N7 (BU-119), V1's a and b (BU-120), C1's tests and I3's position rows; I0 is absorbed. In flight: E1, G416 U0 with U1. The
 other units have not started. Plan units that need an owner are named in the tables; the board is the live record.
 
@@ -936,3 +937,4 @@ frozen.
 | 18 | 2026-11-07 | R7-N7's landing (the Front's D-67) | Row 13's "G369 narrows" is corrected: G369 stays open, with `mx2`, `mx2-identity` and its call half. Appendix F's `ConstraintSubject` gains `"::"? Name` and `PrimitiveType`. |
 | 19 | 2026-11-07 | R7-V1's landing (the owner's O-48, verbatim 「全部 (a)」; the Front's D-69) | V1's a and b landed as one commit; G375's remainder goes to R7-C2 and V5, and G382's r08 stays G382's. V1's size is src +63/−12, tests +686/−3, not +150/−300; §6's row follows. |
 | 20 | 2026-11-07 | The owner's O-50 (verbatim 「(A) 候補 A を採用する」; the Back's D-71) | S1's adopted design: units S1a, S1d1, S1d2 and S1e, S1c removed, about −30 C# against −300; §5.6 follows. |
+| 21 | 2026-11-07 | G416 U0 and U1's landing (the Front's D-72) | §5.1's G416 paragraph and unit states follow. |

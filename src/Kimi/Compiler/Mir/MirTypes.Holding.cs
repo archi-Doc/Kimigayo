@@ -47,7 +47,7 @@ internal struct MirModeDepths
 
 /// <summary>What a part's facts in the holding walk are a function of (DECISIONS R4-M157, BU-58): its Type, and for an inline Tuple or
 /// fixed array of a stored part (Stored) the Type the declaration writes there (<see cref="TyCtxt.WrittenAt"/>) with the holding instance,
-/// which <see cref="TyCtxt.RawStep"/> and <see cref="TyCtxt.RawMembers"/> read beside the kept layer. Where the declaration writes nothing
+/// which <see cref="TyCtxt.StoredStep"/> and <see cref="TyCtxt.RawMembers"/> read beside the kept layer. Where the declaration writes nothing
 /// there (Written null), each raw layer below steps by its own Origin with no member, so the part's facts are its Type's in a stored part
 /// (Holder null). Any other part is its Type alone.</summary>
 /// <param name="Type">The part's Type.</param>
@@ -94,7 +94,7 @@ internal static partial class MirTypes
     /// (SPEC 15.3.5), adds only whether the value may hold one. A struct's or enum's own storage is its stored parts as the holding value's
     /// substitution makes them, raw Origins kept (TyCtxt.StoredParts, DECISIONS BU-41), so a raw layer below the holder is read on the
     /// instance that stores it. Past a raw layer of the value's own storage (DECISIONS R4-M147; SPEC 5.7 Calls, 15.6.4), a layer a struct's
-    /// Field or an enum's Case payload stores, at inline positions, by its step on that instance (TyCtxt.RawStep): `self`, the pointee and
+    /// Field or an enum's Case payload stores, at inline positions, by its step on that instance (TyCtxt.StoredStep): `self`, the pointee and
     /// the holding instance's Type arguments by their actual Types in the value's own storage, the write fact where the instance has an
     /// Origin argument (the owner's 「進める (推奨)」); a slot kept only by `ref`, nothing; `static`, an exclusive reference to its pointee;
     /// another Origin, an exclusive reference to its pointee and to each exclusive member's referent (TyCtxt.RawMembers), the Limit where
@@ -197,7 +197,7 @@ internal static partial class MirTypes
     }
 
     // HoldsLoans' walk, with the stored part it is inside: a struct's Field or an enum's Case payload, whose inline positions (a Tuple's
-    // components, a fixed array's element) from `start` the walk is at, so a raw layer there reads that part's step (TyCtxt.RawStep) and
+    // components, a fixed array's element) from `start` the walk is at, so a raw layer there reads that part's step (TyCtxt.StoredStep) and
     // an inline part's key the Type the declaration writes there (TyCtxt.WrittenAt).
     private ref struct Holding(TyCtxt types, Dictionary<MirHoldingKey, MirModeDepths> seen, List<RawMember> members, Span<int> positions)
     {
@@ -296,7 +296,7 @@ internal static partial class MirTypes
         }
 
         // What lies past a raw layer of the value's own storage (DECISIONS R4-M147): for a layer a stored part holds, by its step on the
-        // instance holding it (TyCtxt.RawStep): `self`, the pointee and the instance's Type arguments by their actual Types in the value's
+        // instance holding it (TyCtxt.StoredStep): `self`, the pointee and the instance's Type arguments by their actual Types in the value's
         // own storage, the write fact where the instance has an Origin argument; a slot kept only by `ref`, nothing; `static`, an
         // exclusive reference to the pointee; another Origin, an exclusive reference to the pointee and to each exclusive member's
         // referent, the Limit where the members are unpublished; none, and any layer outside a stored part, one rule (DECISIONS R4-M151):
@@ -307,12 +307,12 @@ internal static partial class MirTypes
             var stored = this.instance;
             var pointee = layer.Components[0];
             ReadOnlySpan<int> at = stored is null ? default : this.positions[this.start..this.top];
-            return (stored is null ? RawStep.Unstated : types.RawStep(stored, this.part, at)) switch
+            return (stored is null ? HoldStep.Address : types.StoredStep(stored, this.part, at)) switch
             {
-                RawStep.Own => this.Admitted(stored!, pointee, depth),
-                RawStep.Shared => default,
-                RawStep.Static => this.Part(pointee, Exclusive, depth),
-                RawStep.Exclusive => this.Members(stored!, at, depth).Join(this.Part(pointee, Exclusive, depth)),
+                HoldStep.Own => this.Admitted(stored!, pointee, depth),
+                HoldStep.Shared => default,
+                HoldStep.Static => this.Part(pointee, Exclusive, depth),
+                HoldStep.Exclusive => this.Members(stored!, at, depth).Join(this.Part(pointee, Exclusive, depth)),
                 _ => TyCtxt.RawStated(layer) ? new(false, MirOutcome.Decided) : this.Part(pointee, Exclusive, depth),
             };
         }
@@ -371,7 +371,7 @@ internal static partial class MirTypes
             return found;
         }
 
-        // An enum Case's payload, whose components are its part's first inline positions (TyCtxt.RawStep's and WrittenAt's), all joined
+        // An enum Case's payload, whose components are its part's first inline positions (TyCtxt.StoredStep's and WrittenAt's), all joined
         // at the depth below the payload's: the payload Tuple is Binding's, not a Type the declaration writes, so it is no node and no key
         // (one kept payload may stand for Cases written differently; DECISIONS R4-M157).
         private Facts Payload(BoundType? payload, int mode, int depth)
