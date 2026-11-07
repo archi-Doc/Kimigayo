@@ -555,6 +555,32 @@ public partial class LayoutTest
         Assert.Equal(new[] { 0, 8 }, c.Layout.Of(tuple).Value!.Layout.FieldOffsets.ToArray());
     }
 
+    // IMPL 21.1.3 (R8-R1a): a library struct and a row state one handle's words, so each struct's placement equals its handle's row for
+    // every element, and a handle's `length` Field is the word its Len reads. R8-R1b deletes the rows it derives; StringRepr's row stays,
+    // the guard of the lasting pair with RuntimeAbi.String. DictionaryStorage.Handle has no catalog row: `id` is null for it.
+    [Theory]
+    [InlineData(KimiDeclarationId.ArrayRepr, BoundTypeKind.Array, "i32")]
+    [InlineData(KimiDeclarationId.ArrayRepr, BoundTypeKind.Array, "string")]
+    [InlineData(KimiDeclarationId.SliceRepr, BoundTypeKind.Slice, "i32")]
+    [InlineData(KimiDeclarationId.StringRepr, BoundTypeKind.Primitive, null)]
+    [InlineData(null, BoundTypeKind.Dictionary, "i32")]
+    public void ARepresentationStructIsPlacedAsItsHandlesRow(KimiDeclarationId? id, BoundTypeKind kind, string? element)
+    {
+        var c = MirBuildTest.Compile("func f() => ()\n");
+        BoundType[] arguments = element is null ? [] : [BoundType.Primitives.GetValueOrDefault(element) ?? BoundType.String];
+        var handle = element is null ? BoundType.String : new BoundType("h", kind, components: arguments);
+        var repr = RepresentationStruct(c, id, arguments);
+        var placed = c.Layout.Of(repr);
+        Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
+        var (layout, row) = (placed.Value!.Layout, Layout.Row(handle).Layout);
+        Assert.Equal((row.Size, row.Alignment, row.Stride), (layout.Size, layout.Alignment, layout.Stride));
+        Assert.Equal(row.FieldOffsets.ToArray(), layout.FieldOffsets.ToArray());
+        if (element is not null)
+        {
+            Assert.Equal(Layout.LengthWord(handle), AdtDef.IndexOf(repr, "length"));
+        }
+    }
+
     [Fact]
     public void LoanIsPlacedAsAStructWithoutStoredFields()
     {
@@ -613,6 +639,19 @@ public partial class LayoutTest
     // A declared struct's or enum's own Type.
     private static BoundType Declared(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name).SymbolOf()!.Type!;
+
+    // The closed struct of a catalog representation row, or DictionaryStorage.Handle, the library's one way to it being a parameter's Type.
+    private static BoundType RepresentationStruct(Compilation c, KimiDeclarationId? id, BoundType[] arguments)
+    {
+        if (id is null)
+        {
+            return c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!.Components[0];
+        }
+
+        var symbol = c.Library.GetSymbol(id.Value);
+        Assert.NotNull(symbol);
+        return arguments.Length == 0 ? symbol.Type! : c.Types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, arguments);
+    }
 
     // CLayoutGeneric's instance P<argument>.
     private static BoundType P(Compilation c, BoundType argument)

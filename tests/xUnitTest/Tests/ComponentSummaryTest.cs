@@ -14,6 +14,18 @@ namespace XunitTest;
 /// column; the Transferable column waits for unit 2b-4.</summary>
 public class ComponentSummaryTest
 {
+    private const string SiteNodes = "contract Tree\n    associate Child is Tree\ncontract OTree: Tree, Owned\n    Self.(Tree).Child is OTree\nstruct TreeNode<T>\n    T is Tree\n    let v: T\n    let kids: Array<TreeNode<T.(Tree).Child>>\n";
+
+    private const string SiteCells = "struct Plain\n    let x: i32\nstruct OnlyCopy<T>\n    T is Copy\nfunc two<A, B>(a: A) -> ()\n    A is Owned\n    ()\n";
+
+    private const string SiteContract = "struct Plain\n    let x: i32\ncontract V\n    associate A is Owned\n    associate B is Copy\n";
+
+    private const string OwnerPair = "contract Has\n    associate Out\nstruct EP<s/T>\n    s is owner\n    T is Has\n    let v: s/T\n";
+
+    private const string ManyWide = "contract Many\n    associate A1 is Deep\nstruct Wide<T>\n    T is Many\n";
+
+    private const string InspectWide = "func inspect<U>(x: Wide<U>)\n    U is Many and Owned\n    need(x@move)\n";
+
     private const string Prelude =
         "struct Item\n    let x: i32\nopen struct Base\n    let x: i32\nstruct Box<T>\n    let value: T\nstruct Holder\n    let item: rc/Item\n" +
         "struct Phantom<T>\nenum Msg\n    A(i32)\n    B(rc/Item)\nstruct Hook\n    let next: Option<obj/Hook>\n    let call: () -> ()\n" +
@@ -258,6 +270,42 @@ public class ComponentSummaryTest
         Assert.Equal(complete, c.Binding.Bind(BindingMode.Final).IsComplete);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    [Theory]
+    // SPEC 8.3.2, 8.3.3 Limits (DECISIONS BU-22): an exact refutation in another operand decides, for a call's check, a function reference and a
+    // conformance's verification; alone, the limit stays the stored Type's located Unsupported_Kd (the n twins). g207-conf2 is the refutation without
+    // the limit.
+    [InlineData("guard", "g207-call", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<Plain>>(x@move)\n", "UnsatisfiedConstraint_Kd: two<TreeNode<U>, OnlyCopy<Plain>>(x@move) | ...")]
+    [InlineData("guard", "g207-calln", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<i32>>(x@move)\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
+    [InlineData("C5", "g207-ref", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<Plain>>\n    ()\n", "UnsatisfiedConstraint_Kd: let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<Plain>>", Explicit = true)]
+    [InlineData("guard", "g207-refn", SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: (TreeNode<U>) -> () = two<TreeNode<U>, OnlyCopy<i32>>\n    ()\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
+    [InlineData("C5", "g207-conf", SiteNodes + SiteContract + "struct Y<U>\n    U is OTree\n    Self is V\n    associate V.A is TreeNode<U>\n    associate V.B is Plain\n", "UnsatisfiedConstraint_Kd: *", Explicit = true)]
+    [InlineData("guard", "g207-conf2", SiteNodes + SiteContract + "struct Y<U>\n    U is OTree\n    Self is V\n    associate V.A is i32\n    associate V.B is Plain\n", "UnsatisfiedConstraint_Kd: *")]
+    [InlineData("guard", "g207-confn", SiteNodes + SiteContract + "struct Y<U>\n    U is OTree\n    Self is V\n    associate V.A is TreeNode<U>\n    associate V.B is i32\n", "Unsupported_Kd: let kids: Array<TreeNode<T.(Tree).Child>>")]
+
+    // SPEC 8.7.3, 8.1.1: a Proven ObjectPayload makes the Type an owner Type, so it fits `s is owner`; without the premise its Semantics is unknown.
+    [InlineData("C6", "g201", OwnerPair + "struct DP<X>\n    X is Has and ObjectPayload\n    let e: EP<X>\n", "", Explicit = true)]
+    [InlineData("guard", "g201n", OwnerPair + "struct DP<X>\n    X is Has\n    let e: EP<X>\n", "UnprovenConstraint_Kd: let e: EP<X>")]
+
+    // SPEC 15.2.3, 8.3.2: `contract Deep: Owned` proves every step of a stored projection of the formal; without it the step is Unknown.
+    [InlineData("C6", "g208-2", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "", Explicit = true)]
+    [InlineData("C6", "g208-8", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next\n" + Need + InspectWide, "", Explicit = true)]
+    [InlineData("guard", "g208n", "contract Deep\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "UnprovenConstraint_Kd: need(x@move)")]
+    public void LimitsAndStoredProjectionsHaveTheirVerdicts(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // A row's wildcards never admit a located Unsupported_Kd, which says the form is valid (SPEC 23.1.1); only an entry naming the code does.
+    [Theory]
+    [InlineData("*: let kids: Array<TreeNode<T.(Tree).Child>>", false)]
+    [InlineData("*: * | ...", false)]
+    [InlineData("Unsupported_Kd: * | ...", true)]
+    public void AWildcardNeverAdmitsAnUnsupportedRecord(string records, bool admitted)
+    {
+        const string Program = SiteNodes + SiteCells + "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    two<TreeNode<U>, OnlyCopy<i32>>(x@move)\n()";
+        Assert.Equal(admitted, Record.Exception(() => CompilationTestHelper.AssertRecordsAtLines("wildcard", Program, records)) is null);
     }
 
     private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(f => f.Name == name);

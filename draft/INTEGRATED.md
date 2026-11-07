@@ -1297,6 +1297,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 11 (2026-11-07, plan §14; the Middle's D-51): §5.4 and §7.1 follow PLAN G396 and the A5 oracle's new place. Nothing frozen.
 - Revision 12 (2026-11-07, plan §14; the owner's O-39 and O-40, verbatim 「(a) GO」 and 「(a) walk を恒久の部品として残す」): the HIR publisher stays; Y1 shrinks; G339 goes ahead with
   G338. Nothing frozen.
+- Revision 13 (2026-11-07, plan §14; the owner's O-42, verbatim 「O-42はaで決定します」): §5.1 gains N7. Nothing frozen; SPEC 8.2.1 registers when it lands.
+- Revision 14 (2026-11-07, plan §14; the owner's O-44, verbatim 「(a) 有効とする」): §5.1 gains V5. Nothing frozen.
+- Revision 15 (2026-11-07, plan §14; the Back's D-60): R8-S1's first stop and split. Nothing frozen.
+- Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
+  R8-M1). Nothing frozen.
+- Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
 
 ## 2026-11-03 — G216 (a) position rows
 

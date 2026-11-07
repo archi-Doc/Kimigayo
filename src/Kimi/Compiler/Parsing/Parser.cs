@@ -113,7 +113,7 @@ public static partial class Parser
             var fragment = -1;
             for (var current = attribute; current is not null; current = current.AttributeChain)
             {
-                if (current.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "Layout" })
+                if (current.Kind != AttributeKind.Layout)
                 {
                     continue;
                 }
@@ -2929,24 +2929,11 @@ CloseParameters:
             return;
         }
 
-        if (!HasLibraryImport(function.AttributeChain))
+        if (function.FindAttribute(AttributeKind.LibraryImport) is null)
         {
             reader.Expect(SyntaxForm.Body);
             function.MissingBody = true;
         }
-    }
-
-    internal static bool HasLibraryImport(AttributeKoto? attribute)
-    {
-        for (; attribute is not null; attribute = attribute.AttributeChain)
-        {
-            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" })
-            {
-                return true; // An imported declaration has no executable body in source.
-            }
-        }
-
-        return false;
     }
 
     // unsafe is contextual: it introduces a statement only before a Body (or an obsolete body colon/missing body

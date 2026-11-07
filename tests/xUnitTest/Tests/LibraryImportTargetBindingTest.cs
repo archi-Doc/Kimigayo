@@ -70,7 +70,7 @@ public class LibraryImportTargetBindingTest
         var definition = c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!;
         Assert.False(definition.IsVerified);
         var import = type.AttributeChain!;
-        if (import.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "LibraryImport" })
+        if (import.Kind != AttributeKind.LibraryImport)
         {
             import = import.AttributeChain!;
         }

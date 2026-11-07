@@ -11,6 +11,20 @@ namespace XunitTest;
 /// paths, a hang the runner's timeout reports, while the DAG walk takes milliseconds; the rows build their Types through TyCtxt.</summary>
 public partial class TypeDagScalingTest
 {
+    // G416 R1: a recursion that branches behind a collection has 2^(depth/2) paths to the fit's bound, so the fit (Binding.Borrows) enters each
+    // part once per query; a walk of the paths does not end at bound 64.
+    [Theory]
+    [InlineData("Array<Tree during s>")]
+    [InlineData("Option<obj/(Tree during s)>")]
+    public void AFitEntersEachPartOfABranchingRecursionOnce(string child)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            $"struct Tree {{s}}\n    public var tag: ref/u8 during s\n    public var left: {child}\n    public var right: {child}\n" +
+            "func f(dst: uniq/(Tree during q), v: ref/i64 during q) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal("store 0: own {0 Content, 1 Content}, reached {}", RetentionTest.Declared(c, "f"));
+    }
+
     // StatesUnstated (MirValidator's Local row) over T_{k+1} = (T_k, T_k), T_0 = `raw/i32 during static`, and U_{k+1} = (T_k, U_k), U_0 a
     // layer stating Unstated: each raw-Origin part is entered once, so its seen keys are exactly the distinct parts below the root.
     [Fact]
