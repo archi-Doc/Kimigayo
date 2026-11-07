@@ -44,7 +44,7 @@ public sealed partial class Binding
         // before headers bind, so that every later object formation sees the effective state.
         for (var n = 0; n < this.nodes.Count; n++)
         {
-            if (this.nodes[n] is StructKoto { Bases.Count: > 0 } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
+            if (this.nodes[n] is StructKoto { BaseClause: not null } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
             {
                 symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
             }
@@ -87,9 +87,8 @@ public sealed partial class Binding
     private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
     {
         // The current language has one inline base. The bound limits invalid cycles too.
-        for (var depth = 0; structure.Bases.Count > 0 && depth <= this.nodes.Count; depth++)
+        for (var depth = 0; structure.BaseClause is { } syntax && depth <= this.nodes.Count; depth++)
         {
-            var syntax = structure.Bases[0];
             var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.Any);
             if (type is null)
             {

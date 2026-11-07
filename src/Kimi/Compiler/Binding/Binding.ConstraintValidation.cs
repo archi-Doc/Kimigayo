@@ -142,15 +142,9 @@ public sealed partial class Binding
             node = parent;
         }
 
-        if (node.Parent is StructKoto structure)
+        if (node.Parent is StructKoto structure && ReferenceEquals(node, structure.BaseClause))
         {
-            for (var i = 0; i < structure.Bases.Count; i++)
-            {
-                if (ReferenceEquals(node, structure.Bases[i]))
-                {
-                    return node;
-                }
-            }
+            return node;
         }
 
         return node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration } ? enumeration : null;
