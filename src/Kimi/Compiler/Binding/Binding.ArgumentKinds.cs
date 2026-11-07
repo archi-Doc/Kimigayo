@@ -51,7 +51,8 @@ namespace Kimi.Compiler;
 //   (AtArgumentPosition), P3 (DeferNestedCall) a Call and its Join, P4 (ClassifiedByCall, ConflictWaits) a Join, and the operand probe
 //   (BindIndependentOperand) a Function or Case; ClassifyPart derives Literal, Aggregate, Function, Case and Typed; KindOf alone
 //   combines the two; a deferred part (WasDeferred, a recorded Call) stays so after its
-//   completion, so its Type is never evidence for an outer slot; a Literal is evidence only through the default recorded for the
+//   completion, so its Type is never evidence for an outer slot, and so does a callable one (WasWaitingCallable), whose completion
+//   context the fixed-binding check derives again; a Literal is evidence only through the default recorded for the
 //   selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 //   Rule W (DECISIONS BU-79; SPEC 23.1.2): a failed part is a wildcard: it fits every candidate and is no evidence; only a node's own
 //   verdict over a failed child is suppressed (a join's DecideRest, its position and kind, CompleteJoinResults), and every other
@@ -175,6 +176,10 @@ public sealed partial class Binding
 
     // SPEC 10.5: whether the part is a waiting callable, a Function or Reference that awaits its call.
     private bool IsWaitingCallable(Koto part) => this.AwaitedKind(part) is PartKind.Function or PartKind.Reference;
+
+    // SPEC 10.5: whether its producer recorded the part as a callable, the kinds of IsWaitingCallable: it stays so after its completion,
+    // which gave it the fixed expected call signature S as its context, as WasDeferred does for a Call.
+    private bool WasWaitingCallable(Koto node) => this.RecordedPart(node).Kind is PartKind.Function or PartKind.Reference;
 
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)

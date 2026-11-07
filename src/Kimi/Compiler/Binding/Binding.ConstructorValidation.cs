@@ -185,7 +185,8 @@ public sealed partial class Binding
                         }
 
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
-                        var contextPattern = this.WasDeferred(call.ArgumentNodes[a]) ? pattern : this.ExpectedCallSignature(function, pattern);
+                        // SPEC 10.5, 10.8: the context its completion used, S for a waiting callable and else the parameter Type.
+                        var contextPattern = this.WasWaitingCallable(call.ArgumentNodes[a]) ? this.ExpectedCallSignature(function, pattern) : pattern;
                         var context = contextPattern is null ? null : this.CallType(contextPattern, function, arguments, scope, null, origins, inputs, construction, lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
