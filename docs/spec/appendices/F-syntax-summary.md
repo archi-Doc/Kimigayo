@@ -423,7 +423,7 @@ ConditionalImplementationItem := AttributedFunctionDefinition
                       | Directive<ConditionalImplementationItem>
 ConstraintClause     := ConstraintSubject "is" IsRequirement CallableEffects?
 CallableEffects      := IndentedList<EffectClause>
-ConstraintSubject    := Name | "Self" | AssociatedTypeReference
+ConstraintSubject    := "::"? Name | "Self" | PrimitiveType | AssociatedTypeReference
 IsRequirement        := "not" Requirement | PositiveRequirement
 PositiveRequirement  := RequirementAtom ("and" RequirementUnary)* ("or" RequirementAnd)*
 Requirement          := RequirementAnd ("or" RequirementAnd)*

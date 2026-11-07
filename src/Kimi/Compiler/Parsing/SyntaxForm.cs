@@ -231,7 +231,7 @@ public enum SyntaxForm : ushort
     /// <summary>The operation of a capture: move, ref or uniq.</summary>
     CaptureOperation,
 
-    /// <summary>A Constraint in a signature's clause block.</summary>
+    /// <summary>A Constraint in a signature's clause block, or at a Type before <c>is</c> that is no Constraint subject.</summary>
     Constraint,
 
     /// <summary>The 'of' between a length and an element Type.</summary>
