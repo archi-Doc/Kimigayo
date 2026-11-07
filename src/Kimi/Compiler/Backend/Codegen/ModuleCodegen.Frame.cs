@@ -27,6 +27,7 @@ internal sealed partial class ModuleCodegen
 
     private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
     private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
+    private readonly StringWriter helperText = new(System.Globalization.CultureInfo.InvariantCulture); // The helpers of the latest Write.
     private Needs needs; // The module parts the definitions of the latest Write requested.
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>

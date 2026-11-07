@@ -15,7 +15,6 @@ namespace Kimi.Compiler.Backend;
 // allocates nothing. A record without its layout is a broken contract at the item's site (the collector laid them out).
 internal sealed partial class ModuleCodegen
 {
-    private readonly StringWriter helperText = new(CultureInfo.InvariantCulture); // The helpers of the latest Write, before the definitions.
     private ArrayHelper?[] arrays = []; // By LegacyRow item, its helper, kept across Writes.
     private int[] arranged = []; // By item, the Write whose helper `arrays` holds (0: none).
 

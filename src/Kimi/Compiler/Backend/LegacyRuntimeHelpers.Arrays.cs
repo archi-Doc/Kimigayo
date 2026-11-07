@@ -141,11 +141,6 @@ internal static partial class LegacyRuntimeHelpers
 
         """;
 
-    // The parameters take the internal convention's kinds and logical indices (IMPL 21.3.1): the handle a Value at slot 0, a value in memory
-    // an OwnedSlot, a stride or count given; MIR code generation's one call writer places a call's operands by them (R5 plan C8d), and a
-    // definition prints only their types and names.
-    private static readonly AbiParameter Handle = new("ptr", "handle", AbiParameterKind.Value, 0);
-
     private static readonly AbiParameter Result = new("ptr", "result", AbiParameterKind.ResultSlot);
 
     // One row per kind, in ArrayHelperKind order (SPEC 4.9.3, 4.9.7, 22.2); a new kind adds a row. A row declares the Array
@@ -202,19 +197,6 @@ internal static partial class LegacyRuntimeHelpers
         row.Write(output, helper);
         output.Write("}\n");
     }
-
-    // A signature without a result: the handle, the leading parameters and the caller's location (SPEC 22.5.1).
-    private static FunctionAbi Located(string name, ReadOnlySpan<AbiParameter> leading)
-        => new(name, RuntimeAbi.Unit.ComputationType, [Handle, .. leading, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
-
-    // A signature that writes the caller's result slot.
-    private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
-        => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
-
-    // A stored-value argument of a helper that moves it in at its call's slot: a scalar by value, another value by address (SPEC 21.3.1).
-    private static AbiParameter Argument(in StoredValue value, string name, int slot) => value.IsScalar
-        ? new(value.Value.ComputationType, name, AbiParameterKind.Value, slot)
-        : new("ptr", name, AbiParameterKind.OwnedSlot, slot);
 
     // The consumed fixed array moves in by address unless its storage has no bytes (SPEC 22.2).
     private static FunctionAbi OwnFixedShape(string name, RemainderFields fields) => fields.StorageSize == 0

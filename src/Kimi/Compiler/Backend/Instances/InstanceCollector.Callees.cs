@@ -124,13 +124,13 @@ internal sealed partial class InstanceCollector
         return this.Made(storage, subject) ? below : null;
     }
 
-    // X4, F2c (DECISIONS R5-M28, R5-M124): the body of the DictionaryStorage function a legacy row or the Dictionary runtime declares as its
-    // callee (placeEntry's append, a Dictionary from none's initialize, a Dictionary glue's clearEntries), named by TyCtxt's symbol view and
-    // admitted for a site under the substitution given (a generic one's over the entry Types; null for one that does not instantiate); a
-    // declared callee without a body is a broken contract.
-    private int Declared(MirProgram program, int item, SourceRef site, DictionaryCallee callee, Subst? subst)
+    // X4, F2c (DECISIONS R5-M28, R5-M124): the one owner of a target the compiler names: the body of a library function (a DictionaryStorage
+    // function a legacy row or the Dictionary runtime declares as its callee, by TyCtxt's symbol view: placeEntry's append, a Dictionary from
+    // none's initialize, a Dictionary glue's clearEntries; an Array glue's destroyArray), admitted for a site under the substitution given
+    // (a generic one's; null for one that does not instantiate); a declared callee without a body is a broken contract.
+    private int Declared(MirProgram program, int item, SourceRef site, BindingSymbol function, Subst? subst)
     {
-        if (program[new(this.types.DictionaryStorage(callee), MirBodyKind.Fn)] is { } body)
+        if (program[new(function, MirBodyKind.Fn)] is { } body)
         {
             return this.Admit(item, site, body, subst);
         }

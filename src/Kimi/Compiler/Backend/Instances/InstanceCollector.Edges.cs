@@ -274,7 +274,8 @@ internal sealed partial class InstanceCollector
             return (MirAggregateKind)rvalue.Op switch
             {
                 MirAggregateKind.Closure => this.Callee(program, item, subject, closed),
-                _ when closed.Kind == BoundTypeKind.Dictionary => this.Declared(program, item, subject, LegacyRuntimeHelpers.Construction, null),
+                _ when closed.Kind == BoundTypeKind.Dictionary =>
+                    this.Declared(program, item, subject, this.types.DictionaryStorage(LegacyRuntimeHelpers.Construction), null),
                 _ => -1,
             };
         }
