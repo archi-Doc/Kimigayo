@@ -17,7 +17,7 @@
 // other at its subject with its Ordinal as the condition; KeyOf is the key either form records, so a Cause names its problem's record; a
 // problem with Cause facts is PrerequisiteUnavailable_Kd naming its causes' keys, a MIR cause's by KeyOf, a Binding cause's (-1) Binding's;
 // a located problem with a fact, a Binding cause without Binding's causes, an Inlined fact and a kind without a row are broken contracts,
-// InternalInvariant_Kd at the subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per MirFactKind: a site
+// InternalInvariant_Kd at the subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per ProblemFactKind: a site
 // fact is a related location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations,
 // Required, Limit and Table OwnershipStorageLimit_Kd's arguments and table; the case text is Binding.CaseFact's over the members' masked
 // views, only when every member gives the same (Binding renders it).
@@ -58,43 +58,43 @@ public partial class Compilation
         List<DiagnosticKey>? causes = null;
         foreach (var fact in facts)
         {
-            // The fact table (design 3.3), one arm per MirFactKind; the resolver (3.4): a MIR cause by its merged index, a Binding cause (-1)
+            // The fact table (design 3.3), one arm per ProblemFactKind; the resolver (3.4): a MIR cause by its merged index, a Binding cause (-1)
             // by Binding's causes at its site.
             switch (fact.Kind)
             {
-                case Mir.MirFactKind.Anchor:
-                case Mir.MirFactKind.Use:
-                case Mir.MirFactKind.Store:
-                case Mir.MirFactKind.Reservation:
-                case Mir.MirFactKind.Evaluated:
-                case Mir.MirFactKind.EffectRead:
-                case Mir.MirFactKind.EffectWrite:
-                case Mir.MirFactKind.EffectUnknown:
+                case ProblemFactKind.Anchor:
+                case ProblemFactKind.Use:
+                case ProblemFactKind.Store:
+                case ProblemFactKind.Reservation:
+                case ProblemFactKind.Evaluated:
+                case ProblemFactKind.EffectRead:
+                case ProblemFactKind.EffectWrite:
+                case ProblemFactKind.EffectUnknown:
                     var (role, label) = RelatedRole(fact.Kind);
                     (related ??= []).Add((role, this.SyntaxOf(fact.Site), label));
                     break;
-                case Mir.MirFactKind.Relation when this.Relation(program, problem, body, fact) is { } relation:
+                case ProblemFactKind.Relation when this.Relation(program, problem, body, fact) is { } relation:
                     (evidence, var lines) = relation;
                     (related ??= []).AddRange(lines ?? []);
                     break;
-                case Mir.MirFactKind.Required:
+                case ProblemFactKind.Required:
                     required = fact.Value;
                     break;
-                case Mir.MirFactKind.Limit:
+                case ProblemFactKind.Limit:
                     limit = fact.Value;
                     break;
-                case Mir.MirFactKind.Table:
+                case ProblemFactKind.Table:
                     evidence = [((Mir.MirStorageTable)fact.Value).ToString()];
                     break;
-                case Mir.MirFactKind.Cause when fact.Value >= 0:
+                case ProblemFactKind.Cause when fact.Value >= 0:
                     (causes ??= []).Add(this.KeyOf(program, (int)fact.Value));
                     break;
-                case Mir.MirFactKind.Cause when this.Binding.RestingCauses(this.SyntaxOf(fact.Site)) is { } resting:
+                case ProblemFactKind.Cause when this.Binding.RestingCauses(this.SyntaxOf(fact.Site)) is { } resting:
                     (causes ??= []).AddRange(resting);
                     break;
-                case Mir.MirFactKind.Relation: // A relation without a body, Reason ends or row source.
-                case Mir.MirFactKind.Cause: // A Binding cause at a node with no resting causes, such as one Binding resolved.
-                case Mir.MirFactKind.Inlined: // MirReport.Add drops its problem.
+                case ProblemFactKind.Relation: // A relation without a body, Reason ends or row source.
+                case ProblemFactKind.Cause: // A Binding cause at a node with no resting causes, such as one Binding resolved.
+                case ProblemFactKind.Inlined: // MirReport.Add drops its problem.
                 default: // A kind without a row.
                     this.Locate(Defect, DiagnosticCode.InternalInvariant_Kd, problem.Subject);
                     return;
@@ -121,16 +121,16 @@ public partial class Compilation
     }
 
     // The related location of a fact naming a site (design 3.3; DIAGNOSTICS' A6 fact tables): its role and wording.
-    private static (string Role, string Label) RelatedRole(Mir.MirFactKind kind) => kind switch
+    private static (string Role, string Label) RelatedRole(ProblemFactKind kind) => kind switch
     {
-        Mir.MirFactKind.Anchor => ("borrow", "borrow that created the loan"),
-        Mir.MirFactKind.Use => ("loan", "later use of the value retaining the conflicting loan"),
-        Mir.MirFactKind.Store => ("loan", "value retaining the conflicting loan"),
-        Mir.MirFactKind.Reservation => ("reservation", "conflicting exclusive call reservation"),
-        Mir.MirFactKind.Evaluated => ("default", "the default this call omits, evaluated here, does this"),
-        Mir.MirFactKind.EffectRead => ("declaration", "the call or destruction may read this static"),
-        Mir.MirFactKind.EffectWrite => ("declaration", "the call or destruction may write this static"),
-        Mir.MirFactKind.EffectUnknown => ("declaration", "the call's or destruction's effects are unknown, so they may access this static"),
+        ProblemFactKind.Anchor => ("borrow", "borrow that created the loan"),
+        ProblemFactKind.Use => ("loan", "later use of the value retaining the conflicting loan"),
+        ProblemFactKind.Store => ("loan", "value retaining the conflicting loan"),
+        ProblemFactKind.Reservation => ("reservation", "conflicting exclusive call reservation"),
+        ProblemFactKind.Evaluated => ("default", "the default this call omits, evaluated here, does this"),
+        ProblemFactKind.EffectRead => ("declaration", "the call or destruction may read this static"),
+        ProblemFactKind.EffectWrite => ("declaration", "the call or destruction may write this static"),
+        ProblemFactKind.EffectUnknown => ("declaration", "the call's or destruction's effects are unknown, so they may access this static"),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -193,7 +193,7 @@ public partial class Compilation
     // destination and source from the body's C1-F4 row, a containment edge (-1) without a row as wellFormed; the ends are
     // the Reason's, the longer one also the supplier (Q-BU-1). Null for a broken contract: no body, no Reason ends, or a row MirOrigins forms.
     private (object[] Evidence, (string Role, Koto At, string? Label)[]? Related)? Relation(
-        Mir.MirProgram program, in Mir.MirReport.MergedProblem problem, int body, Mir.MirFact fact)
+        Mir.MirProgram program, in Mir.MirReport.MergedProblem problem, int body, ProblemFact fact)
     {
         if (body == Mir.MirProblem.NoBody || problem.Reason is not { Longer: { } longer, Shorter: { } shorter, Equality: var equality })
         {

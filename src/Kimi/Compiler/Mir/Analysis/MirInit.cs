@@ -362,7 +362,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         {
             var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, body.Ordinal, this.Views);
             var inlined = body.Inlining(this.scope);
-            var index = this.Report.Add(problem, inlined < 0 ? default : [new(MirFactKind.Inlined, body.Scopes[inlined].Source)]);
+            var index = this.Report.Add(problem, inlined < 0 ? default : [new(ProblemFactKind.Inlined, body.Scopes[inlined].Source)]);
             drops.Incomplete(code, new(subject, this.scope, StatementStart: false), index);
         }
     }

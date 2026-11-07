@@ -205,13 +205,13 @@ public sealed class MirAnalysisTest
         var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
         int[] indices =
         [
-            report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]),
+            report.Add(loan, [new(ProblemFactKind.Anchor, new(0, 4)), new(ProblemFactKind.Inlined, new(0, 9))]),
             report.Add(limit),
-            report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]),
+            report.Add(loan with { Views = 0b01 }, [new(ProblemFactKind.Anchor, new(0, 4))]),
         ];
         Assert.Equal([-1, 0, 1], indices);
         Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
-        Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
+        Assert.Equal([new ProblemFact(ProblemFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
     }
 
     // DECISIONS R4-M132 (rule W; R4-M96 per report, DIAGNOSTICS §4.3): a merged problem is derived exactly when every report of it is, its
@@ -222,8 +222,8 @@ public sealed class MirAnalysisTest
     public void AMergeIsDerivedOnlyWhenEveryReportIs()
     {
         var (loan, other) = (Conflict with { Subject = new(0, 5) }, Conflict with { Subject = new(0, 6) });
-        var (anchor, first, second) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Cause, new(0, 1), 0), new MirFact(
-            MirFactKind.Cause, new(0, 2), 1));
+        var (anchor, first, second) = (new ProblemFact(ProblemFactKind.Anchor, new(0, 4)), new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0),
+            new ProblemFact(ProblemFactKind.Cause, new(0, 2), 1));
         var report = new MirReport();
         Assert.Equal([0, 1, 2, 3, 2, 2, 2], new[]
         {
@@ -331,16 +331,16 @@ public sealed class MirAnalysisTest
     [Fact]
     public void AMergedProblemIsDerivedOnlyWhenEveryMemberIs()
     {
-        var (anchor, other) = (new MirFact(MirFactKind.Anchor, new(0, 4)), new MirFact(MirFactKind.Anchor, new(0, 3)));
+        var (anchor, other) = (new ProblemFact(ProblemFactKind.Anchor, new(0, 4)), new ProblemFact(ProblemFactKind.Anchor, new(0, 3)));
         var report = new MirReport();
         report.Add(Conflict);
         report.Add(Conflict with { Subject = new(0, 2) });
-        report.Add(Conflict with { Subject = new(0, 5) }, [anchor, new(MirFactKind.Cause, new(0, 1), 0)]);
-        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [other, new(MirFactKind.Cause, new(0, 2), 1)]);
-        report.Add(Conflict with { Subject = new(0, 6) }, [anchor, new(MirFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5) }, [anchor, new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [other, new(ProblemFactKind.Cause, new(0, 2), 1)]);
+        report.Add(Conflict with { Subject = new(0, 6) }, [anchor, new(ProblemFactKind.Cause, new(0, 1), 0)]);
         report.Add(Conflict with { Subject = new(0, 6), Body = 1 }, [other]);
         Assert.Equal(4, report.Merged.Length);
-        Assert.Equal([anchor, new(MirFactKind.Cause, new(0, 1), 0), new(MirFactKind.Cause, new(0, 2), 1)], report.MergedFacts(2).ToArray());
+        Assert.Equal([anchor, new(ProblemFactKind.Cause, new(0, 1), 0), new(ProblemFactKind.Cause, new(0, 2), 1)], report.MergedFacts(2).ToArray());
         Assert.Equal([anchor], report.MergedFacts(3).ToArray());
     }
 
@@ -353,10 +353,10 @@ public sealed class MirAnalysisTest
         report.Add(Conflict);
         report.Add(Conflict with { Subject = new(0, 9) });
         report.Add(Conflict with { Body = 1 });
-        report.Add(Conflict with { Subject = new(0, 5) }, [new(MirFactKind.Cause, new(0, 1), 2), new(MirFactKind.Cause, new(0, 7), -1)]);
-        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(MirFactKind.Cause, new(0, 9), 1)]);
+        report.Add(Conflict with { Subject = new(0, 5) }, [new(ProblemFactKind.Cause, new(0, 1), 2), new(ProblemFactKind.Cause, new(0, 7), -1)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(ProblemFactKind.Cause, new(0, 9), 1)]);
         Assert.Equal(
-            [new(MirFactKind.Cause, new(0, 1), 0), new(MirFactKind.Cause, new(0, 7), -1), new MirFact(MirFactKind.Cause, new(0, 9), 1)],
+            [new(ProblemFactKind.Cause, new(0, 1), 0), new(ProblemFactKind.Cause, new(0, 7), -1), new ProblemFact(ProblemFactKind.Cause, new(0, 9), 1)],
             report.MergedFacts(2).ToArray());
     }
 
@@ -367,10 +367,10 @@ public sealed class MirAnalysisTest
         var report = new MirReport();
         report.Add(Conflict);
         report.Add(Conflict with { Body = 1 });
-        report.Add(Conflict with { Subject = new(0, 5) }, [new(MirFactKind.Cause, new(0, 1), 0)]);
-        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(MirFactKind.Cause, new(0, 1), 1)]);
+        report.Add(Conflict with { Subject = new(0, 5) }, [new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(Conflict with { Subject = new(0, 5), Body = 1 }, [new(ProblemFactKind.Cause, new(0, 1), 1)]);
         Assert.Equal([1, 1], new[] { report.Facts(2).Length, report.Facts(3).Length });
-        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+        Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
     // R6-check H3-2 (R4's U1b note n2): members of one merged problem that cause one another, A4's (NoBody) and A5's Unsupported_Kd at one
@@ -380,9 +380,9 @@ public sealed class MirAnalysisTest
     {
         var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
         report.Add(Conflict);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(MirFactKind.Cause, new(0, 1), 0)]);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(MirFactKind.Cause, new(0, 5), 1)]);
-        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(ProblemFactKind.Cause, new(0, 5), 1)]);
+        Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
     // R6-check H3-2 (N2, as R5-M23's disagreement): a Cause fact whose Value is neither -1 nor an index in All names no problem, a recording
@@ -395,10 +395,10 @@ public sealed class MirAnalysisTest
         var report = new MirReport();
         Assert.Equal([0, -1, -1, 2, 2], new[]
         {
-            report.Add(moved), report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), 1)]),
-            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), -2)]),
-            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), -1)]),
-            report.Add(moved with { Subject = new(0, 6) }, [new(MirFactKind.Cause, new(0, 5), 0)]),
+            report.Add(moved), report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), 1)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), -2)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), -1)]),
+            report.Add(moved with { Subject = new(0, 6) }, [new(ProblemFactKind.Cause, new(0, 5), 0)]),
         });
         Assert.Equal(
             [
@@ -805,7 +805,7 @@ public sealed class MirAnalysisTest
             report.Clear();
             for (var i = 0; i < 64; i++)
             {
-                ReadOnlySpan<MirFact> cause = [new(MirFactKind.Cause, new(0, i % 24), i - 1)];
+                ReadOnlySpan<ProblemFact> cause = [new(ProblemFactKind.Cause, new(0, i % 24), i - 1)];
                 _ = i % 2 == 0 ? report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 24) + 1), i / 24, 0b01))
                     : report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 24) + 1), i / 24, 0b01), cause);
             }
@@ -815,7 +815,7 @@ public sealed class MirAnalysisTest
         }));
         Assert.Equal((64, 24), (report.All.Length, report.Merged.Length));
         Assert.Equal([0, 24, 48], report.Members(0).ToArray());
-        Assert.Equal([new MirFact(MirFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
+        Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }
 
     // DIAGNOSTICS 4.3, DECISIONS R5-M186: A3's problem at a falling failure body has one Cause fact of Value -1 (a Binding cause) per site
@@ -829,7 +829,7 @@ public sealed class MirAnalysisTest
         var index = Assert.Single(
             Enumerable.Range(0, problems.All.Length), i => problems.All[i] is { Code: DiagnosticCode.RequireFallthrough_Kd, Subject.Module: 0 });
         var facts = problems.Facts(index).ToArray();
-        Assert.All(facts, static x => Assert.Equal((MirFactKind.Cause, -1L), (x.Kind, x.Value)));
+        Assert.All(facts, static x => Assert.Equal((ProblemFactKind.Cause, -1L), (x.Kind, x.Value)));
         Assert.Equal(sites, MirBuildTest.Sites(c, problems.All[index].Subject, facts.Select(static x => x.Site)));
     }
 
