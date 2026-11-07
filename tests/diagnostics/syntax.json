@@ -792,7 +792,7 @@
     "Records": [] },
   { "Name": "valid-constraint-subject-conformance-condition", "Source": "contract Has2\nstruct W<T>\n    var v: T\nstruct Y\n    var x: i32\nstruct S<T>\n    var x: T\n    Self is Has2 when T is Has2\npublic func main() => ()\n", "Intended": "the valid twin in a conformance condition",
     "Records": [] },
-  { "Name": "valid-constraint-subject-projections", "Source": "contract Has2\n    associate Out\nstruct W<T>\n    Self is Has2\n    associate Has2.Out is T\n    var v: T\nstruct S<Y>\n    Y is Has2\n    W<Y>.(Has2).Out is Has2\n    Y.(Has2).Out is Copy\n    var x: Y\npublic func main() => ()\n", "Intended": "an AssociatedTypeReference stays a subject, whatever Type its qualifier is",
+  { "Name": "valid-constraint-subject-projections", "Source": "contract Has2\n    associate Out\nstruct W<T>\n    Self is Has2\n    associate Has2.Out is T\n    var v: T\nstruct S<Y>\n    Y is Has2\n    W<Y>.(Has2).Out is Has2\n    Y.(Has2).Out is Copy\n    var x: Y\npublic func main() => ()\n", "Intended": "an AssociatedTypeReference stays a subject, and its qualifier may be a constructed Type",
     "Records": [] },
   { "Name": "constraint-subject-rejected-requirement-missing", "Source": "contract K\nstruct W<T>\n    var v: T\nstruct Y\n    var x: i32\nstruct S\n    W<Y> is Missing1\n    var x: i32\npublic func main() => ()\n", "Intended": "a rejected subject leaves the requirement independent (SPEC 23.1.2): the requirement's Name is unresolved",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Constraint", "At": "W<Y> is Missing1", "Length": 4, "Found": "W<Y>" }, { "Code": "UnresolvedBinding_Kd", "At": "Missing1" } ] },

@@ -37,6 +37,9 @@ public class StructuredConstraintSubjectBindingTest
     [InlineData("[2 of (i32) -> bool] is not Copy")]
     [InlineData("Box<i32>.Item<i32> is Copy")]
     [InlineData("Box<i32>.(Copy) is Copy")]
+    [InlineData("::i32 is Copy")]
+    [InlineData("::string is Copy")]
+    [InlineData("::Box<i32> is Copy")]
     public void AConstructedTypeIsNoSubject(string clause)
     {
         var c = MinimalEmissionTest.Analyze(Source(clause));
