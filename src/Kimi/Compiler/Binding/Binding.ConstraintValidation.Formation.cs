@@ -18,7 +18,7 @@ namespace Kimi.Compiler;
 //   call begins its own query, so the two walks never share an entry. A cached part and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
 //   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
-//   no clause fact on until R7-V1d.
+//   no clause fact on while PLAN G375's sigref1 stays open.
 public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
@@ -75,7 +75,7 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.DeclaredPart(type.Components[i], scope, query), true);
         }
 
-        // It hands no clause fact on until R7-V1d (PLAN G354 (2)): a failed signature is computed again at each use.
+        // It hands no clause fact on while PLAN G375's sigref1 stays open (G354 (2)): a failed signature is computed again at each use.
         return this.EndProof(this.EndTypeFormation(type, scope, proof));
     }
 
@@ -154,8 +154,8 @@ public sealed partial class Binding
 
     // A callee's declared signature, formed in its own scope by the declaration walk, at a call's candidate evaluation and a function
     // reference. Its Proven is a declaration query (DeclQueryKind.SignatureVerdict; PLAN G375), which leaves nothing to its reader. Any
-    // other answer depends on who asks (a cause written to the channel), so each use computes it in its own scope (PLAN G375, until R7-C3).
-    // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C3.
+    // other answer depends on who asks (a cause written to the channel), so each use computes it in its own scope (PLAN G375, until R7-C2).
+    // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C2.
     // Contract matching calls FormSignature directly until R7-V5 (PLAN G556).
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
     {
@@ -168,7 +168,7 @@ public sealed partial class Binding
         switch (this.BeginQuery(symbol, DeclQueryKind.SignatureVerdict))
         {
             case DeclState.Done:
-                this.BeginProof(); // Outside every scope, the frame drops untaken facts as a computed answer's does.
+                this.BeginProof(); // A kept answer and a computed one leave the same facts: outside every scope, the frame drops untaken ones.
                 return this.EndProof(ConstraintProof.Proven);
             case DeclState.Running:
                 return ConstraintProof.Unknown; // SPEC 8.3.3: a revisited obligation supplies no evidence.

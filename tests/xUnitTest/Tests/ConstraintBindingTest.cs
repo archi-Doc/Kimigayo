@@ -427,7 +427,7 @@ public class ConstraintBindingTest
     // SPEC 8.3, 23.1.2 (PLAN G354 (2)): a Type's formation publishes the clause fact it decides on, so a call or a Function Item that
     // rests on an owner's or an argument's formation names that clause (the first at the highest rank) and, for a Type argument's, the
     // declaration that states it (an id<K<string>> row was InternalInvariant_Kd before); a callee's signature, proven again at each use,
-    // explains none until R7-V1d (null Note).
+    // explains none while PLAN G375's sigref1 stays open (null Note).
     [Theory]
     [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", "Call init requires T is Owned; this condition cannot be proven for ref/i32")]
     [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "H.init(f: g@move)", "Call init requires F is Callable<(ref/i32) -> i32>; this condition cannot be proven for (ref/i32) -> i32")]
