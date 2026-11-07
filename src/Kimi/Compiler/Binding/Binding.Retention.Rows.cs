@@ -572,9 +572,9 @@ public sealed partial class Binding
             return Holding.None;
         }
 
-        RawStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
+        HoldStep? step = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? this.DeclaredStep(type, written, holder) : null;
         var holds = this.retentionRawSources.Count > 0 &&
-            ((this.LayerAdmitted(type) & SemanticsMask.Raw) != 0 || (Abstract(type) && this.HoldsRaw(type)) || step is not (null or RawStep.Unstated));
+            ((this.LayerAdmitted(type) & SemanticsMask.Raw) != 0 || (Abstract(type) && this.HoldsRaw(type)) || step is not (null or HoldStep.Address));
         foreach (var (input, kind) in this.retentionRawSources)
         {
             kept[input] |= input != output && holds ? kind ?? RetentionKind.Value : RetentionKind.None;
@@ -582,13 +582,13 @@ public sealed partial class Binding
 
         var met = step switch
         {
-            RawStep.Static => Holding.Static,
-            RawStep.Unstated when lent => Holding.Lent,
-            RawStep.Unstated => Holding.Unstated,
+            HoldStep.Static => Holding.Static,
+            HoldStep.Address when lent => Holding.Lent,
+            HoldStep.Address => Holding.Unstated,
             _ => Holding.None,
         };
         var below = lent ||
-            (output == CallRetention.ResultOutput && (this.BorrowReferent(type, out _, out _) is not null || step is RawStep.Exclusive or RawStep.Shared));
+            (output == CallRetention.ResultOutput && (this.BorrowReferent(type, out _, out _) is not null || step is HoldStep.Exclusive or HoldStep.Shared));
         met |= nominal ? this.Stores(type, output, kept, below) : Holding.None;
         if (TryPairLayer(type, out _, out var target))
         {

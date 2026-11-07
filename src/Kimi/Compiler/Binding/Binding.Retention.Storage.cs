@@ -166,14 +166,14 @@ public sealed partial class Binding
             // A layer steps by its position (RawStepAt, as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-113).
             var step = this.RawStepAt(type, at.Written, at.Holder, declared);
             below = below with { Signature = DeclaredComponent(declared, type, 0) };
-            if (step == RawStep.Own)
+            if (step == HoldStep.Own)
             {
                 this.Admitted(environment, pointee, at.Holder, below);
                 return;
             }
 
-            this.Past(environment, pointee, targets, step != RawStep.Shared, layer, below);
-            if (step == RawStep.Exclusive && at.Holder is null)
+            this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
+            if (step == HoldStep.Exclusive && at.Holder is null)
             {
                 this.Members(environment, OwnedOrigin(type)!, below);
             }
@@ -606,7 +606,7 @@ public sealed partial class Binding
         for (var i = start; i < end; i++)
         {
             if (parts[i] is { Type: { Semantics: SemanticsKind.Raw, Components: [var pointee] } raw, Holder: { } owner } &&
-                ReferenceEquals(owner, value) && this.DeclaredStep(raw, parts[i].Written, owner) == RawStep.Own)
+                ReferenceEquals(owner, value) && this.DeclaredStep(raw, parts[i].Written, owner) == HoldStep.Own)
             {
                 _ = SelfAdmitted(owner, out var arguments);
                 parts.Add(new(pointee, null, null, PartPlace.Admitted));

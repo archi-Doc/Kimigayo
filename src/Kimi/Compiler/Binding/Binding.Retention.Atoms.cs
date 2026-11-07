@@ -209,11 +209,11 @@ public sealed partial class Binding
         }
 
         var rawOrigin = type.RawOrigin;
-        var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : RawStep.Unstated;
-        var past = at.Shared || shared || step == RawStep.Shared;
-        var through = raw ? !past && step is RawStep.Unstated or RawStep.Static : at.Writable && !shared;
+        var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : HoldStep.Address;
+        var past = at.Shared || shared || step == HoldStep.Shared;
+        var through = raw ? !past && step is HoldStep.Address or HoldStep.Static : at.Writable && !shared;
         var below = at with { Layer = layer, Writable = !inside && (through || writable), Place = past ? at.Place | RetentionPlace.Shared : at.Place };
-        if (raw && !inside && !past && step == RawStep.Exclusive && at.Input >= 0)
+        if (raw && !inside && !past && step == HoldStep.Exclusive && at.Input >= 0)
         {
             this.RawContent(rawOrigin!, at.Input);
         }

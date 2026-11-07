@@ -80,7 +80,7 @@ public partial class TypeDagScalingTest
             kept = kept.Components[0];
         }
 
-        Assert.Equal(step, TyCtxt.WrittenAt(holder, 1, path) is null ? string.Empty : c.Types.RawStep(holder, 1, path).ToString());
+        Assert.Equal(step, TyCtxt.WrittenAt(holder, 1, path) is null ? string.Empty : c.Types.StoredStep(holder, 1, path).ToString());
     }
 
     // ReplaceHolder (SPEC 5.7, Reading a Field): a read through a dereference rebuilds only the parts holding a `during self` layer; the

@@ -244,7 +244,7 @@ internal sealed partial class MirBorrows
     }
 
     // Whether a local's case Type may hold a Loan, with what a call may write past it (MirTypes.HoldsLoans, one walk per distinct case Type
-    // and program version): the answer is a function of the interned Type and of Binding's stored raw steps (TyCtxt.RawStep), which a
+    // and program version): the answer is a function of the interned Type and of Binding's stored raw steps (TyCtxt.StoredStep), which a
     // version fixes, so the memo is cleared when the program's version changes (DECISIONS R4-M140).
     private bool Holding(int local)
     {

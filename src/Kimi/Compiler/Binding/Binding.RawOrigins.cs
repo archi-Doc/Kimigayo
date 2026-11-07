@@ -30,7 +30,7 @@ namespace Kimi.Compiler;
 //   any other Type (MirValidator's Local row checks a MIR local's), so no premise, obligation or row names Holder or Unstated
 //   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only
 //   retention and the TyCtxt views read one, after Binding's last pass.
-// - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (RawStep and its readers); .Written.cs (the written
+// - Files: this one (relations, claim fits, the Types without raw Origins); .Steps.cs (a raw layer's step and its readers); .Written.cs (the written
 //   forms and their judgment); .Holder.cs (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers).
 // - Prohibitions: no region, Loan or retention facts beyond the member borrows, no Place walk of its own (PathOrigin is PlaceAuthority's),
 //   no access verdict, no message text.
