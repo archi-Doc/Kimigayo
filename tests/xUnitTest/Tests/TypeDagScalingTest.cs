@@ -74,6 +74,23 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 9.4, 9.6 (R7-N2d): a protected read tests its derivation over BaseLayers, so the walks' steps per read are linear in the layers.
+    [Fact]
+    public void ProtectedReadsAreLinearInTheLayers()
+    {
+        var work = new[] { 10, 20, 40 }.Select(static layers => Work(layers, 20) - Work(layers, 10)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 40, string.Join(' ', work));
+
+        static int Work(int layers, int reads)
+        {
+            var chain = string.Concat(Enumerable.Range(1, layers - 1).Select(static i => $"open struct C{i}: C{i - 1}\n"));
+            var body = string.Concat(Enumerable.Range(0, reads).Select(static i => $"        let a{i} = self.pm()\n"));
+            var c = MinimalEmissionTest.Analyze($"open struct C0\n    protected func pm(self) -> i32 => 1\n{chain}struct D: C{layers - 1}\n    func f(self) -> i32\n{body}        return 1\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.BaseLayerWork;
+        }
+    }
+
     // SPEC 8.2: two closures of one generic function in a shared Tuple close in each instance's substitution; the Tuple's shared parts
     // are closed once and stay shared, and every part equals the part instantiated alone.
     [Fact]

@@ -19,13 +19,15 @@ namespace Kimi.Compiler;
 // - Early reads: a TypeName that saw the count move is noted with what it selected, the last such read of a use, and evaluated again
 //   after the first ValidateBaseDeclarations (VerifyEarlyReads). An equal answer stands. On a different one the declarations run once more
 //   with knownBases, the final Types of the clauses that name no struct, read as ready and counted (secondRun). A difference in that run is
-//   Unsupported_Kd at the use. knownBases stays for the next pass, which starts from it, so a warm Bind runs once; a difference there is
-//   a first one. An edit clears it (Invalidate).
+//   Unsupported_Kd at the use. Only a first run fills knownBases, and it starts from none, so they are what a cold Bind of the source and
+//   mode computes; a later Bind of both unchanged (knownMode, set as a Bind completes) starts from them as that cold Bind's second run, runs
+//   once and reports what it reports. An edit clears them (Invalidate).
 // - Ends: a chain follows values final in the run, each a function of the declaration, so it is periodic and BaseWalk ends it; a parameter
 //   or a projection through one is no struct and ends it. A recursion among a name's evaluation, Accessible and LookupTypeMember passes
 //   DirectBase, Running at most once per struct on the stack, or BindType, resolvingTypes at most once per syntax.
-// - Removal: clausesBindable, notReadyReads, earlyReads, knownBases, secondRun, verifiedClause, VerifyEarlyReads, Bind's loop and the
-//   second PublishInheritedOptOuts go at R7-D2 d3 (plan §5.0, conformances), when a conformance's specification is read by demand.
+// - Removal: clausesBindable, notReadyReads, earlyReads, knownBases, knownMode, secondRun, verifiedClause, StartRuns, VerifyEarlyReads,
+//   Bind's loop and the second PublishInheritedOptOuts go at R7-D2 d3 (plan §5.0, conformances), when a conformance's specification is read
+//   by demand.
 // - Prohibited: a guard, depth bound or visited set in a reader; a judgment or a record here (ValidateBaseDeclaration owns them).
 public sealed partial class Binding
 {
@@ -33,10 +35,26 @@ public sealed partial class Binding
     private int notReadyReads;
     private Dictionary<Koto, EarlyRead>? earlyReads;
     private Dictionary<StructKoto, BoundType>? knownBases;
+    private BindingMode? knownMode;
     private bool secondRun;
     private Koto? verifiedClause;
+    private int baseSteps;
 
     private readonly record struct EarlyRead(BindingScope Scope, TypeLookupRole Role, int Arity, BindingSymbol? Symbol);
+
+    /// <summary>Gets the steps the walks over BaseLayers took in the latest pass, read by the scaling tests.</summary>
+    internal int BaseLayerWork => this.baseSteps;
+
+    // A Bind starts as a second run only from the bases a completed Bind of this mode computed, so no run's result seeds the run after it.
+    private void StartRuns(BindingMode mode)
+    {
+        this.secondRun = this.knownMode == mode && this.knownBases is { Count: > 0 };
+        this.knownMode = null;
+        if (!this.secondRun)
+        {
+            this.knownBases?.Clear();
+        }
+    }
 
     private BindingSymbol? DirectBase(StructKoto structure)
     {
@@ -199,6 +217,7 @@ public sealed partial class Binding
 
         public bool MoveNext()
         {
+            this.binding.baseSteps++;
             if (this.Current.Declaration is not StructKoto structure || this.binding.DirectBase(structure) is not { } next || this.walk.Repeats(next))
             {
                 return false;

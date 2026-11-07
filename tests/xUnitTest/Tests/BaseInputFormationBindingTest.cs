@@ -100,7 +100,6 @@ public class BaseInputFormationBindingTest
     [InlineData("contract HasBase\n    associate Parent\ncontract HasItem\n    associate Item\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    Self is HasItem\n    associate HasItem.Item is i32\n    public struct N\n    public init() => ()\ncontract K<T>\ncontract K2<T>\nstruct D: Source.HasBase.Parent\n    Self is K<D.N>\n    Self is K2<D.(HasItem).Item>\n    public init(): base() => ()")]
     [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public struct N\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    Self is K<Self.N>\n    public init(): base() => ()")]
     [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T.N\nstruct V: S2.HasBase.Parent\n    public init(): base() => ()")]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        public init(): base() => ()\n        struct U\n            Self is K<Q.N>")]
     [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public init() => ()\nopen struct B\n    public struct Inner\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\n    public struct U: B\n        public init(): base() => ()\nstruct W\n    Self is K<T.U.Inner>")]
     [InlineData("contract HasBase\n    associate Parent\nstruct S1\n    Self is HasBase\n    associate HasBase.Parent is T2.N\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T1.M\nopen struct T1: S1.HasBase.Parent\n    public open struct M\n        public init() => ()\n    public init(): base() => ()\nopen struct T2: S2.HasBase.Parent\n    public open struct N\n        public init() => ()\n    public init(): base() => ()")]
     [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is K<Q.N>\n        public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct M: S2.HasBase.Parent\n    public open struct X\n        public init() => ()\n    public init(): base() => ()\nstruct S3\n    Self is HasBase\n    associate HasBase.Parent is M.X\nstruct V: S3.HasBase.Parent\n    public init(): base() => ()")]
@@ -112,13 +111,15 @@ public class BaseInputFormationBindingTest
     }
 
     // SPEC 9.4.2 (R7-N2d): T derives from Q through its projected base, so Q's own protected N is reached, not R's private one, which was
-    // selected before.
-    [Fact]
-    public void AConstraintThroughAProjectedBaseSelectsTheNearDeclaration()
+    // selected before: in T's own Constraint (rx1) and in a struct nested in T (rx1b).
+    [Theory]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is K<Q.N>\n        public init(): base() => ()", "T")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        public init(): base() => ()\n        struct U\n            Self is K<Q.N>", "U")]
+    public void AConstraintThroughAProjectedBaseSelectsTheNearDeclaration(string source, string owner)
     {
-        var c = MinimalEmissionTest.Analyze("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is K<Q.N>\n        public init(): base() => ()");
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var clause = Assert.IsType<IsKoto>(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "T").ConstraintNodes.Single());
+        var clause = Assert.IsType<IsKoto>(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == owner).ConstraintNodes.Single());
         var argument = Assert.IsType<GenericsKoto>(clause.Right).TypeArguments.Single();
         Assert.Equal("Q", ((DeclarationContainerKoto)argument.TypeOf()!.Symbol!.Scope.Owner).Name);
     }
@@ -146,13 +147,35 @@ public class BaseInputFormationBindingTest
     [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T.Nope\nstruct V: S2.HasBase.Parent\n    public init(): base() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("contract K<T>\nstruct D: Nope\n    Self is K<D.N>", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    Self is K<T.Nope>\n    public init(): base() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("contract HasBase\n    associate Parent\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public init(): base() => ()\n    public init() => ()\n    struct T: T.S.HasBase.Parent\n        public init(): base() => ()\n        struct S\n            Self is HasBase\n            associate HasBase.Parent is Q.N", DiagnosticCode.Unsupported_Kd)]
+    [InlineData(Paradox, DiagnosticCode.Unsupported_Kd)]
     public void AProjectedBaseKeepsItsInvalidTwinsRecords(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
+
+    // R7-N2d: a Bind's records are a function of the source and the mode. nt46's second run differs; a later Bind of it starts as that
+    // run, so each Bind of the unchanged program, a Provisional one between, reports what a fresh Compilation reports. They alternated.
+    [Fact]
+    public void EveryBindAfterASecondRunReportsWhatAFreshBindReports()
+    {
+        var fresh = Records(MinimalEmissionTest.Analyze(Paradox));
+        var c = MinimalEmissionTest.Analyze(Paradox);
+        Assert.Equal(fresh, Records(c));
+        for (var i = 0; i < 6; i++)
+        {
+            if (i == 4)
+            {
+                c.Binding.Bind(BindingMode.Provisional);
+            }
+
+            Assert.False(c.Bind().IsComplete);
+            Assert.Equal(fresh, Records(c));
+        }
+    }
+
+    private const string Paradox = "contract HasBase\n    associate Parent\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public init(): base() => ()\n    public init() => ()\n    struct T: T.S.HasBase.Parent\n        public init(): base() => ()\n        struct S\n            Self is HasBase\n            associate HasBase.Parent is Q.N";
 
     private const string Prefix = "open struct Base\ncontract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is Base\n";
 
@@ -164,4 +187,6 @@ public class BaseInputFormationBindingTest
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
         return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.SymbolOf()!));
     }
+
+    private static string Records(Compilation c) => string.Join(" | ", c.Binding.Issues.Select(static x => $"{x.Code}@{x.Node.Akind}:{x.Node.Span}").Order());
 }

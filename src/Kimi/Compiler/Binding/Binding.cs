@@ -122,7 +122,7 @@ public sealed partial class Binding
             this.Result = default;
             this.compilation.Diagnostics.InvalidateSemantics();
             this.compilation.InvalidateMir();
-            this.secondRun = false;
+            this.StartRuns(mode);
             do
             {
                 this.ResetPass(mode);
@@ -139,6 +139,7 @@ public sealed partial class Binding
                 this.WalkLints();
             }
 
+            this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             return this.Result;
         }
         finally

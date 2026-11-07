@@ -19,7 +19,9 @@ public sealed partial class Binding
         this.storageVersion++;
         this.signatureWalks = 0;
         this.memberWalks = 0;
+        this.baseSteps = 0;
         this.clausesBindable = false;
+        this.verifiedClause = null;
         this.earlyReads?.Clear();
         this.storageMarks.Clear();
         this.storageStack.Clear();
