@@ -120,6 +120,8 @@ public class ArchitectureRulesTest
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
+    // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
+    [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
     // G416 Q2: HoldStep absorbed RawStep, so one vocabulary names a layer's step (RP6).
     [InlineData("The RawStep vocabulary", "src/Kimi/Compiler", "*.cs", @"\bRawStep\b", 0)]
     // G416 U1: a value's parts are Holdings' entries, read by every fit and fold; the private walks stay gone (RP6).

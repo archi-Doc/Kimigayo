@@ -12,13 +12,15 @@ namespace Kimi.Compiler;
 // - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure.
 // - Invariants: one way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one way in control:
 //   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem: a pass's
-//   reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves its chain.
+//   reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves its chain; HirTables.Reset
+//   of a try's arms comes before anything binds them (SemanticsIndexed).
 // - Prohibitions: no failure is decided and no message rendered here.
 public sealed partial class Binding
 {
     private readonly BindingReport report = new();
 
     /// <summary>Gets the fact sites of this pass that no semantic write had numbered (R7-E1's hypothesis is none).</summary>
+    [Transitional("R7", Reason = "The row of the fact-site hypothesis, until R7-N5 owns SourceRef.Of numbering an id-less node.")]
     internal int IdlessFactSites => this.report.IdlessSites;
 
     /// <summary>Clears a node's failure for a retried attempt: its problems go with it.</summary>
@@ -28,6 +30,18 @@ public sealed partial class Binding
         node.BindingFailure = BindingFailure.None;
         this.UnlinkProblems(node);
     }
+
+    // The adapter's text of a mismatch side's form (SPEC 23.3).
+    private static string FormText(MismatchForm form, int count) => (form, count) switch
+    {
+        (MismatchForm.AnonymousFunction, < 0) => "an anonymous function",
+        (MismatchForm.AnonymousFunction, 1) => "an anonymous function with 1 parameter",
+        (MismatchForm.AnonymousFunction, _) => $"an anonymous function with {count} parameters",
+        (MismatchForm.IntegerLiteral, _) => "integer literal",
+        (MismatchForm.FloatingPointLiteral, _) => "floating-point literal",
+        (MismatchForm.PositionType, _) => "a Type proven Position or PositionRange",
+        _ => throw new ArgumentOutOfRangeException(nameof(form)),
+    };
 
     // The code of a failure at a node: the one table, with the rows that read the node until their checks record their own (E3, E4).
     private DiagnosticCode CodeOf(Koto node, BindingFailure failure)
@@ -142,6 +156,29 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them. Until E3 records the family's conditions, a node keeps its
+    // first failure, as a Fail does.
+    private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
+    {
+        if (node.BindingFailure != BindingFailure.None)
+        {
+            return this.Fail(node, BindingFailure.TypeMismatch);
+        }
+
+        var site = this.FactSite(at);
+        return this.Record(
+            node,
+            BindingFailure.TypeMismatch,
+            [
+                this.SideFact(ProblemFactKind.Actual, ProblemFactKind.ActualForm, site, actual),
+                this.SideFact(ProblemFactKind.Expected, ProblemFactKind.ExpectedForm, site, expected),
+            ]);
+    }
+
+    // A side's fact: a Type's kept index, or a form's row with, above its byte, its count plus one (ProblemFact.cs).
+    private ProblemFact SideFact(ProblemFactKind type, ProblemFactKind form, SourceRef site, in MismatchSide side)
+        => side.Type is { } bound ? new(type, site, this.report.Keep(bound)) : new(form, site, (long)side.Form | ((long)(side.Count + 1) << 8));
+
     // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee.
     [Transitional("R7", Reason = "Records only at a node without a failure, for snapshot 0, until E2's located batch.")]
     private void FailUnsupportedAt(Koto node, SourceSpan part, bool unresolved = false)
@@ -158,6 +195,7 @@ public sealed partial class Binding
 
     // A fact's site is a node the check read, so normally numbered. One that is not takes its module's next id here, as a semantic write would,
     // on a rejected program only, and is counted.
+    [Transitional("R7", Reason = "Its count is the row of the fact-site hypothesis, until R7-N5 owns SourceRef.Of numbering an id-less node.")]
     private SourceRef FactSite(Koto at)
     {
         this.report.IdlessSites += ReferenceEquals(at.SyntaxOwner, at.Kotonoha.Syntax) ? 0 : 1;
@@ -198,10 +236,14 @@ public sealed partial class Binding
         return null;
     }
 
-    // A TypeMismatch problem's facts: the syntax that shows it and what it compared.
+    // A TypeMismatch problem's facts: the syntax that shows it and what it compared, a form as its text.
     private (Koto At, object Actual, object Expected) Mismatch(int problem)
     {
         var facts = this.report.Facts(problem);
-        return (this.compilation.SyntaxOf(facts[0].Site), this.report.Value(facts[0]), this.report.Value(facts[1]));
+        return (this.compilation.SyntaxOf(facts[0].Site), this.SideOf(facts[0]), this.SideOf(facts[1]));
     }
+
+    private object SideOf(in ProblemFact fact)
+        => fact.Kind is ProblemFactKind.Actual or ProblemFactKind.Expected
+            ? this.report.Value(fact) : FormText((MismatchForm)(byte)fact.Value, (int)(fact.Value >> 8) - 1);
 }

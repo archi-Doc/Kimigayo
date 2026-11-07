@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
@@ -51,7 +52,7 @@ public sealed class BindingReportTest
     public void KeptValuesAreTheFactsValues()
     {
         var report = new BindingReport();
-        object[] values = ["found", "required"];
+        BoundType[] values = [BoundType.Boolean, BoundType.Unit];
         ProblemFact[] facts = [new(ProblemFactKind.Actual, Other, report.Keep(values[0])), new(ProblemFactKind.Expected, Other, report.Keep(values[1]))];
         var problem = report.Add(Problem(Subject, Mismatch), facts);
         Assert.Same(values[0], report.Value(report.Facts(problem)[0]));
@@ -109,7 +110,7 @@ public sealed class BindingReportTest
     public void ClearEmptiesTheReport()
     {
         var report = new BindingReport();
-        report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Actual, Other, report.Keep("found"))]);
+        report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Actual, Other, report.Keep(BoundType.Boolean))]);
         report.IdlessSites = 1;
         report.Clear();
         Assert.Equal(0, report.Count);
@@ -117,7 +118,7 @@ public sealed class BindingReportTest
         Assert.Equal(-1, report.First(Subject));
         Assert.Equal(-1, report.Find(Subject, Mismatch, 0));
         Assert.Equal(0, report.Add(Problem(Subject, Mismatch)));
-        Assert.Equal(0, report.Keep("found"));
+        Assert.Equal(0, report.Keep(BoundType.Boolean));
     }
 
     // The bridge: the slot's issue names its problem, and a failure no site records as a problem has none.
@@ -149,15 +150,19 @@ public sealed class BindingReportTest
         Assert.True(Assert.Single(c.Binding.Issues, x => x.Code.ToString() == code).Problem >= 0);
     }
 
-    // A failure cleared inside a pass takes its problem with it: nothing of it is read again, and the slot's next failure has no facts of it.
+    // A failure cleared inside a pass takes its problem with it, so the node's next attempt records its own facts. No program in the suite
+    // reaches this with a linked problem, so the row drives ClearFailure itself and reads the private report.
     [Fact]
-    public void AClearedFailureTakesItsProblem()
+    public void AClearedFailureUnlinksItsProblem()
     {
         var c = MinimalEmissionTest.Analyze("let x: i32 = true");
-        var node = Assert.Single(c.Binding.Issues, static x => x.Code == DiagnosticCode.TypeMismatch_Kd).Node;
-        c.Binding.ClearFailure(node);
-        c.Binding.CheckBound();
-        Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, node));
+        var issue = Assert.Single(c.Binding.Issues, static x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding)!;
+        var subject = SourceRef.Written(issue.Node);
+        Assert.Equal(issue.Problem, report.Find(subject, Mismatch, 0));
+        c.Binding.ClearFailure(issue.Node);
+        Assert.Equal(-1, report.Find(subject, Mismatch, 0));
+        Assert.Equal(-1, report.First(subject));
     }
 
     private static BindingProblem Problem(SourceRef subject, DiagnosticRequirement requirement, ushort condition = 0)

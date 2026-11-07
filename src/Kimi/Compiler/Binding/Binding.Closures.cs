@@ -148,7 +148,7 @@ public sealed partial class Binding
         {
             // An expectation that is no Function Type, such as a Type parameter F under Callable (SPEC 7.2.3), names the
             // anonymous function as found.
-            return this.RecordMismatch(function, function, "an anonymous function", expected, ComparisonFailure.Shape);
+            return this.RecordMismatch(function, function, new(null, MismatchForm.AnonymousFunction), expected, ComparisonFailure.Shape);
         }
 
         var restated = this.ClosureExpectation(function, expected);
@@ -156,8 +156,7 @@ public sealed partial class Binding
         var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
         if (function.Parameters.Count != count)
         {
-            var found = function.Parameters.Count == 1 ? "an anonymous function with 1 parameter"
-                : $"an anonymous function with {function.Parameters.Count} parameters";
+            var found = new MismatchSide(null, MismatchForm.AnonymousFunction, function.Parameters.Count);
             return this.RecordMismatch(function, function, found, expected, ComparisonFailure.Shape);
         }
 

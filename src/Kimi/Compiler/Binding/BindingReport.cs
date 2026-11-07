@@ -4,12 +4,12 @@
 // (ProblemFact), one problem per check key (Subject, Requirement, Condition).
 // Input: Add calls of Binding's recorder (Binding.Problems.cs), each a problem and its facts; Keep calls, each a Type-valued fact's value;
 // Unlink and Restore calls of a retried or abandoned attempt.
-// Output: a subject's problems in recording order, a problem by its key, its facts, a fact's kept value.
+// Output: a subject's problems in recording order, a problem by its key, its facts, a fact's kept Type.
 // Invariants: a linked subject's rows and the key index agree, Unlink and Restore keeping them in step; a report of a linked key keeps the
 // first; an unlinked problem stays in its rows, unreachable, so that a saved chain can come back, and Count still counts it; a fact's Value
-// is the kind's (ProblemFact.cs), an index in the kept values for a Type-valued kind; the storage stays between passes, so a warm pass
+// is the kind's (ProblemFact.cs), an index in the kept Types for a Type-valued kind; the storage stays between passes, so a warm pass
 // allocates nothing once its sizes are reached.
-// Must not decide a failure, derive a requirement from a code, or render text.
+// Must not decide a failure, derive a requirement from a code, or keep or render text.
 
 #pragma warning disable SA1402 // The problem and its report belong together.
 
@@ -25,6 +25,15 @@ namespace Kimi.Compiler;
 /// <param name="Condition">The part of the requirement, 0 for the only one.</param>
 internal readonly record struct BindingProblem(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceRef Subject, ushort Condition);
 
+/// <summary>A side of a mismatch (SPEC 23.3): a Type, or a closed form that is no Type.</summary>
+/// <param name="Type">The Type, or null for a form.</param>
+/// <param name="Form">The form's row.</param>
+/// <param name="Count">An anonymous function's parameter count, or -1.</param>
+internal readonly record struct MismatchSide(BoundType? Type, MismatchForm Form = default, int Count = -1)
+{
+    public static implicit operator MismatchSide(BoundType type) => new(type);
+}
+
 /// <summary>The problems of one Binding pass, per check key and, in recording order, per subject.</summary>
 internal sealed class BindingReport
 {
@@ -36,17 +45,14 @@ internal sealed class BindingReport
     private readonly List<BindingProblem> problems = [];
     private readonly List<(int Start, int Count, int Next)> rows = []; // Each problem's facts and the next problem of its subject.
     private readonly List<ProblemFact> facts = [];
-    private readonly List<object> values = [];
+    private readonly List<BoundType> types = [];
 
     /// <summary>Gets the number of problems this pass added, unlinked ones included.</summary>
     internal int Count => this.problems.Count;
 
     /// <summary>Gets or sets the count of this pass's fact sites that no semantic write had numbered.</summary>
+    [Transitional("R7", Reason = "The row of the fact-site hypothesis, until R7-N5 owns SourceRef.Of numbering an id-less node.")]
     internal int IdlessSites { get; set; }
-
-    /// <summary>Gets a problem.</summary>
-    /// <param name="problem">The problem's index.</param>
-    internal ref readonly BindingProblem this[int problem] => ref CollectionsMarshal.AsSpan(this.problems)[problem];
 
     /// <summary>Gets the facts of a problem.</summary>
     /// <param name="problem">The problem's index.</param>
@@ -71,19 +77,19 @@ internal sealed class BindingReport
     internal int Find(SourceRef subject, DiagnosticRequirement requirement, ushort condition)
         => this.index.TryGetValue((subject, requirement, condition), out var found) ? found : -1;
 
-    /// <summary>Keeps a Type-valued fact's value: a reference only, so a warm pass boxes nothing.</summary>
-    /// <param name="value">A BoundType, a BoundLength or the text of what a mismatch found.</param>
+    /// <summary>Keeps a Type-valued fact's Type: a reference only, so a warm pass boxes nothing.</summary>
+    /// <param name="type">The Type.</param>
     /// <returns>Its index, the fact's Value.</returns>
-    internal long Keep(object value)
+    internal long Keep(BoundType type)
     {
-        this.values.Add(value);
-        return this.values.Count - 1;
+        this.types.Add(type);
+        return this.types.Count - 1;
     }
 
-    /// <summary>Gets a Type-valued fact's value.</summary>
+    /// <summary>Gets a Type-valued fact's Type.</summary>
     /// <param name="fact">The fact.</param>
-    /// <returns>The value.</returns>
-    internal object Value(in ProblemFact fact) => this.values[(int)fact.Value];
+    /// <returns>The Type.</returns>
+    internal BoundType Value(in ProblemFact fact) => this.types[(int)fact.Value];
 
     /// <summary>Adds a problem with its facts, or finds the linked problem of its key, which keeps its own facts.</summary>
     /// <param name="problem">The problem.</param>
@@ -163,7 +169,7 @@ internal sealed class BindingReport
         this.problems.Clear();
         this.rows.Clear();
         this.facts.Clear();
-        this.values.Clear();
+        this.types.Clear();
         this.IdlessSites = 0;
     }
 }

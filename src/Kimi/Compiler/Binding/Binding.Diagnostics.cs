@@ -421,36 +421,25 @@ public sealed partial class Binding
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
     // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
     // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
-    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected, in ComparisonFailure failure)
+    private BoundType? RecordMismatch(Koto node, Koto at, MismatchSide actual, MismatchSide expected, in ComparisonFailure failure)
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch; the
         // erasure recorded it at this value (DECISIONS BU-107), so this reader only checks that an outcome exists.
-        if (expected is BoundType { Kind: BoundTypeKind.Function } owner &&
-            actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
+        if (expected.Type is { Kind: BoundTypeKind.Function } owner &&
+            actual.Type is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
             this.FailOwnedConversion(value, owner, at, node))
         {
             return null;
         }
 
-        var storage = actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
+        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
         if (storage && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
-                : this.RecordComparisonFacts(node, at, (BoundType)actual, (BoundType)expected, failure);
+                : this.RecordComparisonFacts(node, at, actual.Type!, expected.Type!, failure);
         }
 
-        // Interim until E3 records the mismatch family's conditions: a node keeps its first failure, as a Fail does.
-        if (node.BindingFailure != BindingFailure.None)
-        {
-            return this.Fail(node, BindingFailure.TypeMismatch);
-        }
-
-        // SPEC 23.3: the Types the mismatch compared and the syntax that shows it.
-        var site = this.FactSite(at);
-        return this.Record(
-            node,
-            BindingFailure.TypeMismatch,
-            [new(ProblemFactKind.Actual, site, this.report.Keep(actual)), new(ProblemFactKind.Expected, site, this.report.Keep(expected))]);
+        return this.RecordTypeMismatch(node, at, actual, expected);
     }
 
     // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure

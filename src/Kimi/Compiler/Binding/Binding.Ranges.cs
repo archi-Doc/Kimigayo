@@ -92,8 +92,6 @@ public sealed partial class Binding
         _ => false,
     };
 
-    // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
-    // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
     private void ResetSynthetic(Koto node)
     {
         node.BindingState = BindingState.Unvisited;
@@ -102,6 +100,8 @@ public sealed partial class Binding
         this.ClearFailure(node);
     }
 
+    // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
+    // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
     private void ResetSyntheticCalls()
     {
         foreach (var call in this.propertyCalls.Values)
@@ -224,7 +224,7 @@ public sealed partial class Binding
         var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
         if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
         {
-            this.RecordMismatch(source.Right, source.Right, key, "a Type proven Position or PositionRange", ComparisonFailure.Shape);
+            this.RecordMismatch(source.Right, source.Right, key, new(null, MismatchForm.PositionType), ComparisonFailure.Shape);
             result = Complete(source, null);
             return true;
         }
