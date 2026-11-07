@@ -170,7 +170,7 @@ public class ArchitectureRulesTest
     [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test)""", "KimiLibrary.cs=2")]
     // R7-N1a (RP6): ResolvePath reads the Type namespace; the others are the alias and module walks (R7-N1 e) and their own tables. PublishPath
     // alone writes a Type name's imported environment; the value lookup's site (Imports) ends at R7-N1 b.
-    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.AssociatedTypes.cs=1;Binding.Diagnostics.cs=1;Binding.FixedArrays.cs=1;Binding.Imports.cs=2;Binding.IntegerPositions.cs=1;Binding.Modules.cs=2;Binding.Qualification.cs=1;Binding.ResolvePath.cs=4")]
+    [InlineData("Type-namespace reads", "src/Kimi/Compiler/Binding", @"\.Types\.(?:GetValueOrDefault|TryGetValue)\(", "Binding.Aliases.cs=2;Binding.AssociatedTypes.cs=1;Binding.Diagnostics.cs=1;Binding.Imports.cs=2;Binding.LibraryWitnesses.cs=1;Binding.Modules.cs=2;Binding.Qualification.cs=1;Binding.ResolvePath.cs=4")]
     [InlineData("Writes of a use's imported environment", "src/Kimi/Compiler/Binding", @"\.importedContainers\[", "Binding.Imports.cs=1;Binding.ResolvePath.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
