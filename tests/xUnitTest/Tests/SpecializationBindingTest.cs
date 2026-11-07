@@ -87,8 +87,8 @@ public class SpecializationBindingTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
-    // A redeclared modifier or `!` boundary is the parser's record alone (syntax corpus `specialization-access-modifier`,
-    // `specialization-argument-boundary`; PLAN G472, G525).
+    // SPEC 8.13.2: a redeclared default is the specialization check's IncompatibleContractImplementation_Kd. The parser owns a
+    // redeclared modifier or `!` boundary (syntax corpus `specialization-access-modifier`, `specialization-argument-boundary`).
     [Fact]
     public void RejectsRedeclaredDefaults()
     {
