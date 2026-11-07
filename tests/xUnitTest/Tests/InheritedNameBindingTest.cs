@@ -169,6 +169,18 @@ public class InheritedNameBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
+    // SPEC 6.2.2 (R7-N2d): a base cycle's published base is cut, so a walk over an instance's layers ends; both overflowed the stack
+    // before, so their parent fails by killing the host.
+    [Theory]
+    [InlineData("open struct X: Y\n    public var a: i32 = 1\n    public init()\n        self.a = 2\nopen struct Y: X\n    public var b: i32 = 2\n    public init()\n        self.a = 3")]
+    [InlineData("open struct X {a}: Y during a\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nopen struct Y {a}: X during a\n    public let s: ref/i32 during a\nfunc make(v: ref/i32) -> X during v => X.init(v)\nfunc use(v: ref/i32) -> i32\n    let x = make(v)\n    let y = x@move\n    return y.r@follow\nfunc view(x: ref/X) -> ref/i32 => x.r")]
+    public void ABaseCycleEndsInRecords(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
+    }
+
     private static StructKoto Type(Compilation c)
         => Assert.IsType<StructKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S"));
 }

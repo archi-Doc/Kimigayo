@@ -59,7 +59,9 @@ internal sealed class AdtDef
     // An instance's stored Types are its substitution of the declared ones (SPEC 8.15): Type, Length and Origin arguments.
     internal static BoundType? FieldType(BoundType type, int index) => Instance(type).Fields[index];
 
-    internal static BoundType? Base(BoundType type) => IsStruct(type) ? Instance(type).Base : null;
+    // A base on an inline cycle (SPEC 6.2.2) is an error at its container (ValidateInlineLayouts): no walk over an instance's layers
+    // reads it.
+    internal static BoundType? Base(BoundType type) => IsStruct(type) && type.Symbol!.Adt is not { InlineCycle: true } ? Instance(type).Base : null;
 
     // An enum's Cases by ordinal, each its payload Types as one Tuple, never null for an enum (DECISIONS BU-37); a Case whose payload does
     // not substitute, or a Case form without a name, is null, as a Field is, a part Binding rejected, which its readers take as they take a
