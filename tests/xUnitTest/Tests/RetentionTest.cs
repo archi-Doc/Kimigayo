@@ -283,9 +283,8 @@ public sealed partial class RetentionTest
         Assert.Equal(records, MirBorrowsTest.Records(form));
     }
 
-    // The bound counts entries (the owner's O-47 (b)). A Tuple level is one, so dev's bound stands: n = 32 keeps the conflict, n = 33 is past it.
-    // A Dictionary level is two, so n = 16 keeps the conflict and n = 17 to 32 join dev's silent past-the-bound class: a recorded limit (PLAN
-    // G408, STATUS), these invalid programs newly accepted, no Language record invented. Not a contract to keep: G408 removes it.
+    // Binding's bound counts entries, 32 of them, a Dictionary level counting two (the owner's O-47 (b)). A Tuple level is one, so dev's edge
+    // stands: n = 32 keeps the conflict, n = 33 is past it. A Dictionary level is two, so n = 16 keeps the conflict and n = 17 to 32 are past it.
     [Theory]
     [InlineData("Dictionary<i32, ", ">", 16, "ComparisonLoanConflict_Kd x = 3")]
     [InlineData("Dictionary<i32, ", ">", 17, "")]
@@ -294,12 +293,20 @@ public sealed partial class RetentionTest
     [InlineData("(i32, ", ")", 32, "ComparisonLoanConflict_Kd x = 3")]
     [InlineData("(i32, ", ")", 33, "")]
     public void TheBoundCountsEntries(string open, string close, int levels, string records)
+        => Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels))));
+
+    // The recorded limit (the owner's O-47 and O-49 (a); PLAN G408's class; the Front's, Binding's `StorageBound`): a storage nest past 32 entries,
+    // however few Dictionaries it holds: one under 31 others is enough. These invalid programs are newly accepted, each with no Language record, a
+    // limit and no contract: the 32-entry twin of each keeps the conflict.
+    [Theory]
+    [InlineData(1, 31, "")]
+    [InlineData(16, 1, "")]
+    [InlineData(1, 30, "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData(16, 0, "ComparisonLoanConflict_Kd x = 3")]
+    public void AMixedNestPastTheBoundIsTheRecordedLimit(int dictionaries, int tuples, string records)
     {
-        var nest = string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels));
-        var form = $"func make(x: ref/i32 during q) -> {nest} => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: {nest}) => ()\n" +
-            "func g()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n    x = 3\n    let k = slot@follow\n" +
-            "public func main() => ()\n";
-        Assert.Equal(records, MirBorrowsTest.Records(form));
+        var leaf = string.Concat(Enumerable.Repeat("(i32, ", tuples)) + "ref/i32 during q" + new string(')', tuples);
+        Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat("Dictionary<i32, ", dictionaries)) + leaf + new string('>', dictionaries)));
     }
 
     // SPEC 5.2.1, 15.6.4 (G416 review B1): a raw layer's pointee is walked with no key of the layer, so a slot's cap steps only the layer its
@@ -1581,6 +1588,13 @@ public sealed partial class RetentionTest
 
     // A function's own contract, with no call substitution.
     internal static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
+
+    // The records of a call that may store what a `nest` value holds by value, then a write under the stored borrow (SPEC 15.6.4).
+    private static string NestRecords(string nest)
+        => MirBorrowsTest.Records(
+            $"func make(x: ref/i32 during q) -> {nest} => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: {nest}) => ()\n" +
+            "func g()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n    x = 3\n    let k = slot@follow\n" +
+            "public func main() => ()\n");
 
     // The shapes of a storing call, then a form and `main`: its published Error records.
     private static string HoldingRecords(string form)

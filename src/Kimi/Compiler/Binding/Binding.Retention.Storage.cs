@@ -30,8 +30,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The storage walk's root storage, the Abstract one (what an abstract part hides), the result's (every position of its Type, one
-    // storage), and the depth bound of the source and part walks, which counts entries: a Dictionary's level is two, (K, V) and then K or V,
-    // so Dictionary nesting 17 to 32 is past it, the named limit of the owner's O-47 (PLAN G408).
+    // storage), and Binding's depth bound of the source and part walks, which counts entries: a Dictionary's level is two, (K, V) and then K or
+    // V. A storage nest past 32 entries is past it, however few Dictionaries it holds: the Front's named limit (the owner's O-47, O-49; PLAN G408's class).
     private const int OwnStorage = 0;
     private const int AbstractStorage = 1;
     private const int ResultStorage = 2;
