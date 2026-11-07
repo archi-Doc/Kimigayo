@@ -6,6 +6,11 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+// Origin syntax (SPEC 8.1.2, Appendix F.8): relations and attached relation blocks, a declaration's Origin parameters, a Type's Origin
+// annotation and its braces, borrow suffixes, and the rejection of the lists a Callable or an adaptation target takes none of.
+// Input: a reader at the Origin syntax, or a parsed Type it annotates. Output: the nodes of the annotation, or the annotated Type.
+// Invariants: an item before text that a list's recovery skipped is a recovery (Parser.Recovery).
+// Prohibitions: what an Origin Name denotes, and whether a relation holds, belong to Binding and the ownership analyses.
 public static partial class Parser
 {
     internal static bool IsOriginRelationStart(ref TokenReader reader)
@@ -210,5 +215,239 @@ public static partial class Parser
             reader.AddDiagnostic(DiagnosticCode.CallableOriginList_Kd);
             _ = ParseOriginParameters(ref reader);
         }
+    }
+
+    private static List<string>? ParseOriginParameters(ref TokenReader reader)
+    {
+        if (!reader.TryConsume(TokenKind.OpenBrace, out var open, false))
+        {
+            return null;
+        }
+
+        // SPEC 15.3.2: a header names one or more slots; a Type without own slots omits it, so empty braces are an error and
+        // recover as an omitted header.
+        var list = new OriginNameList();
+        var reported = false;
+        while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
+        {
+            var token = reader.CurrentToken;
+            if (!token.Kind.IsIdentifierOrContextualKeyword() || token.Kind == TokenKind.Static)
+            {
+                // Not a slot Name; the rest of the item is skipped, so a slot after the next comma is still read.
+                reader.Expect(SyntaxForm.OriginSlotName, token);
+                reader.SkipListItem();
+                reported = true;
+            }
+            else
+            {
+                reader.Advance();
+                list.Add(reader.GetIdentifier(token), token.Span);
+                if (reader.TryConsume(TokenKind.Colon, out var relationToken, false))
+                {
+                    reader.Diagnostic.Add(relationToken, DiagnosticCode.OriginSchemaRelation_Kd);
+                    reader.SkipListItem();
+                }
+            }
+
+            if (!reader.TryConsume(TokenKind.Comma))
+            {
+                break;
+            }
+        }
+
+        if (list.Count == 0 && !reported && reader.CurrentTokenKind == TokenKind.CloseBrace)
+        {
+            reader.Expect(SyntaxForm.OriginSlotName);
+        }
+
+        reader.ExpectCloser(TokenKind.CloseBrace, out var close);
+
+        // The header is a related location of the diagnostics that name its slots (SPEC 15.3.2).
+        list.HeaderSpan = new(open.Start, Math.Max(close.End, list.Spans.Count == 0 ? open.End : list.Spans[^1].End) - open.Start);
+        return list.Count == 0 ? null : list;
+    }
+
+    /// <summary>Reports an Origin annotation on a borrow layer of an adaptation target.</summary>
+    /// <param name="type">The parsed target.</param>
+    /// <returns>The key of the first Error, or <see langword="null"/> when every layer is unannotated.</returns>
+    private static DiagnosticKey? CheckAdaptationOrigins(Koto type)
+    {
+        DiagnosticKey? cause = null;
+        var outer = true;
+        while (true)
+        {
+            if (type is ParenthesizedTypeKoto grouped)
+            {
+                type = grouped.Type;
+            }
+            else if (type is TypeSemanticsKoto { Type: { } inner } layer)
+            {
+                // SPEC 13.5.1: an outer raw layer states its Origin, a fit or a claim (SPEC 5.7); the chain's other Origins are inferred.
+                if (!layer.IsTransparentWrapper && layer.HasOrigin && !(outer && layer is { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null }))
+                {
+                    cause ??= layer.Unexpected(SyntaxForm.AdaptationOrigin);
+                }
+
+                outer &= layer.IsTransparentWrapper;
+                type = inner;
+            }
+            else
+            {
+                // Stop at a Core. Payloads and function contracts contain independent
+                // complete Types; their annotations do not prescribe this operation's borrow.
+                return cause;
+            }
+        }
+    }
+
+    private static Koto ParseTypeOrigin(ref TokenReader reader, Koto type, bool reportLegacyBorrow = true)
+    {
+        if (reader.CurrentTokenKind != TokenKind.OpenBrace)
+        {
+            return type;
+        }
+
+        var origin = ParseOriginBraces(ref reader);
+        var annotated = type as TypeSemanticsKoto ?? new TypeSemanticsKoto(ref reader, type.Span, type);
+        RecoverItem(ref reader, annotated, origin.Cause);
+        if (type is ParenthesizedTypeKoto or TupleTypeKoto or FunctionTypeKoto or FixedArrayTypeKoto ||
+            type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false })
+        {
+            reader.Diagnostic.Add(origin.Span, DiagnosticCode.OriginBindingSetTarget_Kd);
+            RecoverItem(ref reader, annotated, reader.Diagnostic.LastError);
+        }
+
+        annotated.SetOrigin(origin.Expression, origin.Arguments, origin.Span.End);
+        if (origin.InvalidContent || origin.Arguments is not null ||
+            (origin.Expression is not ErrorKoto && origin.Expression is not IdentifierNameKoto { IdentifierName: not ("static" or "_") }))
+        {
+            reader.Diagnostic.Add(origin.Span, DiagnosticCode.OriginBindingSetName_Kd);
+            RecoverItem(ref reader, annotated, reader.Diagnostic.LastError);
+        }
+
+        annotated.MarkBindingSet(reader.CurrentTokenKind == TokenKind.Slash);
+        if (reportLegacyBorrow && annotated.IsLegacyBorrowCandidate)
+        {
+            reader.Diagnostic.Add(origin.Span, DiagnosticCode.LegacyBorrowOrigin_Kd);
+            var cause = reader.Diagnostic.LastError;
+            reader.Advance(); // The slash belongs to the malformed Type, not to its enclosing parameter list.
+            var target = ParseType(ref reader);
+            return new ErrorKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, Math.Max(origin.Span.End, target.Span.End))) { Cause = cause };
+        }
+
+        return annotated;
+    }
+
+    private static (Koto? Expression, OriginArgument[]? Arguments, SourceSpan Span, bool InvalidContent, DiagnosticKey? Cause) ParseOriginBraces(ref TokenReader reader)
+    {
+        var open = reader.Read();
+        Koto? expression = null;
+        // Named lists are short; grow the result array directly instead of a list plus a copy.
+        OriginArgument[]? arguments = null;
+        var argumentCount = 0;
+        var invalidContent = false;
+        var end = open.Span.End;
+        while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
+        {
+            if (reader.CurrentTokenKind == TokenKind.Underscore)
+            {
+                invalidContent = true;
+                reader.Advance();
+            }
+            else if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
+            {
+                var name = reader.GetIdentifier(reader.Read());
+                reader.Advance();
+
+                if (arguments is null)
+                {
+                    arguments = new OriginArgument[2];
+                }
+                else if (argumentCount == arguments.Length)
+                {
+                    Array.Resize(ref arguments, argumentCount * 2);
+                }
+
+                arguments[argumentCount++] = new(name, ParseOriginExpression(ref reader));
+            }
+            else
+            {
+                invalidContent |= expression is not null || arguments is not null;
+                expression = ParseOriginExpression(ref reader);
+            }
+
+            if (!reader.TryConsume(TokenKind.Comma))
+            {
+                break;
+            }
+        }
+
+        var cause = reader.ExpectCloser(TokenKind.CloseBrace, out var close);
+        end = Math.Max(end, close.End);
+
+        if (arguments is not null && argumentCount != arguments.Length)
+        {
+            Array.Resize(ref arguments, argumentCount);
+        }
+
+        return (expression, arguments, SourceSpan.FromBounds(open.Span.Start, end), invalidContent, cause);
+    }
+
+    private static Koto ParseOriginExpression(ref TokenReader reader)
+    {
+        var left = ParseOriginAtom(ref reader);
+        while (reader.CurrentTokenKind == TokenKind.And)
+        {
+            var op = reader.Read();
+            var right = ParseOriginAtom(ref reader);
+            left = new BinaryKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(op.Span.End, right.Span.End)), KotoKind.And, left, right);
+        }
+
+        return left;
+    }
+
+    private static Koto ParseOriginAtom(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
+        {
+            var open = reader.Read().Span;
+            var inner = ParseOriginExpression(ref reader);
+            var cause = reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            var grouped = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open.Start, Math.Max(inner.Span.End, close.End)), inner);
+            RecoverItem(ref reader, grouped, cause);
+            return grouped;
+        }
+
+        if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+        {
+            reader.Expect(SyntaxForm.Name);
+            return reader.NewErrorKoto();
+        }
+
+        var token = reader.Read();
+        if (!IdentifierNameKoto.TryCreate(ref reader, token, out var name))
+        {
+            return new ErrorKoto(ref reader, token.Span) { Cause = reader.Diagnostic.LastError };
+        }
+
+        Koto left = name;
+        if (reader.TryConsume(TokenKind.Dot))
+        {
+            if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+            {
+                RecoverItem(ref reader, left, reader.Expect(SyntaxForm.Name));
+                return left;
+            }
+
+            var member = reader.Read();
+            if (!IdentifierNameKoto.TryCreate(ref reader, member, out var right))
+            {
+                return new ErrorKoto(ref reader, member.Span) { Cause = reader.Diagnostic.LastError };
+            }
+
+            left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, right.Span.End), left, right);
+        }
+
+        return left;
     }
 }
