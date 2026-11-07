@@ -42,6 +42,12 @@ public class OriginPremiseCatalogTest
 
     private const string Compared = "func h(w: ref/i64 during a, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w\n";
 
+    // PLAN G491 (C-80's x1): a condition on its own inputs; `Lent` borrows a second local, `y`, in Outer.
+    private const string Ranked = "func g3(s: ref/(ref/i64 during a) during b, v: ref/i64 during c, u: ref/i64 during d) -> ref/i64 during d\n" +
+        "    origin c outlives d\n    return u\n";
+
+    private const string Lent = "    let y = q\n    let w = y@ref\n";
+
     private const string Two = "struct Two {a, b}\n    origin b outlives a\n    public let both: ref/(ref/i64 during b) during a\n" +
         "    public init(both: ref/(ref/i64 during b) during a) => self.both = both\n";
 
@@ -107,8 +113,11 @@ public class OriginPremiseCatalogTest
     // (`ref/(ref/i64 during x) during z`) still gives its condition. A meet whose operand names `z` does not make a comparison's relation
     // between fixed Origins a body's: `(p and z) outlives q` needs `p outlives q` (SPEC 15.3.6, 15.6.1), also where 15.3.6 solves it,
     // as `g5`'s `a := (p and z)` whose well-formedness needs `a outlives q` (r5, the inferred form of r1; SPEC 15.2.2 absorbs no meet
-    // by a body relation).
+    // by a body relation). For `p outlives w`, `w = y@ref`, only the Origins stored in `y` outlive `w`: `x`'s, which a required input
+    // names through `z`, take no part, so `p outlives q` remains (x1, and x1m with a meet).
     [Theory]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData("func g5(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives a\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g5\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during (p and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Converted + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
@@ -152,6 +161,7 @@ public class OriginPremiseCatalogTest
     // (SPEC 15.3.6: `p outlives z` proves `p outlives (q and z)`).
     [Theory]
     [InlineData(Compared + Outer + "    let f: (ref/i64 during p, ref/i64 during (q and z)) -> ref/i64 during (q and z) = h\n    return 0\n" + Main)]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during q, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n" + Main)]
     [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
     [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/i64 during x, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]
     [InlineData(Compared + "func outer(p: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during p, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n" + Main)]

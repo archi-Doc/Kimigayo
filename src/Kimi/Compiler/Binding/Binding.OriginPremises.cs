@@ -278,28 +278,47 @@ public sealed partial class Binding
         // R5, SPEC 15.6.1, 15.6.5: the well-formedness of a borrow of a complete local Place, the body's obligation, which its finite
         // Origin proves without premises. So it serves only a request of the body that declares the local, never its own declaration;
         // a nested body or signature (a nested or anonymous function's, a Function Type's) has only its own premises, the local's
-        // Origins being fixed there (SPEC 15.2.2, 15.3.4). A comparison is judged from premises alone, except a relation that requires an
-        // Origin to outlive a local Place of the body, which is that body's (SPEC 15.3.7, 15.6.1; PLAN G491; the owner's 「(b)にする」):
-        // so in a comparison R5 serves only a request whose shorter end is such a Place, and EntailsOrigin judges a meet there operand
-        // by operand.
+        // Origins being fixed there (SPEC 15.2.2, 15.3.4). A comparison is judged from premises alone, except that a relation requiring
+        // an Origin to outlive a Borrow of a local of the body also follows from every Origin stored in that local (SPEC 15.3.7, 15.6.1;
+        // PLAN G491; the owner's 「(b)にする」 and 「(a)」): so there R5 starts only from the request's shorter end, through the Places its
+        // stored Origins introduce, and EntailsOrigin judges a meet operand by operand.
         var body = PremiseSignature(environment.Use);
-        if (InComparison(environment.Comparison) && !(environment.Shorter is { Kind: OriginKind.Projection, Binder: VariableKoto place } &&
-            ReferenceEquals(PremiseSignature(place), body)))
+        var closure = environment.Closure;
+        if (InComparison(environment.Comparison))
         {
+            var places = environment.Places;
+            if (environment.Shorter is { } shorter && closure.TryNode(shorter, out var start))
+            {
+                places.Add(start);
+            }
+
+            for (var i = 0; i < places.Count; i++)
+            {
+                if (this.LocalPlaceType(environment, places[i], body) is { } stored)
+                {
+                    this.AddStoredPremises(environment, stored, places[i], OriginPremiseRule.LocalPlace, false);
+                    closure.AddLongerEnds(places[i], OriginPremiseRule.LocalPlace, places);
+                }
+            }
+
             return;
         }
 
-        var closure = environment.Closure;
         for (var node = 0; node < closure.NodeCount; node++)
         {
-            if (closure.Origin(node) is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
-                this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
-                !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body))
+            if (this.LocalPlaceType(environment, node, body) is { } stored)
             {
                 this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
             }
         }
     }
+
+    // R5's Place: the stored Type of the local that `node` borrows (a Borrow of a part of it has the local's Origin, PlaceOrigin), when it
+    // is a local of the use's own body other than the one being declared, at an owning or borrow layer; otherwise null.
+    private BoundType? LocalPlaceType(OriginPremiseEnvironment environment, int node, Koto? body)
+        => environment.Closure.Origin(node) is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
+            this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
+            !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? stored : null;
 
     // A required signature's own well-formedness: its inputs' and its result's.
     private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
@@ -548,9 +567,12 @@ public sealed partial class Binding
         // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
         internal CallableInstance Comparison { get; set; }
 
-        // The request's shorter end (EntailsOrigin), which decides R5 in a comparison; null for an environment without one (a body's
+        // The request's shorter end (EntailsOrigin), where R5 starts in a comparison; null for an environment without one (a body's
         // oracle, retention, a dependence query).
         internal BoundOrigin? Shorter { get; set; }
+
+        // In a comparison, R5's Places from the shorter end: its node, then the nodes its stored Origins introduce, each once.
+        internal List<int> Places { get; } = new();
 
         // Whether this request is a dependence query's own, which reads failed contracts (readingFailedContracts; DECISIONS BU-69).
         internal bool ReadsFailedContracts { get; set; }
@@ -576,6 +598,7 @@ public sealed partial class Binding
             this.Scope = null;
             this.Comparison = default;
             this.Shorter = null;
+            this.Places.Clear();
             this.ReadsFailedContracts = false;
             this.Dependence = false;
             this.Reads.Clear();

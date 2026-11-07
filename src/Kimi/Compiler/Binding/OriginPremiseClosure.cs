@@ -227,6 +227,22 @@ internal sealed class OriginPremiseClosure
         this.firstIncoming[shorter] = this.edgeCount++;
     }
 
+    /// <summary>Adds to <paramref name="nodes"/> each longer end of an edge of <paramref name="rule"/> into <paramref name="shorter"/>
+    /// that it does not hold yet.</summary>
+    /// <param name="shorter">The shorter node.</param>
+    /// <param name="rule">The catalog rule.</param>
+    /// <param name="nodes">The nodes collected so far.</param>
+    internal void AddLongerEnds(int shorter, OriginPremiseRule rule, List<int> nodes)
+    {
+        for (var edge = this.firstIncoming[shorter]; edge >= 0; edge = this.edgeNext[edge])
+        {
+            if (this.edgeRule[edge] == rule && !nodes.Contains(this.edgeLonger[edge]))
+            {
+                nodes.Add(this.edgeLonger[edge]);
+            }
+        }
+    }
+
     /// <summary>Whether an edge of <paramref name="rule"/> states `longer >= shorter` in every Semantics case: the catalog's rule
     /// relates the two directly.</summary>
     /// <param name="longer">The longer node.</param>
