@@ -205,7 +205,7 @@ public sealed partial class Binding
         obligation = obligation with { Body = this.formingBody }; // Judged in the body that forms it (SPEC 15.6.5; DECISIONS BU-28).
         var resolvedLonger = this.OriginAtUse(relation.Longer, use);
         var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
-        if (HasRegionIn(resolvedLonger, this.formingBody) || !FixedIn(resolvedShorter, this.formingBody))
+        if (RegionChain(resolvedLonger, resolvedShorter, relation.Equality, this.formingBody) || !FixedIn(resolvedShorter, this.formingBody))
         {
             this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
             return null;
@@ -258,7 +258,7 @@ public sealed partial class Binding
 
         // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, for A5, and
         // the clause is a twin (R4-M111).
-        if (BodyChain(failed.Longer, failed.Shorter, this.formingBody))
+        if (BodyChain(failed.Longer, failed.Shorter, failed.Equality, this.formingBody))
         {
             (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(use);
             var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, failed.Longer, failed.Shorter);
