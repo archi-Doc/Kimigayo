@@ -103,7 +103,7 @@ public sealed partial class Binding
         }
 
         return (constraint.Contract is null ||
-            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
+            (this.AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
              (constraint.Contract.Type is not { } reference || this.TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
             (constraint.RequiredType is null || this.TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
     }
@@ -658,7 +658,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.Ancestors.Count; i++)
             {
-                if (!AccessCovers(shape.Ancestors[i], shape.Symbol, shape.Symbol))
+                if (!this.AccessCovers(shape.Ancestors[i], shape.Symbol, shape.Symbol))
                 {
                     this.Fail(contract, BindingFailure.Access);
                 }
