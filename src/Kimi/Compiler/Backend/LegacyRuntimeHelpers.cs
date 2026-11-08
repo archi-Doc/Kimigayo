@@ -6,8 +6,7 @@
 // Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs),
 // the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs),
 // the storage-boundary kernels written inline in their caller's body with their library record Field addressing
-// (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines, spliced from their signatures (StringEqual, StringCompare,
-// the ones every call reads). MIR code generation writes the helpers through this static component (promoted, never copied).
+// (LegacyRuntimeHelpers.Storage.cs). MIR code generation writes the helpers through this static component (promoted, never copied).
 // Input: helper records built from FunctionAbi, ValueLowering and StoredValue (drop routine name); the compiled ABIs of the
 // DictionaryStorage functions a Dictionary helper calls; the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
 // formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
@@ -160,19 +159,6 @@ internal static partial class LegacyRuntimeHelpers
 {
     internal const string Removal = "R8 replaces the legacy runtime helpers with Kimigayo library code.";
 
-    /// <summary>SPEC 13.4: the string equality routine, 0 exactly when the two byte sequences are equal: the one signature its definition
-    /// (<see cref="StringComparisons"/>) and every call read.</summary>
-    internal static readonly FunctionAbi StringEqual =
-        new("__kimi_string_equal", "i32", [new("ptr", "a"), new("i64", "an"), new("ptr", "b"), new("i64", "bn")]);
-
-    /// <summary>SPEC 13.4: the string ordering routine, negative, 0 or positive as the first byte sequence orders before, equal to or after
-    /// the second, lexicographically by UTF-8 byte.</summary>
-    internal static readonly FunctionAbi StringCompare = new("__kimi_string_compare", "i32", StringEqual.Parameters);
-
-    /// <summary>Gets the string-comparison routines' text, each definition spliced from its signature (LlvmModuleText.ExpandRuntime), which
-    /// code generation writes once per module that compares strings.</summary>
-    internal static string StringComparisons => Texts.StringComparisons;
-
     /// <summary>Gets the legacy row of a compiler function of the Body disposition (S2-S4 X39; DECISIONS R5-M116), the one map from such a
     /// kind to how MIR code generation writes its call, by the row's writer, and the one test of whether a function is one: every site asks
     /// it, a Call, a Value call, the copy slots and the routine rows.</summary>
@@ -247,51 +233,5 @@ internal static partial class LegacyRuntimeHelpers
         output.Write(", align ");
         WriteNumber(output, lowering.Layout.Alignment);
         output.Write('\n');
-    }
-
-    // Code generation's expanded runtime texts (G350), one part beside each text's rows: the CLR initializes this class when a writer
-    // (WriteFormattingRuntime, StringComparisons) first reads one for a module, never on the check path, whose
-    // collector reads the rows and ABIs (Row, DictionaryRow, Construction, IntrinsicRows) but no text; no other member reads them.
-    private static partial class Texts
-    {
-        internal static readonly string StringComparisons = ExpandRuntime(
-            """
-            declare i32 @memcmp(ptr, ptr, i64)
-            {{__kimi_string_equal}}
-            entry:
-              %sameLength = icmp eq i64 %an, %bn
-              br i1 %sameLength, label %same, label %different
-            same:
-              %empty = icmp eq i64 %an, 0
-              br i1 %empty, label %equal, label %bytes
-            bytes:
-              %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %an)
-              ret i32 %comparison
-            equal:
-              ret i32 0
-            different:
-              ret i32 1
-            }
-            {{__kimi_string_compare}}
-            entry:
-              %shorter = icmp ult i64 %an, %bn
-              %count = select i1 %shorter, i64 %an, i64 %bn
-              %empty = icmp eq i64 %count, 0
-              br i1 %empty, label %lengths, label %bytes
-            bytes:
-              %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %count)
-              %equal = icmp eq i32 %comparison, 0
-              br i1 %equal, label %lengths, label %different
-            different:
-              ret i32 %comparison
-            lengths:
-              %sameLength = icmp eq i64 %an, %bn
-              %direction = select i1 %shorter, i32 -1, i32 1
-              %result = select i1 %sameLength, i32 0, i32 %direction
-              ret i32 %result
-            }
-
-            """,
-            [StringEqual, StringCompare]);
     }
 }
