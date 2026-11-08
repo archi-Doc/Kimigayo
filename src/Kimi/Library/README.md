@@ -86,13 +86,14 @@ ID is reserved.
 [DictionaryStorage.kimi](DictionaryStorage.kimi) is compiled through ordinary
 Binding, ownership analysis and generation. It implements initialization, ordered
 search, insertion links, free-slot reuse, unlinking, reverse cleanup, compaction
-and shrink-to-fit, reserve, checked capacity growth and append decisions, plus the literal's duplicate-key rejection. Its private `Handle` and `Links` records use explicit
+and shrink-to-fit, reserve, checked capacity growth and append decisions. Its private `Handle` and `Links` records use explicit
 C layout to agree with the backend; they do not define a public collection ABI.
 Key search (`findEntry`, through `Storage.findDictionaryLink`) calls `stored.equals(search)` under `K`'s Equatable
 conformance, and `Storage.destroyDictionaryEntries` destroys entries in reverse insertion order, each value before its key;
-both are ordinary generic source. The only callback is `requireAbsent`'s duplicate-key callback, an ordinary Function Type
-value with a stack environment and no heap allocation, which keeps the later key's location; the MIR generator fails at
-that key directly.
+both are ordinary generic source. A Dictionary's drop glue calls `Storage.destroyDictionary`, which destroys the entries
+through `destroyDictionaryEntries` and then releases the slot storage, or `Storage.releaseDictionary` when neither `K` nor
+`V` needs a drop; the owning remainder's drop calls `destroyDictionary` too. The library has no callback: the MIR generator
+fails at a literal's duplicate key directly.
 
 `Dictionary.tryGet` in [Dictionary.kimi](Dictionary.kimi) searches through the standard shared storage remainder and
 constructs its optional reference through ordinary generic source. `remove` shares that typed key search, unlinks one entry
