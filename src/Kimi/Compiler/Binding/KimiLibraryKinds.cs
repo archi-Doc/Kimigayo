@@ -238,7 +238,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether a body-less operation's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
-    // (the source as a Take) and an in-place destruction; a Dictionary entry's placement is the DictionaryStorage.placeEntry body (R8-K1b-2).
+    // (the source as a Take) and an in-place destruction; a Dictionary entry's placement is the DictionaryStorage.placeEntry body.
     // Raw.release and Raw.slice write nothing.
     internal static bool WritesThrough(CompilerFunctionKind kind, int parameter) => kind switch
     {

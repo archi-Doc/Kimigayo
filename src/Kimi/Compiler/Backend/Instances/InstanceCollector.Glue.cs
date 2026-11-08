@@ -6,7 +6,7 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Backend;
 
 // Destruction and static edges (K package 4.5 rows 7, 9 and 10, "DropGlue"; S2-S4 X3, X4, X6, X23, X33 (a), X34; DECISIONS R5-M60, R5-M116,
-// R5-M121, R5-M124), the glue of what a call destroys in place, a DropGlue item's targets and a LegacyRow item's.
+// R5-M121, R5-M124), the glue of what a call destroys in place and a DropGlue item's targets.
 internal sealed partial class InstanceCollector
 {
     // SPEC 8.15.3, 14.10.3, 16.2.1 (DECISIONS R4-M6a): whether a Drop of a body destroys nothing in a view: A2 judged its group Elide (on
@@ -99,17 +99,6 @@ internal sealed partial class InstanceCollector
         }
 
         parts.RemoveRange(start, parts.Count - start);
-    }
-
-    // X4 (DECISIONS R5-M121, R5-M124): a LegacyRow item's target, at its default site, the callee its row declares: the body of its library
-    // callee (placeEntry's append, Declared; a Storage callee is not generic, R5-M27).
-    private void RowTargets(MirProgram program, int item, SourceRef site)
-    {
-        var row = LegacyRuntimeHelpers.Row(this.Set.Items[item].Key.Body.Def.Decl!.CompilerFunction)!.Value;
-        if (row.Callee != DictionaryCallee.None)
-        {
-            this.Target(item, this.Declared(program, item, site, this.types.DictionaryStorage(row.Callee), null));
-        }
     }
 
     // K 4.8, X34: whether a DropGlue's collection element Types are laid out: a collection's own layout is its handle words, and its glue
