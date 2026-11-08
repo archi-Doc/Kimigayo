@@ -238,8 +238,9 @@ public sealed partial class Binding
             }
 
             var state = declaration.BindingState;
+            var frame = this.BeginConsultation(declaration); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
-            this.RequireConstraint(declaration, proof, mode);
+            this.RequireConstraintInFrame(declaration, proof, mode, frame);
             if (declaration.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional)
             {
                 // The target owns conformance/Copy evidence; the block owns member applicability.
@@ -509,7 +510,13 @@ public sealed partial class Binding
     {
         if (proof == ConstraintProof.Error)
         {
-            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedCause().Use);
+            var cause = diagnosticCause ?? this.TakeFailedCause().Use;
+            if (cause is not null && use.BindingFailure == BindingFailure.None)
+            {
+                this.Consulted(cause); // SPEC 23.1.2: the proof's evidence explains its outcome, never a record the use's own check owns.
+            }
+
+            this.FailConstraint(use, cause);
         }
         else if (proof == ConstraintProof.Refuted)
         {
@@ -523,6 +530,22 @@ public sealed partial class Binding
         {
             this.RequireUnproven(use, mode); // The provisional pass leaves the U fact to the next judgment.
         }
+    }
+
+    // SPEC 23.1.2: the outcome of a validation pass's proof at a use, inside the use's frame (opened before the proof). What the proof
+    // read of other nodes becomes the prerequisite of its outcome when the outcome is the use's record; a record the use's own check
+    // owns (the conformance's verdict, or a failure it held before the outcome) never derives from the frame, which is dropped.
+    private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame)
+    {
+        var owned = use.BindingFailure != BindingFailure.None;
+        this.RequireConstraint(use, proof, mode);
+        if (owned)
+        {
+            this.DropConsultation(frame);
+            return;
+        }
+
+        this.EndConsultation(use, frame);
     }
 
     // An Unknown Constraint that no judgment of its own proved (an unresolved parent; r2-6, BU's P1) takes no proof's fact: the final
