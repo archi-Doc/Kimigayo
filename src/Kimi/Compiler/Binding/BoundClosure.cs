@@ -37,7 +37,7 @@ public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol E
     internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
 
     // SPEC 7.7.3, 8.14: an acquisition of the environment binding itself by value without an operator, in the body (as the Adjust
-    // rule takes it from its consumer, a discarded Place included: ClosureEffects.ConsumedByValue) or by a nested Closure's bare
+    // rule takes it from its consumer, a discarded Place included: ClosureEffects.TakenByCase) or by a nested Closure's bare
     // entry, Reborrows in some admitted case, so the call is Exclusive exactly in the cases where the binding's case Type is exclusive.
     internal bool BareReborrows { get; init; }
 }
