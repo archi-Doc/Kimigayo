@@ -13,14 +13,10 @@ internal enum StorageKernelKind : byte
 {
     /// <summary>StorageDictionaryLayout: the (raw Dictionary, isize) Tuple {handle address, entry stride}, at offsets 0 and 8.</summary>
     DictionaryLayout,
-
-    /// <summary>StorageKeyAt and StorageValueAt: the address of a key or value inside a validated live slot.</summary>
-    EntryAddress,
 }
 
 /// <summary>The input of an inline storage kernel: the spelling of the address it reads; the spelling of its result, the record
-/// it writes or, for EntryAddress, the address it defines; its number, the entry stride or the entry offset; and the number naming
-/// its temporaries.</summary>
+/// it writes; its number, the entry stride; and the number naming its temporaries.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly ref struct StorageKernelInput(ReadOnlySpan<char> source, ReadOnlySpan<char> result, long number, int id)
 {
@@ -53,10 +49,6 @@ internal static partial class LegacyRuntimeHelpers
     private static readonly StorageKernelRow[] StorageKernelRows =
     [
         new(StorageKernelKind.DictionaryLayout, WriteDictionaryLayout, HelperNeeds.None),
-        new(
-            StorageKernelKind.EntryAddress,
-            static (TextWriter output, in StorageKernelInput input) => WriteEntryAddress(output, input.Result, input.Source, input.Number),
-            HelperNeeds.None),
     ];
 
     /// <summary>Gets the row of an inline storage kernel kind; a kind without a row is a broken contract.</summary>
@@ -85,7 +77,7 @@ internal static partial class LegacyRuntimeHelpers
         output.Write("_1, align 8\n");
     }
 
-    // SPEC 4.9.6, 22.2: the address of a key or value at its offset inside an entry slot.
+    // SPEC 4.9.6, 22.2: the address of a key or value at its offset inside an entry slot, for placeEntry's helper (until R8-K1b's second part).
     private static void WriteEntryAddress(TextWriter output, ReadOnlySpan<char> result, ReadOnlySpan<char> slot, long offset)
     {
         output.Write("  ");

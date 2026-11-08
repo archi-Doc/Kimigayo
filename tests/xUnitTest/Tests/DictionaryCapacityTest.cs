@@ -1,6 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
+using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -78,6 +82,37 @@ public class DictionaryCapacityTest
         WriteProbe("AllocationFailure", ir, $"  %reserved = call i64 @{reserve}(ptr @probe_handle, i64 24, i64 5, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
     }
 
+    // IMPL 21.1.1, 21.1.3 (the owner's O-68 (e); DECISIONS R8-M8): the compiled DictionaryStorage.keyAt and valueAt address the key at
+    // 16 and the value at the key's end aligned for it, Align(16 + stride(K), alignment(V)), each instance called on a slot address and
+    // its result's distance from it compared with the number: (i64, i32) 16 and 24, (i32, i128) 16 and 32, (u8, u8) 16 and 17,
+    // ((), ()) 16 and 16. The program only looks entries up, so nothing places an entry.
+    [Fact]
+    public void TheSlotOffsetsAreTheOwnersRule()
+    {
+        var c = FunctionCodegenTest.GeneratedDefinitions(
+            "let a: Dictionary<i64, i32> = [:]\n_ = a.tryGet(1)\nlet b: Dictionary<i32, i128> = [:]\n_ = b.tryGet(1)\n" +
+            "let d: Dictionary<u8, u8> = [:]\n_ = d.tryGet(1)\nlet e: Dictionary<(), ()> = [:]\n_ = e.tryGet(())\n").C;
+        (string Key, string Value, long KeyOffset, long ValueOffset)[] rows =
+            [("i64", "i32", 16, 24), ("i32", "i128", 16, 32), ("u8", "u8", 16, 17), ("()", "()", 16, 16)];
+        var body = new System.Text.StringBuilder("  %base = ptrtoint ptr @probe_memory to i64\n  %ok0 = icmp eq i64 0, 0\n");
+        var ok = 0;
+        foreach (var (key, value, keyOffset, valueOffset) in rows)
+        {
+            foreach (var (name, offset) in new[] { ("keyAt", keyOffset), ("valueAt", valueOffset) })
+            {
+                var n = ok + 1;
+                body.Append(CultureInfo.InvariantCulture, $"  %p{n} = call ptr @{Instance(c, name, key, value)}(ptr @probe_memory)\n")
+                    .Append(CultureInfo.InvariantCulture, $"  %i{n} = ptrtoint ptr %p{n} to i64\n  %d{n} = sub i64 %i{n}, %base\n")
+                    .Append(CultureInfo.InvariantCulture, $"  %e{n} = icmp eq i64 %d{n}, {offset}\n  %ok{n} = and i1 %ok{ok}, %e{n}\n");
+                ok = n;
+            }
+        }
+
+        body.Append(CultureInfo.InvariantCulture, $"  br i1 %ok{ok}, label %passed, label %failed\n")
+            .Append("passed:\n  call void @__kimi_exit(i32 0)\n  unreachable\nfailed:\n  call void @__kimi_exit(i32 93)\n  unreachable");
+        WriteProbe("SlotOffsets", CompilationTestHelper.WriteIr(c), body.ToString(), 0, string.Empty);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void GrowthCopiesTheHighWaterSlotsAndKeepsInsertionAndFreeLinks()
@@ -111,6 +146,16 @@ public class DictionaryCapacityTest
         Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.DictionaryStorage(DictionaryCallee.Append)));
         var ir = CompilationTestHelper.WriteIr(c);
         return (ir, FunctionCodegenTest.BodyOf(c, "DictionaryStorage", "reserve"), FunctionCodegenTest.BodyOf(c, "DictionaryStorage", "append"));
+    }
+
+    // The generated instance of a DictionaryStorage function at the entry Types (its body item's, DECISIONS R5-M145).
+    private static string Instance(Compilation c, string name, string key, string value)
+    {
+        var set = c.Instances!;
+        return "__kimi_f" + Enumerable.Range(0, set.Items.Length).Single(x =>
+            set.Items[x].Key is { Kind: MonoKind.Body, Body.Def: { Kind: MirBodyKind.Fn, Decl: { } function } } && function.Name == name &&
+            function.Scope.Owner is DeclarationContainerKoto { Name: "DictionaryStorage" } && set.Items[x].Representative is { } subst &&
+            subst.Types.ToArray().Select(static t => TyCtxt.Name(t!)).SequenceEqual([key, value]));
     }
 
     private static string Handle(long length, long capacity) => $$"""

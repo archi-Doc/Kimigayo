@@ -151,8 +151,8 @@ internal group Storage
             unsafe
                 let slot = storage + (link - 1) * stride
                 link = (slot@raw/isize)[0]
-                _ = (*valueAt<K, V>(slot))@move
-                _ = (*keyAt<K, V>(slot))@move
+                _ = (*DictionaryStorage.valueAt<K, V>(slot))@move
+                _ = (*DictionaryStorage.keyAt<K, V>(slot))@move
 
     /// Returns the matching live link, or zero; comparison uses stored.equals(search), with no entry acquisition.
     internal func findDictionaryLink<K, V>(state: uniq/DictionaryRefRemainder<K, V>, key: ref/K) -> isize
@@ -188,7 +188,7 @@ internal group Storage
             let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
             // Each slot starts with its previous and next links.
             state.link = (slot@raw/isize)[1]
-            return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@ref))
+            return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@ref, (*DictionaryStorage.valueAt<K, V>(slot))@ref))
 
     /// Lends the first untaken key for shared access, splits its value off as a child Loan and advances.
     internal func splitFirst<K, V>(state: uniq/DictionaryUniqRemainder<K, V>) -> Option<(ref/K during state.source, uniq/V during state.source)>
@@ -197,7 +197,7 @@ internal group Storage
         unsafe
             let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
             state.link = (slot@raw/isize)[1]
-            return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@uniq))
+            return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@ref, (*DictionaryStorage.valueAt<K, V>(slot))@uniq))
 
     /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
     internal func takeFirst<K, V>(state: uniq/DictionaryOwnedRemainder<K, V>) -> Option<(K, V)>
@@ -206,7 +206,7 @@ internal group Storage
         unsafe
             let slot = state.handle.buffer + (state.handle.head - 1) * DictionaryStorage.slotStride<K, V>()
             state.handle.head = (slot@raw/isize)[1]
-            return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
+            return .Some(((*DictionaryStorage.keyAt<K, V>(slot))@move, (*DictionaryStorage.valueAt<K, V>(slot))@move))
 
     /// Inline storage for one complete Type `A`, a fixed array `[N of E]` or a consumed `Array<E>`, placed at offset 0
     /// and never destroyed by the compiler (PLAN G33): its owner destroys what remains of `value` through unsafe
