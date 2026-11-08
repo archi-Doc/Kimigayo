@@ -5786,6 +5786,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Its recorded limit is removed by R4-M184 (PLAN G570): Scope, Tense and Order are accepted, and no R7-O2 dependency remains.
 - **R4-M183 A store through a stated raw layer writes what its Origin covers (PLAN G338)** (2026-11-08; the owner's O-55 (c), verbatim 「O-55は(c)でお願いします。」, leaves Binding's rows; the owner's exception to AGENTS' narrow-subset rule, O-60, verbatim 「すべて (a)」). SPEC 5.2.1, 5.7's table. W's first step at a raw parameter's own stated layer: the argument's referents and the first step of each exclusive input whose outer Origin is that Origin (`MirBorrows.Cover`); only the `null` literal written at the call adds no E there, under the owner's exception (O-60): a `null` reaching the parameter any other way stays dev's false error, a named limit (PLAN G598). Rejected: dropping E for an empty set (seven invalid programs accepted, since A5 does not follow a scalar written through a raw pointer); a null set element (a must-fact in A5's may-sets, stopped by reading); W replacing q's referents (`c5`: a fit lets q address a second holder); "a value naming nothing writes nothing" at every store (it makes `a8` valid, ahead of G339's row and of G581; and it reads no Origin). None where another input also names the Origin: a slot keeper's storage has no first step (`keeperBad`); none for a Value callee. A5 reads the members through `TyCtxt.LayerMembers` over `Binding.LayerMembers`, a new reader of Binding's one `RawMembers`, since ArchitectureRulesTest's raw Origin role ratchet leaves Mir/ no read of a raw layer's Origin; no row changes. Option A's per-holder exclusion was prototyped and failed (`fj2`); evidence in the G338 state file, for O-55's return.
   - Amended by R4-M185 (PLAN G584): a Function Item's Value call covers as a direct call; "none for a Value callee" now holds for Closures, Function-typed parameters and erased values only.
+  - Amended by R4-M186 (G598-1): the literal test is A5's must-null fact; O-60's exception remains for the residue PLAN G598 lists.
 - **R4-M184 One region, one tense: a Closure's result keeps an enclosing region, and a local region reaches the meet of all its sources (PLAN G570)** (2026-11-08; Major; C-108; replaces G553's rule and removes its limit) SPEC 15.3.6, 15.4.4, 15.6.4, 15.6.5, 15.8.2.
   - Cause. `ResolveLocalResultOrigins` cut an inferred result from an enclosing region R to R's sources as of the literal, while every other reading of R is whole-body (`JudgeLocalRegion`). So one Origin had two forms and two tenses: result against environment (G553), result against parameter and later bounds (Kind U: Argument, Store, Order, reading freed memory in straight-line code). Every G553 shape reconciled a whole-body region published as of one moment.
   - Rule. (1) A published result resolves only its own body's regions (`RegionIn`): an enclosing region is fixed there (BU-28) and stays, so the inferred form is the annotated form. (2) A region of an enclosing anonymous function is a Closure Type's Origin argument (`Binds`, R4-M159), so it leaves its body as its sources; this also opens the stated form, Unsupported before. (3) A local region reaches the meet of all its sources, read at the retention in the tense of Binding's fit (`AddRegionMeet`): retention's own edge, in a per-computation environment no proof reads. `BoundClosure.CapturedRegions`, its writers and `retentionCaptured` go.
@@ -5804,6 +5805,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Why it is sound: a Function Item value's target and slot order are fixed. Distinct declarations have distinct Item Types (7.7.4), and slots are positional (7.3.4). Closures, Function-typed parameters and erased values are not Items, so they stay uncovered.
   - Moves. A Function Item's Value call in its own body, with `null` at a stated raw parameter and every member of its Origin an exclusive input, is newly accepted: `rec1` and the gate's 56 valid programs. Outside the own body the call keeps its located `Unsupported_Kd` at `null`; only false `ComparisonLoanConflict_Kd` records go, 168 record-only moves (Q13).
   - Rejected: reading the Value call's instantiated signature (a Type argument's Origin would look stated); a covering column in Binding's rows (frozen by O-55 (c)); covering Closures.
+- **R4-M186 An empty argument set at a covered store is null: A5's must-null fact (PLAN G598)** (2026-11-09; Major; design reviews 1
+  REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 ACCEPT; the Middle's reviewer; amends R4-M183) SPEC 5.1, 5.2, 5.3, 5.4, 5.5,
+  5.7 Fits, 15.6.4.
+  - Amends R4-M183: the literal test becomes A5's must-null fact (Φ_N). A5's sets gain the marker Φ_N, which no check reads, in every
+    state a store gives an exposed holder and in every call result. An exposed holder is a local that a non-shared direct Loan or
+    address of the body names, or that an Opaque site touched: a pointer the body formed may write its bytes at any later point, also
+    by a store A5 reads none of (a callee's scalar store, a pun; SPEC 5.2, 5.5: no other pointer reaches a local). Every non-null pointer
+    then carries a Loan, an address, Φ_E or Φ_N, so the empty set is a value null on every path. `MirBorrows.Calls`' Keep drops the argument's
+    own first step (E) at a covered store where its value is the empty set; `NullLiteral` is deleted.
+  - O-60's exception remains for the residue, which PLAN G598 lists as a class: a null that A5's must-null fact cannot prove at the
+    store. It includes integer zero, an Origin shared with a `ref` input, `during self`, a stated layer inside a Tuple (a0t), a8 (G339's
+    reading), an address-taken null local, `id(null)`, nulls read through an input, E or a static, a joined part store, and Array
+    elements. Each was rejected by dev; none newly.
+  - R4-M183's rejected option "dropping E for an empty set" is superseded: its reason (A5 does not follow a scalar written through a raw
+    pointer) is closed by exposure and Φ_N on call results. Its rejected "null set element" keeps its reason (a may-set cannot kill an
+    element) and stays rejected; Φ_N has the opposite polarity and is only added.
+  - Exposure shares the flow-holder table (`MirBorrows.Loans`' `named`: NamedHolder still selects the flow holders, unchanged;
+    ExposedHolder marks an exposed holder). Φ_N enters at a store into an exposed holder's own Place, at a store through a reference
+    into each exposed holder Refs names, at every holder a call's W writes but E (W follows only non-shared Loans and addresses), and
+    in every call result; E and a holder a shared Loan alone names get none (a write through such a path is undefined, 5.2.1 cond. 3).
+  - Rejected: Φ_N in every store through a reference and every W target (E and shared-only holders too: no soundness need, and cost);
+    Φ_N only in a call result whose set would otherwise be empty (it leans on the Loan-ending argument); N10, only in a call result
+    with no element that is never removed (Φ_E or an address), which keeps the fact independent of Loan endings and is cheaper, not
+    needed at RP8's cost (RawStores warm Analyze B/A 1.028, A'/A 0.992; Hello and Milestone26 within A'/A; warm 0 B), kept as the cut if
+    a later measurement asks for it.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
