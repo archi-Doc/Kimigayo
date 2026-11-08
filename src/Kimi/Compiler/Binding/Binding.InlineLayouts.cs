@@ -35,7 +35,7 @@ public sealed partial class Binding
     private readonly List<InlineSummary> inlineSummaryPool = new();
     private readonly List<InlineSummary> inlineComponents = new(); // Tarjan's stack: the nodes whose component is open.
     private readonly Dictionary<BindingSymbol, bool> inlineRecursive = new(ReferenceEqualityComparer.Instance);
-    private readonly TypeMemo<bool> layoutParts = new(); // The composite parts one node's storage walk met.
+    private readonly TypeMemo<BoundType, bool> layoutParts = new(); // The composite parts one node's storage walk met.
     private int inlineIndex;
     private long inlineGrowth;
 
