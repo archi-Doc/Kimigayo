@@ -249,7 +249,8 @@ public sealed partial class Binding
                 listed = ReferenceEquals(place, capture) ? need.Listed : listed;
                 if (need.Use is PlaceUse.ByCase or PlaceUse.Exclusive)
                 {
-                    return new(need.Use == PlaceUse.ByCase && ReferenceEquals(KotoHelper.UnwrapParentheses(place), capture) ? PlaceUse.ByCase : PlaceUse.Exclusive, listed);
+                    var byCase = need.Use == PlaceUse.ByCase && ReferenceEquals(KotoHelper.UnwrapParentheses(place), capture);
+                    return new(byCase ? PlaceUse.ByCase : PlaceUse.Exclusive, listed);
                 }
 
                 if (need.Use == PlaceUse.Consuming && ReferenceEquals(place, owned))

@@ -317,7 +317,8 @@ public sealed partial class Binding
     // container's discard), the two rows every record of the uses keeps (DECISIONS R7-M8); a `$tryWrite` storage's plan row has no defined
     // value and no path below it (PLAN G103 (ii)).
     private bool Claimed(Koto child, HirAdjust last, HirAdjust earlier) =>
-        this.Take(child.BoundType, child, last) is PlaceUse.ByCase or PlaceUse.Exclusive || this.Take(child.BoundType, child, earlier) is PlaceUse.ByCase or PlaceUse.Exclusive;
+        this.Take(child.BoundType, child, last) is PlaceUse.ByCase or PlaceUse.Exclusive ||
+        this.Take(child.BoundType, child, earlier) is PlaceUse.ByCase or PlaceUse.Exclusive;
 
     // The one rule of what a use of a Place needs of it (SPEC 4.7.1, 7.7.3, 8.14, 13.5.6, 15.1.5, 15.1.6): the strongest of its takes that
     // stand (the two rows, Take) and its parent's own operation on it, which no row states: an explicit adaptation that borrows it
