@@ -88,7 +88,7 @@ public sealed partial class Binding
 
                 // SPEC 3.4.3, 4.7.1: a sequence reached here, such as through reference or pair layers, is an implementation limit;
                 // any other receiver, including a range key on an Indexable Type, cannot be indexed by the key.
-                var sequence = ComparisonReferent(this.ComparisonThroughPairs(source.Left, receiver)).Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
+                var sequence = this.OperandTerminal(source.Left, receiver).Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
                 return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
             }
 
@@ -127,7 +127,7 @@ public sealed partial class Binding
         if (!ElementAccess.TryType(source, out var element, out _))
         {
             // SPEC 3.4.3, 12.5.1: only a Tuple or a fixed array has these elements; one reached through further layers is not implemented.
-            var core = receiver is null ? null : ComparisonReferent(this.ComparisonThroughPairs(source.Left, receiver));
+            var core = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
             var limit = core is null || (!ReferenceEquals(core, receiver) && core.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray);
             return this.Fail(source, limit ? BindingFailure.Unsupported : BindingFailure.TypeMismatch);
         }
