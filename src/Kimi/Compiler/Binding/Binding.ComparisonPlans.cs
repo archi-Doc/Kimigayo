@@ -7,7 +7,7 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "The legacy comparison composition beside TyCtxt.Comparison, read by A4's Witnesses until A-12 reads the view, else R7.")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract), (ulong Version, BoundComparison Plan)> comparisonPlans = new();
 
-    private readonly TypeMemo<(ConstraintProof Proof, BoundConstraint? Failed)> comparedParts = new(); // ComparisonProof's composite parts.
+    private readonly TypeMemo<BoundType, (ConstraintProof Proof, BoundConstraint? Failed)> comparedParts = new(); // ComparisonProof's composite parts.
 
     // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of the legacy plan, of
     // TyCtxt.Comparison and of the built-in target (CompilerRequirementTarget): elementwise over its parts (a Tuple or a safe `ref` layer),
