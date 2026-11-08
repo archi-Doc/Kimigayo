@@ -2,7 +2,7 @@
 
 using Kimi.Compiler.Parsing;
 
-// ImplTable (R7-V2a; SPEC 8.6, 8.6.1, 8.6.2, 8.8; DECISIONS R7-Mnn): the conformance declaration table, the one store of a Binding's
+// ImplTable (R7-V2a; SPEC 8.6, 8.6.1, 8.6.2, 8.8; DECISIONS R7-M16): the conformance declaration table, the one store of a Binding's
 // conformance identities and paths.
 // - Responsibility: one identity (BoundConformance) per Type and Contract; one path (BoundConformancePath) per Type, Contract,
 //   declaration and root Contract; the pass's paths and each Type's identities in registration order; the lookups by key; the reset
