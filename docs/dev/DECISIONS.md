@@ -5699,6 +5699,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Task per hop (a 1.5 MB pool stack and an allocation per hop).
   - O-24: the owner (R4's dialog, 2026-11-06), verbatim 「O-24 は、bでお願いいたす」: the transfer is a named exception of 'Catch
     boundaries'.
+  - S superseded by BU-135 (128 MB, the owner's O-82 (b), R7-C8 U-D2).
 - **R4-M179 A binding's Error Copy proof leaves its match buildable (PLAN G471, G485)** (2026-11-06; R4, design D12: outside
   R4-M88's owner reservation, since Binding resolved the match; class Major) SPEC 14.8.4, 15.1.6, 23.1.2. Supersedes BU-110's "and
   its plan Invalid" and `AcquireBinding`'s Coverage write.
@@ -10387,6 +10388,40 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
     have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
   - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
+- **BU-134 Binding bounds a Type's height at H = 8,192 where it is formed: `TypeHeightLimit_Kd`**
+  (2026-11-08; R7-C8 U-D2; Major, design `F\C8\design-ud.md` "U-D2", implementation review 1 REVISE B1-B2 and its fix round; the
+  owner's O-71 (a), O-80 (b) 「b 落とします」, O-82 「O-82 b」, verbatim) IMPL A.4, 21.3.2; SPEC 8.3.3 (Limits), 23.1.1, 23.1.2.
+  - Rule (`Binding.TypeHeight.cs`): one predicate, `OverHeight` (`BoundType.Height`, BU-71, against 8,192), read where a Type's height
+    grows by more than a written layer: a substitution query's result (`SubstituteType`), an expression node's Type (`BindNode`) and a
+    written Type's (`BindType`). A Type over H is one Resource record `TypeHeightLimit_Kd` (`limit:Number`) at the consultation node:
+    `BindNode`'s node, `BindType`'s syntax, or the conformance whose associated Type `PrepareAssociatedBindings` resolves (a
+    consultation frame on it). A refusal outside every frame is a broken contract: `InternalInvariant_Kd` at the project, never silent.
+  - Dependents (SPEC 23.1.2, 8.3.3 Limits; the owner's O-86 (a)): a refused node publishes no Type and its readers rest on it; the
+    one reader of a conformance's associated Type (`ResolveAssociated`) refuses at its own site when the limit refused that
+    conformance. The rule at the proof's evidence has one place, `RestsOnRecoveryOrLimit` (read by `IsDerived` only): a check
+    whose evidence read, directly or through failures resting on it, a recovery node or a node a Resource record refused derives
+    every outcome (Unproven, Invalid or any other) from that record and adds none; a refusal at its own site keeps its own record
+    (a use past a refused associated Type is its own formation). The evidence: a validation pass proves at a use inside the use's
+    consultation frame (`ValidateConformances`, `ValidateDeclarationProjectionInputs`, the projection uses), and
+    `RequireConstraintInFrame` makes the proof's reads of other nodes the prerequisites of its outcome only when the outcome is the
+    use's record; a record the use's own check owns (the conformance's verdict, or an earlier failure) drops the frame, so it never
+    derives from it (G473's `conformance-recovered-*` rows keep their independent record). `RequireConstraint` consults the
+    proof's named cause; `VerifyConformance` names the failed root it read, never a record's category. A node keeps its first
+    failure.
+  - Margin: Binding's walks recurse at most H + L (BU-112's L). Dev's deepest measured walk frame (the substitution walk: 2,752 B a level
+    in Release, 3,632 B in Debug) times 3.5 x (H + L) is 117 MB, inside S = 128 MB. Not covered: the diagnostics adapter's Type text on a
+    host's own thread (open issue below).
+  - Rejected: a check before a walk from `part.Height + Subst.Height` (over-approximates); a typed outcome through `SubstituteType`'s
+    callers; an exception to the site (Binding's paired state is not exception-safe); a sentinel Type; a stack probe (acceptance would
+    depend on the build configuration, IMPL A.5); smaller frames by a query struct (U-D1: +3-5% Bind, located 2026-11-08, dropped by
+    O-82 (b)); a height-only site field (review 1 B2: one consultation mechanism instead).
+  - Programs newly recorded (valid, Resource records only): a Type higher than 8,192: `D_n<T>.Item` (height 2^n) with a layer at n = 13
+    and from n = 14 on; the chains `dbl-15`, `dbl-16`, `dbl-17` with a use and without one (`dblnouse-15`, `-16`); the invalid twins
+    `dblbad-14` to `-16` keep their independent record; review 2's `req-13` and `req-13-self` (a conformance member past H: only
+    height records) and their twin with an independent mismatch (both reported); `let` chains of more than 8,192 statements. No
+    test, library or milestone program (whole suite on the prototype and the Session).
+- **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
+  R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
