@@ -143,8 +143,9 @@ public class CompilerThreadTest
         Assert.Equal(0, sum);
     }
 
-    // A warm hop allocates nothing on its caller or on its worker, also under a culture and an AsyncLocal with a change handler.
-    // AllocationMeasurement.MeasureHops measures from the test's thread, which is not a compiler thread.
+    // A warm hop allocates nothing on its caller or on its worker, whether its waits end in the spin or really block (G580), also
+    // under a culture and an AsyncLocal with a change handler. AllocationMeasurement.MeasureHops measures from a plain thread of its
+    // own, which is not a compiler thread.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmHopAllocatesNothing()

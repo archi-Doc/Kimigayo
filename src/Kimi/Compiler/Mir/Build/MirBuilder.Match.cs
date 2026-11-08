@@ -129,7 +129,8 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.8.1, 13.4: a Literal position's test, the comparison of the value its Place holds with the literal's (a string's inspected
-    // through a shared borrow); a mismatch goes on to the next arm.
+    // through a shared borrow, by the witness an operator calls: no Temporary arises, a Pattern being no expression); a mismatch goes on to
+    // the next arm.
     private void LiteralTest(in BoundPattern position, MirPlace place, int next)
     {
         var literal = position.Literal;
@@ -140,9 +141,10 @@ internal sealed partial class MirBuilder
             operand = this.Borrow(SemanticsKind.Ref, place, position.Source);
         }
 
-        var operands = this.body.AddOperand(operand);
+        var start = this.arguments.Count;
+        this.arguments.Add(operand);
         var magnitude = (Int128)literal.Magnitude;
-        this.body.AddOperand(
+        this.arguments.Add(
             MirOperand.Const(
             this.body.Const(
             literal.Kind switch
@@ -151,7 +153,15 @@ internal sealed partial class MirBuilder
             PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
             _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
         })));
-        this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), position.Source);
+        if (this.Witnessed(MirBinaryOp.Eq, start) is { } comparison)
+        {
+            this.Compared(value, comparison, MirBinaryOp.Eq, start, position.Source);
+        }
+        else
+        {
+            this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, this.Flush(start), proven: true), position.Source);
+        }
+
         this.Pass(MirOperand.Copy(this.Made(value)), 1, next, position.Source);
     }
 

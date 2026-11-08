@@ -41,7 +41,7 @@ internal static partial class LlvmModuleText
     // Fixed profile vocabulary: no per-module tracking or warm declaration construction.
     // The aggregate helpers copy bytes through these intrinsics.
     internal const string MemoryDeclarations =
-        "declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n" +
+        "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n" +
         "declare void @llvm.memmove.p0.p0.i64(ptr nocapture writeonly, ptr nocapture readonly, i64, i1 immarg)\n";
 
     internal const string OverflowDeclarations = """

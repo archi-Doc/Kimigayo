@@ -1780,6 +1780,20 @@ public sealed partial class FunctionCodegenTest
         return (c, [.. generated.Where(x => set.Items[x].Key.Kind == MonoKind.Body).Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).OfType<Koto>()]);
     }
 
+    // The definitions of a definition's body items (null: the top-level statements), each written directly whatever records the module's
+    // other items make: an instance a call names (the call is C3a's row) or a body beside a broken one. Every body item is an output
+    // root.
+    internal static string[] ItemTexts(Compilation c, string? name)
+    {
+        var (program, collector, module, bodies) = WrittenModule(c);
+        return [.. bodies.Where(x => collector.Set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
+            return writer.ToString();
+        })];
+    }
+
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
     // after acceptance as Project discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
@@ -1806,20 +1820,6 @@ public sealed partial class FunctionCodegenTest
     }
 
     private static string Generate(string source) => Generate(Analyze(source));
-
-    // The definitions of a definition's body items (null: the top-level statements), each written directly whatever records the module's
-    // other items make: an instance a call names (the call is C3a's row) or a body beside a broken one. Every body item is an output
-    // root.
-    private static string[] ItemTexts(Compilation c, string? name)
-    {
-        var (program, collector, module, bodies) = WrittenModule(c);
-        return [.. bodies.Where(x => collector.Set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
-        {
-            using var writer = new StringWriter();
-            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
-            return writer.ToString();
-        })];
-    }
 
     // A program's module written with every body item an output root (ItemTexts), whatever records it makes: its MIR, collector, module and
     // body items, whose items a test then writes directly.

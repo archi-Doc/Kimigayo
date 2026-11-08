@@ -1027,6 +1027,79 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // SPEC 13.4, 14.8.1: a comparison's literal has no Place and no destruction, so a string constant at ref/string reaches no other position
+    // than an input of a Call that keeps nothing of it.
+    [Fact]
+    public void AStringConstantAtARefIsNoValue()
+    {
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var view = Fixture.Value.Compilation.Types.Reference(SemanticsKind.Ref, BoundType.String);
+        var (held, block) = (MirModelTest.Local(body, view), body.AddBlock());
+        var literal = MirOperand.Const(body.Const(new(MirConstKind.String, view, Value: "a")));
+        body.Push(block, MirStatement.Assign(held, MirRvalue.Use(AddOperands(body, [literal])), At));
+        body.Terminate(block, MirTerminator.Return(At));
+        Assert.Contains((MirViolation.Operation, body.Source), Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // The Call positions of the same rule, by the facts A5 reads and not by the result's Type: `put` returns a scalar and keeps its input through
+    // `h`, `pick` keeps it in its result, `pinned` and `bound` relate it to static, which no output states; a Value callee has no declaration to
+    // read, a default template's call no contract, and RawSlice's result retains its backing beyond its declaration (MirDescriptors.Retained);
+    // only `size` keeps nothing.
+    [Theory]
+    [InlineData("size", false)]
+    [InlineData("put", true)]
+    [InlineData("pick", true)]
+    [InlineData("pinned", true)]
+    [InlineData("bound", true)]
+    [InlineData("value", true)]
+    [InlineData("template", true)]
+    [InlineData("backing", true)]
+    public void AStringConstantAtARefIsAnInputItsCallKeepsNothingOf(string position, bool reported)
+    {
+        const string Source = """
+            func put(h: uniq/Array<ref/string during a>, s: ref/string during a) -> i32
+                h.insert(0, s)
+                return 1
+            func size(s: ref/string) -> i32 => 1
+            func pick(s: ref/string) -> ref/string during s => s
+            func pinned(s: ref/string during static) -> i32 => 1
+            func bound(s: ref/string during b) -> i32
+                origin b outlives static
+                return 1
+            func first(s: ref/string, tail: i32 = if s.isEmpty => 1 else => second(s)) -> i32 => tail
+            func second(s: ref/string, tail: i32 = if s.isEmpty => 2 else => first(s)) -> i32 => tail
+            unsafe func backed(p: raw/i32, s: ref/Array<i32> during b) -> Slice<i32> during b => Raw.slice(p, 1)
+            func run(h: uniq/Array<ref/string during a>, s: ref/string during a, t: ref/string during static, f: (ref/string) -> i32) -> i32
+                let stored = put(h, s)
+                let measured = size(s)
+                let picked = pick(s)
+                let fixed = pinned(t)
+                let called = f(s)
+                let held = bound(t)
+                return stored + measured + fixed + called + held + first(s)
+
+            """;
+        var c = MirBuildTest.Compile(Source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var name = position == "backing" ? "backed" : "run";
+        var body = program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == name);
+        var call = body.Blocks.ToArray().Select(static x => x.Terminator).Single(x => x.Kind == MirTerminatorKind.Call && position switch
+        {
+            "value" => x.Callee.Kind == MirCalleeKind.Value,
+            "template" => x.Callee is { Kind: MirCalleeKind.Fn, Arg: > 0 } && x.Callee.Symbol?.Name == "first",
+            "backing" => x.Callee is { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.RawSlice },
+            _ => x.Callee.Symbol?.Name == position,
+        });
+        var view = c.Types.Reference(SemanticsKind.Ref, BoundType.String);
+        Unsafe.AsRef(in body.Operands[call.Start + call.Count - 1]) = MirOperand.Const(body.Const(new(MirConstKind.String, view, Value: "a")));
+        var findings = Validate(body, c.Types).Select(static x => x.Rule).ToArray();
+        Assert.Equal(reported, findings.Contains(MirViolation.Operation));
+        Assert.True(reported || findings.Length == 0);
+    }
+
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
