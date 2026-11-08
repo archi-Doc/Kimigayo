@@ -483,8 +483,9 @@ public sealed partial class Binding
     private DiagnosticCode OriginRelationCode(Koto node)
         => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
 
-    // Fails a node with the facts that explain the failure. A node keeps its first failure only, so the facts are recorded only
-    // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.
+    // Fails a node with the facts that explain the failure. A node keeps its first failure only, or one taking its own clause's resting
+    // InvalidOrigin (SlotTaken), so the facts are recorded only with the failure the slot takes: a fact in a publication table always
+    // explains the failure of its node, whatever the failure's code.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
         if (!this.SlotTaken(node))

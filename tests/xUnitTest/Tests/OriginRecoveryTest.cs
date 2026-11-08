@@ -25,7 +25,7 @@ public class OriginRecoveryTest(ITestOutputHelper output)
     private const string Unsafe = "        return 0\n    public unsafe func e(self: ref/Self) -> i32\n        return 0";
     private const string Outer = "struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move";
     private const string Alias = "alias H => Outer<i32>.Helpers\n    origin source ";
-    private const string Twin = "alias H2 => Outer<bool>.Helpers\n    origin source = static\n";
+    private const string SecondAlias = "alias H2 => Outer<bool>.Helpers\n    origin source = static\n";
 
     [Theory]
     [InlineData("View<i32>{}", "OriginBindingSetName_Kd")]
@@ -127,10 +127,10 @@ public class OriginRecoveryTest(ITestOutputHelper output)
     }
 
     // SPEC 23.1.2, 15.3.3 (R7-E1d, DIAGNOSTICS rule 4): a failed clause fails no other part of its owner, so the resting InvalidOrigin it
-    // writes into the owner yields, with the clause's edge, to the owner's own later failure, which each twin without the clause reports: a
-    // receiver (direct, so the recovery clause's edge is gone), the first of two (receiver, then shapes), an alias target's incomplete
-    // contract (SPEC 9.7.2: the same value, InvalidOrigin) once or twice, under a clause that fails by its operand. A conformance Use is no
-    // owner of the clause and keeps its record.
+    // writes into the owner yields, with the clause's edge, to the owner's own later failure, reported as it is without the clause (the
+    // rows with `==` show it for the receiver and the conformance): a receiver (direct, so the recovery clause's edge is gone), the first of
+    // two (receiver, then shapes), an alias target's incomplete contract (SPEC 9.7.2: the same value, InvalidOrigin) once or twice, under a
+    // clause that fails by its operand. A conformance Use is no owner of the clause and keeps its record.
     [Theory]
     [InlineData(Receiver + "= b\n        return 0", "InvalidTypeFormation_Kd OriginRelationOperator_Kd")]
     [InlineData(Receiver + "== b\n        return 0", "InvalidTypeFormation_Kd")]
@@ -139,7 +139,7 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         "InvalidTypeFormation_Kd OriginRelationOperator_Kd ParameterShapeMismatch_Kd")]
     [InlineData(Alias + "= static\n" + Outer, "InvalidOriginBinding_Kd MissingOriginBinding_Kd OriginRelationOperator_Kd")]
     [InlineData(
-        Alias + "= static\n" + Twin + Outer,
+        Alias + "= static\n" + SecondAlias + Outer,
         "InvalidOriginBinding_Kd InvalidOriginBinding_Kd MissingOriginBinding_Kd MissingOriginBinding_Kd OriginRelationOperator_Kd OriginRelationOperator_Kd")]
     [InlineData(Alias + "== static\n" + Outer, "InvalidOriginBinding_Kd MissingOriginBinding_Kd")]
     [InlineData(Conformance + "        origin a = b\n" + Unsafe, "IncompatibleContractImplementation_Kd OriginRelationOperator_Kd")]

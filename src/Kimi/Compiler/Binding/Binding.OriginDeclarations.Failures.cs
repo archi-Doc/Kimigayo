@@ -19,7 +19,8 @@ namespace Kimi.Compiler;
 //   unavailable (its bound clauses kept in `RejectedRelations`, `Relations` cleared, State 3) with each pending use a dependent of the
 //   failed clause, or a local's completion going on with the named slots left Unbound; the part an Unbound atom rests on; the failed
 //   clause a failed fit rests on, or none when it is independent; the clause an owner failed only by (FailedOriginClause), on which a
-//   check reading that owner's unavailable contract rests.
+//   check reading that owner's unavailable contract rests while the owner's slot holds the clause's failure (after the owner's own later
+//   failure took the slot, the contract stays unavailable and FailedOriginClause names no clause).
 // - Invariants: `Failure` and `PendingFailure` hold the first failed clause or part, and these and `FailedClauses` are reset each pass;
 //   RestPendingOn changes no State, so a later bind in State 1 keeps the same pending atom; a failed contract supplies no equality,
 //   outlives edge or elision evidence and is no premise except the dependence queries' (RejectedRelations, BU-62, BU-69), which only
