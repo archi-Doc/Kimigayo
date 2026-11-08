@@ -1,14 +1,5 @@
 // Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.2). Their comments state their operation
 // contracts (SPEC 5.2).
-// For a Dictionary, the remainder's `storage` is the value of the Handle's `buffer` (see dictionaryStorage), `stride`
-// is the slot stride, and `link` and `count` are the first live link and the live count. ownStorage also gives the
-// last live link as `tail` and transfers the storage, the entries and their destruction responsibility.
-internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
-    K is Equatable
-internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
-    K is Equatable
-internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>
-    K is Equatable
 /// Returns the address of the key in the slot that starts at `slot`, with the provenance and authority of `slot`.
 ///
 /// - safety: `slot` starts a slot in the slot storage of a `Dictionary<K, V>`.

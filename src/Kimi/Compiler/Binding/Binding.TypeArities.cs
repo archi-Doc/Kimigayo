@@ -34,13 +34,13 @@ public sealed partial class Binding
         ref TypeCandidates result,
         BindingSymbol? head,
         BindingScope scope,
-        TypeLookupRole role,
+        LookupRole role,
         int arity,
         AliasImport import = default)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
-            if (!HasTypeLookupRole(candidate, role) || !this.Accessible(candidate, scope))
+            if (!HasLookupRole(candidate, role) || !this.Accessible(candidate, scope))
             {
                 continue;
             }

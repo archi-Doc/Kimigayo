@@ -322,7 +322,7 @@ public sealed partial class Binding
             if (!lengths.IsEmpty && expression is not null)
             {
                 expression = this.SubstituteLength(expression, binder, lengths);
-                if (expression is null || (expression.IsConstant && !this.ValidLength(expression.Value)))
+                if (expression is null || (expression.IsConstant && !ValidLength(expression.Value)))
                 {
                     return null;
                 }
@@ -339,7 +339,7 @@ public sealed partial class Binding
             {
                 var argument = type.LengthArguments[i];
                 itemLengths[i] = argument is null || lengths.IsEmpty ? argument : this.SubstituteLength(argument, binder, lengths);
-                if (argument is not null && (itemLengths[i] is null || (itemLengths[i]!.IsConstant && !this.ValidLength(itemLengths[i]!.Value))))
+                if (argument is not null && (itemLengths[i] is null || (itemLengths[i]!.IsConstant && !ValidLength(itemLengths[i]!.Value))))
                 {
                     return null;
                 }

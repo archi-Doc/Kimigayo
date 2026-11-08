@@ -8,17 +8,15 @@ namespace Kimi.Compiler.Backend;
 // of the Body disposition whose legacy row names a kernel's writer, its text the P2a kernel row's (LegacyRuntimeHelpers.StorageRow), the one
 // copy (PD2), over its input spelled from the call. DictionaryKernel: each Dictionary kernel over its call's entry layout, of the K
 // and V its substitution binds in the item's instance (its row's TypeArguments need, Needed; DECISIONS R5-M149), with its writer's kernel
-// and number: dictionaryStorage's {address, stride} Tuple,
-// borrowStorage's and borrowStorageUniq's remainder {storage, stride, link, count}, ownStorage's {storage, stride, link, tail, count} (each
-// at the result record's Fields in declaration order) with the entry stride, and keyAt's and valueAt's slot address at the key's or the
-// value's offset; another writer is a broken contract (LegacyRow.DictionaryKernel names exactly these five).
+// and number: dictionaryStorage's {address, stride} Tuple with the entry stride, and keyAt's and valueAt's slot address at the key's or the
+// value's offset; another writer is a broken contract (LegacyRow.DictionaryKernel names exactly these three). The remainders are bodies
+// (R8-K1a).
 internal sealed partial class FunctionCodegen
 {
     // SPEC 22.2 (DECISIONS R5-M124): a Dictionary storage kernel (LegacyRow.DictionaryKernel) over its call's entry layout
-    // (DictionaryEntryLayout.Of of the K and V the call's substitution binds, in the item's instance; one rule for the five writers), its
-    // source operand 0's value (a reference's Dictionary address, ownStorage's moved Dictionary in memory, a slot pointer), its result the
-    // call Place's record, whose Fields the kernel stores, or, for a result that travels as a scalar (keyAt's and valueAt's pointer), the
-    // value the kernel defines.
+    // (DictionaryEntryLayout.Of of the K and V the call's substitution binds, in the item's instance; one rule for the three writers), its
+    // source operand 0's value (a reference's Dictionary address, a slot pointer), its result the call Place's record, whose Fields the kernel
+    // stores, or, for a result that travels as a scalar (keyAt's and valueAt's pointer), the value the kernel defines.
     private void DictionaryKernel(in MirTerminator call, LegacyWriter writer, Subst subst)
     {
         if (this.Needed(subst, 0, out _) is not { } key || this.Needed(subst, 1, out _) is not { } value || this.LoweringOf(call.Place) is not { } result)
@@ -30,8 +28,6 @@ internal sealed partial class FunctionCodegen
         var (kernel, number) = writer switch
         {
             LegacyWriter.DictionaryLayout => (StorageKernelKind.DictionaryLayout, entry.Stride),
-            LegacyWriter.DictionaryBorrow => (StorageKernelKind.BorrowDictionary, entry.Stride),
-            LegacyWriter.DictionaryOwn => (StorageKernelKind.OwnDictionary, entry.Stride),
             LegacyWriter.KeyAt => (StorageKernelKind.EntryAddress, entry.KeyOffset),
             LegacyWriter.ValueAt => (StorageKernelKind.EntryAddress, entry.ValueOffset),
             _ => throw new InvalidOperationException($"The legacy writer {writer} is no Dictionary storage kernel."),
@@ -50,7 +46,6 @@ internal sealed partial class FunctionCodegen
             this.Spelled(storage, stackalloc char[SpellingLength]),
             this.Spelled(scalar ? defined : record, stackalloc char[SpellingLength]),
             number,
-            scalar ? default : result.Layout.FieldOffsets.Span,
             this.next++);
         LegacyRuntimeHelpers.StorageRow(kernel).Write(this.output, input);
         this.Finish(call, scalar ? defined : null);

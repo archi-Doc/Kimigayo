@@ -46,7 +46,7 @@ public static partial class Parser
             var types = default(TemporaryKotoList);
             do
             {
-                types.Add(ParseDeclarationType(ref reader));
+                types.Add(ParseType(ref reader, TypeContext.Type));
             }
             while (reader.TryConsume(TokenKind.Comma));
             bases = types.ToArray();
@@ -129,7 +129,7 @@ Exit:
             reader.HasInferredArrayElement = false;
             try
             {
-                typeKoto = ParseType(ref reader);
+                typeKoto = ParseType(ref reader, TypeContext.Type);
                 inferredArrayElement = reader.HasInferredArrayElement;
             }
             finally

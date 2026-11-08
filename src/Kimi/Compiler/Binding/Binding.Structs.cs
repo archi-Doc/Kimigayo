@@ -331,7 +331,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifier = this.TypeName(member.Left, scope, TypeLookupRole.Any, arity: -1);
+        var qualifier = this.TypeName(member.Left, scope, LookupRole.Any, arity: -1);
         if (qualifier is null)
         {
             // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).

@@ -17,9 +17,12 @@ internal enum DictionaryHelperKind : byte
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct DictionaryEntryLayout(long KeyOffset, long ValueOffset, long Stride)
 {
-    /// <summary>Gets the layout of an entry (IMPL 21.1.3, implementation-defined), the one rule code generation reads (PD2): its two links
-    /// first, then the key at the first offset from 16 aligned for it, the value after the key aligned for it, and the stride the value's
-    /// end aligned for the entry, whose alignment is at least the links' 8.</summary>
+    /// <summary>Gets the layout of an entry (IMPL 21.1.3, implementation-defined), the rule the remaining Dictionary kernels and placeEntry's
+    /// helper read (PD2): its two links first, then the key at the first offset from 16 aligned for it, the value after the key aligned for
+    /// it, and the stride the value's end aligned for the entry, whose alignment is at least the links' 8. Until K1b removes it, it is the
+    /// second statement of the slot rule beside the library's DictionaryStorage.slotStride (R8-K1a), with which it must agree on one buffer:
+    /// on placeEntry's path the Place helper hands this stride to append, which passes it on to reserve, grow and appendSlot, while the
+    /// library bodies reserveEntries, shrinkEntries, removeEntry and clearEntries pass slotStride's.</summary>
     /// <param name="key">The key's layout.</param>
     /// <param name="value">The value's layout.</param>
     /// <returns>The entry layout.</returns>

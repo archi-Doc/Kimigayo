@@ -3,12 +3,18 @@
 using System.Buffers;
 using System.Globalization;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
 /// <summary>The scalar value-plan subset shared by ownership and emission, independent of storage layout.</summary>
 internal static class ScalarTypes
 {
+    /// <summary>The width in bits of <c>isize</c> and <c>usize</c> for every Compilation, with or without a target: the profile's
+    /// (SPEC 22, O-79 (a); IMPL 21.1.3), from <see cref="IrTarget"/>'s row for its triple. A target's own width is only the
+    /// <c>pointerWidth</c> Condition's (SPEC 19.2).</summary>
+    internal static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
+
     /// <summary>Gets whether a Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a wrapping integer Core; no
     /// layer is followed. The one definition the MIR builder's recorded values and MirValidator's testRecordValue row read.</summary>
     /// <param name="type">The Type, or null.</param>
@@ -16,14 +22,14 @@ internal static class ScalarTypes
     internal static bool Supports(BoundType? type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) || type is { IsFloatingPoint: true } || Width(type) != 0;
 
     // A wrapping integer Type answers every width and signedness query by its integer argument (SPEC 3.1.1).
-    internal static int Width(BoundType? type, int pointerWidth = 64) => type?.Kind != BoundTypeKind.Primitive ? 0 : type.Underlying.Name switch
+    internal static int Width(BoundType? type) => type?.Kind != BoundTypeKind.Primitive ? 0 : type.Underlying.Name switch
     {
         "i8" or "u8" => 8,
         "i16" or "u16" => 16,
         "i32" or "u32" => 32,
         "i64" or "u64" => 64,
         "i128" or "u128" => 128,
-        "isize" or "usize" => pointerWidth,
+        "isize" or "usize" => SizeWidth,
         _ => 0,
     };
 
@@ -33,10 +39,10 @@ internal static class ScalarTypes
     internal static Int128 Normalize(Int128 bits, int width) => width <= 64
         ? (unchecked((long)bits) << (64 - width)) >> (64 - width) : bits;
 
-    internal static bool TryLiteral(BoundType? type, UInt128 magnitude, bool negative, int pointerWidth, out Int128 bits)
+    internal static bool TryLiteral(BoundType? type, UInt128 magnitude, bool negative, out Int128 bits)
     {
         bits = 0;
-        var width = Width(type, pointerWidth);
+        var width = Width(type);
         if (width == 0)
         {
             return false;

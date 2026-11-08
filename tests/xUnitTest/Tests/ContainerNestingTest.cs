@@ -188,6 +188,21 @@ public class ContainerNestingTest
         c.Analyze();
     }
 
+    // SPEC 9.6, 18.2.1 (R7-N1b): a Type `N` opened from `Box<i32>` and a value `N` opened from `Other<i64>` qualify one member. The value
+    // path compares only its own sources' environments, never the Type path's import of the node, so the qualifier is the located
+    // Unsupported_Kd of its class (BU-117, the owner's decision O-32 (a)), never AmbiguousBinding_Kd: where the Type path finds the
+    // member (valid) and where neither path does (invalid).
+    [Theory]
+    [InlineData("N.m()")]
+    [InlineData("N.k()")]
+    public void AQualifierOpenedFromTwoInstantiationsIsUnsupported(string use)
+    {
+        var c = CompilationTestHelper.Parse("alias Box<i32>\nalias Other<i64>\nstruct Box<T>\n    public struct N\n        public func m() -> i32 => 1\n" +
+            "struct Other<T>\n    public func N() -> i32 => 2\nfunc g() -> i32 => " + use + "\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal("Unsupported_Kd N", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+    }
+
     // SPEC 9.6, 6.1 (PLAN G481 (3)): a group qualifier that failed selects no member, as a failed struct qualifier does; the scope lookup
     // is the root container's and a Kotonoha reference's, never a fallback for a failed group.
     [Theory]

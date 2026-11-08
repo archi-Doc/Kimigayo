@@ -156,13 +156,13 @@ public static partial class Parser
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
         {
             var open = reader.Read().Span.Start;
-            var reference = ParseType(ref reader);
+            var reference = ParseType(ref reader, TypeContext.Type);
             reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
             path = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
         }
         else
         {
-            path = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader, false) : ParseName(ref reader);
+            path = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader);
         }
 
         while (true)
