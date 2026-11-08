@@ -5,7 +5,9 @@
 // - Responsibility: ClosureEffects, one reusable visitor: a capture transferred out of the environment, or an outer environment
 //   binding a nested Closure's entry moves, makes the call Consuming; a Place reached from a capture (the capture itself or a Place
 //   its path reaches through NextPathStep's steps: a part of it, a captured referent, a raw pointer's referent) whose use needs it
-//   exclusively (NeedsExclusively, by the one place-use rule, Binding.UseOf, over its consumer's takes), or a nested entry that Reborrows
+//   exclusively (NeedsExclusively, by the one place-use rule, Binding.UseOf, over its consumer's takes; past a raw step also a Take or an
+//   in-place destruction, and the path continues through a pointer derived from a reached one, DerivesPointer: SPEC 7.7.3's environment
+//   rule), or a nested entry that Reborrows
 //   or exclusively borrows an outer environment binding, makes it Exclusive; every other use borrows (Shared). An acquisition of the binding itself
 //   by value without an operator (ConsumedByValue: as the Adjust rule takes it from its consumer, a discarded Place included, or a
 //   nested bare entry) that Reborrows in some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked
@@ -175,6 +177,18 @@ public sealed partial class Binding
             return null;
         }
 
+        // SPEC 5.2.1 condition 3's derived pointers, a closed list (5.3, 5.4): a displacement `p + n` or `p - n`, a conversion between raw
+        // pointer Types, an Origin-stating or Origin-dropping conversion or fit, or an identity conversion, each keeping the operand's
+        // provenance. No other form derives: a `usize` round trip has none (5.5), and a pointer a call with a body returns is not derived
+        // from its arguments (the owner's O-76 (b) (i)). R7-Y2c's copies through the body's locals read this list.
+        private static bool DerivesPointer(Koto place) => ReferenceTypes.IsPointer(place.BoundType) && place.Parent switch
+        {
+            BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus } displacement => ReferenceEquals(displacement.Left, place) && ReferenceTypes.IsPointer(displacement.BoundType),
+            ConversionKoto { ConversionBinding: ConversionBinding.Pointer or ConversionBinding.Identity } conversion =>
+                ReferenceEquals(conversion.Left, place) && ReferenceTypes.IsPointer(conversion.BoundType),
+            _ => false,
+        };
+
         // SPEC 7.7.2, 7.7.3: a nested Closure's entries of this binding's captures: moving an outer environment value is Consuming;
         // Reborrowing it or borrowing its slot exclusively needs exclusive access to the outer environment, in the cases where it Reborrows
         // for a bare entry.
@@ -228,29 +242,35 @@ public sealed partial class Binding
         private Need UsesExclusively(Koto capture)
         {
             bool? byValue = false;
+            var raw = false;
             for (var place = capture; ; place = place.Parent!)
             {
-                var need = this.NeedsExclusively(place);
+                var need = this.NeedsExclusively(place, raw);
                 byValue = ReferenceEquals(place, capture) ? need.ByValue : byValue;
                 if (need.Exclusive)
                 {
                     return new(true, need.ByCase && ReferenceEquals(KotoHelper.UnwrapParentheses(place), capture), byValue);
                 }
 
-                _ = NextPathStep(place.Parent!, out var next);
-                if (!(IsGroup(place.Parent) || ReferenceEquals(next, place)))
+                // SPEC 7.7.3: past a raw pointer's pointee the environment's write authority is what an access needs. A pointer derived
+                // from an environment pointer (DerivesPointer) is that pointer, and a pointer read through a raw Place the environment
+                // reaches is read from the environment (the owner's O-76 (c) (i)), so the walk continues past a raw step.
+                var step = NextPathStep(place.Parent!, out var next);
+                raw |= step == PathStep.RawFollow && ReferenceEquals(next, place);
+                if (!(IsGroup(place.Parent) || ReferenceEquals(next, place) || DerivesPointer(place)))
                 {
                     return new(false, false, byValue);
                 }
             }
         }
 
-        // Whether the use of a Place needs it exclusively (SPEC 7.7.3, 3.5.1, UseOf); by case when only an acquisition by value of a pair
-        // layer that Reborrows in some admitted cases needs it (SPEC 8.14), which ConsumedByValue decides for such a Place.
-        private Need NeedsExclusively(Koto place)
+        // Whether the use of a Place needs it exclusively (SPEC 7.7.3, 3.5.1, UseOf), past a raw step (raw) also a Take or an in-place
+        // destruction (SPEC 5.2.1 condition 3, 5.2.3); by case when only an acquisition by value of a pair layer that Reborrows in some
+        // admitted cases needs it (SPEC 8.14), which ConsumedByValue decides for such a Place.
+        private Need NeedsExclusively(Koto place, bool raw)
         {
             var use = this.UseOf(place);
-            if (use == PlaceUse.Exclusive)
+            if (use == PlaceUse.Exclusive || (raw && use == PlaceUse.Consuming))
             {
                 return new(true, false, false);
             }

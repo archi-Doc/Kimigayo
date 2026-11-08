@@ -118,6 +118,30 @@ public class ClosureReceiverClassificationTest
     public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
         => AssertCallReceiver(Places + body + "        return 0\n    let v = f()\n", exclusive);
 
+    // SPEC 7.7.3, 5.2.1 condition 3, 5.3, 5.4 (DECISIONS R4-M134; PLAN G251 (1); the owner's O-76 (c) (i)): an access that needs write
+    // capability through a raw pointer read from the environment, through a raw Place it reaches included, or a pointer derived from one
+    // (a displacement, a raw pointer conversion), a write, a Take or an in-place destruction, makes the call Exclusive; a read leaves it
+    // Shared. Labels from SPEC: each `true` row's `let` call is invalid, its `var` twin valid.
+    [Theory]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => consume((*p)@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => _ = (*p)@move\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p + 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p - 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => ((p + 1) - 1)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p@raw/i32)[0] = 5\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => (*pp + 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => ((*pp)@raw/i32)[0] = 5\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => consume((*(*pp))@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (*p).v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (p + 0)[0].v\n    let v = f()\n", false)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () -> i32\n        unsafe => return (*pp)[0].v\n    let v = f()\n", false)]
+    public void AWriteCapabilityAccessThroughAnEnvironmentPointerIsAnExclusiveCall(string source, bool exclusive)
+        => AssertCallReceiver(source, exclusive);
+
+    private const string RawDeclarations = "struct Probe\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc consume(x: Probe) => ()\n";
+    private const string RawProbe = RawDeclarations + "public func main() -> ()\n    let p = Raw.allocate<Probe>(1)\n";
+    private const string RawPointerProbe = RawDeclarations + "public func main() -> ()\n    let pp = Raw.allocate<raw/Probe>(1)\n";
+
     // SPEC 8.14, 13.5.6, 7.7.3: a case adaptation of a capture that borrows it exclusively in an admitted case makes the call Exclusive,
     // the strongest requirement over the cases; one whose borrowing cases are all shared stays Shared.
     [Theory]

@@ -33,12 +33,14 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // What a use of a Place needs of it, by strength (SPEC 4.7.1, 7.7.3, 8.14): read capability; exclusive capability only in the admitted
-    // cases where its acquisition Reborrows; exclusive capability. A Binding representation (UseOf), no column (the owner's O-40 (a)).
+    // cases where its acquisition Reborrows; exclusive capability; or its value, moved out. A Binding representation (UseOf), no column
+    // (the owner's O-40 (a)).
     private enum PlaceUse : byte
     {
         Shared,
         ByCase,
         Exclusive,
+        Consuming,
     }
 
     // How a consumer uses an operand (SPEC 3.5, 13.5.5, 13.4): an acquisition by value, a use in place (a borrow, a follow, a runtime test,
@@ -303,15 +305,18 @@ public sealed partial class Binding
 
     // What a take needs of its child (SPEC 10.2, 4.7.2, 8.14): a pair-case acquisition that Reborrows in some case (BareReborrows, the owner
     // case's target included), ByCase, tested first, so that a pair target's exclusive mode stays by case; its operation's target or an
-    // exclusive borrow (HirAdjust.Exclusive) or the Reborrow of a child whose Type needs exclusive capability, Exclusive; any other, Shared.
+    // exclusive borrow (HirAdjust.Exclusive) or the Reborrow of a child whose Type needs exclusive capability, Exclusive; a Move,
+    // Consuming; any other, Shared.
     private PlaceUse Take(Koto child, HirAdjust adjust) =>
         adjust.Acquire == HirAcquire.ByCase && child.BoundType is { } type && this.BareReborrows(type, child) ? PlaceUse.ByCase
-        : adjust.Exclusive || (adjust.Acquire == HirAcquire.Reborrow && this.Exclusive(child.BoundType)) ? PlaceUse.Exclusive : PlaceUse.Shared;
+        : adjust.Exclusive || (adjust.Acquire == HirAcquire.Reborrow && this.Exclusive(child.BoundType)) ? PlaceUse.Exclusive
+        : adjust.Acquire == HirAcquire.Move ? PlaceUse.Consuming : PlaceUse.Shared;
 
     // Whether a child's takes so far claim it: its last row (the column's) or the row beside it (PlanRow.Adjust: an earlier call's, or its
     // container's discard), the two rows every record of the uses keeps (DECISIONS R7-M8); a `$tryWrite` storage's plan row has no defined
     // value and no path below it (PLAN G103 (ii)).
-    private bool Claimed(Koto child, HirAdjust last, HirAdjust earlier) => this.Take(child, last) != PlaceUse.Shared || this.Take(child, earlier) != PlaceUse.Shared;
+    private bool Claimed(Koto child, HirAdjust last, HirAdjust earlier) =>
+        this.Take(child, last) is PlaceUse.ByCase or PlaceUse.Exclusive || this.Take(child, earlier) is PlaceUse.ByCase or PlaceUse.Exclusive;
 
     // The one rule of what a use of a Place needs of it (SPEC 4.7.1, 7.7.3, 8.14, 13.5.6, 15.1.5, 15.1.6): the strongest of its takes that
     // stand (the two rows, Take) and its parent's own operation on it, which no row states: an explicit adaptation that borrows it
@@ -328,8 +333,10 @@ public sealed partial class Binding
             _ => parentOp is HirOp.Assign or HirOp.CompoundAssign && ReferenceEquals(Operand(parent), child),
         };
 
+        // An own operation never moves its operand (an assignment target, a borrow's operand and a Subject are not moved), so Consuming
+        // and an own exclusive operation never meet.
         var use = (PlaceUse)Math.Max((byte)this.Take(child, last), (byte)this.Take(child, earlier));
-        return own ? PlaceUse.Exclusive : use;
+        return own && use < PlaceUse.Exclusive ? PlaceUse.Exclusive : use;
     }
 
     // The publisher's record of the uses of one module's nodes (a call shared across modules names nodes of another), a struct, so that
