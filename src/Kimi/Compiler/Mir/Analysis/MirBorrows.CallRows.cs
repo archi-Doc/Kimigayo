@@ -126,7 +126,7 @@ internal sealed partial class MirBorrows
         this.covering.Clear();
         var item = call.Callee.Kind == MirCalleeKind.Value && this.TypeOf(call.Operand) is { } callee ? types.CalledItem(callee) : null;
         var (symbol, subst) = call.Callee.Kind != MirCalleeKind.Value ? (call.Callee.Symbol, call.Callee.Subst)
-            : item is null ? default : (item.Symbol, types.SubstOfItem(item));
+            : item is not null && types.SubstOfItem(item) is { } bound ? (item.Symbol, bound) : default;
         if (symbol is null || TyCtxt.Signature(symbol, null, output, out _) is not { Semantics: SemanticsKind.Raw })
         {
             return;

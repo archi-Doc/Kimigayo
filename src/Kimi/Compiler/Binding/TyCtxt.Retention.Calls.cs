@@ -134,10 +134,10 @@ internal sealed partial class TyCtxt
     internal bool HasReceiverInput(BoundType callee) => Closure(callee) is not null;
 
     // SPEC 7.7.4, 15.6.4 (PLAN G584): the Function Item a Value callee calls, the callee without its acquisition layer
-    // (Binding.CallableCore) where Binding.SignatureOwner gives a function's declaration behind it; null for a Closure, a Function value
-    // or a Callable-bounded value. Its declaration and Item substitution (SubstOfItem) are the call's, its slots in declared order (7.3.4).
+    // (Binding.CallableCore) where that is the Item of a function declaration; null for a Closure, a Function value or a Callable-bounded
+    // value. Its declaration and Item substitution (SubstOfItem) are the call's, its slots in declared order (7.3.4).
     internal BoundType? CalledItem(BoundType callee)
-        => Binding.SignatureOwner(callee) is not null && Binding.CallableCore(callee) is { Kind: BoundTypeKind.FunctionItem } item ? item : null;
+        => Binding.CallableCore(callee) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto } item ? item : null;
 
     // SPEC 15.8.2 (DECISIONS R4-M148): the environment a Closure Type's value holds as its body sees it, the one reading of every Closure
     // part of a contract input (a Closure callee's receiver, Binding.RetentionInput; one nested in an input, RetentionParts): its definition's
