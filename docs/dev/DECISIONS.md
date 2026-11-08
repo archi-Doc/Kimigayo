@@ -9752,6 +9752,7 @@ resumed by R4-M86 (2026-10-20).
   - Removes `RootTypeName`, `SelectTypeCandidate`, `StopInheritedLookup`, `LookupImportedType` and `Lookup`'s Type branch. `ResolveRootPath` keeps a member step of its own until the `::` unit.
   - Behavior-preserving. b, c, d, e and f are separate designs; G488 and BU-117 stay open.
   - Rejected: N0's patch (stages publish); snapshot and undo; a `publish` flag; a per-use memo (a Koto-keyed table); recursion on the left instead of the stack (O(depth²)); SPEC's names on the rows (they are not its contracts).
+  - Amended by BU-131: R7-N1b renames `TypeLookupRole` to `LookupRole` and adds the row `Value`, SPEC 9.2's Value role and the only Value-namespace row; the Type rows stay today's filters. The value lookup resolves through the same `ResolveName` and `PublishPath` (BU-131).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
@@ -10320,6 +10321,26 @@ resumed by R4-M86 (2026-10-20).
     proof (`:246`: `isize << 40` becomes proven) move too. Evidence: the Front's `F\Lit\mir-dumps\` and the Middle's C-142 R11-R14.
   - Amends R5-M174: "what the phases share is `PointerWidth`" now means `ScalarTypes.SizeWidth`. `IrTarget` keeps the target's width
     for the Condition, and its 0 for no IR target.
+- **BU-131 A value name resolves through ResolveName: the role names the namespace** (2026-11-08; R7-N1b; Major; design
+  review 1 ACCEPT) SPEC 9.2, 9.5, 9.5.1.
+  - Rule: `ResolveName(name, scope, use, role, arity)` is the one stage walk of both namespaces; the role names the namespace
+    (`LookupRole.Value`). `ValueStage` and `ResolveImportedValue` return `Selected`, `QualificationStop` or `Ambiguous` and write
+    nothing on the use; the merged import goes on the Head, a gathered group on `ImportGroup` steps; `PublishPath` writes them.
+    `QualificationFact.Type` is `Role != Value`; `bool type` is gone from `InheritedStop`, `InheritedDeclaration`,
+    `RecordQualificationStop` and the fact. Exception, shared with BU-122's Type path: a default alias's ambiguous segment is reported
+    by `SelectQualifier` during the evaluation (part e folds that walk).
+  - Records: an opened value's environment is compared only with the value lookup's own sources, never with the Type path's import of
+    the same node. `N.m()` and `N.k()` with a Type `N` from `alias Box<i32>` and a value `N` from `alias Other<i64>` (b10 valid by
+    SPEC 9.6, b11 invalid) move from `AmbiguousBinding_Kd` to the located `Unsupported_Kd` at `N` under **BU-117 (the owner's O-32
+    (a))**, the record that entry fixes for a qualifier of both namespaces, valid and invalid alike; not rule W.
+  - Two opened environments for one value name (`t25`) stay `AmbiguousBinding_Kd`: an implementation limit (one `AliasImport` per use),
+    not SPEC's rule; PLAN issue below.
+  - The value `Lookup` takes no early-read note (BaseLayers): its uses do not all spell the name (`Closures.cs:347` keys by the
+    function node), so N2d's note, re-evaluated by `ProbePath(syntax)`, does not fit them; PLAN issue below.
+  - Removes the value `Lookup`'s walk and `LookupImportedValue`.
+  - Rejected: a second pure value walk (two copies of SPEC 9.5's stages); a namespace parameter beside the role; reading the Type
+    path's import in the evaluation (BU-122's contract) or merging it at publication; part a's cut 2 (it reads table existence, a
+    publication's state, and a late Head must precede the `ImportGroup` steps); `Stop` out of the result before part d.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
