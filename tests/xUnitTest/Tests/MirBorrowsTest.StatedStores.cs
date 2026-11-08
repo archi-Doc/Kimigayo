@@ -26,6 +26,12 @@ public sealed partial class MirBorrowsTest
             let loan: Loan<uniq/(raw/u8) during a>
             public init(target: uniq/(raw/u8) during a) => self.loan = Loan.init(target)
         func writew(target: uniq/(raw/u8) during a, w: ref/(Keeper during a), k: ref/u8, q: raw/u8 during a) => ()
+        func writeq(q: raw/u8 during a, target: uniq/(raw/u8) during a) => ()
+        func writeg<T>(target: uniq/T during a, q: raw/u8 during a) => ()
+        struct Marker
+            public var p: raw/u8
+            public init() => self.p = null
+            public func mark(q: raw/u8 during a, self, target: uniq/(raw/u8) during a) => ()
         func endOk()
             var spare: raw/u8 = null
             write(spare@uniq, null)
@@ -87,6 +93,44 @@ public sealed partial class MirBorrowsTest
             writew(spare@uniq, w@ref, kk@ref, null)
             kk = 1
             usep(slot)
+        func itemOk()
+            var spare: raw/u8 = null
+            let f = write
+            f(spare@uniq, null)
+        func itemReadBad()
+            var spare: raw/u8 = null
+            let f = writeq
+            f(null, spare@uniq)
+            usep(spare)
+        func genericItemOk()
+            var spare: raw/u8 = null
+            let f = writeg<raw/u8>
+            f(spare@uniq, null)
+        func genericItemReadBad()
+            var spare: raw/u8 = null
+            let f = writeg<raw/u8>
+            f(spare@uniq, null)
+            usep(spare)
+        func methodItemOk()
+            var m = Marker.init()
+            var spare: raw/u8 = null
+            let f = Marker.mark
+            f(null, m@ref, spare@uniq)
+        func methodItemReadBad()
+            var m = Marker.init()
+            var spare: raw/u8 = null
+            let f = Marker.mark
+            f(null, m@ref, spare@uniq)
+            usep(spare)
+        func ownItemOk(target: uniq/(raw/u8) during a, q: raw/u8 during a)
+            var spare: raw/u8 = null
+            let f = ownItemOk
+            f(spare@uniq, null)
+        func ownItemReadBad(target: uniq/(raw/u8) during a, q: raw/u8 during a)
+            var spare: raw/u8 = null
+            let f = ownItemReadBad
+            f(spare@uniq, null)
+            usep(spare)
         """;
 
     // PLAN G338, SPEC 5.2.1 ("storage a pointer addresses `during o` is covered by the Loans of `o`"), 5.7's table, 15.6 Holders: a store through
@@ -98,7 +142,11 @@ public sealed partial class MirBorrowsTest
     // read of spare after the call errs
     // until PLAN G339's row (readBad, constructorReadBad; the owner's O-55 (c)). Guards: a store through q where spare is read (unrelatedReadBad); q
     // addressing a second holder keeps its referents (secondHolderBad); q from a parameter keeps E (parameterBad); an Origin a slot
-    // keeper in another input also keeps stays E, since no first step names the keeper's storage (keeperBad).
+    // keeper in another input also keeps stays E, since no first step names the keeper's storage (keeperBad). A Function Item's call reads
+    // its declaration as a direct call does (PLAN G584; SPEC 7.7.4, 15.6.4 "for direct and indirect calls alike"): under its Item
+    // substitution (genericItem*), its slots in declared order, q first (itemReadBad) or a receiver declared second (methodItem*, 7.3.4).
+    // The Ok rows were errors at spare's end (and at m's for methodItemOk). In the Item's own body the call is decided as the direct call
+    // is (ownItemOk, accepted); elsewhere it keeps the Value call's located Unsupported_Kd at its `null`, outside these Loan codes.
     [Theory]
     [InlineData("endOk", "")]
     [InlineData("wholeWriteOk", "")]
@@ -112,6 +160,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("secondHolderBad", "secondHolderBad: kk = 1; secondHolderBad: usep(other)")]
     [InlineData("parameterBad", "parameterBad: var kk: u8 = 0")]
     [InlineData("keeperBad", "keeperBad: kk = 1; keeperBad: usep(slot); keeperBad: var slot: raw/u8 = null; keeperBad: var spare: raw/u8 = null; keeperBad: var w = Keeper.init(slot@uniq)")]
+    [InlineData("itemOk", "")]
+    [InlineData("itemReadBad", "itemReadBad: usep(spare)")]
+    [InlineData("genericItemOk", "")]
+    [InlineData("genericItemReadBad", "genericItemReadBad: usep(spare)")]
+    [InlineData("methodItemOk", "")]
+    [InlineData("methodItemReadBad", "methodItemReadBad: usep(spare)")]
+    [InlineData("ownItemOk", "")]
+    [InlineData("ownItemReadBad", "ownItemReadBad: usep(spare)")]
     public void AStoreThroughAStatedLayerWritesWhatItsOriginCovers(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + StatedForms[..StatedForms.IndexOf("func endOk(", StringComparison.Ordinal)] + Form(StatedForms, form));
