@@ -7,7 +7,8 @@
 //   Place reached from a capture (the capture itself or a Place its path reaches through NextPathStep's steps: a part of it, a
 //   captured referent, a raw pointer's referent) whose use needs it exclusively (NeedsExclusively, by the same rule over its
 //   consumer's takes; past a raw step also a Take or an in-place destruction, and the path continues through a pointer derived from
-//   a reached one, Below: SPEC 7.7.3's environment rule), or a nested entry that Reborrows or exclusively borrows an outer
+//   a reached one, Below: SPEC 7.7.3's environment rule; a use of a pointer-typed body local that every definition derives from an
+//   environment pointer starts the walk past its own Place, Derive, R7-Y2c), or a nested entry that Reborrows or exclusively borrows an outer
 //   environment binding, makes it Exclusive; every other use borrows (Shared). An acquisition of the binding itself
 //   by value without an operator (TakenByCase: as the Adjust rule takes it from its consumer, a discarded Place included, or a
 //   nested bare entry) that Reborrows in some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked
@@ -21,8 +22,9 @@
 //   receiver reads (value calls, candidate selection and Callable proofs, effects and the MIR builder);
 //   CaseFreeReceiver and the captures' BareReborrows, from which a view of one case reads that case's receiver; Classified;
 //   ExclusiveUse and ExclusiveReborrow, the Exclusive cause a write record names (Binding.Diagnostics.cs); Unlisted, which
-//   BindConcreteClosure fails as the rule's net, a located Unsupported_Kd (the owner, 2026-10-25; DECISIONS R4-M145); Uncontracted,
-//   the calls of a foreign import passed a pointer reached from a capture, which it fails alike (DECISIONS R7-Y2).
+//   BindConcreteClosure fails as the rule's net, a located Unsupported_Kd (the owner, 2026-10-25; DECISIONS R4-M145); Undecided,
+//   the uses whose need no fact decides (a foreign import's call passed a pointer reached from a capture, DECISIONS R7-Y2; a write through
+//   a body local only some definitions derive from an environment pointer, R7-Y2c), which it fails alike.
 // - Invariants: Classify runs once per binding of a Closure that bound its body, right after it, from the facts BindClosure and
 //   BindConcreteClosure reset (Shared, no mark, no cause, not Classified); only this binding's captures are classified; the
 //   case-free receiver only strengthens, Receiver is derived from the facts once at the end and the first exclusive use while the
@@ -37,8 +39,8 @@ public sealed partial class Binding
 {
     private ClosureEffects? closureEffects;
 
-    /// <summary>Gets the children's takes ClosureEffects recorded (once per consumer and selection), which a scaling check reads.</summary>
-    internal long ClosureTakeWork => this.closureEffects?.TakeWork ?? 0;
+    /// <summary>Gets the children's takes ClosureEffects recorded (once per consumer and selection) and the definitions it read, which a scaling check reads.</summary>
+    internal long ClosureWork => this.closureEffects?.Work ?? 0;
 
     // One reusable visitor classifies each closure's receiver from the uses of its captures (SPEC 7.7.3); it never visits a
     // nested function's body, so one closure is classified at a time.
@@ -52,32 +54,62 @@ public sealed partial class Binding
         // Each node's Op read in this Classify (OpOf): a call's Op reads its N argument operations, so every capture use of its consumer
         // reads it once.
         private readonly Dictionary<Koto, HirOp> ops = new();
+
+        // SPEC 5.2.1 condition 3, 7.7.3 (R7-Y2c): each definition of a pointer-typed body local (its initializer or assigned value) by the
+        // root it is reached from (RootOf); the uses of such locals; and what each local's definitions hold (Derive).
+        private readonly List<(BindingSymbol Local, Koto Root)> definitions = new();
+        private readonly List<Koto> localUses = new();
+        private readonly Dictionary<BindingSymbol, Holds> holds = new();
         private FunctionKoto function = null!;
         private BoundClosure plan = null!;
 
-        // The children's takes recorded, over every Classify: a scaling check reads it (ClosureTakeWork).
-        public long TakeWork { get; private set; }
+        // The children's takes recorded and the definitions Derive read, over every Classify: a scaling check reads it (ClosureWork).
+        public long Work { get; private set; }
 
         // The uses of a capture that Reborrows in some admitted case that no consumer takes (TakenByCase is null), with the capture's
         // index; after Classify, only those the receiver facts leave at Shared in a case (DECISIONS R4-M145).
         public List<(Koto Use, int Capture)> Unlisted { get; } = new();
 
-        // The calls of a foreign import that a pointer reached from a capture is passed to, whose contract's writes no published fact states
-        // (ContractWritesThrough; DECISIONS R7-Y2).
-        public List<Koto> Uncontracted { get; } = new();
+        // The uses whose need no published fact decides, each a located Unsupported_Kd: a call of a foreign import that a pointer reached
+        // from a capture is passed to, whose contract's writes are prose (ContractWritesThrough; DECISIONS R7-Y2); a write-capability access
+        // through a body local that only some definitions derive from an environment pointer, where no flow fact states which one reaches
+        // the access (R7-Y2c).
+        public List<Koto> Undecided { get; } = new();
 
         public void Classify(FunctionKoto function, BoundClosure plan)
         {
             this.takes.Clear();
             this.walks.Clear();
             this.ops.Clear();
+            this.definitions.Clear();
+            this.localUses.Clear();
+            this.holds.Clear();
             this.function = function;
             this.plan = plan;
             this.Unlisted.Clear();
-            this.Uncontracted.Clear();
+            this.Undecided.Clear();
             if ((function.Body as Koto ?? function.ExpressionBody) is { } body)
             {
                 this.Visit(body);
+            }
+
+            // SPEC 5.2.1 condition 3, 7.7.3: a use of a body local holding a pointer derived from an environment pointer starts the walk as
+            // a capture's use does; its own Place is the body's (UsesExclusively).
+            this.Derive();
+            foreach (var use in this.localUses)
+            {
+                if (this.holds.TryGetValue(use.BoundSymbol!, out var held) && held.HasFlag(Holds.Environment) && this.UsesExclusively(use, null).Use == PlaceUse.Exclusive)
+                {
+                    if (held != Holds.Environment)
+                    {
+                        this.Undecided.Add(use); // Only some definitions hold one: no flow fact states which reaches this use.
+                    }
+                    else if (this.plan.CaseFreeReceiver != SemanticsKind.Owner)
+                    {
+                        this.plan.CaseFreeReceiver = SemanticsKind.Uniq;
+                        this.plan.ExclusiveUse ??= use;
+                    }
+                }
             }
 
             // SPEC 7.7.3: the strongest requirement over every admitted case.
@@ -159,8 +191,38 @@ public sealed partial class Binding
                     this.Unlisted.Add((node, at)); // No consumer takes this use, so no rule decides whether it Reborrows by case.
                 }
             }
+            else if (node.BoundSymbol is { Kind: BindingSymbolKind.Local } local && ReferenceTypes.IsPointer(local.Type))
+            {
+                this.localUses.Add(node);
+            }
+
+            // A pointer-typed local's definitions (Derive): its initializer and each assigned value. A compound displacement `q += n` keeps
+            // the local's own provenance (SPEC 5.3), no definition.
+            if (node is VariableKoto { InitializerKoto: { } value } variable && variable.NameKoto.BoundSymbol is { Kind: BindingSymbolKind.Local } declared &&
+                ReferenceTypes.IsPointer(declared.Type))
+            {
+                this.definitions.Add((declared, RootOf(value)));
+                this.holds.TryAdd(declared, Holds.None);
+            }
+            else if (node is BinaryKoto { Akind: KotoKind.Equals } assignment &&
+                KotoHelper.UnwrapParentheses(assignment.Left).BoundSymbol is { Kind: BindingSymbolKind.Local } assigned && ReferenceTypes.IsPointer(assigned.Type))
+            {
+                this.definitions.Add((assigned, RootOf(assignment.Right)));
+                this.holds.TryAdd(assigned, Holds.None);
+            }
 
             node.VisitChildren(this);
+        }
+
+        // The root a value is reached from, Below's steps descended: a call's result, a literal or a binding (SPEC 5.2.1 condition 3).
+        private static Koto RootOf(Koto value)
+        {
+            while (Below(value, out _) is { } below)
+            {
+                value = below;
+            }
+
+            return value;
         }
 
         // The operation by which a call takes the Place as an argument, or null.
@@ -247,14 +309,15 @@ public sealed partial class Binding
         // which the capture's case Type tells. Such a Reborrow of a Place reached through the capture takes that Place's cases, which
         // the capture's do not tell, so it counts in every case: the strongest receiver (PLAN G13). A Move of the capture or of a stored
         // part of it (owned, Visit's) transfers it out of the environment (Consuming). Whether a rule decides the need by case (Listed) is
-        // the capture's own (NeedsExclusively).
-        private Need UsesExclusively(Koto capture, Koto owned)
+        // the capture's own (NeedsExclusively). From a body local holding an environment pointer (owned null, R7-Y2c) the walk starts the
+        // same way, but the local's Place is the body's: before a raw step only an operation contract's write through the pointer counts.
+        private Need UsesExclusively(Koto capture, Koto? owned)
         {
             var listed = true;
             var raw = false;
             for (var place = capture; ; place = place.Parent!)
             {
-                var need = this.NeedsExclusively(place, raw);
+                var need = owned is null && !raw ? new Need(this.ContractWritesThrough(place) ? PlaceUse.Exclusive : PlaceUse.Shared, true) : this.NeedsExclusively(place, raw);
                 listed = ReferenceEquals(place, capture) ? need.Listed : listed;
                 if (need.Use is PlaceUse.ByCase or PlaceUse.Exclusive)
                 {
@@ -279,6 +342,30 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 5.2.1 condition 3 ("every pointer derived from it (copies, ...)"), 7.7.3 (R7-Y2c): what each pointer-typed body local's
+        // definitions hold, the union of their roots' (HoldsOf), the least fixpoint; each pass reads every definition, and the passes are
+        // bounded by the locals.
+        private void Derive()
+        {
+            for (var changed = true; changed;)
+            {
+                changed = false;
+                this.Work += this.definitions.Count;
+                foreach (var (local, root) in this.definitions)
+                {
+                    var held = this.holds[local] | this.HoldsOf(root);
+                    changed |= held != this.holds[local];
+                    this.holds[local] = held;
+                }
+            }
+        }
+
+        // What a root holds: a capture of this binding, an environment pointer; a body local with definitions, what they hold so far; any
+        // other root (a call's result, the owner's O-76 (b) (i), an allocation, a literal, a parameter), a pointer of its own.
+        private Holds HoldsOf(Koto root) =>
+            root.BoundSymbol is { Kind: BindingSymbolKind.Capture } capture && this.CaptureOf(capture) >= 0 ? Holds.Environment
+            : root.BoundSymbol is { Kind: BindingSymbolKind.Local } local && this.holds.TryGetValue(local, out var held) ? held : Holds.Own;
+
         // What the use of a Place needs (SPEC 7.7.3, 3.5.1, UseOf): exclusively, past a raw step (raw) also by a Take or an in-place
         // destruction (SPEC 5.2.1 condition 3, 5.2.3); by case when only a pair-case acquisition that Reborrows in some admitted cases needs
         // it (SPEC 8.14), which TakenByCase decides for such a Place; else its value moved (Consuming) or nothing (Shared).
@@ -296,7 +383,7 @@ public sealed partial class Binding
 
         // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): whether a pointer reached from a capture is passed to a call whose operation contract
         // performs an access that needs write capability through it (IntrinsicDisposition.WritesThrough), the body's own access. A foreign
-        // import's contract is prose the compiler cannot read (SPEC 22.6), so its call is kept as Uncontracted, a located Unsupported_Kd.
+        // import's contract is prose the compiler cannot read (SPEC 22.6), so its call is kept as Undecided, a located Unsupported_Kd.
         private bool ContractWritesThrough(Koto place)
         {
             if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto { BoundCall: { } call } invocation ||
@@ -307,9 +394,9 @@ public sealed partial class Binding
 
             if (call.Target.Declaration is FunctionKoto declaration && declaration.FindAttribute(AttributeKind.LibraryImport) is not null)
             {
-                if (!this.Uncontracted.Contains(invocation))
+                if (!this.Undecided.Contains(invocation))
                 {
-                    this.Uncontracted.Add(invocation);
+                    this.Undecided.Add(invocation);
                 }
 
                 return false;
@@ -394,7 +481,7 @@ public sealed partial class Binding
             {
                 var record = new TakeRecord(binding, this.takes, exclusive);
                 binding.AdjustChildren(consumer, op, exclusive, ref record);
-                this.TakeWork += record.Count;
+                this.Work += record.Count;
             }
 
             return this.takes.TryGetValue((target, exclusive), out var takes) ? takes : null;
@@ -413,6 +500,20 @@ public sealed partial class Binding
             }
 
             return -1;
+        }
+
+        // What a pointer-typed body local's definitions hold (R7-Y2c): a pointer derived from an environment pointer, one of its own, or both
+        // on some definitions, where no flow fact states which one reaches a use.
+        [Flags]
+        private enum Holds : byte
+        {
+            None = 0,
+
+            // A pointer of its own: a call's result, an allocation, a literal, a parameter.
+            Own = 1,
+
+            // A pointer derived from an environment pointer.
+            Environment = 2,
         }
 
         // What a use of a Place needs of the environment (SPEC 7.7.3, 8.14): exclusive access (Exclusive), or only in the admitted cases
@@ -435,7 +536,7 @@ public sealed partial class Binding
         {
             private int call = -1;
 
-            // The takes recorded (ClosureTakeWork).
+            // The takes recorded (ClosureWork).
             public int Count { get; private set; }
 
             public void Call(int ordinal) => this.call = ordinal;

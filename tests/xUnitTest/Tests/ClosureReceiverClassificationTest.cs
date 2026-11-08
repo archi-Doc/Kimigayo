@@ -160,6 +160,41 @@ public class ClosureReceiverClassificationTest
     public void AWriteCapabilityAccessThroughAnEnvironmentPointerIsAnExclusiveCall(string source, bool exclusive)
         => AssertCallReceiver(source, exclusive);
 
+    // SPEC 5.2.1 condition 3 ("every pointer derived from it (copies, displacements, ...)"), 5.3, 5.4, 7.7.3 (R7-Y2c; the owner's O-76): a
+    // body local that every definition derives from an environment pointer, a copy, a displacement or a conversion of one, or a pointer read
+    // through a raw Place the environment reaches, is that pointer; a call's result (O-76 (b) (i)) and an allocation are their own. Labels
+    // from SPEC: each `true` row's `let` call is invalid, its `var` twin valid; each `false` row is valid.
+    [Theory]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p + 0\n            q[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q1 = p\n            let q2 = q1 + 1\n            let q3 = q2 - 1\n            q3[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            var q = p\n            q += 1\n            q[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p@raw/i32\n            q[0] = 5\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p\n            consume((*q)@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = p + 0\n            Raw.initialize(q, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] ()\n        unsafe\n            let q = *pp\n            q[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe\n            let q = p + 0\n            return q[0].v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe\n            var q = p + 0\n            q = q + 1\n            return q[0].v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] ()\n        unsafe\n            let q = Raw.allocate<Probe>(1)\n            q[0] = Probe.init(2)\n    f()\n", false)]
+    [InlineData(NextProbe + "    let f = func [p] ()\n        unsafe\n            let q = next(p)\n            q[0] = Probe.init(2)\n    f()\n", false)]
+    public void AWriteThroughALocalDerivedFromAnEnvironmentPointerIsAnExclusiveCall(string source, bool exclusive)
+        => AssertCallReceiver(source, exclusive);
+
+    // SPEC 5.2.1 condition 3, 7.7.3 (R7-Y2c; AGENTS: a valid form no common rule covers stays Unsupported_Kd): a write through a body local
+    // that only some of its definitions derive from an environment pointer needs the definition reaching it, which no flow fact states: a
+    // located Unsupported_Kd at the use, whether the program is valid (the write precedes the derived assignment) or invalid (one branch).
+    [Theory]
+    [InlineData("            q[0] = Probe.init(2)\n            q = p\n")]
+    [InlineData("            if c => q = p\n            q[0] = Probe.init(2)\n")]
+    public void AWriteThroughALocalSomeDefinitionsDeriveIsUnsupported(string tail)
+    {
+        var source = RawProbe + "    let c = true\n    let f = func [p, c] ()\n        unsafe\n            var q = Raw.allocate<Probe>(1)\n" + tail + "    f()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), error.Code);
+    }
+
+    private const string NextProbe = RawDeclarations + "func next(q: raw/Probe) -> raw/Probe\n    unsafe => return q + 1\n" +
+        "public func main() -> ()\n    let p = Raw.allocate<Probe>(1)\n";
+
     // SPEC 5.2, 7.7.3, 22.6 (DECISIONS R7-Y2; AGENTS: a valid form no common rule covers stays Unsupported_Kd): a foreign import's operation
     // contract is prose, so a call passing it a pointer the environment reaches leaves the receiver undecided: the located Unsupported_Kd
     // at the call, in a `var` Closure too.
@@ -559,6 +594,32 @@ public class ClosureReceiverClassificationTest
         Assert.All(closures, x => Assert.True(x.Classified));
     }
 
+    // R7-Y2c: Derive's passes read every definition, and the passes are bounded by the locals. A chain of N body locals in source order,
+    // each derived from the one before (a valid `var` Closure, SPEC 5.2.1 condition 3, 7.7.3), converges in two passes: work linear in N.
+    // A chain assigned in reverse order (N locals from their own allocations, then `q{N} = q{N-1}` ... `q1 = p`, only read: valid, Shared)
+    // takes one pass per local, Derive's worst case: work within the bound, quadratic in N (design review 1's N1; a worklist over the
+    // definitions by root would make it linear).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ClassificationWorkOfAChainOfDerivedLocalsStaysWithinItsBound(bool reverse)
+    {
+        var work = new[] { 200, 400, 800 }.Select(n => Work(reverse, n)).ToArray();
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, reverse ? 4 : 2), $"work {string.Join(", ", work)}");
+
+        static long Work(bool reverse, int count)
+        {
+            var chain = reverse
+                ? string.Concat(Enumerable.Range(1, count).Select(static i => $"            var q{i} = Raw.allocate<Probe>(1)\n")) +
+                    string.Concat(Enumerable.Range(2, count - 1).Reverse().Select(static i => $"            q{i} = q{i - 1}\n")) + "            q1 = p\n"
+                : "            let q0 = p\n" + string.Concat(Enumerable.Range(1, count).Select(static i => $"            let q{i} = q{i - 1} + 0\n"));
+            var tail = reverse ? $"            return q{count}[0].v\n    let v = f()\n" : $"            q{count}[0] = Probe.init(2)\n    f()\n";
+            var c = MinimalEmissionTest.Analyze(RawProbe + $"    var f = func [p] (){(reverse ? " -> i32" : string.Empty)}\n        unsafe\n" + chain + tail);
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureWork;
+        }
+    }
+
     // R7-Y2a (review 1's N1): ClosureEffects records a consumer's takes once per Classify and selection, so its work grows linearly in one
     // consumer's capture uses, a literal's elements or a call's arguments (valid programs: reads of a Copy capture, SPEC 7.7.3 Shared), not
     // as every use times every child.
@@ -579,7 +640,7 @@ public class ClosureReceiverClassificationTest
                     "    let c: i32 = 1\n    let f = func [c] () -> i32 => many(" + uses + ")\n    return f()\n";
             var c = MinimalEmissionTest.Analyze(source + "()\n");
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-            return c.Binding.ClosureTakeWork;
+            return c.Binding.ClosureWork;
         }
     }
 
