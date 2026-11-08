@@ -109,11 +109,10 @@ public enum KimiDeclarationId : byte
     PositionRange,
     Start,
     End,
-    StorageDictionaryLayout,
     DictionaryIndex,
     DictionaryIndexUniq,
     StorageMissingDictionaryKey,
-    StoragePlaceDictionaryEntry,
+    DictionaryStoragePlaceEntry,
     StorageReserveDictionary, // Reserved legacy ID; capacity is DictionaryStorage source since G20.
     StorageShrinkDictionary, // Reserved legacy ID; capacity is DictionaryStorage source since G20.
     RawAllocate,

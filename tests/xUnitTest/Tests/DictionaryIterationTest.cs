@@ -213,18 +213,28 @@ public class DictionaryIterationTest
         Assert.True(at is null || source.Substring(record.Span!.Value.Start, record.Span.Value.Length) == at);
     }
 
-    // IMPL 21.3.2 (R8-K1a, design review 2 item 2): `alignmentOf<T>` places `T` two levels deeper, `(u8, [0 of T])`; Binding's storage-nesting
-    // bound still cuts first, so a value nest keeps dev's records at the bound: `clear` accepts the last depth and gives one Unsupported_Kd one
-    // deeper, for a Tuple, an Option and a fixed-array nest. A change of either bound that moves these rows exposes the margin.
+    // IMPL 21.3.2 (R8-K1a, R8-K1b-2; design review 2 item 2): `alignmentOf<T>` places `T` two levels deeper, `(u8, [0 of T])`. `clear`,
+    // `reserve` and `shrinkToFit` read the Handle by path since R8-K1b-2 (no `(raw/Dictionary<K, V>, isize)` result one level above it), so
+    // Binding's storage-nesting bound (StorageHeightLimit) cuts at the Dictionary's own nesting: each accepts the last depth, where
+    // `alignmentOf<V>` reaches Layout.MaximumHeight exactly (a margin of zero), and one deeper gives A5's OwnershipDepthLimit_Kd and the
+    // bound's Unsupported_Kd, for a Tuple, an Option and a fixed-array nest. A change of either bound or of alignmentOf's two levels moves
+    // these rows.
     [Theory]
-    [InlineData("(u8, {0})", 61)]
-    [InlineData("Option<{0}>", 30)]
-    [InlineData("[1 of {0}]", 61)]
-    public void AValueNestKeepsTheStorageBoundsRecords(string layer, int last)
+    [InlineData("(u8, {0})", 62, "d.clear()")]
+    [InlineData("Option<{0}>", 31, "d.clear()")]
+    [InlineData("[1 of {0}]", 62, "d.clear()")]
+    [InlineData("(u8, {0})", 62, "d.reserve(1)")]
+    [InlineData("Option<{0}>", 31, "d.reserve(1)")]
+    [InlineData("[1 of {0}]", 62, "d.reserve(1)")]
+    [InlineData("(u8, {0})", 62, "d.shrinkToFit()")]
+    [InlineData("Option<{0}>", 31, "d.shrinkToFit()")]
+    [InlineData("[1 of {0}]", 62, "d.shrinkToFit()")]
+    public void AValueNestKeepsTheStorageBoundsRecords(string layer, int last, string operation)
     {
         Assert.Empty(DiagnosticCorpus.Check(Program(last)).Diagnostics);
-        var record = Assert.Single(DiagnosticCorpus.Check(Program(last + 1)).Diagnostics);
-        Assert.Equal("Unsupported_Kd", record.Code);
+        Assert.Equal(
+            ["OwnershipDepthLimit_Kd", "Unsupported_Kd"],
+            DiagnosticCorpus.Check(Program(last + 1)).Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal));
 
         string Program(int depth)
         {
@@ -234,7 +244,7 @@ public class DictionaryIterationTest
                 type = string.Format(System.Globalization.CultureInfo.InvariantCulture, layer, type);
             }
 
-            return $"func f(d: uniq/Dictionary<i32, {type}>) -> isize\n    d.clear()\n    return 0\npublic func main()\n    let g = f\n    return\n";
+            return $"func f(d: uniq/Dictionary<i32, {type}>) -> isize\n    {operation}\n    return 0\npublic func main()\n    let g = f\n    return\n";
         }
     }
 }

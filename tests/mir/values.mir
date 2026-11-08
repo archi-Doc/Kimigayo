@@ -315,20 +315,18 @@ fn unfinished @199
   _8: ref/Dictionary<i32, bool> temp @210 s1
   _9: ref/i32 temp @210 s1
   _10: Never temp @210 s1
-  _11: (raw/Dictionary<i32, bool>, isize) temp @210 s1
-  _12: uniq/Dictionary<i32, bool> temp @210 s1
-  _13: () temp @210 s1
-  _14: i32 temp @212 s1
-  _15: bool temp @213 s1
-  _16: isize temp @212 s1
-  _17: bool temp @212 s1
-  _18: ref/Dictionary<i32, bool> temp @212 s1
-  _19: ref/i32 temp @212 s1
-  _20: Never temp @212 s1
-  _21: () temp (Result) @199
-  _22: (raw/Dictionary<i32, bool>, isize) temp @212 s1
-  _23: uniq/Dictionary<i32, bool> temp @212 s1
-  _24: () temp @212 s1
+  _11: uniq/Dictionary<i32, bool> temp @210 s1
+  _12: () temp @210 s1
+  _13: i32 temp @212 s1
+  _14: bool temp @213 s1
+  _15: isize temp @212 s1
+  _16: bool temp @212 s1
+  _17: ref/Dictionary<i32, bool> temp @212 s1
+  _18: ref/i32 temp @212 s1
+  _19: Never temp @212 s1
+  _20: () temp (Result) @199
+  _21: uniq/Dictionary<i32, bool> temp @212 s1
+  _22: () temp @212 s1
   s1: lexical in s0 @201
   bb0:
       StorageLive(_2) @202 s1
@@ -352,83 +350,74 @@ fn unfinished @199
   bb3:
       _5 = copy _1 @211 s1
       StorageLive(_11) @210 s1
+      _11 = &uniq two-phase _3: uniq/Dictionary<i32, bool> @210 s1
       StorageLive(_12) @210 s1
-      _12 = &uniq two-phase _3: uniq/Dictionary<i32, bool> @210 s1
-      _11 = dictionaryStorage<i32, bool>(move _12) -> bb4 @210 s1
+      _12 = placeEntry<i32, bool>(move _11, move _4, move _5) -> bb4 @210 s1
   bb4:
-      StorageLive(_13) @210 s1
-      _13 = placeEntry<i32, bool>(copy _11.0, move _4, move _5) -> bb5 @210 s1
-  bb5:
-      StorageLive(_14) @212 s1
-      StorageLive(_15) @213 s1
+      StorageLive(_13) @212 s1
+      StorageLive(_14) @213 s1
+      StorageLive(_15) @212 s1
       StorageLive(_16) @212 s1
+      _13 = const 2_i32 @212 s1
       StorageLive(_17) @212 s1
-      _14 = const 2_i32 @212 s1
+      _17 = &_3: ref/Dictionary<i32, bool> @212 s1
       StorageLive(_18) @212 s1
-      _18 = &_3: ref/Dictionary<i32, bool> @212 s1
-      StorageLive(_19) @212 s1
-      _19 = &_14: ref/i32 @212 s1
-      _16 = findEntry<i32, bool>(move _18, move _19) -> bb7 @212 s1
+      _18 = &_13: ref/i32 @212 s1
+      _15 = findEntry<i32, bool>(move _17, move _18) -> bb6 @212 s1
+  bb5:
+      _19 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @212 s1
   bb6:
-      _20 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @212 s1
+      _16 = Eq(copy _15, const 0_isize) proven @212 s1
+      switch copy _16 [1: bb7, otherwise: bb5] @212 s1
   bb7:
-      _17 = Eq(copy _16, const 0_isize) proven @212 s1
-      switch copy _17 [1: bb8, otherwise: bb6] @212 s1
+      goto bb14 check bb15 @214 s1
   bb8:
-      goto bb15 check bb16 @214 s1
-  bb9:
       return @199
+  bb9:
+      _0 = move _20 @199
+      goto bb8 @199
   bb10:
-      _0 = move _21 @199
-      goto bb9 @199
+      drop _2 -> bb11 [elide] @202 s1
   bb11:
-      drop _2 -> bb12 [elide] @202 s1
-  bb12:
       StorageDead(_2) @202 s1
-      goto bb10 @199
+      goto bb9 @199
+  bb12:
+      StorageDead(_18) @212 s1
+      StorageDead(_17) @212 s1
+      StorageDead(_16) @212 s1
+      StorageDead(_15) @212 s1
+      StorageDead(_14) @213 s1
+      StorageDead(_13) @212 s1
+      StorageDead(_12) @210 s1
+      StorageDead(_11) @210 s1
+      StorageDead(_9) @210 s1
+      StorageDead(_8) @210 s1
+      StorageDead(_7) @210 s1
+      StorageDead(_6) @210 s1
+      StorageDead(_5) @211 s1
+      StorageDead(_4) @210 s1
+      drop _3 -> bb13 [keep] @209 s1
   bb13:
-      StorageDead(_19) @212 s1
-      StorageDead(_18) @212 s1
-      StorageDead(_17) @212 s1
-      StorageDead(_16) @212 s1
-      StorageDead(_15) @213 s1
-      StorageDead(_14) @212 s1
-      StorageDead(_13) @210 s1
-      StorageDead(_12) @210 s1
-      StorageDead(_11) @210 s1
-      StorageDead(_9) @210 s1
-      StorageDead(_8) @210 s1
-      StorageDead(_7) @210 s1
-      StorageDead(_6) @210 s1
-      StorageDead(_5) @211 s1
-      StorageDead(_4) @210 s1
-      drop _3 -> bb14 [keep] @209 s1
+      StorageDead(_3) @209 s1
+      goto bb10 @199
   bb14:
-      StorageDead(_3) @209 s1
-      goto bb11 @199
+      _20 = const () @214 s1
+      goto bb12 @214 s1
   bb15:
-      _21 = const () @214 s1
-      goto bb13 @214 s1
-  bb16:
+      StorageLive(_21) @212 s1
+      _21 = &uniq two-phase _3: uniq/Dictionary<i32, bool> @212 s1
       StorageLive(_22) @212 s1
-      StorageLive(_23) @212 s1
-      _23 = &uniq two-phase _3: uniq/Dictionary<i32, bool> @212 s1
-      _22 = dictionaryStorage<i32, bool>(move _23) -> bb17 @212 s1
-  bb17:
-      StorageLive(_24) @212 s1
-      _24 = placeEntry<i32, bool>(copy _22.0, move _14, move _15) -> bb18 @212 s1
-  bb18:
+      _22 = placeEntry<i32, bool>(move _21, move _13, move _14) -> bb16 @212 s1
+  bb16:
       _2 = move _3 @209 s1
-      StorageDead(_24) @212 s1
-      StorageDead(_23) @212 s1
       StorageDead(_22) @212 s1
-      StorageDead(_19) @212 s1
+      StorageDead(_21) @212 s1
       StorageDead(_18) @212 s1
       StorageDead(_17) @212 s1
       StorageDead(_16) @212 s1
-      StorageDead(_15) @213 s1
-      StorageDead(_14) @212 s1
-      StorageDead(_13) @210 s1
+      StorageDead(_15) @212 s1
+      StorageDead(_14) @213 s1
+      StorageDead(_13) @212 s1
       StorageDead(_12) @210 s1
       StorageDead(_11) @210 s1
       StorageDead(_9) @210 s1
@@ -437,11 +426,11 @@ fn unfinished @199
       StorageDead(_6) @210 s1
       StorageDead(_5) @211 s1
       StorageDead(_4) @210 s1
-      drop _3 -> bb19 [elide] @209 s1
-  bb19:
+      drop _3 -> bb17 [elide] @209 s1
+  bb17:
       StorageDead(_3) @209 s1
-      drop _2 -> bb20 @202 s1
-  bb20:
+      drop _2 -> bb18 @202 s1
+  bb18:
       StorageDead(_2) @202 s1
       unreachable @201
 fn cut @215

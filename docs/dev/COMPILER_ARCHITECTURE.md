@@ -263,6 +263,8 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - R7-N2d's, removed at R7-D2 d3 (a conformance's specification read by demand; DECISIONS R7-M9): `clausesBindable`, `notReadyReads`,
     `earlyReads`, `knownBases`, `knownMode`, `secondRun`, `verifiedClause`, `StartRuns`, `VerifyEarlyReads`, the loop in `Bind` and the second
     `PublishInheritedOptOuts`;
+  - G600's, removed at R7-D2 d3 with R7-N2d's (DECISIONS BU-137): `earlyObjectForms` and `VerifyEarlyObjectForms`, object forms formed
+    before the opt-outs are published, judged again after them;
   - R8's: `Binding.LibraryWitnessGroup.EffectsLimit`, `Witnesses`' `false` for a generic group function, which A4 reads as its Limit, with `Binding.LeafTarget` its second reader until R7-P5 (R7-P5,
     when `Witnesses` answers a witness's instance with its Types; DECISIONS R8-M4); `DictionaryEntryLayout.Of`, the second statement of
     the Dictionary slot beside `DictionaryStorage.slotStride<K, V>()`, read by `FunctionCodegen.Storage`'s `DictionaryKernel` and
