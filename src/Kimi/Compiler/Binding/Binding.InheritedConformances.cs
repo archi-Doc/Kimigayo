@@ -59,7 +59,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (!this.conformancesByType.TryGetValue(parent, out var identities))
+            if (this.impls.OfType(parent) is not { } identities)
             {
                 this.inheritedConformanceStates[type] = 2;
                 return;
@@ -77,7 +77,7 @@ public sealed partial class Binding
                 for (var j = 0; j < identity.Paths.Count; j++)
                 {
                     var source = identity.Paths[j];
-                    var path = this.RegisterConformance(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
+                    var path = this.impls.Register(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
                     path.Use = syntax;
                     if (path.InheritedFrom is null)
                     {
@@ -150,7 +150,7 @@ public sealed partial class Binding
             {
                 var inheritedProof = ancestor.Intrinsic != IntrinsicKind.None
                     ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: ancestor)), scope)
-                    : this.VerifyConformance(this.conformancePaths[(path.Type, ancestor, path.Declaration, path.RootContract)]);
+                    : this.VerifyConformance(this.impls.Path(path.Type, ancestor, path.Declaration, path.RootContract));
                 proof = CombineProof(proof, inheritedProof, true);
             }
 
@@ -197,7 +197,7 @@ public sealed partial class Binding
 
                     if (!ReferenceEquals(identity.Contract, path.Contract))
                     {
-                        var ancestor = this.conformancePaths[(path.Type, identity.Contract, path.Declaration, path.RootContract)];
+                        var ancestor = this.impls.Path(path.Type, identity.Contract, path.Declaration, path.RootContract);
                         if (!CopyRequirementWitness(ancestor, path, identity))
                         {
                             proof = CombineProof(proof, ConstraintProof.Unknown, true);
@@ -319,7 +319,7 @@ public sealed partial class Binding
             return this.InheritedSelfMismatchNote(constraint.Left!) ?? this.InheritedSelfMismatchNote(constraint.Right!);
         }
 
-        if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || !this.conformancesByType.TryGetValue(owner, out var identities))
+        if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || this.impls.OfType(owner) is not { } identities)
         {
             return null;
         }

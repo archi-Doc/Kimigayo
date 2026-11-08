@@ -18,7 +18,7 @@ public sealed partial class Binding
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops)> contractParts = new();
 
-    // The hop chains, one per path, step and inner chain: kept for the Binding's lifetime, as the paths they name (conformancePaths), so
+    // The hop chains, one per path, step and inner chain: kept for the Binding's lifetime, as the paths they name (ImplTable), so
     // a warm pass allocates none.
     private readonly Dictionary<(BoundConformancePath Path, BoundType Step, ResolutionHops? Inner), ResolutionHops> hopChains = new();
 
