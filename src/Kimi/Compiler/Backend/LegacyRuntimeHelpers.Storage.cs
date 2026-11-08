@@ -77,7 +77,7 @@ internal static partial class LegacyRuntimeHelpers
         output.Write("_1, align 8\n");
     }
 
-    // SPEC 4.9.6, 22.2: the address of a key or value at its offset inside an entry slot, for placeEntry's helper (until R8-K1b's second part).
+    // SPEC 4.9.6, 22.2: the address of a key or value at its offset inside an entry slot, for placeEntry's helper (unreachable since R8-K1b-2; R8-K1b-3).
     private static void WriteEntryAddress(TextWriter output, ReadOnlySpan<char> result, ReadOnlySpan<char> slot, long offset)
     {
         output.Write("  ");

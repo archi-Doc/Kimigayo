@@ -958,14 +958,14 @@ public sealed partial class RetentionTest
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
-    // G147 (1), G160-3 (SPEC 5.7, 15.6.4): placeEntry's handle `raw/Dictionary<K, V>` admits K and V, so the call stores its key and value
-    // in the Dictionary the handle addresses, and the handle as a read through it, never its own value (DECISIONS R4-M116); the earlier
-    // `raw/u8` handle admitted nothing. A raw result that states no Origin retains its input as a value and by its chain (rule A,
-    // DECISIONS BU-40) is `allocate`'s row above.
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 4.9.6): DictionaryStorage.placeEntry takes the Dictionary's exclusive borrow (R8-K1b-2; it took a
+    // `raw/Dictionary<K, V>` handle before, with the same row), so the call stores its key and value in the Dictionary it borrows, and the
+    // borrow as a read through it, never its own value (DECISIONS R4-M116): an insertion's published effect. A raw result that states no
+    // Origin retains its input as a value and by its chain (rule A, DECISIONS BU-40) is `allocate`'s row above.
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
-    [InlineData(KimiDeclarationId.StoragePlaceDictionaryEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
+    [InlineData(KimiDeclarationId.DictionaryStoragePlaceEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
     [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
     public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
     {
@@ -1203,21 +1203,15 @@ public sealed partial class RetentionTest
 
     // PLAN G255's C1 (SPEC 5.7 Calls, 15.6.4's R′, 5.2.1; DECISIONS BU-40): a result raw layer stating an input borrow's Origin retains
     // as that borrow would, so what it addresses is that borrow's storage and the unstated layers there are lent, not written by the
-    // result: dictionaryStorage's handle over a V holding one, as the MIR's Dictionary literal calls it, and a user function of its
-    // shape, are not untied (fail-before: untied, so each such literal's entries reached storage the body does not own on the MIR); the
-    // input's own storage stays an untied store, written by rule A. The input holds raw layers past its exclusive borrow, a raw source whose
-    // chain the stated layer keeps (DECISIONS BU-66, A2; before `0 Value`).
+    // result: a function returning a handle over a Dictionary whose V holds one is not untied (fail-before: untied); the input's own
+    // storage stays an untied store, written by rule A. The input holds raw layers past its exclusive borrow, a raw source whose chain the
+    // stated layer keeps (DECISIONS BU-66, A2; before `0 Value`).
     [Theory]
     [InlineData("raw/u8")]
     [InlineData("(raw/u8, i32)")]
     public void AStatedResultLayerLendsWhatItAddresses(string value)
     {
-        var c = Bind($"func lit(q: raw/u8) -> Dictionary<i32, {value}> => [1: {(value == "raw/u8" ? "q" : "(q, 1)")}]\n" +
-            $"func f(value: uniq/Dictionary<i32, {value}>) -> (raw/Dictionary<i32, {value}> during value, isize) => (null, 0)\n");
-        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "lit");
-        var call = body.Blocks.ToArray().Select(static x => x.Terminator)
-            .Single(static x => x is { Kind: MirTerminatorKind.Call } && x.Callee.Symbol?.LibraryDeclaration == KimiDeclarationId.StorageDictionaryLayout);
-        Assert.Equal("result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied", Show(c.Types.Retains(call.Callee.Symbol!, call.Callee.Subst, body.Key.Decl)));
+        var c = Bind($"func f(value: uniq/Dictionary<i32, {value}>) -> (raw/Dictionary<i32, {value}> during value, isize) => (null, 0)\n");
         Assert.Equal("result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied", Declared(c, "f"));
     }
 
