@@ -111,7 +111,7 @@ public static partial class Parser
         var unavailableAccessor = false;
         while (reader.CanRead)
         {
-            if (TryConsumeUnavailableModifiers(ref reader, out _, accessor: true))
+            if (ScanHeaderModifiers(ref reader, HeaderWord.AccessorIntroducer) == HeaderScan.Reported)
             {
                 unavailableAccessor = true;
                 parsedAny = true;
@@ -199,7 +199,7 @@ public static partial class Parser
             }
 
             seenAccessor = true;
-            if (TryConsumeUnavailableModifiers(ref reader, out _, accessor: true))
+            if (ScanHeaderModifiers(ref reader, HeaderWord.AccessorIntroducer) == HeaderScan.Reported)
             {
                 unavailableAccessor = true;
                 SkipItemForRecovery(ref reader);

@@ -37,7 +37,7 @@ public static partial class Parser
 
     private const int RangeRightBindingPower = 9;
 
-    // Per-token-kind tables replace switch chains on the expression hot path.
+    // Per-token-kind tables replace switch chains: on the expression hot path, and for the words of a header line (Parser.ItemPrefixes).
     private static readonly byte[] InfixLeftBindingPower = new byte[TokenHelper.MaxTokens];
 
     private static readonly byte[] InfixRightBindingPower = new byte[TokenHelper.MaxTokens];
@@ -47,6 +47,8 @@ public static partial class Parser
     private static readonly bool[] IsPostfixOperator = new bool[TokenHelper.MaxTokens];
 
     private static readonly bool[] IsExpressionBoundaryKind = new bool[TokenHelper.MaxTokens];
+
+    private static readonly HeaderWord[] HeaderWords = new HeaderWord[TokenHelper.MaxTokens];
 
     static Parser()
     {
@@ -63,27 +65,45 @@ public static partial class Parser
                 TokenKind.Dot, TokenKind.OpenParenthesis, TokenKind.LessThan,
                 TokenKind.OpenBracket, TokenKind.PlusPlus, TokenKind.MinusMinus,
                 TokenKind.At, // Only @follow is postfix (SPEC 13.1); other @ operations keep their infix precedence.
-            ]);
+            ],
+            true);
 
         Mark(
             IsPrefixOperator,
             [
                 TokenKind.Dollar, TokenKind.Asterisk, TokenKind.Plus,
                 TokenKind.Minus, TokenKind.Not, TokenKind.Caret, TokenKind.PlusPlus, TokenKind.MinusMinus,
-            ]);
+            ],
+            true);
 
         Mark(
             IsExpressionBoundaryKind,
             [
                 TokenKind.Separator, TokenKind.StartBlock, TokenKind.EndBlock, TokenKind.Else,
                 TokenKind.EqualsGreaterThan, TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis, TokenKind.CloseBracket,
-            ]);
+            ],
+            true);
 
-        static void Mark(bool[] table, ReadOnlySpan<TokenKind> kinds)
+        Mark(
+            HeaderWords,
+            [TokenKind.Public, TokenKind.Internal, TokenKind.Private, TokenKind.Protected, TokenKind.Open, TokenKind.Static],
+            HeaderWord.Modifier);
+
+        Mark(
+            HeaderWords,
+            [
+                TokenKind.RootGroup, TokenKind.Group, TokenKind.Struct, TokenKind.Enum, TokenKind.Contract, TokenKind.Extension, TokenKind.Func,
+                TokenKind.Init, TokenKind.Drop, TokenKind.Let, TokenKind.Var, TokenKind.Computed, TokenKind.Property, TokenKind.Associate,
+            ],
+            HeaderWord.DeclarationIntroducer);
+
+        Mark(HeaderWords, [TokenKind.Get, TokenKind.Set], HeaderWord.AccessorIntroducer);
+
+        static void Mark<T>(T[] table, ReadOnlySpan<TokenKind> kinds, T value)
         {
             foreach (var kind in kinds)
             {
-                table[(int)kind] = true;
+                table[(int)kind] = value;
             }
         }
     }
