@@ -274,56 +274,51 @@ public sealed partial class Binding
         // A query nested in a case's proof takes its own list, as PairSlotCondition's does.
         var binders = this.copyCaseBinders.Count == 0 ? this.copyCaseBinders : new List<PairBinder>();
         this.PairBinders(scope, binders);
+        var resolved = 0;
+        var count = 1L;
+        for (var b = 0; b < binders.Count; b++)
+        {
+            if (binders[b].Resolved)
+            {
+                count *= BitOperations.PopCount((uint)binders[b].Admitted);
+                resolved++;
+            }
+        }
+
+        if (resolved == 0 || count > PairBinder.CaseBound)
+        {
+            binders.Clear();
+            return false;
+        }
+
+        Span<SemanticsKind> digits = stackalloc SemanticsKind[resolved];
+        var scratch = this.caseScratch.Rent(resolved);
         try
         {
-            var resolved = 0;
-            var count = 1L;
-            for (var b = 0; b < binders.Count; b++)
+            var assignment = scratch.AsSpan(0, resolved);
+            for (var index = 0; index < count; index++)
             {
-                if (binders[b].Resolved)
+                CaseDigits(binders, index, digits);
+                for (int j = 0, b = 0; b < binders.Count; b++)
                 {
-                    count *= BitOperations.PopCount((uint)binders[b].Admitted);
-                    resolved++;
-                }
-            }
-
-            if (resolved == 0 || count > PairBinder.CaseBound)
-            {
-                return false;
-            }
-
-            Span<SemanticsKind> digits = stackalloc SemanticsKind[resolved];
-            var scratch = this.caseScratch.Rent(resolved);
-            try
-            {
-                var assignment = scratch.AsSpan(0, resolved);
-                for (var index = 0; index < count; index++)
-                {
-                    CaseDigits(binders, index, digits);
-                    for (int j = 0, b = 0; b < binders.Count; b++)
+                    if (binders[b].Resolved)
                     {
-                        if (binders[b].Resolved)
-                        {
-                            assignment[j] = new(binders[b].Target, digits[j]);
-                            j++;
-                        }
-                    }
-
-                    if (this.ProveCopy(this.CaseType(type, assignment), scope) != ConstraintProof.Proven)
-                    {
-                        return false;
+                        assignment[j] = new(binders[b].Target, digits[j]);
+                        j++;
                     }
                 }
 
-                return true;
+                if (this.ProveCopy(this.CaseType(type, assignment), scope) != ConstraintProof.Proven)
+                {
+                    return false;
+                }
             }
-            finally
-            {
-                this.caseScratch.Return(scratch, clearArray: true);
-            }
+
+            return true;
         }
         finally
         {
+            this.caseScratch.Return(scratch, clearArray: true);
             binders.Clear();
         }
     }

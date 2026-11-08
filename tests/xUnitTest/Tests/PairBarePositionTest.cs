@@ -68,12 +68,21 @@ public sealed class PairBarePositionTest
     // and the Closure over them are Copy); each other row is invalid in one case (a uniq case, 3.5.2) with its record.
     [Theory]
     [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let t = (value, 1)\n    let u = t\n    let w = t\n", "")]
-    [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let c = func [value] () -> ()\n        takeOR(value@move)\n    let d = c\n    c()\n    c()\n", "")]
-    [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let t = (value, 1)\n    let u = t@copy\n    let w = value@copy\n", "")]
+    [InlineData(
+        "func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let c = func [value] () -> ()\n        takeOR(value@move)\n" +
+        "    let d = c\n    c()\n    c()\n",
+        "")]
+    [InlineData(
+        "func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    T is Copy\n    let t = (value, 1)\n    let u = t@copy\n    let w = value@copy\n",
+        "")]
     [InlineData("receiver ref", "")]
     [InlineData("six ref", "")]
-    [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let c = func [value] () -> ()\n        takeOU(value@move)\n    c()\n", nameof(DiagnosticCode.TransferRequired_Kd))]
-    [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    let t = (value@move, 1)\n    let u = t\n", nameof(DiagnosticCode.TransferRequired_Kd))]
+    [InlineData(
+        "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let c = func [value] () -> ()\n        takeOU(value@move)\n    c()\n",
+        nameof(DiagnosticCode.TransferRequired_Kd))]
+    [InlineData(
+        "func f<s/T>(value: s/T) -> ()\n    s is owner or ref\n    let t = (value@move, 1)\n    let u = t\n",
+        nameof(DiagnosticCode.TransferRequired_Kd))]
     [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let u = value@copy\n", nameof(DiagnosticCode.NonCopyOperand_Kd))]
     [InlineData("receiver uniq", nameof(DiagnosticCode.InvalidAssignment_Kd))]
     [InlineData("six uniq", nameof(DiagnosticCode.TransferRequired_Kd))]
@@ -89,6 +98,8 @@ public sealed class PairBarePositionTest
         };
         var check = DiagnosticCorpus.Check(source);
         var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
-        Assert.True(code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && codes.Contains(code, StringComparison.Ordinal), codes);
+        Assert.True(
+            code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && codes.Contains(code, StringComparison.Ordinal),
+            codes);
     }
 }

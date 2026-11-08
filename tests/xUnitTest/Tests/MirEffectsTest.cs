@@ -330,7 +330,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         => Assert.Equal(
             Expected(expected),
             Problems("func run<F>(f: F) -> i32\n    F is Callable<owner, () -> i32>\n        effect confined\n    return f@move()\n" +
-                $"func h<s/T>(value: s/T) -> i32\n    s is {admitted}\n    T is Copy\n    let c = func [{capture}] () -> i32\n        return 1\n    return run(c@move)\n"));
+                $"func h<s/T>(value: s/T) -> i32\n    s is {admitted}\n    T is Copy\n    let c = func [{capture}] () -> i32\n" +
+                "        return 1\n    return run(c@move)\n"));
 
     // SPEC 8.11.4: a call through an abstract input takes the bounds of its one Callable signature; with several, only the call's
     // arguments chose among them, which MIR does not keep: a located limit (DECISIONS R4-M23).
