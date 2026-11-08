@@ -76,9 +76,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.WriterWrite, "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.WriterStatus, "public func status(self: ref/Self) -> Result<(), BufferFull>"),
         (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
-        (KimiDeclarationId.StorageBorrowDictionary, "internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a\nK is Equatable"),
-        (KimiDeclarationId.StorageBorrowDictionaryExclusive, "internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a\nK is Equatable"),
-        (KimiDeclarationId.StorageOwnDictionary, "internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>\nK is Equatable"),
         (KimiDeclarationId.StorageKeyAt, "internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K"),
         (KimiDeclarationId.StorageValueAt, "internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V"),
         (KimiDeclarationId.StorageDictionaryLayout, "internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/Dictionary<K, V> during value, isize)\nK is Equatable"),
@@ -132,7 +129,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(192, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(189, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -491,10 +488,10 @@ public partial class KimiLibraryShapeTest
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
     [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
     [InlineData("ArrayOwningIterator", "public struct ArrayOwningIterator<T>\nvar array: Storage.ArrayRepr<T>\nvar position: isize = 0\nvar count: isize\ndrop")]
-    [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
-    [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal let stride: isize\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
-    [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal let storage: raw/u8 during self\ninternal let stride: isize\ninternal var link: isize\ninternal var tail: isize\ninternal var count: isize\ndrop")]
-    [InlineData("DictionaryStorage.Handle", "struct Handle\npublic var buffer: raw/u8 during self\npublic var used: isize\npublic var capacity: isize\npublic var length: isize\npublic var head: isize\npublic var tail: isize\npublic var free: isize")]
+    [InlineData("Storage.DictionaryRefRemainder", "internal struct DictionaryRefRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<ref/(K, V) during source>")]
+    [InlineData("Storage.DictionaryUniqRemainder", "internal struct DictionaryUniqRemainder<K, V> {source}\ninternal let storage: raw/u8 during source\ninternal var link: isize\ninternal var count: isize\ninternal let loan: Loan<uniq/(K, V) during source>")]
+    [InlineData("Storage.DictionaryOwnedRemainder", "internal struct DictionaryOwnedRemainder<K, V>\ninternal var handle: DictionaryStorage.Handle\ndrop")]
+    [InlineData("DictionaryStorage.Handle", "internal struct Handle\npublic var buffer: raw/u8 during self\npublic var used: isize\npublic var capacity: isize\npublic var length: isize\npublic var head: isize\npublic var tail: isize\npublic var free: isize")]
     [InlineData("Storage.ArrayRepr", "internal struct ArrayRepr<T>\ninternal var data: raw/T during self\ninternal var length: isize\ninternal var capacity: isize")]
     [InlineData("Storage.SliceRepr", "internal struct SliceRepr<T>\ninternal var data: raw/T\ninternal var length: isize")]
     [InlineData("Storage.StringRepr", "internal struct StringRepr\ninternal var data: raw/u8\ninternal var length: isize\ninternal var releaseKind: u8")]

@@ -99,12 +99,6 @@ internal enum LegacyWriter : byte
     /// <summary>dictionaryStorage: the {address, entry stride} Tuple through the DictionaryLayout kernel.</summary>
     DictionaryLayout,
 
-    /// <summary>borrowStorage and borrowStorageUniq over a Dictionary: the remainder through the BorrowDictionary kernel, with the stride.</summary>
-    DictionaryBorrow,
-
-    /// <summary>ownStorage of a Dictionary: the owning remainder through the OwnDictionary kernel, with the stride.</summary>
-    DictionaryOwn,
-
     /// <summary>keyAt: a slot's key address through the EntryAddress kernel, with the key's offset.</summary>
     KeyAt,
 
@@ -203,8 +197,6 @@ internal static partial class LegacyRuntimeHelpers
         // SPEC 4.9.6, 22.2 (DECISIONS R5-M124): the Dictionary storage kinds, placeEntry in its function's instance, the others inline kernels.
         CompilerFunctionKind.StoragePlaceDictionaryEntry => new(LegacyWriter.Place),
         CompilerFunctionKind.StorageDictionaryLayout => new(LegacyWriter.DictionaryLayout),
-        CompilerFunctionKind.StorageBorrowDictionary or CompilerFunctionKind.StorageBorrowDictionaryExclusive => new(LegacyWriter.DictionaryBorrow),
-        CompilerFunctionKind.StorageOwnDictionary => new(LegacyWriter.DictionaryOwn),
         CompilerFunctionKind.StorageKeyAt => new(LegacyWriter.KeyAt),
         CompilerFunctionKind.StorageValueAt => new(LegacyWriter.ValueAt),
 
