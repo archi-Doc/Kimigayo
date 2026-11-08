@@ -16,30 +16,19 @@ internal enum StorageKernelKind : byte
 
     /// <summary>StorageKeyAt and StorageValueAt: the address of a key or value inside a validated live slot.</summary>
     EntryAddress,
-
-    /// <summary>StorageBorrowDictionary and StorageBorrowDictionaryExclusive: the remainder {storage, stride, link, count} =
-    /// {slot buffer, entry stride, first link, live count} of the borrowed handle.</summary>
-    BorrowDictionary,
-
-    /// <summary>StorageOwnDictionary: the owning remainder {storage, stride, link, tail, count}, which also keeps the last
-    /// link of the transferred handle.</summary>
-    OwnDictionary,
 }
 
 /// <summary>The input of an inline storage kernel: the spelling of the address it reads; the spelling of its result, the record
-/// it writes or, for EntryAddress, the address it defines; its number, the entry stride, the array length or the entry offset;
-/// its result record's Field offsets in the order its kind lists them (none for DictionaryLayout and EntryAddress); and the
-/// number naming its temporaries.</summary>
+/// it writes or, for EntryAddress, the address it defines; its number, the entry stride or the entry offset; and the number naming
+/// its temporaries.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly ref struct StorageKernelInput(ReadOnlySpan<char> source, ReadOnlySpan<char> result, long number, ReadOnlySpan<int> fields, int id)
+internal readonly ref struct StorageKernelInput(ReadOnlySpan<char> source, ReadOnlySpan<char> result, long number, int id)
 {
     internal ReadOnlySpan<char> Source { get; } = source;
 
     internal ReadOnlySpan<char> Result { get; } = result;
 
     internal long Number { get; } = number;
-
-    internal ReadOnlySpan<int> Fields { get; } = fields;
 
     internal int Id { get; } = id;
 }
@@ -68,8 +57,6 @@ internal static partial class LegacyRuntimeHelpers
             StorageKernelKind.EntryAddress,
             static (TextWriter output, in StorageKernelInput input) => WriteEntryAddress(output, input.Result, input.Source, input.Number),
             HelperNeeds.None),
-        new(StorageKernelKind.BorrowDictionary, WriteDictionaryBorrow, HelperNeeds.None),
-        new(StorageKernelKind.OwnDictionary, WriteDictionaryOwn, HelperNeeds.None),
     ];
 
     /// <summary>Gets the row of an inline storage kernel kind; a kind without a row is a broken contract.</summary>
@@ -79,47 +66,6 @@ internal static partial class LegacyRuntimeHelpers
         => (uint)kind < (uint)StorageKernelRows.Length && StorageKernelRows[(int)kind].Kind == kind
             ? StorageKernelRows[(int)kind]
             : throw new InvalidOperationException("A storage kernel kind has no row.");
-
-    /// <summary>Defines the address of a library record's Field at its named layout offset when it needs one: offset 0 is the
-    /// record's own address, and a nonzero offset is reached through <c>{name}{id}_{offset}</c>, written here before its use.</summary>
-    /// <param name="output">The function text.</param>
-    /// <param name="record">The spelling of the record's address.</param>
-    /// <param name="name">The prefix of the Field address's name.</param>
-    /// <param name="id">The number naming the writer's temporaries.</param>
-    /// <param name="offset">The Field's offset in the record.</param>
-    internal static void DefineField(TextWriter output, ReadOnlySpan<char> record, string name, int id, long offset)
-    {
-        if (offset != 0)
-        {
-            output.Write("  ");
-            WriteField(output, record, name, id, offset);
-            output.Write(" = getelementptr i8, ptr ");
-            output.Write(record);
-            output.Write(", i64 ");
-            WriteNumber(output, offset);
-            output.Write('\n');
-        }
-    }
-
-    /// <summary>Writes the address of a library record's Field that <see cref="DefineField"/> defined.</summary>
-    /// <param name="output">The function text.</param>
-    /// <param name="record">The spelling of the record's address.</param>
-    /// <param name="name">The prefix of the Field address's name.</param>
-    /// <param name="id">The number naming the writer's temporaries.</param>
-    /// <param name="offset">The Field's offset in the record.</param>
-    internal static void WriteField(TextWriter output, ReadOnlySpan<char> record, string name, int id, long offset)
-    {
-        if (offset == 0)
-        {
-            output.Write(record);
-            return;
-        }
-
-        output.Write(name);
-        WriteNumber(output, id);
-        output.Write('_');
-        WriteNumber(output, offset);
-    }
 
     // SPEC 22.2: the layout projection's Tuple {handle address, entry stride}, its elements at offsets 0 and 8.
     private static void WriteDictionaryLayout(TextWriter output, in StorageKernelInput input)
@@ -149,75 +95,5 @@ internal static partial class LegacyRuntimeHelpers
         output.Write(", i64 ");
         WriteNumber(output, offset);
         output.Write('\n');
-    }
-
-    // SPEC 22.2: borrowStorage over a Dictionary copies the handle's slot buffer, first link and live count into the remainder
-    // {storage, stride, link, count} with the concrete entry stride.
-    private static void WriteDictionaryBorrow(TextWriter output, in StorageKernelInput input)
-    {
-        WriteDictionaryRemainder(output, input);
-        WriteDictionaryField(output, input, input.Fields[3], "i64 %dlen", input.Id);
-    }
-
-    // SPEC 22.2: ownStorage transfers the handle into the owning remainder {storage, stride, link, tail, count}, which also keeps
-    // the last link.
-    private static void WriteDictionaryOwn(TextWriter output, in StorageKernelInput input)
-    {
-        var id = input.Id;
-        WriteDictionaryRemainder(output, input);
-        output.Write("  %dtailp");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(input.Source);
-        output.Write(", i64 40\n  %dtail");
-        WriteNumber(output, id);
-        output.Write(" = load i64, ptr %dtailp");
-        WriteNumber(output, id);
-        output.Write(", align 8\n");
-        WriteDictionaryField(output, input, input.Fields[3], "i64 %dtail", id);
-        WriteDictionaryField(output, input, input.Fields[4], "i64 %dlen", id);
-    }
-
-    // Loads the handle's slot buffer, live count (offset 24) and first link (offset 32), then stores the remainder's storage,
-    // stride and link Fields.
-    private static void WriteDictionaryRemainder(TextWriter output, in StorageKernelInput input)
-    {
-        var id = input.Id;
-        output.Write("  %dbuf");
-        WriteNumber(output, id);
-        output.Write(" = load ptr, ptr ");
-        output.Write(input.Source);
-        output.Write(", align 8\n  %dlenp");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(input.Source);
-        output.Write(", i64 24\n  %dlen");
-        WriteNumber(output, id);
-        output.Write(" = load i64, ptr %dlenp");
-        WriteNumber(output, id);
-        output.Write(", align 8\n  %dheadp");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr ");
-        output.Write(input.Source);
-        output.Write(", i64 32\n  %dhead");
-        WriteNumber(output, id);
-        output.Write(" = load i64, ptr %dheadp");
-        WriteNumber(output, id);
-        output.Write(", align 8\n");
-        WriteDictionaryField(output, input, input.Fields[0], "ptr %dbuf", id);
-        WriteDictionaryField(output, input, input.Fields[1], "i64 ", input.Number);
-        WriteDictionaryField(output, input, input.Fields[2], "i64 %dhead", id);
-    }
-
-    // Stores `prefix` and `number` into the remainder Field at `offset`.
-    private static void WriteDictionaryField(TextWriter output, in StorageKernelInput input, int offset, string prefix, long number)
-    {
-        DefineField(output, input.Result, "%dfield", input.Id, offset);
-        output.Write("  store ");
-        output.Write(prefix);
-        WriteNumber(output, number);
-        output.Write(", ptr ");
-        WriteField(output, input.Result, "%dfield", input.Id, offset);
-        output.Write(", align 8\n");
     }
 }

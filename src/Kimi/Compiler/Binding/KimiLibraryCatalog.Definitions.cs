@@ -154,11 +154,8 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.UniqRemainder, "UniqRemainder", KimiLibraryContainer.Storage),
         // SPEC 22.2: the distinct Dictionary family traverses live entries in insertion order.
         new(KimiDeclarationId.DictionaryRefRemainder, "DictionaryRefRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 2),
         new(KimiDeclarationId.DictionaryUniqRemainder, "DictionaryUniqRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageBorrowDictionaryExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionaryExclusive, Overload: 3),
         new(KimiDeclarationId.DictionaryOwnedRemainder, "DictionaryOwnedRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageOwnDictionary, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnDictionary, Overload: 0),
         new(KimiDeclarationId.StorageKeyAt, "keyAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageKeyAt),
         new(KimiDeclarationId.StorageValueAt, "valueAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageValueAt),
         // SPEC 22.2: the fixed-array overloads of the contiguous borrowing remainders.

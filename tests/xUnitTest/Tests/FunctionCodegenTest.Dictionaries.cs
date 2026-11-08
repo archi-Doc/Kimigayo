@@ -48,6 +48,11 @@ public sealed partial class FunctionCodegenTest
     public static TheoryData<string, string, string> DictionaryPrograms => new()
     {
         {
+            "DictionarySlotStrides",
+            "struct Z16\n    Self is Equatable\n    public var pad: [0 of i128]\n    public init() => self.pad = []\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc wideValue()\n    var d: Dictionary<i32, i128> = [:]\n    var i: i32 = 0\n    while i < 9\n        _ = d.tryInsert(i, (i * 3)@i128)\n        i += 1\n    _ = d.remove(4)\n    d.reserve(64)\n    var sum: i128 = 0\n    for (k, v) in d => sum += v\n    d.shrinkToFit()\n    for (k, v) in d@uniq => v@follow += 1\n    require d[8] == 25 else => $abort(\"wide value index\")\n    require sum == 96 else => $abort(\"wide value sum\")\n    Console.writeLine(\"wide value ok \\(d.length)\")\nfunc text()\n    var d: Dictionary<i32, string> = [:]\n    _ = d.tryInsert(1, \"a\")\n    _ = d.tryInsert(2, \"bb\")\n    _ = d.tryInsert(3, \"ccc\")\n    _ = d.remove(2)\n    _ = d.insertOrReplace(1, \"z\")\n    var n: isize = 0\n    for (k, v) in d => n += 1\n    require n == 2 else => $abort(\"text\")\n    require d[1] == \"z\" else => $abort(\"text value\")\n    d.clear()\n    require d.length == 0 else => $abort(\"cleared\")\n    Console.writeLine(\"text ok\")\nfunc empty()\n    var d: Dictionary<(), ()> = [:]\n    _ = d.tryInsert((), ())\n    require d.length == 1 else => $abort(\"unit\")\n    _ = d.remove(())\n    require d.length == 0 else => $abort(\"unit removed\")\n    Console.writeLine(\"unit ok\")\nfunc aligned()\n    var d: Dictionary<i32, Z16> = [:]\n    _ = d.tryInsert(1, Z16.init())\n    _ = d.tryInsert(2, Z16.init())\n    _ = d.tryInsert(3, Z16.init())\n    _ = d.remove(2)\n    d.reserve(16)\n    d.shrinkToFit()\n    var n: i32 = 0\n    for (k, v) in d => n += k\n    require n == 4 else => $abort(\"aligned value\")\n    var e: Dictionary<Z16, Z16> = [:]\n    _ = e.tryInsert(Z16.init(), Z16.init())\n    match e.tryInsert(Z16.init(), Z16.init())\n        .Ok(_) => $abort(\"aligned duplicate\")\n        .Err(_) => ()\n    var m: isize = 0\n    for (k, v) in e@move => m += 1\n    require m == 1 else => $abort(\"aligned key\")\n    Console.writeLine(\"aligned ok\")\nfunc narrowValue()\n    var d: Dictionary<i128, u8> = [:]\n    _ = d.tryInsert(7, 1)\n    _ = d.tryInsert(8, 2)\n    var total: i32 = 0\n    for (k, v) in d@move => total += v@i32\n    require total == 3 else => $abort(\"narrow value\")\n    Console.writeLine(\"narrow value ok\")\npublic func main()\n    wideValue()\n    text()\n    empty()\n    aligned()\n    narrowValue()\n",
+            "wide value ok 8\ntext ok\nunit ok\naligned ok\nnarrow value ok\n"
+        },
+        {
             "DictionaryRows",
             DictionaryKeys +
             "struct Res\n    public let name: string\n    public init(name: string) => self.name = name@move\n    drop => Console.writeLine(self.name)\n" +
@@ -96,22 +101,23 @@ public sealed partial class FunctionCodegenTest
     public void DictionaryProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
-    // SPEC 4.7.3, 22.2 (DECISIONS R5-M124): each storage kernel writes the handle's words over its call's entry layout: borrowStorage the
-    // remainder with the stride (24 for Small and i32) from the buffer, the live count (24) and the first link (32); ownStorage also the tail
-    // (40) into five Fields; keyAt and valueAt the slot at the key's (16) and the value's (20) offset; dictionaryStorage the address and the
-    // stride (32 for Key and i32); a Dictionary's length its live count, the word at 24.
+    // SPEC 4.7.3, 22.2 (DECISIONS R5-M124, R8-K1a): the storage bodies read the Handle's words: borrowStorage and borrowStorageUniq the
+    // first link (32) and the live count (24), no remainder's init storing the slot stride (slotStride's, 24 for Small and i32, is computed
+    // where a slot is addressed), ownStorage moving the 56-byte Handle whole into its remainder; the kernels keyAt and valueAt address the
+    // slot at the key's (16) and the value's (20) offset, dictionaryStorage writes the address and the stride (32 for Key and i32); a
+    // Dictionary's length is its live count, the word at 24.
     [Fact]
     public void TheDictionaryKernelsWriteTheHandlesWordsOverTheEntryLayout()
     {
         var c = Analyze(Dictionaries, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
-        var borrows = FunctionsOf(ir, c, "iterate").Concat(FunctionsOf(ir, c, "iterateUniq")).ToArray();
-        Assert.Equal(2, borrows.Length);
-        Assert.All(borrows, static x => Assert.Single(x.Instructions, static y => y.Shape == "store i64 24, ptr %, align 8"));
-        Assert.All(borrows, static x => Assert.Contains(x.Instructions, static y => y.Shape == "getelementptr i8, ptr %, i64 32"));
-        var own = Assert.Single(FunctionsOf(ir, c, "intoIterator"));
-        Assert.Contains(own.Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 40");
-        Assert.Contains(own.Instructions, static x => x.Shape == "store i64 24, ptr %, align 8");
+        var borrows = FunctionsOf(ir, c, "borrowStorage").Concat(FunctionsOf(ir, c, "borrowStorageUniq"))
+            .Where(static x => x.Instructions.Any(static y => y.Shape == "getelementptr i8, ptr %, i64 32")).ToArray();
+        Assert.Equal(5, borrows.Length); // findEntry's over Key and i32, string and Empty, dcTotal's and dcBump's over Small and i32.
+        Assert.All(borrows, static x => Assert.Contains(x.Instructions, static y => y.Shape == "getelementptr i8, ptr %, i64 24"));
+        Assert.DoesNotContain(FunctionsOf(ir, c, "init"), static x => x.Instructions.Any(static y => y.Shape == "store i64 24, ptr %, align 8"));
+        var own = Assert.Single(FunctionsOf(ir, c, "ownStorage"));
+        Assert.Contains(own.Instructions, static x => x.Shape == "call void @(ptr align 8 %, ptr align 8 %, i64 56, i1 false)");
         var slots = FunctionsOf(ir, c, "splitFirst").SelectMany(static x => x.Instructions).Select(static x => x.Shape).ToArray();
         Assert.Contains("getelementptr i8, ptr %, i64 16", slots);
         Assert.Contains("getelementptr i8, ptr %, i64 20", slots);

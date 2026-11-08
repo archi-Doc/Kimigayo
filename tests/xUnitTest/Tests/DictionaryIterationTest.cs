@@ -174,4 +174,67 @@ public class DictionaryIterationTest
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         Assert.False(c.Generate(TextWriter.Null));
     }
+
+    // SPEC 8.15.3 (R8-K1a, as R8-A1d for Arrays): a Dictionary view formed behind a borrow reads no entry, so it lays out nothing of K or V:
+    // `iterate` and `iterateUniq` over a key or value whose layout fails (a C layout with a zero-sized Field, a size over 2^63 - 1, one over the
+    // generation limit) are valid, by a call, as a result and through a generic Iterable; two of them build. An entry's first read needs them.
+    [Theory]
+    [InlineData("Shared", "#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: ref/Dictionary<Bad, i32>) -> isize\n    var it = d.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Exclusive", "#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: uniq/Dictionary<Bad, i32>) -> isize\n    var it = d.iterateUniq()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Result", "#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: ref/Dictionary<Bad, i32>) -> DictionaryIterator<Bad, i32> during d\n    return d.iterate()\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Value", "#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: ref/Dictionary<i32, Bad>) -> isize\n    var it = d.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Generic", "#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc g<T>(x: ref/T) -> isize\n    T is Iterable\n    var it = x.iterate()\n    return 0\nfunc f(d: ref/Dictionary<Bad, i32>) -> isize\n    return g(d)\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("Oversized", "func f(d: ref/Dictionary<i32, [4611686018427387904 of i64]>) -> isize\n    var it = d.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    [InlineData("OverTheGenerationLimit", "func f(d: ref/Dictionary<i32, [1152921504606846974 of i64]>) -> isize\n    var it = d.iterate()\n    return 0\npublic func main()\n    let g = f\n    return\n")]
+    public void ADictionaryViewNeedsNoEntryLayout(string name, string source)
+    {
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        if (name is "Shared" or "Exclusive")
+        {
+            ScalarEmissionTest.EmitFixture("DictionaryViewNeedsNoLayout" + name, source, string.Empty);
+        }
+    }
+
+    // Their invalid counterparts: `next`, `for` and an index read an entry, one record at the use, per instance (DECISIONS R8-M2's grouping,
+    // R8-K1a). The slot stride reads each Type alone (DictionaryStorage.slotStride), so a value over the generation limit, also of the largest
+    // size its alignment allows, keeps its Resource record and is never OversizedLayout_Kd (IMPL 21.3.2; design review 1, B1).
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: ref/Dictionary<Bad, i32>) -> isize\n    var it = d.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", "it.next()")]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: uniq/Dictionary<Bad, i32>) -> isize\n    var it = d.iterateUniq()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", "it.next()")]
+    [InlineData("func f(d: ref/Dictionary<i32, [4611686018427387904 of i64]>) -> isize\n    var it = d.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "OversizedLayout_Kd", "it.next()")]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: ref/Dictionary<Bad, i32>) -> i32\n    var sum: i32 = 0\n    for (k, v) in d => sum += v\n    return sum\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", null)]
+    [InlineData("#Layout(\"C\")\nstruct Bad\n    Self is Equatable\n    public var nothing: ()\n    public var value: i32\n    public init(value: i32)\n        self.nothing = ()\n        self.value = value\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\nfunc f(d: ref/Dictionary<Bad, i32>, k: ref/Bad) -> i32\n    return d[k]\npublic func main()\n    let g = f\n    return\n", "InvalidCLayout_Kd", null)]
+    [InlineData("func f(d: ref/Dictionary<i32, [1152921504606846974 of i64]>) -> isize\n    var it = d.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "GenerationResourceLimit_Kd", "it.next()")]
+    [InlineData("func f(d: ref/Dictionary<i32, [1152921504606846975 of i64]>) -> isize\n    var it = d.iterate()\n    _ = it.next()\n    return 0\npublic func main()\n    let g = f\n    return\n", "GenerationResourceLimit_Kd", "it.next()")]
+    public void ADictionaryEntrysFirstReadNeedsItsLayout(string source, string code, string? at)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(code, record.Code);
+        Assert.True(at is null || source.Substring(record.Span!.Value.Start, record.Span.Value.Length) == at);
+    }
+
+    // IMPL 21.3.2 (R8-K1a, design review 2 item 2): `alignmentOf<T>` places `T` two levels deeper, `(u8, [0 of T])`; Binding's storage-nesting
+    // bound still cuts first, so a value nest keeps dev's records at the bound: `clear` accepts the last depth and gives one Unsupported_Kd one
+    // deeper, for a Tuple, an Option and a fixed-array nest. A change of either bound that moves these rows exposes the margin.
+    [Theory]
+    [InlineData("(u8, {0})", 61)]
+    [InlineData("Option<{0}>", 30)]
+    [InlineData("[1 of {0}]", 61)]
+    public void AValueNestKeepsTheStorageBoundsRecords(string layer, int last)
+    {
+        Assert.Empty(DiagnosticCorpus.Check(Program(last)).Diagnostics);
+        var record = Assert.Single(DiagnosticCorpus.Check(Program(last + 1)).Diagnostics);
+        Assert.Equal("Unsupported_Kd", record.Code);
+
+        string Program(int depth)
+        {
+            var type = "i32";
+            for (var i = 0; i < depth; i++)
+            {
+                type = string.Format(System.Globalization.CultureInfo.InvariantCulture, layer, type);
+            }
+
+            return $"func f(d: uniq/Dictionary<i32, {type}>) -> isize\n    d.clear()\n    return 0\npublic func main()\n    let g = f\n    return\n";
+        }
+    }
 }
