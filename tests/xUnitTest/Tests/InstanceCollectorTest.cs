@@ -1208,22 +1208,23 @@ public sealed partial class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
-    // K 4.8, X34 (DECISIONS R5-M124): placeEntry's LegacyRow item lays out each component of the Dictionary its handle designates, the value
-    // too: a literal's oversized or rejected value refuses the item at its entry's key, where the entry's insertion is (SPEC 22.5.1;
-    // DECISIONS R5-M144) (the records of its other uses are at the same sites; the literal's temp is moved into `d`, so its Drop destroys
-    // nothing and records none, PLAN G641); an i64 value admits it (the counterpart).
+    // K 4.8, X34 (DECISIONS R5-M124, R8-K1b-2): a literal's entry placement, the placeEntry body instance over the Dictionary's K and V,
+    // lays out the value: an oversized or rejected value refuses it at its entry's key, where the entry's insertion is (SPEC 22.5.1;
+    // DECISIONS R5-M144), after the literal's own records, the collector's admission order (the records of its other uses are at the same
+    // sites; the literal's temp is moved into `d`, so its Drop destroys nothing and records none, PLAN G641); an i64 value admits it (the
+    // counterpart). No LegacyRow item remains (R8-K1b-3 removes the kind).
     [Theory]
     [InlineData(Huge, "OversizedLayout_Kd")]
     [InlineData("P<()>", "InvalidCLayout_Kd")]
     [InlineData("i64", null)]
-    public void ALegacyRowLaysOutADictionarysValue(string value, string? code)
+    public void APlacementLaysOutADictionarysValue(string value, string? code)
     {
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} {value}", $"{code} v@move", $"{code} Key.init(1)", $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
+            : [$"{code} {value}", $"{code} v@move", $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]", $"{code} Key.init(1)"];
         Assert.Equal(records, c.BuildMir().Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
-        Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
@@ -1847,9 +1848,9 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal((DictionaryCallee.ClearEntries, HelperNeeds.ElementGlue), (row.Entries, row.Needs));
     }
 
-    // K 4.3, 4.5 rows 2 and 11, X4, F2c (DECISIONS R5-M124): placeEntry's call targets the LegacyRow item of its function's instance,
-    // represented by the Dictionary its raw handle designates, whose target is the body its row declares, append; a Dictionary from none
-    // targets the body of the function the Dictionary runtime declares for construction, initialize; neither instantiates, so each has one
+    // K 4.3, 4.5 rows 2 and 11, X4, F2c (DECISIONS R5-M124, R8-K1b-2): placeEntry is a DictionaryStorage body, one instance per K and V,
+    // each calling append's one item (no LegacyRow item remains; R8-K1b-3 removes the kind); a Dictionary from none targets the body of the
+    // function the Dictionary runtime declares for construction, initialize; neither append nor initialize instantiates, so each has one
     // item.
     [Fact]
     public void PlaceEntryAndADictionaryFromNoneTargetTheirDeclaredBodies()
@@ -1859,11 +1860,11 @@ public sealed partial class InstanceCollectorTest
             "func make() -> Dictionary<Key, i64> => [:]\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         const string Append = "library Fn append in group DictionaryStorage";
-        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry")));
-        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, string> StoragePlaceDictionaryEntry")));
+        Assert.Contains(Append, Calls(program, set, "library Fn placeEntry in group DictionaryStorage [DictionaryStorage, Key, i64]"));
+        Assert.Contains(Append, Calls(program, set, "library Fn placeEntry in group DictionaryStorage [DictionaryStorage, Key, string]"));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
         Assert.Equal(["library Fn initialize in group DictionaryStorage"], Calls(program, set, "Fn make"));
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == Append);
-        Assert.Equal(DictionaryCallee.Append, LegacyRuntimeHelpers.Row(CompilerFunctionKind.StoragePlaceDictionaryEntry)!.Value.Callee);
     }
 
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
@@ -2414,8 +2415,9 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(tables, set.Items.ToArray().Count(static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable));
     }
 
-    // A warm rebind collects a program's Dictionary paths again (DECISIONS R5-M124): placeEntry's LegacyRow items and the append their rows
-    // declare, a Dictionary from none's initialize and the clearEntries a glue's Drop row declares, with no allocation.
+    // A warm rebind collects a program's Dictionary paths again (DECISIONS R5-M124, R8-K1b-2): the placeEntry body's instances (tryInsert's,
+    // in its group, and the literal's) and the append they call, a Dictionary from none's initialize and the clearEntries a glue's Drop row
+    // declares, with no allocation.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunOfDictionariesAllocatesNothing()
@@ -2433,9 +2435,9 @@ public sealed partial class InstanceCollectorTest
             collector.Run(c.BuildMir(), 1);
         }));
         Assert.Equal(
-            ["LegacyRow Dictionary<Key, Res> StoragePlaceDictionaryEntry", "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry",
-                "library Fn append in group DictionaryStorage", "library Fn clearEntries in group DictionaryStorage [Key, Res]",
-                "library Fn initialize in group DictionaryStorage"],
+            ["library Fn append in group DictionaryStorage", "library Fn clearEntries in group DictionaryStorage [Key, Res]",
+                "library Fn initialize in group DictionaryStorage", "library Fn placeEntry in group DictionaryStorage [DictionaryStorage, Key, Res]",
+                "library Fn placeEntry in group DictionaryStorage [Key, i64]"],
             reached);
         c.Binding.Bind(BindingMode.Final);
         program = c.BuildMir();
@@ -2445,7 +2447,7 @@ public sealed partial class InstanceCollectorTest
 
         // The items of the Dictionary paths, each once (G157 (30)'s duplicates are of the same function reached two ways, none here).
         string[] Reached() => set.Items.ToArray().Select(x => Label(program, x))
-            .Where(static x => x.StartsWith("LegacyRow ", StringComparison.Ordinal) || x.StartsWith("library Fn append ", StringComparison.Ordinal) ||
+            .Where(static x => x.StartsWith("library Fn placeEntry ", StringComparison.Ordinal) || x.StartsWith("library Fn append ", StringComparison.Ordinal) ||
                 x.StartsWith("library Fn initialize ", StringComparison.Ordinal) || x.StartsWith("library Fn clearEntries ", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal).ToArray();
     }

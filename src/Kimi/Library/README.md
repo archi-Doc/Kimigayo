@@ -106,7 +106,7 @@ The same catalog metadata and private ABI carry the caller context through Posit
 iteration entries and their `starting` helpers, and Array `truncate`. Their Kimigayo bodies choose the failure;
 `Storage.argumentOutOfRange` only reports its canonical code at the forwarded location. Ordinary user `$abort` is unchanged.
 `tryInsert` and `insertOrReplace` search through the shared storage remainder in ordinary source. The private
-`Storage.placeEntry` appends one slot and places the acquired pair, carrying the standard operation's caller location
+`DictionaryStorage.placeEntry` appends one slot and places the acquired pair, carrying the standard operation's caller location
 for growth failure; `DictionaryStorage.replaceValue` moves a live entry's value out through `DictionaryStorage.valueAt` and
 initializes the vacated value Place with the replacement (`Raw.initialize`), so replacement secures the old value before
 placing the new one. `insertOrReplace` destroys the unused input key through ordinary cleanup.

@@ -112,8 +112,9 @@ public class DictionaryLibraryTest
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(program);
         Assert.Contains(sel.Library.GetSymbol(id)!.Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStoragePlaceEntry)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("__kimi_dictionary_place", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("__kimi_dictionary_place", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
 

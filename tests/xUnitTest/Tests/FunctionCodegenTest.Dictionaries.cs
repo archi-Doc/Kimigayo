@@ -24,7 +24,7 @@ public sealed partial class FunctionCodegenTest
 
     // A Library over Dictionaries of i32, string, drop-needing and zero-sized values: a Dictionary from none, placeEntry through tryInsert and
     // insertOrReplace, Len (length, and a test of it against 0), the shared, exclusive and owning iterations (borrowStorage,
-    // borrowStorageUniq, ownStorage, keyAt, valueAt), reserve and shrinkToFit (dictionaryStorage) and a Dictionary's glue.
+    // borrowStorageUniq, ownStorage, keyAt, valueAt), reserve and shrinkToFit (the Handle by path) and a Dictionary's glue.
     private const string Dictionaries = DictionaryKeys +
         "struct Res\n    public let id: i64\n    public init(id: i64) => self.id = id\n    drop => Console.writeLine(\"res\")\n" +
         "struct Empty\n    public init() => ()\n" +
@@ -105,8 +105,7 @@ public sealed partial class FunctionCodegenTest
     // first link (32) and the live count (24), no remainder's init storing the slot stride (slotStride's, 24 for Small and i32, is computed
     // where a slot is addressed), ownStorage moving the 56-byte Handle whole into its remainder; the bodies keyAt and valueAt (R8-K1b)
     // address the slot, keyAt at the key's byte offset 16 (valueAt's offset is computed from K's stride and V's alignment, which the
-    // natives run); dictionaryStorage's kernel writes the address and the stride (32 for Key and i32); a Dictionary's length is its live
-    // count, the word at 24.
+    // natives run; the stride is observed by the allocation-byte natives, R8-K1b-2); a Dictionary's length is its live count, the word at 24.
     [Fact]
     public void TheDictionaryKernelsWriteTheHandlesWordsOverTheEntryLayout()
     {
@@ -123,36 +122,27 @@ public sealed partial class FunctionCodegenTest
         Assert.NotEmpty(keys);
         Assert.All(keys, static x => Assert.Contains(x.Instructions, static y => y.Shape == "mul i64 16, 1"));
         Assert.NotEmpty(FunctionsOf(ir, c, "valueAt"));
-        var layout = Assert.Single(FunctionsOf(ir, c, "reserveEntries"));
-        Assert.Contains(layout.Instructions, static x => x.Shape == "store i64 32, ptr %, align 8");
         var count = Assert.Single(FunctionsOf(ir, c, "dcCount"));
         Assert.Contains(count.Instructions, static x => x.Shape == "load i64, ptr %, align 8" && x.Operands[0].Shape == "getelementptr i8, ptr %, i64 24");
         Assert.Contains(Assert.Single(FunctionsOf(ir, c, "dcNothing")).Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 24");
     }
 
-    // SPEC 4.9.6, 22.2 (DECISIONS R5-M124): placeEntry calls the Place helper of its LegacyRow item with the handle, the key and the value at
-    // their slots (a struct key by its storage, an i32 by value, a zero-sized value by an address) and the location tryInsert received (a
-    // caller-location operation); the helper calls append's instance with the entry's stride and the location, then moves the key and the
-    // value to their offsets.
+    // SPEC 4.9.6, 22.2 (DECISIONS R5-M124, R8-K1b-2): tryInsert and insertOrReplace call the placeEntry body's instance of their K and V,
+    // which calls append's one instance (it then moves the key and the value in through keyAt and valueAt); no Place helper is written.
     [Fact]
-    public void PlaceEntryCallsTheHelperOfItsInstanceWhichCallsAppend()
+    public void TheInsertionsCallPlaceEntrysInstanceWhichCallsAppend()
     {
         var c = Analyze(Dictionaries, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
         var append = Assert.Single(FunctionsOf(ir, c, "append"));
-        var helpers = Regex.Matches(text, @"define internal void @(__kimi_dictionary_place_\d+)\(").Select(x => ir.Function(x.Groups[1].Value)).ToArray();
+        Assert.DoesNotContain("__kimi_dictionary_place_", text, StringComparison.Ordinal);
+        var helpers = FunctionsOf(ir, c, "placeEntry");
         Assert.Equal(3, helpers.Length); // Of <Key, i32>, <Key, string> and <Key, Empty>.
-        Assert.All(helpers, x => Assert.Equal(new[] { append }, CalleesOf(x).Where(static y => y.Blocks.Count > 0).ToArray()));
+        Assert.All(helpers, x => Assert.Contains(append, CalleesOf(x)));
         var places = FunctionsOf(ir, c, "tryInsert").Concat(FunctionsOf(ir, c, "insertOrReplace")).SelectMany(CallsOf)
             .Where(x => helpers.Contains(x.Callee)).ToArray();
         Assert.Equal(3, places.Length);
-        Assert.Contains(places, static x => x.Shape == "call void @(ptr %, ptr %, i32 %, ptr %, i64 %)");
-        Assert.Equal(
-            ["internal void (ptr, ptr, i32, ptr, i64)", "internal void (ptr, ptr, ptr, ptr, i64)"],
-            helpers.Select(static x => x.Signature).Distinct().Order(StringComparer.Ordinal));
-        var grow = Assert.Single(CallsOf(helpers.Single(x => x.Signature.Contains("i32", StringComparison.Ordinal))), x => x.Callee == append);
-        Assert.Equal("call ptr @(ptr %, i64 32, ptr %, i64 %)", grow.Shape);
     }
 
     // SPEC 4.3, 4.9.5, 4.9.7, 16.3.2 (DECISIONS R5-M124): `[:]` calls initialize's instance at its Place, a slot of the entry block the result

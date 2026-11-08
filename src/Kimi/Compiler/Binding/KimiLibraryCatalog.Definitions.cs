@@ -163,11 +163,9 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.PositionRange, "PositionRange"),
         new(KimiDeclarationId.Start, "Start"),
         new(KimiDeclarationId.End, "End"),
-        new(KimiDeclarationId.StorageDictionaryLayout, "dictionaryStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDictionaryLayout),
         new(KimiDeclarationId.DictionaryIndex, "index", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.DictionaryIndexUniq, "indexUniq", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: Equality),
         new(KimiDeclarationId.StorageMissingDictionaryKey, "missingDictionaryKey", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageMissingDictionaryKey),
-        new(KimiDeclarationId.StoragePlaceDictionaryEntry, "placeEntry", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StoragePlaceDictionaryEntry),
         // SPEC 22.2: private primitives that hold no collection logic, used by the DictionaryStorage capacity bodies.
         new(KimiDeclarationId.StorageCountOverflow, "countOverflow", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageCountOverflow),
         new(KimiDeclarationId.StorageAllocationSizeExceeded, "allocationSizeExceeded", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageAllocationSizeExceeded),
@@ -185,6 +183,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryStorageReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageGrow, "grow", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageAppend, "append", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
+        new(KimiDeclarationId.DictionaryStoragePlaceEntry, "placeEntry", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageShrinkEntries, "shrinkEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageShrinkToFit, "shrinkToFit", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
         new(KimiDeclarationId.DictionaryStorageFindEntry, "findEntry", SourceFunction: true, Owner: "DictionaryStorage", Row: Equality), // SPEC 12.4.3.
