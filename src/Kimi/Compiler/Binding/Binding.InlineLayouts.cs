@@ -7,33 +7,41 @@ namespace Kimi.Compiler;
 // Inline layouts (SPEC 6.2 Finite inline storage; PLAN G310; DECISIONS BU-65): the struct and enum declarations whose storage, their own
 // parameters open, reaches the same declaration again, with any Type arguments, through by-value positions: Fields, the base, Case
 // payloads, Tuple and fixed-array elements, and the parts a declaration stores inline of its arguments, a projection's included as SPEC
-// 8.6.1 completes it. A borrow, raw pointer, object handle or sequence is an indirection.
-// - Inputs: the prepared storage (AdtDef.Types, after PrepareStorage), ProjectionSpecification's outcome (a binding with its Subject and
-//   conformance path), the premise proof of a node's scope, and Binding.IsRecursive (SPEC 8.3.3).
-// - Outputs: AdtDef.InlineCycle and one InvalidInlineLayout_Kd at each such declaration, in storageDeclarations order.
+// 8.6.1 completes it. A borrow, raw pointer, object handle or sequence is an indirection. An associated binding whose storage reaches
+// itself the same way is invalid at the binding, used or not (SPEC 6.2, the owner's O-70 (a); DECISIONS BU-127).
+// - Inputs: the prepared storage (AdtDef.Types, after PrepareStorage), the conformance paths and their completed bindings,
+//   ProjectionSpecification's outcome (a binding with its Subject, conformance path and identity), the premise proof of a node's scope,
+//   and Binding.IsRecursive (SPEC 8.3.3).
+// - Outputs: AdtDef.InlineCycle and one InvalidInlineLayout_Kd at each such declaration, in storageDeclarations order, and one at each
+//   such binding: its specification, the clause whose conjunction yields its identity (SPEC 8.5.1), else its conformance clause.
 // - Representation: a node per struct or enum declaration (its storage walked and proven in the declaration's scope) and per associated
-//   binding (its binding walked and proven in its conformance path's Scope, SPEC 8.8.2's D + P, keyed by that path), each with its
-//   summary: the abstract parts its storage reaches by value. An instance at a by-value position adds the edge to its declaration and
-//   walks that summary under the instance; a completed projection adds the edge to its binding's node and walks that summary under the
-//   Subject (an inherited path's binding is its source's, on the base clause's instance). A declaration is invalid iff it lies on a cycle
-//   of the edges.
+//   binding of a non-inherited conformance path (its binding walked and proven in that path's Scope, SPEC 8.8.2's D + P, keyed by the
+//   path and the identity; a binding's Origin arguments never change what it stores inline), each with its summary: the abstract parts
+//   its storage reaches by value. Every node is a root, declarations first. An instance at a by-value position adds the edge to its
+//   declaration and walks that summary under the instance; a completed projection adds the edge to its binding's node and walks that
+//   summary under the Subject (an inherited path's binding is its source's, on the base clause's instance). A node is invalid iff it lies
+//   on a cycle of the edges, a declaration and a binding alike.
 // - Invariants: Tarjan over the edges the walks discover, each summary computed before its first read (every read follows its edge, so
 //   dependencies are edges), a cyclic component re-walked until no summary grows: the result is the cycles of the least-fixpoint edge
 //   graph, whatever the declaration order. Termination: nodes are finite, a walk visits the written DAG, its substituted subterms and
 //   the projections it resolves to nodes, and a summary holds a node's parameters, pair applications and their formable projections
 //   through non-recursive Contracts, finitely many (AddInlinePart). Each walk is one query of layoutParts (DECISIONS BU-19), so it is
 //   linear in the distinct parts of its storage. A warm pass reuses its nodes and allocates nothing.
-// - Prohibitions: no instance walk of a declaration's storage, no record for a binding node (a cycle of binding nodes alone is its
-//   conformance's error, SPEC 8.3.3), no limit, no read of TyCtxt.RecursiveContracts' post-Bind memo inside Bind.
+// - Prohibitions: no instance walk of a declaration's storage, no instance-level fact for Layout (a conformance resting on its failed
+//   binding names no Type after the failed Binding), no limit, no read of TyCtxt.RecursiveContracts' post-Bind memo inside Bind.
 public sealed partial class Binding
 {
-    private readonly Dictionary<(object Key, BoundType? Binding), InlineSummary> inlineSummaries = new();
+    private readonly Dictionary<(object Key, BoundRequirement Identity), InlineSummary> inlineSummaries = new();
     private readonly List<InlineSummary> inlineSummaryPool = new();
     private readonly List<InlineSummary> inlineComponents = new(); // Tarjan's stack: the nodes whose component is open.
     private readonly Dictionary<BindingSymbol, bool> inlineRecursive = new(ReferenceEqualityComparer.Instance);
     private readonly TypeMemo<bool> layoutParts = new(); // The composite parts one node's storage walk met.
     private int inlineIndex;
     private long inlineGrowth;
+
+    private static bool YieldsIdentity(BoundConstraint? constraint)
+        => constraint is { Kind: ConstraintKind.TypeIdentity } ||
+            (constraint is { Kind: ConstraintKind.And } && (YieldsIdentity(constraint.Left) || YieldsIdentity(constraint.Right)));
 
     private void ValidateInlineLayouts()
     {
@@ -47,27 +55,52 @@ public sealed partial class Binding
 
         foreach (var container in this.storageDeclarations)
         {
-            if (this.Summary(container, null, this.scopes[container]) is { Index: 0 } summary)
+            if (this.Summary(container, default, null, this.scopes[container]) is { Index: 0 } summary)
             {
                 this.SummarizeInlineStorage(summary);
             }
         }
 
+        foreach (var conformance in this.conformances.Values)
+        {
+            for (var p = 0; p < conformance.PathStorage.Count; p++)
+            {
+                var path = conformance.PathStorage[p];
+                var shape = path.Contract.Contract!;
+                for (var i = 0; path.InheritedFrom is null && i < shape.AssociatedTypes.Count; i++)
+                {
+                    if (this.ResolveAssociated(path, shape.AssociatedTypes[i], out _) is { } binding &&
+                        this.Summary(path, shape.AssociatedTypes[i], binding, path.Scope) is { Index: 0 } summary)
+                    {
+                        this.SummarizeInlineStorage(summary);
+                    }
+                }
+            }
+        }
+
         foreach (var container in this.storageDeclarations)
         {
-            if (this.Summary(container, null, this.scopes[container]).Cyclic)
+            if (this.Summary(container, default, null, this.scopes[container]).Cyclic)
             {
                 container.BoundSymbol!.Adt!.InlineCycle = true;
                 this.Fail(container, BindingFailure.InvalidInlineLayout);
             }
         }
+
+        for (var i = 0; i < this.inlineSummaries.Count; i++)
+        {
+            if (this.inlineSummaryPool[i] is { Path: { } path, Cyclic: true } node)
+            {
+                this.Fail(this.BindingSite(path, node.Identity), BindingFailure.InvalidInlineLayout);
+            }
+        }
     }
 
-    // A node's summary in this run, taken from the pool on its first request: a declaration's (key the declaration, binding null) or an
-    // associated binding's (key its conformance path), walked and proven in `scope`.
-    private InlineSummary Summary(object key, BoundType? binding, BindingScope scope)
+    // A node's summary in this run, taken from the pool on its first request: a declaration's (key the declaration, no identity, binding
+    // null) or an associated binding's (key its conformance path and identity), walked and proven in `scope`.
+    private InlineSummary Summary(object key, BoundRequirement identity, BoundType? binding, BindingScope scope)
     {
-        if (!this.inlineSummaries.TryGetValue((key, binding), out var summary))
+        if (!this.inlineSummaries.TryGetValue((key, identity), out var summary))
         {
             var count = this.inlineSummaries.Count;
             if (count == this.inlineSummaryPool.Count)
@@ -76,12 +109,45 @@ public sealed partial class Binding
             }
 
             summary = this.inlineSummaryPool[count];
-            summary.Reset(key as DeclarationContainerKoto, binding, scope);
-            this.inlineSummaries.Add((key, binding), summary);
+            summary.Reset(key, identity, binding, scope);
+            this.inlineSummaries.Add((key, identity), summary);
         }
 
         return summary;
     }
+
+    // Where a binding is written (SPEC 8.5.1): the clause of its root path whose conjunction yields its identity atom, in the conditional
+    // block or among the Type's members; an inferred binding has none, and its record is at the conformance clause.
+    private Koto BindingSite(BoundConformancePath path, BoundRequirement identity)
+    {
+        var root = path.RootPath;
+        if (root.Declaration.Parent is SyntaxFormKoto syntax && TryConditionalBlock(syntax, out var block))
+        {
+            for (var i = 0; i < block.Items.Count; i++)
+            {
+                if (block.Items[i] is IsKoto { IsAssociatedConstraint: true } clause && this.Specifies(clause, identity))
+                {
+                    return clause;
+                }
+            }
+        }
+
+        var container = (DeclarationContainerKoto)root.Type.Declaration;
+        for (var i = 0; i < container.Members.Count; i++)
+        {
+            if (container.Members[i] is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
+                this.Specifies(clause, identity))
+            {
+                return clause;
+            }
+        }
+
+        return root.Declaration;
+    }
+
+    // SPEC 8.5.1: a specification is the clause whose conjunction elimination yields a Type-identity atom for its identity.
+    private bool Specifies(IsKoto clause, BoundRequirement identity)
+        => this.AssociatedIdentity(clause.Left.BoundType) == identity && YieldsIdentity(clause.BoundConstraint);
 
     // Tarjan's visit: the node's walk, then, at a component's root, its members re-walked while a summary grows (a cyclic component only:
     // a node on no cycle reads only finished summaries). A re-walk that reaches a node below the root merges the component into the
@@ -174,7 +240,7 @@ public sealed partial class Binding
         else if (instance)
         {
             var declaration = (DeclarationContainerKoto)part.Symbol!.Declaration;
-            this.VisitInlineNode(summary, this.Summary(declaration, null, this.scopes[declaration]), part, query);
+            this.VisitInlineNode(summary, this.Summary(declaration, default, null, this.scopes[declaration]), part, query);
         }
         else
         {
@@ -212,7 +278,7 @@ public sealed partial class Binding
         }
         else
         {
-            this.VisitInlineNode(summary, this.Summary(outcome.Path, specified, outcome.Path.Scope), subject, query);
+            this.VisitInlineNode(summary, this.Summary(outcome.Path, outcome.Identity, specified, outcome.Path.Scope), subject, query);
         }
     }
 
@@ -330,6 +396,10 @@ public sealed partial class Binding
     {
         internal DeclarationContainerKoto? Container { get; private set; } // A declaration node's declaration.
 
+        internal BoundConformancePath? Path { get; private set; } // A binding node's conformance path.
+
+        internal BoundRequirement Identity { get; private set; } // A binding node's associated identity in that path.
+
         internal BoundType? Binding { get; private set; } // A binding node's binding, in its subject declaration's terms.
 
         internal BindingScope Scope { get; private set; } = null!;
@@ -346,9 +416,10 @@ public sealed partial class Binding
 
         internal bool Cyclic { get; set; }
 
-        internal void Reset(DeclarationContainerKoto? container, BoundType? binding, BindingScope scope)
+        internal void Reset(object key, BoundRequirement identity, BoundType? binding, BindingScope scope)
         {
-            (this.Container, this.Binding, this.Scope) = (container, binding, scope);
+            (this.Container, this.Path, this.Identity) = (key as DeclarationContainerKoto, key as BoundConformancePath, identity);
+            (this.Binding, this.Scope) = (binding, scope);
             (this.Index, this.Low, this.OnStack, this.SelfEdge, this.Cyclic) = (0, 0, false, false, false);
             this.Parts.Clear();
         }

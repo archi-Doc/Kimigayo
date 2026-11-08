@@ -346,19 +346,19 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData(BindingsNameEachOthersConformance, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
     public void ABindingNamingItsConformanceKeepsItsRecordsUntilS3(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // SPEC 6.2, DECISIONS BU-65: a cycle of binding nodes alone is its conformance's error, and VerifyConformance's formation of a binding is that error's
-    // only judge. Removing it (S3, R7-V5b) leaves these invalid programs clean or gives them a Resource record, so each row asserts its records:
-    // S3's unit gives the cycle a judge of its own first, and only then may they change, to another Language record.
+    // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-127): a binding-only inline cycle is invalid at the binding, a Language record, never a
+    // Resource one, used or not. These rows assert their records: each fails if S3 (VerifyConformance's formation of a binding, R7-C2 (b))
+    // goes without that judge, which leaves them clean or Resource records.
     [Theory]
-    [InlineData(InlineCycleDirect, "Library", "1*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InlineCycleWithAValue, "Application", "2*InvalidConstraint_Kd 2*UnprovenConstraint_Kd")]
-    [InlineData(InlineCycleInferred, "Library", "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InlineCycleInTupleAndArray, "Library", "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InlineCycleThroughTwoTypes, "Library", "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    [InlineData(InlineCycleGrowing, "Library", "1*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
-    public void ABindingOnlyInlineCycleIsItsConformancesError(string source, string outputKind, string records)
+    [InlineData(InlineCycleDirect, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleWithAValue, "Application", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferred, "Library", "3*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInTupleAndArray, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleThroughTwoTypes, "Library", "2*InvalidConstraint_Kd 2*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleGrowing, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    public void ABindingOnlyInlineCycleIsItsBindingsError(string source, string outputKind, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source, outputKind));
 
     [Theory]
