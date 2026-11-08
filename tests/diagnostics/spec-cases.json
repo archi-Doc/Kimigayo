@@ -45,6 +45,7 @@
   {"Name": "7.7.3-exclusive-uses", "Section": "7.7.3", "Anchor": "let poke = func [p] ()", "Family": "Binding", "Prelude": "", "Variants": [
     {"Uncomment": null, "Expected": []},
     {"Uncomment": "poke()", "Expected": [{"Code": "InvalidAssignment_Kd", "Line": "poke()"}]},
+    {"Uncomment": "fill()", "Expected": [{"Code": "InvalidAssignment_Kd", "Line": "fill()"}]},
     {"Uncomment": "let sum = total()", "Expected": [{"Code": "InvalidAssignment_Kd", "Line": "let sum = total()"}]}]},
   {"Name": "8.2.3-identity-premises", "Section": "8.2.3", "Anchor": "func conflict<T, U>(value: T) -> i32", "Family": "Binding", "Prelude": "()\ncontract Source\n    associate Element\n    func read(self: ref/Self) -> Element\n", "Variants": [
     {"Uncomment": null, "Expected": [{"Code": "InvalidConstraint_Kd", "Line": "T is Array<U>"}, {"Code": "UnprovenConstraint_Kd", "Line": "T is ref/i32 during b"}, {"Code": "InvalidConstraint_Kd", "Line": "U is Option<T>"}], "Mir": {"Records": [{"Code": "TypeMismatch_Kd", "Line": "return value"}], "Category": "b", "Clause": "8.2.3", "Note": "Binding's records: Binding does not implement proposal B's Type identity yet (DECISIONS R4-M115): it neither decomposes constructed Types nor refutes them by head, and it reports none of the new premise errors, until PLAN G170's C2-C4 (STATUS, Types and Contracts). Nor does it report cyclic, an error before B too."}}]},

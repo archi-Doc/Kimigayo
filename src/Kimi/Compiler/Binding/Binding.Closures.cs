@@ -298,6 +298,13 @@ public sealed partial class Binding
             this.Fail(use, BindingFailure.Unsupported);
         }
 
+        // A call of a foreign import passed a pointer the environment reaches: its contract's writes are prose (SPEC 5.2, 7.7.3; DECISIONS
+        // R7-Y2), so the receiver is undecided, a located Unsupported_Kd until imports state their writes.
+        foreach (var call in effects.Uncontracted)
+        {
+            this.Fail(call, BindingFailure.Unsupported);
+        }
+
         this.JudgePendingRelations(function);
         return this.PublishClosure(function, plan, expected, openResult);
     }

@@ -175,9 +175,6 @@ public sealed partial class Binding
             this.Visit(root);
         }
 
-        // The operand a parent projects, updates, groups or borrows.
-        private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
-
         // The constant Binding decided that a node's own plan row keeps (Folded): a number literal's value as Binding fits it (SPEC 3.1,
         // 13.5.4), its floating-point Type's bits, else the integer it names; a fixed-array element's literal position, beside its
         // PlaceShape (SPEC 15.1.3); a Tuple element's position (SPEC 3.2), the integer its Field names.
