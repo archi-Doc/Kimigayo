@@ -522,7 +522,7 @@ public sealed partial class Binding
         }
 
         var qualifier = member.Left;
-        var definition = this.TypeName(qualifier, scope, TypeLookupRole.NoContainer);
+        var definition = this.TypeName(qualifier, scope, LookupRole.NoContainer);
         if (definition is null || !ReferenceEquals(definition, expected.Symbol))
         {
             return null;

@@ -208,7 +208,7 @@ public sealed partial class Binding
             Complete(qualified.Right, BoundType.Unit);
         }
 
-        var receiverSymbol = this.TypeName(receiver, scope, TypeLookupRole.Any);
+        var receiverSymbol = this.TypeName(receiver, scope, LookupRole.Any);
         if (receiverSymbol?.Kind == BindingSymbolKind.Container || (receiverSymbol?.Declaration is ContractKoto && TypeSpelling(receiver) != "Self"))
         {
             return null;
@@ -296,7 +296,7 @@ public sealed partial class Binding
             return target;
         }
 
-        var symbol = this.TypeName(syntax.Right, scope, TypeLookupRole.Any);
+        var symbol = this.TypeName(syntax.Right, scope, LookupRole.Any);
         var referenceSyntax = syntax.Right;
         while (referenceSyntax is ParenthesizedTypeKoto groupedReference)
         {
@@ -351,7 +351,7 @@ public sealed partial class Binding
         if (head is MemberAccessKoto member)
         {
             name = member.Right;
-            qualifier = this.TypeName(member.Left, scope, TypeLookupRole.Any);
+            qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
             if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
             {
                 // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.

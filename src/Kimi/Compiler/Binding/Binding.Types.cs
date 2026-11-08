@@ -68,9 +68,9 @@ public sealed partial class Binding
                     }
 
                     if (current.Owner is DeclarationContainerKoto && IsInstanceMember(candidate) &&
-                        !this.HasReceiverlessCandidate(symbol, scope, TypeLookupRole.Any))
+                        !this.HasReceiverlessCandidate(symbol, scope, LookupRole.Value))
                     {
-                        this.RecordQualificationStop(use, false, new(current, scope, candidate, name, Type: false, TypeLookupRole.Any, 0));
+                        this.RecordQualificationStop(use, new(current, scope, candidate, name, LookupRole.Value, 0));
                         return null;
                     }
 
@@ -78,9 +78,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (this.InheritedStop(current, scope, use, name, type: false, TypeLookupRole.Any, 0) is { } stop)
+            if (this.InheritedStop(current, scope, use, name, LookupRole.Value, 0) is { } stop)
             {
-                this.RecordQualificationStop(use, false, stop);
+                this.RecordQualificationStop(use, stop);
                 return null;
             }
         }
@@ -188,7 +188,7 @@ public sealed partial class Binding
                 // Bare self has a fixed shared receiver Type; the body supplies no inference.
                 return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
-                var rootDefinition = this.TypeName(root, scope, TypeLookupRole.NoContainer);
+                var rootDefinition = this.TypeName(root, scope, LookupRole.NoContainer);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
@@ -218,7 +218,7 @@ public sealed partial class Binding
                             targetSyntax = grouped.Type;
                         }
 
-                        var target = this.TypeName(targetSyntax, scope, TypeLookupRole.NoContainer);
+                        var target = this.TypeName(targetSyntax, scope, LookupRole.NoContainer);
                         if (target?.Kind == BindingSymbolKind.SemanticsTarget &&
                             targetSyntax is not TypeSemanticsKoto { HasOrigin: true })
                         {
@@ -244,7 +244,7 @@ public sealed partial class Binding
                         }
 
                         var mark = this.nameSteps.Count;
-                        var parameter = this.PublishPath(this.ResolveName(semantics.SemanticsParameter, scope, syntax, TypeLookupRole.Semantics, 0), mark);
+                        var parameter = this.PublishPath(this.ResolveName(semantics.SemanticsParameter, scope, syntax, LookupRole.Semantics, 0), mark);
                         if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
@@ -326,11 +326,11 @@ public sealed partial class Binding
             case OriginApplicationKoto application:
                 return this.BindAssociatedApplication(application, scope);
             case GenericsKoto generic:
-                var definition = this.TypeName(generic, scope, TypeLookupRole.NoContainer);
+                var definition = this.TypeName(generic, scope, LookupRole.NoContainer);
                 return this.BindConstructedType(generic, definition, scope, context);
         }
 
-        var symbol = this.TypeName(syntax, scope, TypeLookupRole.NoContainer);
+        var symbol = this.TypeName(syntax, scope, LookupRole.NoContainer);
         if (syntax is MemberAccessKoto projection && symbol is null)
         {
             var associated = this.BindAssociatedProjection(projection, scope);

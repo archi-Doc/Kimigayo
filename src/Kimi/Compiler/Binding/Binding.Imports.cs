@@ -141,7 +141,7 @@ public sealed partial class Binding
         }
     }
 
-    private ResolvedPath ResolveImportedType(string name, BindingScope scope, Koto use, TypeLookupRole role, int arity, int step)
+    private ResolvedPath ResolveImportedType(string name, BindingScope scope, Koto use, LookupRole role, int arity, int step)
     {
         var candidates = default(TypeCandidates);
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
