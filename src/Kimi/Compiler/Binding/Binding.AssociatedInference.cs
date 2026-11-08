@@ -111,7 +111,7 @@ public sealed partial class Binding
 
     private void PrepareAssociatedInference()
     {
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -128,7 +128,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             if (this.associatedInference.TryGetValue(path.Type, out var batch) && batch.Active)
             {
@@ -160,7 +160,7 @@ public sealed partial class Binding
             binding.State = 0;
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -179,7 +179,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             this.PublishInheritedInference(path);
         }
