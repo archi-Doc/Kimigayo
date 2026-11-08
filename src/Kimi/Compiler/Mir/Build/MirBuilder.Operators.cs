@@ -259,7 +259,7 @@ internal sealed partial class MirBuilder
     private bool Within(BoundType source, BoundType target) => this.Width(source, out var signed) is var from and > 0 &&
         this.Width(target, out var wide) is var to and > 0 && (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
 
-    // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the target's pointer width; 0 for
+    // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the profile's width (SPEC 22); 0 for
     // another Type, such as a Type parameter, whose instance decides it.
     private int Width(BoundType type, out bool signed)
     {
