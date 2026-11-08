@@ -364,7 +364,7 @@ Each concrete Closure has one minimum **Call Receiver Requirement**, from all re
 
 A Move on any possible path requires Consuming. Where a conditional acquisition plan ([§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects)) gives admitted cases different effects, each case has its own requirement, and every use is checked in every case ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)); for example, a bare acquisition of a captured value whose Type is a pair layer makes the call Exclusive exactly in the cases where it Reborrows.
 
-The requirement comes from the operations, never from the receiver they would run under: deciding it, a path from an environment binding has no receiver layer. Exclusive access includes an exclusive Borrow or Reborrow, a `uniq/Self` receiver and a `match` or `for` Subject in Exclusive mode, which a Subject reached from an environment binding takes from that binding's own layers ([§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects)), also when the arms or the loop body only read and whatever the iteration entry does. It also includes an access through a raw pointer read from the environment, or through a pointer derived from it, that needs write capability: a write, a Take, an in-place destruction or an exclusive borrow ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions) condition 3). In a Shared call such a pointer is read past `ref/Self` and has no write authority, so these accesses make the call Exclusive, and a read leaves it Shared.
+The requirement comes from the operations, never from the receiver they would run under: deciding it, a path from an environment binding has no receiver layer. Exclusive access includes an exclusive Borrow or Reborrow, a `uniq/Self` receiver and a `match` or `for` Subject in Exclusive mode, which a Subject reached from an environment binding takes from that binding's own layers ([§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects)), also when the arms or the loop body only read and whatever the iteration entry does. It also includes an access that needs write capability, a write, a Take, an in-place destruction or an exclusive borrow, through a raw pointer read from the environment or derived from it ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions) condition 3: copies, displacements, conversions between raw pointer Types, fits that drop the Origin), and such an access that a call's operation contract ([§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places)) performs through such a pointer passed to it, as `Raw.initialize` constructs a Place at `storage`: that access counts as the body's. A pointer read through a raw Place that the environment reaches is read from the environment. A function with a body accesses only by its own operations, under the authority the pointer has, so a pointer it returns is not derived from its arguments. In a Shared call such a pointer is read past `ref/Self` and has no write authority, so these accesses make the call Exclusive, and a read leaves it Shared.
 
 A direct call acquires the receiver like a method receiver ([§7.3.3](#733-method-calls)). An owned Closure Place is borrowed shared for a Shared call and exclusively for an Exclusive call when its lending point is exclusively writable ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)); `uniq/F` and `ref/F` values are Reborrowed, and `ref/F` cannot supply an Exclusive call. A Consuming call Copies a Copy Closure and otherwise needs `c@move()`.
 
@@ -390,6 +390,9 @@ let peek = func [p] () -> i32
     unsafe => return *p              // Shared: a read through a pointer read from the environment.
 let poke = func [p] ()
     unsafe => *p = 1                 // Exclusive: a write needs write capability.
+let fresh = Raw.allocate<i32>(1)
+let fill = func [fresh] ()
+    unsafe => Raw.initialize(fresh, 1)   // Exclusive: the operation contract writes through fresh.
 var values: Array<i32> = [1, 2]
 let all = values@uniq
 let total = func [all] () -> i32
@@ -398,6 +401,7 @@ let total = func [all] () -> i32
     return sum
 let first = peek()
 // poke()                           // Error: an Exclusive call of a let Closure.
+// fill()                           // Error: an Exclusive call of a let Closure.
 // let sum = total()                // Error: an Exclusive call of a let Closure.
 ```
 
