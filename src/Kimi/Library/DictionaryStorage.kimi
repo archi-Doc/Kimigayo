@@ -3,7 +3,7 @@
 group DictionaryStorage
     // Private physical records shared with the backend; not a public collection ABI.
     #Layout("C")
-    struct Handle
+    internal struct Handle
         // The slot storage the Dictionary owns (SPEC 5.7): reads through a `raw/Handle` keep that pointer's Origin.
         public var buffer: raw/u8 during self
         public var used: isize
@@ -25,6 +25,26 @@ group DictionaryStorage
             self.previous = previous
             self.next = next
 
+    /// The slot stride, the one statement every body that addresses a slot reads: the Links' 16 bytes, then a `K` and a `V`,
+    /// rounded up to the slot's alignment, the largest of the Links' 8 and theirs (IMPL 21.1.1; the slot is implementation storage,
+    /// IMPL 21.1.3). It reads each Type's own stride and alignment and lays out no aggregate of them, so a `K` or `V` over a generation
+    /// limit is that limit's record (IMPL 21.3.2), and the slot's size is no layout obligation of the program (SPEC 8.15.3). Until
+    /// K1b removes it, the compiler's `DictionaryEntryLayout.Of` is the slot rule's second statement, for the remaining kernels and
+    /// `placeEntry`'s helper, and agrees with this one on one buffer: on `placeEntry`'s path its stride reaches `append`, which passes it
+    /// on to `reserve`, `grow` and `appendSlot`, while `reserveEntries`, `shrinkEntries`, `removeEntry` and `clearEntries` pass this one.
+    internal func slotStride<K, V>() -> isize
+        let key = alignmentOf<K>()
+        let value = alignmentOf<V>()
+        var alignment: isize = 8
+        if key > alignment => alignment = key
+        if value > alignment => alignment = value
+        let end = 16 + Storage.stride<K>() + Storage.stride<V>()
+        return (end + alignment - 1) / alignment * alignment
+
+    // The alignment of `T`: the stride of a byte and no `T`, which this implementation aligns as `T` (IMPL 21.1.1). Its one stored
+    // part is the byte, so its size stays within every limit; a `T` over a limit is that limit's record.
+    func alignmentOf<T>() -> isize => Storage.stride<(u8, [0 of T])>()
+
     /// Reads a Dictionary's `capacity` (SPEC 4.9.5).
     internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize
         K is Equatable
@@ -33,10 +53,10 @@ group DictionaryStorage
     internal func clearEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
         unsafe
-            let layout = Storage.dictionaryStorage(value)
-            let handle = layout.0@raw/Handle
+            let handle = Storage.dictionaryStorage(value).0@raw/Handle
+            let stride = slotStride<K, V>()
             let buffer = (*handle).buffer
-            Storage.destroyDictionaryEntries<K, V>(buffer, layout.1, (*handle).tail, (*handle).length)
+            Storage.destroyDictionaryEntries<K, V>(buffer, stride, (*handle).tail, (*handle).length)
             // Free slots hold links too; all of them end before clearLinks lets appendSlot place links again. No step of
             // the loop can Abort, so it vanishes where ending a Links does nothing.
             var slot = buffer
@@ -44,7 +64,7 @@ group DictionaryStorage
             while remaining > 0
                 remaining -= 1
                 _ = (*(slot@raw/Links))@move
-                slot += layout.1
+                slot += stride
             clearLinks(handle)
 
     internal func removeEntry<K, V>(value: uniq/Dictionary<K, V>, key: ref/K) -> Option<(K, V)>
@@ -53,10 +73,10 @@ group DictionaryStorage
         let link = findEntry(value@follow@ref, key)
         require link != 0 else => return .None
         unsafe
-            let layout = Storage.dictionaryStorage(value)
-            let handle = layout.0@raw/Handle
-            let slot = (*handle).buffer + (link - 1) * layout.1
-            unlink(handle, layout.1, link)
+            let handle = Storage.dictionaryStorage(value).0@raw/Handle
+            let stride = slotStride<K, V>()
+            let slot = (*handle).buffer + (link - 1) * stride
+            unlink(handle, stride, link)
             return .Some(((*Storage.keyAt<K, V>(slot))@move, (*Storage.valueAt<K, V>(slot))@move))
 
     /// Replaces the value of the live entry at `link` and returns the old one, which is secured before the new one
@@ -66,8 +86,7 @@ group DictionaryStorage
     internal unsafe func replaceValue<K, V>(value: uniq/Dictionary<K, V>, link: isize, replacement: V) -> V
         K is Equatable
         unsafe
-            let layout = Storage.dictionaryStorage(value)
-            let slot = (*(layout.0@raw/Handle)).buffer + (link - 1) * layout.1
+            let slot = (*(Storage.dictionaryStorage(value).0@raw/Handle)).buffer + (link - 1) * slotStride<K, V>()
             let previous = (*Storage.valueAt<K, V>(slot))@move
             Raw.initialize(Storage.valueAt<K, V>(slot), replacement@move)
             return previous@move
@@ -76,14 +95,12 @@ group DictionaryStorage
     internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)
         K is Equatable
         unsafe
-            let layout = Storage.dictionaryStorage(value)
-            _ = reserve(layout.0@raw/Handle, layout.1, additional)
+            _ = reserve(Storage.dictionaryStorage(value).0@raw/Handle, slotStride<K, V>(), additional)
 
     internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
         unsafe
-            let layout = Storage.dictionaryStorage(value)
-            shrinkToFit(layout.0@raw/Handle, layout.1)
+            shrinkToFit(Storage.dictionaryStorage(value).0@raw/Handle, slotStride<K, V>())
 
     unsafe func reserve(handle: raw/Handle, stride: isize, additional: isize) -> isize
         unsafe

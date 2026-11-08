@@ -76,35 +76,71 @@ internal group Storage
     /// the slot links; it does not own them.
     internal struct DictionaryRefRemainder<K, V> {source}
         internal let storage: raw/u8 during source
-        internal let stride: isize
         internal var link: isize
         internal var count: isize
         internal let loan: Loan<ref/(K, V) during source>
+
+        /// Starts at the first of `count` live entries, at `link`. The caller's obligations, which the signature cannot
+        /// state: `storage` is the slot storage of a `Dictionary<K, V>` in what `source` covers, with read authority, and
+        /// the function that returns this remainder states `source` as the parent borrow it was given (SPEC 5.2.1, 15.6.3).
+        internal init(storage: raw/u8 during source, link: isize, count: isize)
+            self.storage = storage
+            self.link = link
+            self.count = count
+            self.loan = Loan<ref/(K, V) during source>.init()
 
     /// The parent Loan of its `source` Dictionary slot, shared access to the untaken keys and exclusive access to their
     /// values; keys never become exclusive references.
     internal struct DictionaryUniqRemainder<K, V> {source}
         internal let storage: raw/u8 during source
-        internal let stride: isize
         internal var link: isize
         internal var count: isize
         internal let loan: Loan<uniq/(K, V) during source>
 
-    /// The slot buffer and destruction responsibility transferred from a Dictionary for its unreturned entries, which
-    /// are the last `count` live entries ending at `tail`.
+        /// Starts at the first of `count` live entries, at `link`. The caller's obligations, which the signature cannot
+        /// state: `storage` is the slot storage of a `Dictionary<K, V>` in what `source` covers, with read and write
+        /// authority, and the function that returns this remainder states `source` as the parent borrow it transfers
+        /// (SPEC 5.2.1, 15.6.3).
+        internal init(storage: raw/u8 during source, link: isize, count: isize)
+            self.storage = storage
+            self.link = link
+            self.count = count
+            self.loan = Loan<uniq/(K, V) during source>.init()
+
+    /// Lends a Dictionary's live entries: the slot storage has the authority of the path `value` gives (SPEC 5.2.1).
+    internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
+        K is Equatable
+        let handle = value@follow@raw@raw/DictionaryStorage.Handle
+        unsafe => return DictionaryRefRemainder<K, V>.init((*handle).buffer, (*handle).head, (*handle).length)
+
+    /// Transfers an exclusive borrow of a Dictionary to its live entries; `Handle.buffer` has write authority.
+    internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
+        K is Equatable
+        let handle = value@follow@raw@raw/DictionaryStorage.Handle
+        unsafe => return DictionaryUniqRemainder<K, V>.init((*handle).buffer, (*handle).head, (*handle).length)
+
+    /// The component of a consumed Dictionary, which owns the slot storage and the destruction responsibility for its
+    /// unreturned entries: the last `handle.length` live entries, from `handle.head` to `handle.tail`. The storage is
+    /// read here, its current holder (SPEC 5.2.1, 5.7).
     internal struct DictionaryOwnedRemainder<K, V>
-        internal let storage: raw/u8 during self
-        internal let stride: isize
-        internal var link: isize
-        internal var tail: isize
-        internal var count: isize
+        internal var handle: DictionaryStorage.Handle
+
+        internal init(handle: DictionaryStorage.Handle) => self.handle = handle@move
 
         // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.9.7).
         drop
-            let storage: raw/u8 = self.storage
+            let storage: raw/u8 = self.handle.buffer
+            let stride = DictionaryStorage.slotStride<K, V>()
             unsafe
-                destroyDictionaryEntries<K, V>(storage, self.stride, self.tail, self.count)
+                destroyDictionaryEntries<K, V>(storage, stride, self.handle.tail, self.handle.length)
                 Raw.release(storage)
+
+    /// Transfers a Dictionary's slot storage, entries and their destruction responsibility.
+    internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>
+        K is Equatable
+        // Held so that the compiler does not destroy the Dictionary whose component is taken (SPEC 5.2.3).
+        var held = InlineStorage<Dictionary<K, V>>.init(value@move)
+        unsafe => return DictionaryOwnedRemainder<K, V>.init((*(held@raw@raw/DictionaryStorage.Handle))@move)
 
     /// Destroys a live suffix in reverse insertion order without releasing its storage.
     internal unsafe func destroyDictionaryEntries<K, V>(storage: raw/u8, stride: isize, tail: isize, count: isize)
@@ -149,7 +185,7 @@ internal group Storage
         require state.count > 0 else => return .None
         state.count -= 1
         unsafe
-            let slot = state.storage + (state.link - 1) * state.stride
+            let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
             // Each slot starts with its previous and next links.
             state.link = (slot@raw/isize)[1]
             return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@ref))
@@ -159,17 +195,17 @@ internal group Storage
         require state.count > 0 else => return .None
         state.count -= 1
         unsafe
-            let slot = state.storage + (state.link - 1) * state.stride
+            let slot = state.storage + (state.link - 1) * DictionaryStorage.slotStride<K, V>()
             state.link = (slot@raw/isize)[1]
             return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@uniq))
 
     /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
     internal func takeFirst<K, V>(state: uniq/DictionaryOwnedRemainder<K, V>) -> Option<(K, V)>
-        require state.count > 0 else => return .None
-        state.count -= 1
+        require state.handle.length > 0 else => return .None
+        state.handle.length -= 1
         unsafe
-            let slot = state.storage + (state.link - 1) * state.stride
-            state.link = (slot@raw/isize)[1]
+            let slot = state.handle.buffer + (state.handle.head - 1) * DictionaryStorage.slotStride<K, V>()
+            state.handle.head = (slot@raw/isize)[1]
             return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
     /// Inline storage for one complete Type `A`, a fixed array `[N of E]` or a consumed `Array<E>`, placed at offset 0
