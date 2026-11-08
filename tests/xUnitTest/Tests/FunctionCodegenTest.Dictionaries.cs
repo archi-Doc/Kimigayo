@@ -103,9 +103,10 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 4.7.3, 22.2 (DECISIONS R5-M124, R8-K1a): the storage bodies read the Handle's words: borrowStorage and borrowStorageUniq the
     // first link (32) and the live count (24), no remainder's init storing the slot stride (slotStride's, 24 for Small and i32, is computed
-    // where a slot is addressed), ownStorage moving the 56-byte Handle whole into its remainder; the kernels keyAt and valueAt address the
-    // slot at the key's (16) and the value's (20) offset, dictionaryStorage writes the address and the stride (32 for Key and i32); a
-    // Dictionary's length is its live count, the word at 24.
+    // where a slot is addressed), ownStorage moving the 56-byte Handle whole into its remainder; the bodies keyAt and valueAt (R8-K1b)
+    // address the slot, keyAt at the key's byte offset 16 (valueAt's offset is computed from K's stride and V's alignment, which the
+    // natives run); dictionaryStorage's kernel writes the address and the stride (32 for Key and i32); a Dictionary's length is its live
+    // count, the word at 24.
     [Fact]
     public void TheDictionaryKernelsWriteTheHandlesWordsOverTheEntryLayout()
     {
@@ -118,9 +119,10 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(FunctionsOf(ir, c, "init"), static x => x.Instructions.Any(static y => y.Shape == "store i64 24, ptr %, align 8"));
         var own = Assert.Single(FunctionsOf(ir, c, "ownStorage"));
         Assert.Contains(own.Instructions, static x => x.Shape == "call void @(ptr align 8 %, ptr align 8 %, i64 56, i1 false)");
-        var slots = FunctionsOf(ir, c, "splitFirst").SelectMany(static x => x.Instructions).Select(static x => x.Shape).ToArray();
-        Assert.Contains("getelementptr i8, ptr %, i64 16", slots);
-        Assert.Contains("getelementptr i8, ptr %, i64 20", slots);
+        var keys = FunctionsOf(ir, c, "keyAt");
+        Assert.NotEmpty(keys);
+        Assert.All(keys, static x => Assert.Contains(x.Instructions, static y => y.Shape == "mul i64 16, 1"));
+        Assert.NotEmpty(FunctionsOf(ir, c, "valueAt"));
         var layout = Assert.Single(FunctionsOf(ir, c, "reserveEntries"));
         Assert.Contains(layout.Instructions, static x => x.Shape == "store i64 32, ptr %, align 8");
         var count = Assert.Single(FunctionsOf(ir, c, "dcCount"));

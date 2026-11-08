@@ -212,7 +212,6 @@ public static partial class Parser
             }
 
             reader.Advance(); // The slash that selected this path.
-            var attribute = reader.PopAttribute();
             var type = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
             if (cause is { } operationCause)
             {
@@ -230,7 +229,6 @@ public static partial class Parser
                 type,
                 semanticsKind,
                 semanticsParameter);
-            result.SetAttributeChain(attribute);
             reader.Hover(result, token.Span);
             return result;
         }

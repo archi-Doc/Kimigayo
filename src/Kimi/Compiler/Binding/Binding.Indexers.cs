@@ -172,7 +172,7 @@ public sealed partial class Binding
     // bound reference instantiated for `core` and normalized in `scope` (a key named through a projection, as NamesReference reads it).
     private bool TakesRangeKey(BoundType core, BindingSymbol indexable, BindingScope scope)
     {
-        if (core.Symbol is not { Declaration: StructKoto or EnumKoto } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        if (core.Symbol is not { Declaration: StructKoto or EnumKoto } owner || this.impls.OfType(owner) is not { } identities)
         {
             return false;
         }
@@ -197,7 +197,7 @@ public sealed partial class Binding
     // reference (`contract` with the key's Type as its argument) for `core` in `scope` (NamesReference), or null for none or several.
     private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
     {
-        if (KeyType(keyNode) is not { } type || core.Symbol is not { } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        if (KeyType(keyNode) is not { } type || core.Symbol is not { } owner || this.impls.OfType(owner) is not { } identities)
         {
             return null;
         }

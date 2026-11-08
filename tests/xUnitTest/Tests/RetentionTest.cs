@@ -960,13 +960,12 @@ public sealed partial class RetentionTest
 
     // G147 (1), G160-3 (SPEC 5.7, 15.6.4): placeEntry's handle `raw/Dictionary<K, V>` admits K and V, so the call stores its key and value
     // in the Dictionary the handle addresses, and the handle as a read through it, never its own value (DECISIONS R4-M116); the earlier
-    // `raw/u8` handle admitted nothing. keyAt's raw result states no Origin, so it retains its slot as a value and by its chain (rule A,
-    // DECISIONS BU-40).
+    // `raw/u8` handle admitted nothing. A raw result that states no Origin retains its input as a value and by its chain (rule A,
+    // DECISIONS BU-40) is `allocate`'s row above.
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
     [InlineData(KimiDeclarationId.StoragePlaceDictionaryEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
-    [InlineData(KimiDeclarationId.StorageKeyAt, "result {0 Value Chain}, untied")]
     [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
     public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
     {
