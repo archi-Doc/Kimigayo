@@ -498,6 +498,30 @@ public class ClosureReceiverClassificationTest
         Assert.All(closures, x => Assert.True(x.Classified));
     }
 
+    // R7-Y2a (review 1's N1): ClosureEffects records a consumer's takes once per Classify and selection, so its work grows linearly in one
+    // consumer's capture uses, a literal's elements or a call's arguments (valid programs: reads of a Copy capture, SPEC 7.7.3 Shared), not
+    // as every use times every child.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ClassificationWorkGrowsLinearlyInAConsumersCaptureUses(bool literal)
+    {
+        var work = new[] { 200, 400, 800 }.Select(n => Work(literal, n)).ToArray();
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+
+        static long Work(bool literal, int count)
+        {
+            var uses = string.Join(", ", Enumerable.Repeat("c", count));
+            var source = literal
+                ? "func g() -> isize\n    let c: i32 = 1\n    let f = func [c] () -> isize\n        let xs: Array<i32> = [" + uses + "]\n        return xs.length\n    return f()\n"
+                : "func many(" + string.Join(", ", Enumerable.Range(0, count).Select(static i => $"a{i}: i32")) + ") -> i32 => 0\nfunc g() -> i32\n" +
+                    "    let c: i32 = 1\n    let f = func [c] () -> i32 => many(" + uses + ")\n    return f()\n";
+            var c = MinimalEmissionTest.Analyze(source + "()\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureTakeWork;
+        }
+    }
+
     // The records of a checked source: each one's code and the text at its span.
     private static string Records(string source) => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 

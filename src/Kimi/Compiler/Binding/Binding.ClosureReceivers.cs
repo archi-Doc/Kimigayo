@@ -4,19 +4,17 @@
 // captures in its bound body.
 // - Responsibility: ClosureEffects, one reusable visitor: a capture transferred out of the environment, or an outer environment
 //   binding a nested Closure's entry moves, makes the call Consuming; a Place reached from a capture (the capture itself or a Place
-//   its path reaches through NextPathStep's steps: a part of it, a captured referent, a raw pointer's referent) whose consuming operation
-//   needs it exclusively (one predicate, NeedsExclusively: a write or update, an exclusive Borrow or object view upcast in some
-//   admitted case, an exclusive argument or method or accessor receiver, an Exclusive-mode `for` or `match` Subject, an Exclusive
-//   value call, an exclusive Reborrow at an expected Type or bare), or a nested entry that Reborrows or exclusively
-//   borrows an outer environment binding, makes it Exclusive; every other use borrows (Shared). An acquisition of the binding itself
+//   its path reaches through NextPathStep's steps: a part of it, a captured referent, a raw pointer's referent) whose use needs it
+//   exclusively (NeedsExclusively, by the one place-use rule, Binding.UseOf, over its consumer's takes), or a nested entry that Reborrows
+//   or exclusively borrows an outer environment binding, makes it Exclusive; every other use borrows (Shared). An acquisition of the binding itself
 //   by value without an operator (ConsumedByValue: as the Adjust rule takes it from its consumer, a discarded Place included, or a
 //   nested bare entry) that Reborrows in some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked
 //   (BoundCapture.BareReborrows); every other use counts in every case (CaseFreeReceiver). A use of such a capture that no consumer
 //   takes is published (Unlisted) where it could leave a case Shared. A use a failure explains (SPEC 23.1.2: its own, or its
 //   consumer's failure or dependency outside a bare acquisition position) neither marks its capture nor is published.
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
-//   recorded, a nested Closure's published Storage, a loop's and a match's Subject mode; the Adjust rule (AdjustChildren, Discarded,
-//   Covers, OpOf), IsBareAcquisitionPosition, HasFailureCauses, BareReborrows, BorrowsExclusively and ProveCopy.
+//   recorded, a nested Closure's published Storage; the Adjust rule (AdjustChildren, ChildAdjust, Discarded, Covers, OpOf, UseOf),
+//   IsBareAcquisitionPosition, HasFailureCauses, BareReborrows and ProveCopy.
 // - Outputs: BoundClosure's receiver facts: Receiver, the strongest over every case, which every reader of a Closure's call
 //   receiver reads (value calls, candidate selection and Callable proofs, effects and the MIR builder);
 //   CaseFreeReceiver and the captures' BareReborrows, from which a view of one case reads that case's receiver; Classified;
@@ -36,12 +34,26 @@ public sealed partial class Binding
 {
     private ClosureEffects? closureEffects;
 
+    /// <summary>Gets the children's takes ClosureEffects recorded (once per consumer and selection), which a scaling check reads.</summary>
+    internal long ClosureTakeWork => this.closureEffects?.TakeWork ?? 0;
+
     // One reusable visitor classifies each closure's receiver from the uses of its captures (SPEC 7.7.3); it never visits a
     // nested function's body, so one closure is classified at a time.
     private sealed class ClosureEffects(Binding binding) : KotoVisitor
     {
+        // Each consumer's takes of its children by selection, and the consumers recorded, in this Classify (TakesOf); kept across Classify
+        // calls, so a warm classification reuses their storage.
+        private readonly Dictionary<(Koto Child, bool Exclusive), ConsumedTakes> takes = new();
+        private readonly HashSet<(Koto Consumer, bool Exclusive)> walks = new();
+
+        // Each node's Op read in this Classify (OpOf): a call's Op reads its N argument operations, so every capture use of its consumer
+        // reads it once.
+        private readonly Dictionary<Koto, HirOp> ops = new();
         private FunctionKoto function = null!;
         private BoundClosure plan = null!;
+
+        // The children's takes recorded, over every Classify: a scaling check reads it (ClosureTakeWork).
+        public long TakeWork { get; private set; }
 
         // The uses of a capture that Reborrows in some admitted case that no consumer takes (ConsumedByValue is null), with the capture's
         // index; after Classify, only those the receiver facts leave at Shared in a case (DECISIONS R4-M145).
@@ -49,6 +61,9 @@ public sealed partial class Binding
 
         public void Classify(FunctionKoto function, BoundClosure plan)
         {
+            this.takes.Clear();
+            this.walks.Clear();
+            this.ops.Clear();
             this.function = function;
             this.plan = plan;
             this.Unlisted.Clear();
@@ -160,12 +175,6 @@ public sealed partial class Binding
             return null;
         }
 
-        // Whether an operation lends its source to an exclusive parameter (SPEC 15.1.5): a Borrow, Reborrow, base borrow or payload
-        // projection in an exclusive mode.
-        private static bool LendsExclusively(in BoundArgumentOperation operation)
-            => operation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection &&
-                operation.ParameterType is { } parameter && IsExclusive(parameter.Semantics);
-
         // SPEC 7.7.2, 7.7.3: a nested Closure's entries of this binding's captures: moving an outer environment value is Consuming;
         // Reborrowing it or borrowing its slot exclusively needs exclusive access to the outer environment, in the cases where it Reborrows
         // for a bare entry.
@@ -236,27 +245,12 @@ public sealed partial class Binding
             }
         }
 
-        // Whether the operation that consumes a Place needs it exclusively (SPEC 7.7.3, 3.5.1): it writes or updates the Place,
-        // borrows it exclusively (an explicit adaptation as Binding.BorrowsExclusively decides it, SPEC 13.5.6), lends it to an
-        // exclusive parameter as an argument or a method or accessor receiver, takes it as a `for` or `match` Subject in Exclusive mode
-        // (SPEC 14.6.2, 15.1.6), calls it as an Exclusive callee, or acquires it by a Reborrow in an exclusive mode, at an expected Type
-        // or bare; by case when only an acquisition by value of a pair layer that Reborrows in some admitted cases needs it (SPEC 8.14),
-        // which ConsumedByValue decides for such a Place.
+        // Whether the use of a Place needs it exclusively (SPEC 7.7.3, 3.5.1, UseOf); by case when only an acquisition by value of a pair
+        // layer that Reborrows in some admitted cases needs it (SPEC 8.14), which ConsumedByValue decides for such a Place.
         private Need NeedsExclusively(Koto place)
         {
-            var exclusive = place.Parent switch
-            {
-                UnaryKoto update => update.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement,
-                ConversionKoto conversion => ReferenceEquals(conversion.Left, place) && binding.BorrowsExclusively(conversion),
-                ForKoto loop => ReferenceEquals(loop.Iterable, place) && loop.Mode == SubjectMode.Exclusive,
-                MatchKoto match => ReferenceEquals(match.Expression, place) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
-                InvocationKoto { BoundValueCall: { } valueCall } => ReferenceEquals(valueCall.CalleeValue, place) && valueCall.ReceiverKind == SemanticsKind.Uniq,
-                InvocationKoto { BoundCall: { } call } => ArgumentOf(call.ArgumentOperations, place) is { } argument && LendsExclusively(argument),
-                MemberAccessKoto => this.ReceiverOperation(place) is { } receiver && LendsExclusively(receiver),
-                BinaryKoto assignment => assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, place),
-                _ => false,
-            };
-            if (exclusive || (binding.adaptations.TryGetValue(place, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow && IsExclusive(adaptation.Type.Semantics)))
+            var use = this.UseOf(place);
+            if (use == PlaceUse.Exclusive)
             {
                 return new(true, false, false);
             }
@@ -266,24 +260,58 @@ public sealed partial class Binding
             return new(byValue == true, byValue == true, byValue);
         }
 
+        // What the use of a Place reached from a capture needs, as the one place-use rule decides it (Binding.UseOf) over its consumer's
+        // takes under the shared selection (TakesOf: an exclusive use of a user index's element is found above it, SPEC 4.7.1). A grouped
+        // Place is taken as its group.
+        private PlaceUse UseOf(Koto place)
+        {
+            if (IsGroup(place.Parent))
+            {
+                return PlaceUse.Shared;
+            }
+
+            var takes = this.TakesOf(place, exclusive: false) ?? default;
+            return binding.UseOf(place, takes.Last, takes.Earlier, place.Parent, this.OpOf(place.Parent!));
+        }
+
+        // A node's evaluated Op (Binding.OpOf), read once per Classify.
+        private HirOp OpOf(Koto node)
+        {
+            if (!this.ops.TryGetValue(node, out var op))
+            {
+                this.ops[node] = op = binding.OpOf(node);
+            }
+
+            return op;
+        }
+
         // SPEC 3.5, 8.14, 14.2.2, 23.1.2 (DECISIONS R4-M145): whether a Place is acquired by value (the bare rule) as the Adjust rule takes
-        // it, its groups taken through: false where its own failure explains it; in Discard Context, as its container discards it
-        // (Binding.Discarded, the plan-row Adjust the MIR builder reads); else as its consumer takes it, the nearest ancestor its parent
-        // does not cover (Binding.Covers), the Closure under classification taken as a Closure. A consumer whose failure or dependency
-        // explains its inputs (HasFailureCauses) decides only a position that acquires by bare acquisition by itself where no adaptation was
-        // recorded (IsBareAcquisitionPosition); another runs the rule with the finder (ConsumedTakes) under both capabilities of its own use:
-        // null where it takes no such child (the net) or a user index's two selections take it differently (SPEC 4.7.1).
+        // it (TakesOf), its groups taken through: false where its own failure explains it; null where its consumer takes no such child (the
+        // net) or a user index's two selections take it differently (SPEC 4.7.1).
         private bool? ConsumedByValue(Koto place)
         {
-            var target = Grouped(place);
             if (Rejected(place))
             {
                 return false;
             }
 
+            var shared = this.TakesOf(place, exclusive: false)?.Result;
+            return shared == this.TakesOf(place, exclusive: true)?.Result ? shared : null;
+        }
+
+        // SPEC 3.5, 14.2.2, 23.1.2: a Place's takes, its groups taken through, under one capability of its consumer's own use: in Discard
+        // Context, as its container discards it (Binding.Discarded, the plan-row Adjust the MIR builder reads); else as its consumer takes
+        // it, the nearest ancestor its parent does not cover (Binding.Covers), the Closure under classification taken as a Closure. A
+        // consumer whose failure or dependency explains its inputs (HasFailureCauses) leaves only a position that acquires by bare
+        // acquisition by itself its own take (IsBareAcquisitionPosition); one the HIR publisher's walk takes no child of takes none.
+        // One consumer's takes are recorded once per Classify and selection (TakeRecord, every child's two rows), so a consumer with N capture
+        // uses is walked once, not once per use; null where it takes no such child.
+        private ConsumedTakes? TakesOf(Koto place, bool exclusive)
+        {
+            var target = Grouped(place);
             if (!IsValueContext(target))
             {
-                return ConsumedTakes.ByValue(binding.Discarded(place));
+                return new(binding.Discarded(place), default);
             }
 
             var consumer = target.Parent!;
@@ -295,20 +323,23 @@ public sealed partial class Binding
             var closure = ReferenceEquals(consumer, this.function);
             if (!closure && binding.HasFailureCauses(consumer))
             {
-                return IsBareAcquisitionPosition(target) && !binding.adaptations.ContainsKey(target);
+                return new(IsBareAcquisitionPosition(target) ? binding.ChildAdjust(target, HirAdaptation.None, UseKind.Acquisition, claimed: false) : default, default);
             }
 
-            var op = closure ? HirOp.Closure : binding.OpOf(consumer);
+            var op = closure ? HirOp.Closure : this.OpOf(consumer);
             if (op is HirOp.Unset or HirOp.Error or HirOp.Syntax)
             {
                 return null; // The HIR publisher's walk takes no child of such a consumer.
             }
 
-            var shared = new ConsumedTakes(binding, target);
-            binding.AdjustChildren(consumer, op, exclusive: false, ref shared);
-            var exclusive = new ConsumedTakes(binding, target);
-            binding.AdjustChildren(consumer, op, exclusive: true, ref exclusive);
-            return shared.Result == exclusive.Result ? shared.Result : null;
+            if (this.walks.Add((consumer, exclusive)))
+            {
+                var record = new TakeRecord(binding, this.takes, exclusive);
+                binding.AdjustChildren(consumer, op, exclusive, ref record);
+                this.TakeWork += record.Count;
+            }
+
+            return this.takes.TryGetValue((target, exclusive), out var takes) ? takes : null;
         }
 
         // The operation by which the method or accessor call whose receiver a Place is takes it (SPEC 7.3.3, 11.3), or null.
@@ -324,15 +355,7 @@ public sealed partial class Binding
             }
 
             // Accessor calls pass their receiver as an explicit argument; ordinary methods retain it separately.
-            foreach (var argument in call.ArgumentOperations)
-            {
-                if (ReferenceEquals(argument.Source, place))
-                {
-                    return argument;
-                }
-            }
-
-            return call.ReceiverOperation;
+            return ArgumentOf(call.ArgumentOperations, place) ?? call.ReceiverOperation;
         }
 
         // The index of the capture of this binding whose environment binding a use names, or -1 (SPEC 7.7.3: the resolved operations of
@@ -356,51 +379,58 @@ public sealed partial class Binding
         private readonly record struct Need(bool Exclusive, bool ByCase, bool? ByValue);
 
         // One child's takes by its consumer, as the Adjust rule gives them and the HIR publisher writes them: the last, the column's, and
-        // the earlier call's that a later one replaces by another (EarlierAdjust, the plan row's), each completed by the claim of those
-        // two rows so far (Claimed, DECISIONS R7-M8).
-        private struct ConsumedTakes(Binding binding, Koto child) : IHirUses
+        // the earlier call's that a later one replaces by another (EarlierAdjust, the plan row's).
+        private readonly record struct ConsumedTakes(HirAdjust Last, HirAdjust Earlier)
         {
-            private HirAdjust last;
-            private HirAdjust earlier;
-            private int call = -1;
-            private bool found;
-
-            // Whether either take acquires the child by value; null where the consumer takes no such child.
-            public readonly bool? Result => this.found ? ByValue(this.last) || ByValue(this.earlier) : null;
+            // Whether either take acquires the child by value.
+            public bool Result => ByValue(this.Last) || ByValue(this.Earlier);
 
             // An acquisition by the bare rule (SPEC 3.5): Copied, moved, Reborrowed or by case, erased or not.
-            public static bool ByValue(HirAdjust adjust) => adjust is
+            private static bool ByValue(HirAdjust adjust) => adjust is
             {
                 Adaptation: HirAdaptation.None or HirAdaptation.Erasure,
                 Acquire: HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase,
             };
+        }
+
+        // The record of one consumer's takes under one selection (TakesOf), every child's as the publisher's RowUses writes them: each
+        // completed by the claim of its two rows so far (Claimed, DECISIONS R7-M8).
+        private struct TakeRecord(Binding binding, Dictionary<(Koto Child, bool Exclusive), ConsumedTakes> taken, bool exclusive) : IHirUses
+        {
+            private int call = -1;
+
+            // The takes recorded (ClosureTakeWork).
+            public int Count { get; private set; }
 
             public void Call(int ordinal) => this.call = ordinal;
 
-            public void Use(Koto? taken, HirAdaptation adaptation, UseKind kind)
+            public void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
             {
-                if (ReferenceEquals(taken, child))
+                if (child is not null)
                 {
-                    this.FixAdjust(taken, binding.ChildAdjust(child, adaptation, kind, binding.Claimed(child, this.last, this.earlier)), default);
+                    this.FixAdjust(child, binding.ChildAdjust(child, adaptation, kind, this.Claimed(child)), default);
                 }
             }
 
-            public void Use(Koto? taken, in BoundArgumentOperation operation)
+            public void Use(Koto? child, in BoundArgumentOperation operation)
             {
-                if (ReferenceEquals(taken, child))
+                if (child is not null)
                 {
-                    this.FixAdjust(taken, binding.ChildAdjust(child, operation, binding.Claimed(child, this.last, this.earlier)), default);
+                    this.FixAdjust(child, binding.ChildAdjust(child, operation, this.Claimed(child)), default);
                 }
             }
 
-            public void FixAdjust(Koto? taken, HirAdjust adjust, HirPlace place)
+            public void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
             {
-                if (ReferenceEquals(taken, child))
+                if (child is not null)
                 {
-                    this.earlier = this.call >= 0 ? EarlierAdjust(this.call, this.last, adjust) : this.earlier;
-                    (this.last, this.found) = (adjust, true);
+                    this.Count++;
+                    taken.TryGetValue((child, exclusive), out var takes);
+                    taken[(child, exclusive)] = new(adjust, this.call >= 0 ? EarlierAdjust(this.call, takes.Last, adjust) : takes.Earlier);
                 }
             }
+
+            private readonly bool Claimed(Koto child) => taken.TryGetValue((child, exclusive), out var takes) && binding.Claimed(child, takes.Last, takes.Earlier);
         }
     }
 }
