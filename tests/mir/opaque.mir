@@ -116,15 +116,15 @@ fn kept @519
       _11 = move _7 @535 s1
       goto bb9 @535 s1
   bb13:
-      drop _10 -> bb14 @542 s1
+      drop _10 -> bb14 [elide] @542 s1
   bb14:
       StorageDead(_10) @542 s1
-      drop _9 -> bb15 @539 s1
+      drop _9 -> bb15 [elide] @539 s1
   bb15:
       StorageDead(_9) @539 s1
       StorageDead(_8) @537 s1
       StorageDead(_7) @536 s1
-      drop _2 -> bb16 @521
+      drop _2 -> bb16 [elide] @521
   bb16:
       unreachable @523
 fn definition @546
@@ -186,7 +186,7 @@ closure @549
       goto bb8 @564 s1
   bb10:
       StorageDead(_7) @565 s1
-      drop _3 -> bb11 @552 s1
+      drop _3 -> bb11 [elide] @552 s1
   bb11:
       StorageDead(_3) @552 s1
       unreachable @551

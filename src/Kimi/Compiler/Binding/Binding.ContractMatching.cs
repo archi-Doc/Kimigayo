@@ -103,9 +103,13 @@ public sealed partial class Binding
             this.InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
-            if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
+            if (conformance.Invalid && (this.partPrerequisites.ContainsKey(conformance.Use) || this.prerequisites.ContainsKey(conformance.Use)))
             {
-                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification.
+                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification or its proof's evidence.
+            }
+            else if (conformance.RootPath.Use.BindingFailure != BindingFailure.None)
+            {
+                this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
             }
 
             return ConstraintProof.Error;
@@ -240,7 +244,7 @@ public sealed partial class Binding
                             }
                         }
 
-                        ancestorProofs[i] = this.VerifyConformance(this.conformancePaths[(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract)], prerequisites);
+                        ancestorProofs[i] = this.VerifyConformance(this.impls.Path(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract), prerequisites);
                         proof = CombineProof(proof, ancestorProofs[i], true);
                     }
                 }
@@ -303,7 +307,7 @@ public sealed partial class Binding
                 var requirement = identity.Symbol;
                 if (!ReferenceEquals(identity.Contract, conformance.Contract))
                 {
-                    var ancestor = this.conformancePaths[(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract)];
+                    var ancestor = this.impls.Path(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract);
                     if (!CopyRequirementWitness(ancestor, conformance, identity))
                     {
                         proof = CombineProof(proof, ConstraintProof.Unknown, true);

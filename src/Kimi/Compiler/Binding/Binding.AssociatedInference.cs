@@ -111,7 +111,7 @@ public sealed partial class Binding
 
     private void PrepareAssociatedInference()
     {
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -128,7 +128,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             if (this.associatedInference.TryGetValue(path.Type, out var batch) && batch.Active)
             {
@@ -160,7 +160,7 @@ public sealed partial class Binding
             binding.State = 0;
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -179,7 +179,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             this.PublishInheritedInference(path);
         }
@@ -690,6 +690,11 @@ public sealed partial class Binding
 
             this.BindHeader(candidate);
             var match = this.MatchesRequirement(requirement, implementation, self, path.Scope, selection);
+            if (match is null && IncompleteSignature(implementation) is { } incomplete)
+            {
+                this.Consulted(incomplete); // SPEC 23.1.2: a pending match read the implementation's incomplete signature (IsDerived).
+            }
+
             pending |= match is null;
             if (match == true)
             {

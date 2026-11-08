@@ -174,6 +174,13 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
+    // Closes a frame whose reads explain no outcome of its node (RequireConstraintInFrame): nothing becomes its prerequisite.
+    private void DropConsultation((int Start, Koto? Node) parent)
+    {
+        this.consulted.RemoveRange(this.consultationStart, this.consulted.Count - this.consultationStart);
+        (this.consultationStart, this.consultationNode) = parent;
+    }
+
     // SPEC 23.1.2: a check whose result the node being checked does not read runs with no frame open, so nothing it fails becomes that
     // node's prerequisite: a header that a set Type demands is its declaration's (BindType), a part an unselected call binds on its
     // own is read by no check of that call (CompleteUnselected; DECISIONS U4b), and the binding result of a declaration that a container
@@ -217,7 +224,7 @@ public sealed partial class Binding
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part.
     private bool IsDerived(Koto node)
-        => IsRecovery(node, out _) || this.RestsOnRecovery(node) ||
+        => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
             this.FailedOriginClause(node) is not null ||
@@ -229,8 +236,11 @@ public sealed partial class Binding
             (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
             this.formationCauses?.ContainsKey(read) == true);
 
-    // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
-    private bool RestsOnRecovery(Koto node)
+    // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
+    // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
+    // other, from that record and adds none; a refusal at its own site stays its own record. The one place of the rule; the walk
+    // reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
+    private bool RestsOnRecoveryOrLimit(Koto node)
     {
         if (!this.prerequisites.ContainsKey(node) && !this.partPrerequisites.ContainsKey(node))
         {
@@ -242,6 +252,7 @@ public sealed partial class Binding
         visited.Add(node);
         this.PushPrerequisites(node, pending);
         var found = false;
+        var limit = !this.ResourceFailed(node);
         while (pending.TryPop(out var cause))
         {
             if (!visited.Add(cause))
@@ -249,7 +260,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (IsRecovery(cause, out _))
+            if (IsRecovery(cause, out _) || (limit && this.ResourceFailed(cause)))
             {
                 found = true;
                 pending.Clear();
@@ -281,6 +292,11 @@ public sealed partial class Binding
     /// <param name="node">The failed node.</param>
     /// <param name="part">The part its failure rests on when that part fails.</param>
     private void AddPendingPrerequisite(Koto node, Koto part) => this.partPrerequisites.TryAdd(node, part);
+
+    // A node whose failure is a reached implementation limit: its record's category is Resource (SPEC 23.1.1).
+    private bool ResourceFailed(Koto node)
+        => node.BindingFailure != BindingFailure.None && DiagnosticEntries.TryGet(this.CodeOf(node, node.BindingFailure), out var entry) &&
+            entry.Category == DiagnosticCategory.Resource;
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
     // operands still unresolved when Binding ends are prerequisites.

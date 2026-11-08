@@ -649,6 +649,9 @@
   + Name="Binding.CaseLimit"
     Description="the Semantics cases of the definition stay within the implementation bound"
 
+  + Name="Binding.TypeHeightLimit"
+    Description="every Type the program forms stays within the implementation's height limit"
+
   + Name="Emission"
     Description="generation succeeds"
 

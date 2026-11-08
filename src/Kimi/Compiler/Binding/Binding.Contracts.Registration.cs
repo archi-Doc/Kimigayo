@@ -4,22 +4,17 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Conformance registration (SPEC 8.6.1, 8.6.2, 8.8): the owner of the conformance tables. Self clauses register their direct and
-// refinement paths here; conditional blocks (BindConditionalDeclarations) and inherited paths (RegisterInheritedConformances) add
-// theirs through RegisterConformanceDeclaration and RegisterConformance.
-// Input: bound Self clauses, conditional blocks and a base's paths. Output: `conformances` (one identity per Type and Contract),
-// `conformancePaths` (one path per Type, Contract, declaration and root Contract), `conformancesByType` and `activeConformancePaths`;
-// each Type's ObjectPayload opt-out, its own or inherited (SPEC 8.7.3); the Self-clause failures: a closed or intrinsic Contract's
-// grant, an invalid negated clause and a colliding direct conformance (SPEC 8.7, 8.7.1, 8.9.1).
-// Invariants: a path joins the lists only at its own registration, so they follow its caller's order and a derived Type's equal its
-// base's; the caller that registers a path registers its root path; each key keeps one object across binds.
+// Conformance registration (SPEC 8.6.1, 8.6.2, 8.8): the Self-clause and conditional-block registrar of ImplTable. Self clauses register
+// their direct and refinement paths here; conditional blocks (BindConditionalDeclarations) add theirs through
+// RegisterConformanceDeclaration, inherited paths (RegisterInheritedConformances) through ImplTable.Register.
+// Input: bound Self clauses, conditional blocks. Output: their paths in ImplTable; each Type's ObjectPayload opt-out, its own or inherited
+// (SPEC 8.7.3); the Self-clause failures: a closed or intrinsic Contract's grant, an invalid negated clause and a colliding direct
+// conformance (SPEC 8.7, 8.7.1, 8.9.1).
+// Invariants: a clause registers its direct path before its ancestors' paths, in the Contract's ancestor order.
 // Must not: verify a path (ContractMatching, InheritedConformances) or decide availability at a use (ResolveConformance).
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract), BoundConformance> conformances = new();
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract, IsKoto Declaration, BindingSymbol Root), BoundConformancePath> conformancePaths = new();
-    private readonly List<BoundConformancePath> activeConformancePaths = new();
-    private readonly Dictionary<BindingSymbol, List<BoundConformance>> conformancesByType = new(ReferenceEqualityComparer.Instance);
+    private readonly ImplTable impls = new();
 
     private void RegisterConformances()
     {
@@ -104,7 +99,7 @@ public sealed partial class Binding
 
     private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
-        if (this.conformancesByType.TryGetValue(type, out var previousBindings))
+        if (this.impls.OfType(type) is { } previousBindings)
         {
             foreach (var identity in previousBindings)
             {
@@ -117,7 +112,7 @@ public sealed partial class Binding
             }
         }
 
-        var direct = this.RegisterConformance(type, contract, contract, use, scope, premises);
+        var direct = this.impls.Register(type, contract, contract, use, scope, premises);
         if (direct.Identity.DirectClause is { } previous)
         {
             direct.Identity.Invalid = true;
@@ -128,58 +123,7 @@ public sealed partial class Binding
         var shape = contract.Contract!;
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
-            this.RegisterConformance(type, shape.Ancestors[i], contract, use, scope, premises);
+            this.impls.Register(type, shape.Ancestors[i], contract, use, scope, premises);
         }
-    }
-
-    private BoundConformancePath RegisterConformance(BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
-    {
-        var result = this.ConformancePath(type, contract, use, root);
-        if (!result.Active)
-        {
-            var identity = result.Identity;
-            result.Active = true;
-            result.InheritedFrom = null;
-            result.AdditionalInheritedSources?.Clear();
-            result.InheritedBase = null;
-            result.Use = use;
-            result.Declaration = use;
-            result.RootContract = root;
-            // The root path is named here and registered by its own call, so the lists below follow the caller's order whichever
-            // path comes first: an inherited base's order, where a refinement may follow its parent Contract's own conformance.
-            result.RootPath = ReferenceEquals(contract, root) ? result : this.ConformancePath(type, root, use, root);
-            result.Premises = premises;
-            result.Scope.Parent = scope;
-            this.activeConformancePaths.Add(result);
-            if (identity.PathStorage.Count == 0)
-            {
-                if (!this.conformancesByType.TryGetValue(type, out var list))
-                {
-                    this.conformancesByType.Add(type, list = new());
-                }
-
-                list.Add(identity);
-            }
-
-            identity.PathStorage.Add(result);
-        }
-
-        return result;
-    }
-
-    // One path per Type, Contract, declaration and root Contract, created when first named; only its registration activates it.
-    private BoundConformancePath ConformancePath(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingSymbol root)
-    {
-        if (!this.conformances.TryGetValue((type, contract), out var identity))
-        {
-            this.conformances.Add((type, contract), identity = new(type, contract));
-        }
-
-        if (!this.conformancePaths.TryGetValue((type, contract, use, root), out var result))
-        {
-            this.conformancePaths.Add((type, contract, use, root), result = new(type, contract) { Identity = identity });
-        }
-
-        return result;
     }
 }
