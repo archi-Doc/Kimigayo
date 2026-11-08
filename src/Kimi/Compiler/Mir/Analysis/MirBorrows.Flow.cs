@@ -7,9 +7,9 @@ namespace Kimi.Compiler.Mir;
 // its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, a Call's are MirBorrows.Calls' and a Drop's
 // MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
 // (MirBorrows.States, DECISIONS R4-M160). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued
-// into a guard candidate H (E7); and Φ_N where it may change an exposed holder's bytes (PLAN G598): a store through a reference or
-// pointer, or a call's W, writes only exposed holders and E, and a store into an exposed holder's own Place carries it too, since a
-// pointer the body formed may change the holder at any later point without a store A5 reads (a callee's scalar store, a pun).
+// into a guard candidate H (E7); and Φ_N where it stores into an exposed holder (MirBorrows.Loans' Exposed; PLAN G598), into its own
+// Place or through a reference (a holder a shared Loan alone names is no exposed holder, and E carries Φ_E), since a pointer the body
+// formed may change the holder at any later point without a store A5 reads (a callee's scalar store, a pun); a call's W, MirBorrows.Calls.
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -78,7 +78,7 @@ internal sealed partial class MirBorrows
             {
                 Cleared => 0,
                 Replaced => State(value, 0),
-                JoinedThrough => State(Placed(state[slot]), this.sets.Union(Shared(state[slot]), this.sets.Union(value, this.unformedSet))),
+                JoinedThrough => State(Placed(state[slot]), this.sets.Union(Shared(state[slot]), value)),
                 _ => State(this.sets.Union(Placed(state[slot]), value), Shared(state[slot])),
             };
         }
@@ -100,8 +100,7 @@ internal sealed partial class MirBorrows
     }
 
     // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k Derefs every holder refs^k names joined (P10; past a
-    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined; Φ_N into an exposed holder (Commit adds
-    // it to every store through a reference).
+    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined; Φ_N into each exposed holder it writes.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
         var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
@@ -129,9 +128,11 @@ internal sealed partial class MirBorrows
         var pointer = this.PointerOf(place.Root, layer, parents, last); // What its last Deref goes through.
         var through = last == count - 1 ? pointer : 0; // A write of the whole referent (rule W's write-through).
         this.Refs(pointer);
-        foreach (var target in this.targets)
+        for (var t = 0; t < this.targets.Count; t++)
         {
+            var (target, root) = (this.targets[t], this.targetRoots[t]);
             var arrived = this.Arrive(target, receiving, false, through, value);
+            arrived = root >= 0 && this.Exposed(root) ? this.sets.Union(arrived, this.unformedSet) : arrived;
             this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
         }
     }

@@ -26,6 +26,7 @@ internal sealed partial class MirBorrows
     private const byte ViaPast = 2;
 
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
+    private readonly List<int> targetRoots = []; // Refs' targets' locals, -1 for E.
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once, again where first reached writable (Chain).
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
@@ -219,11 +220,13 @@ internal sealed partial class MirBorrows
         return this.partsWritable || !this.sets.Contains(union, Writable) ? union : this.sets.Remove(union, this.writableSet);
     }
 
-    // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan.
+    // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan; with each target's
+    // local in targetRoots (-1 for E), whose exposure a store through S reads (MirBorrows.Flow).
     private void Refs(int set)
     {
         var (direct, escaped) = (false, false);
         this.targets.Clear();
+        this.targetRoots.Clear();
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
@@ -234,6 +237,7 @@ internal sealed partial class MirBorrows
                 if (loan.Named >= 0)
                 {
                     this.targets.Add(loan.Named);
+                    this.targetRoots.Add(loan.Named == Escaped ? -1 : loan.Root);
                 }
             }
         }
@@ -241,6 +245,7 @@ internal sealed partial class MirBorrows
         if (escaped || !direct)
         {
             this.targets.Add(Escaped);
+            this.targetRoots.Add(-1);
         }
     }
 

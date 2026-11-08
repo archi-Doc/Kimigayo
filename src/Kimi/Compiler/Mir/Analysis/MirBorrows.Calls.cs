@@ -147,8 +147,9 @@ internal sealed partial class MirBorrows
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
-            var value = this.Received(state, call, written, target, checks);
-            this.AddSlot(target, this.Arrive(target, referent, false, this.argValues[position], value), 0, JoinedThrough, issue: false);
+            var value = this.Arrive(target, referent, false, this.argValues[position], this.Received(state, call, written, target, checks));
+            value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
+            this.AddSlot(target, value, 0, JoinedThrough, issue: false);
         }
     }
 
