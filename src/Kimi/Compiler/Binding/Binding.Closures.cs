@@ -298,11 +298,12 @@ public sealed partial class Binding
             this.Fail(use, BindingFailure.Unsupported);
         }
 
-        // A call of a foreign import passed a pointer the environment reaches: its contract's writes are prose (SPEC 5.2, 7.7.3; DECISIONS
-        // R7-Y2), so the receiver is undecided, a located Unsupported_Kd until imports state their writes.
-        foreach (var call in effects.Uncontracted)
+        // A use whose need no published fact decides leaves the receiver undecided, a located Unsupported_Kd: a call of a foreign import
+        // passed a pointer the environment reaches, until imports state their writes (SPEC 5.2, 7.7.3; DECISIONS R7-Y2); a write through a
+        // body local only some definitions derive from an environment pointer, until a flow fact states which reaches it (R7-Y2c).
+        foreach (var use in effects.Undecided)
         {
-            this.Fail(call, BindingFailure.Unsupported);
+            this.Fail(use, BindingFailure.Unsupported);
         }
 
         this.JudgePendingRelations(function);

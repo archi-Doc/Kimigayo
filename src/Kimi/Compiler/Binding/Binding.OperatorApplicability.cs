@@ -70,8 +70,8 @@ public sealed partial class Binding
 
         if (operation is BinaryKoto arithmetic && kind is KotoKind.Asterisk or >= KotoKind.Slash and <= KotoKind.Minus)
         {
-            var leftCore = left is null ? null : this.ArithmeticTerminal(source, left);
-            rightCore = right is null ? null : this.ArithmeticTerminal(arithmetic.Right, right);
+            var leftCore = left is null ? null : this.OperandTerminal(source, left);
+            rightCore = right is null ? null : this.OperandTerminal(arithmetic.Right, right);
             var restriction = ArithmeticPairApplicability(operand, leftCore, right, rightCore);
             if (restriction.Failure != BindingFailure.None)
             {
@@ -95,7 +95,7 @@ public sealed partial class Binding
 
         if (ComparisonOperator(kind) && operation is BinaryKoto)
         {
-            left = this.ArithmeticTerminal(source, left);
+            left = this.OperandTerminal(source, left);
         }
 
         var decision = this.LeftOperatorApplicability(left, kind, scope);
@@ -164,7 +164,7 @@ public sealed partial class Binding
         var operand = right;
         if (ComparisonOperator(kind))
         {
-            right = this.ArithmeticTerminal(binary.Right, right);
+            right = this.OperandTerminal(binary.Right, right);
         }
 
         var decision = this.LeftOperatorApplicability(right, kind, scope);
