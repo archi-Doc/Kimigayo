@@ -4,19 +4,17 @@ using System.Globalization;
 
 namespace Kimi.Compiler.Backend;
 
-// The Dictionary legacy rows of ModuleCodegen (R5 plan C8e, package C 3.4 and 3.6; S2-S4 X4, X39; DECISIONS R5-M124), until R8 writes them in
-// Kimigayo: placeEntry's LegacyRow item's routine (Row's Place writer), which its calls, its function's Item's Value calls and its adapter's
-// entry call, and a Dictionary glue item's Drop helper (DictionaryDrop), which the glue calls with its own parameters. Each is P1c's row
+// The Dictionary legacy row of ModuleCodegen (R5 plan C8e, package C 3.6; S2-S4 X4, X39; DECISIONS R5-M124), until R8 writes it in
+// Kimigayo: a Dictionary glue item's Drop helper (DictionaryDrop), which the glue calls with its own parameters. It is P1c's row
 // text, the one copy (PD2; LegacyRuntimeHelpers.WriteDictionary), named after its item by its kind's prefix
-// (__kimi_dictionary_place_<item>, __kimi_dictionary_drop_<item>), over its Dictionary's entry: the key's and the value's Layout records
-// and their entry layout (DictionaryEntryLayout.Of); the callee its row declares is its item's target, by its signature: Place's Storage
-// callee, the append body its LegacyRow item targets; Drop's Entries callee, the clearEntries instance its glue targets when an entry may
+// (__kimi_dictionary_drop_<item>), over its Dictionary's entry: the key's and the value's Layout records; the callee its row declares is
+// its item's target, by its signature: Drop's Entries callee, the clearEntries instance its glue targets when an entry may
 // need a drop (DictionaryHelperRow.CallsEntries), else none. Each helper is made once per Write, its text then written to the helper buffer
 // the frame writes before the definitions (PD8); a kept helper is reused while its descriptor matches, so a warm module allocates nothing.
 // A Dictionary without its entry Types' layouts is a broken contract at the item's site (the collector laid them out, X34).
 internal sealed partial class ModuleCodegen
 {
-    private DictionaryHelper?[] dictionaries = []; // By placeEntry LegacyRow or Dictionary DropGlue item, its helper, kept across Writes.
+    private DictionaryHelper?[] dictionaries = []; // By Dictionary DropGlue item, its helper, kept across Writes.
     private int[] placed = []; // By item, the Write whose helper `dictionaries` holds (0: none).
 
     /// <summary>Gets the Drop helper a Dictionary's glue calls with its own parameters (package C 3.6; DECISIONS R5-M124): P1c's Drop row over
@@ -25,25 +23,7 @@ internal sealed partial class ModuleCodegen
     /// <returns>The helper's signature; null after a record at the item's site.</returns>
     internal FunctionAbi? DictionaryDrop(int glue) => this.Dictionary(glue, DictionaryHelperKind.Drop)?.Abi;
 
-    /// <summary>Gets the routine of a LegacyRow item, placeEntry's Place helper (DECISIONS R5-M124), which its calls and its function's
-    /// Item's adapter call.</summary>
-    /// <param name="item">The LegacyRow item.</param>
-    /// <returns>The routine; null after a record at the item's site.</returns>
-    internal FunctionAbi? PlaceRow(int item)
-    {
-        this.Requested(item);
-        var entry = this.set.Items[item];
-        if (LegacyRuntimeHelpers.Row(entry.Key.Body.Def.Decl!.CompilerFunction) is not { InInstance: true } row)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // A LegacyRow item's function runs in its instance (the collector's).
-            return null;
-        }
-
-        this.Request(row.Needs);
-        return this.Dictionary(item, DictionaryHelperKind.Place)?.Abi;
-    }
-
-    // The helper of a placeEntry LegacyRow item or of a Dictionary DropGlue item, once per Write, its text written then: kept while its
+    // The helper of a Dictionary DropGlue item, once per Write, its text written then: kept while its
     // descriptor matches, else made and named after the item (only then, so a warm module allocates nothing). Null after a record.
     private DictionaryHelper? Dictionary(int item, DictionaryHelperKind kind)
     {
@@ -71,8 +51,7 @@ internal sealed partial class ModuleCodegen
         var stored = new StoredValue(key);
         var storedValue = new StoredValue(value);
         var helper = this.dictionaries[item] is { } kept && (kept.Kind, kept.Key, kept.Value) == (kind, stored, storedValue) ? kept
-            : DictionaryHelper.Create(
-                kind, stored, storedValue, DictionaryEntryLayout.Of(key.Layout, value.Layout), "_" + item.ToString(CultureInfo.InvariantCulture));
+            : DictionaryHelper.Create(kind, stored, storedValue, "_" + item.ToString(CultureInfo.InvariantCulture));
         (this.dictionaries[item], this.placed[item]) = (helper, this.writes);
         var row = LegacyRuntimeHelpers.DictionaryRow(kind);
         var entries = row.Entries == DictionaryCallee.None ? null : callee;

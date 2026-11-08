@@ -24,14 +24,6 @@ internal sealed partial class InstanceCollector
     internal SourceRef Subject(int item, MirBody body, in SourceInfo source)
         => this.Located(body, source) is var located && located.Module < this.rootModules ? located : this.Set.Items[item].Site;
 
-    // The storage a legacy row's handle, its parameter 0, designates (K 4.3; DECISIONS R5-M121, R5-M124), which AdmitRow applies to every
-    // row: the LegacyRow item's representative Type, whose components, the element or the key and the value its routine stores, it lays out.
-    // It is the Type below the parameter's implicit layers (Below, TyCtxt.Layer), an Array's, a UniqSlice's or a fixed array's own, and
-    // through a raw pointer, whose dereference is explicit (SPEC 3.4.3, 5.1), its pointee (placeEntry's raw handle to a Dictionary, SPEC
-    // 22.2); a part of the Type Below made, so its verdict was read at the site.
-    private static BoundType Designated(BoundType below)
-        => below is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw, Components: [var pointee] } ? pointee : below;
-
     // DIAGNOSTICS rule 6 (DECISIONS R5-M171): the order of two subjects, by module and then by id, the syntax table's pre-order of parsed
     // nodes, after which nodes outside the tree (Binding's synthesized ones) follow in creation order.
     private static int Order(SourceRef x, SourceRef y) => x.Module != y.Module ? x.Module - y.Module : x.Id.CompareTo(y.Id);
@@ -41,11 +33,11 @@ internal sealed partial class InstanceCollector
     private static BindingSymbol? Declaration(BoundType type)
         => type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Closure ? type.Symbol : null;
 
-    // The identity whose growth and breadth an item's admission counts (DECISIONS R5-M170): a body's or LegacyRow's definition, a DropGlue's
+    // The identity whose growth and breadth an item's admission counts (DECISIONS R5-M170): a body's definition, a DropGlue's
     // declaration (Declaration); null for every other item.
     private static (MonoKind Kind, MirDefKey Definition)? Identity(in MonoItem item) => item.Key.Kind switch
     {
-        MonoKind.Body or MonoKind.LegacyRow => (item.Key.Kind, item.Key.Body.Def),
+        MonoKind.Body => (MonoKind.Body, item.Key.Body.Def),
         MonoKind.DropGlue when Declaration(item.RepresentativeType!) is { } declaration => (MonoKind.DropGlue, new(declaration, default)),
         _ => null,
     };
@@ -169,65 +161,6 @@ internal sealed partial class InstanceCollector
         return set.Add(new()
         {
             Key = key, Representative = representative, RepresentativeType = type, BodyOrdinal = -1, Parent = parent, Growth = growth, Site = site,
-        });
-    }
-
-    // K 4.3, 4.5 row 2 (DECISIONS R5-M121, R5-M124): the LegacyRow item of a bodyless compiler function whose legacy row writes its call in its
-    // instance, requested at a site, admitted once per key: its function and its erased substitution (as a body instance's, null exactly when
-    // the function does not instantiate), represented by the substitution, under which TyCtxt.Signature gives its Types, and by the storage
-    // its parameter 0 designates (Designated: an Array, a UniqSlice, a fixed array or a Dictionary; Below, its verdict read at the site),
-    // each of whose components, the elements its helper stores, is a by-value use (K 4.8, X34); past the depth limit
-    // GenerationResourceLimit_Kd; an open or missing instance is a broken contract. -1 when refused.
-    private int AdmitRow(int parent, SourceRef site, BindingSymbol function, Subst? subst)
-    {
-        var set = this.Set;
-        Subst? erased = null;
-        var instantiates = this.types.Instantiates(function);
-        if (this.Below(site, function, subst, 0) is not { } below)
-        {
-            return -1;
-        }
-
-        var collection = Designated(below);
-        if ((instantiates && (subst is null || (erased = this.types.Erase(subst)) is null)) ||
-            collection is not { ContainsParameter: false, Components.Count: > 0 })
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
-            return -1;
-        }
-
-        var key = new MonoKey(MonoKind.LegacyRow, new(new(function, MirBodyKind.Fn), erased), null, null, 0, null);
-        if (set.Find(key) is >= 0 and var found)
-        {
-            return found;
-        }
-
-        if (this.refused.Contains(key))
-        {
-            return -1; // Refused once, with its one record (DECISIONS R5-M170).
-        }
-
-        var laidOut = true;
-        for (var i = 0; i < collection.Components.Count; i++)
-        {
-            laidOut &= this.LaysOut(parent, site, collection.Components[i]);
-        }
-
-        if (!laidOut)
-        {
-            return -1;
-        }
-
-        if (!this.Grows(parent, key, (MonoKind.LegacyRow, key.Body.Def), subst?.Height ?? 0, site, out var growth))
-        {
-            return -1;
-        }
-
-        this.Work++;
-        return set.Add(new()
-        {
-            Key = key, Representative = erased is null ? null : subst, RepresentativeType = collection, BodyOrdinal = -1, Parent = parent,
-            Growth = growth, Site = site,
         });
     }
 

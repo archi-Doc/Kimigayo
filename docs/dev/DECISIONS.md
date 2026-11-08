@@ -13351,6 +13351,8 @@ structure is recorded here by the unit that first implements it.
     a `DropGlueRow` per collection (no consumer before C8e); re-pointing the old lowering to the map (D5).
   - Amended by R5's census unit U6 (PLAN G157 (30); 2026-11-01): the Helpers' result parts are chosen by `ArrayHelperRow.Result`, not by
     kind arms (R5-M16's amendment).
+  - Superseded by R8-M11 (2026-11-09, R8-K1b-3): the `LegacyRow` item kind (`MonoKind.LegacyRow`, `AdmitRow`) is removed; its last
+    row, placeEntry's, became a `DictionaryStorage` body at R8-K1b-2, and the Array rows went at R8-A1d.
 - **R5-M122 The owner confirms C8d's departure** (owner, 2026-10-25, after C8d's design; verbatim 「C8d の逸脱（Array カーネルの corpus O2 A/B を C8d
   と C9c の遅い方へ移し、C8d は一時カーネルで参考測定すること）も承認します。」) The departure R5-M121 records is confirmed: plan row C8d's Array kernel O2 moves to the
   later of C8d and C9c, since the `Array` corpus kernel's checksum line needs interpolation (C9c) under MIR code generation; C8d measured
@@ -13430,6 +13432,9 @@ structure is recorded here by the unit that first implements it.
     `Compilation.Pipeline.cs`); catalog rows or `KimiDeclarationId`s for initialize (R5-M28); the MIR builder calling initialize or append
     (a second literal form); new IntrinsicIds (PD21); Kimigayo bodies now (R8); re-pointing the old lowering to the map (D5).
   - Superseded in part by R8-M8 (2026-11-08, R8-K1a): the `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows; the Dictionary remainders are Kimigayo bodies in `Storage.kimi`.
+  - Superseded in part by R8-M11 (2026-11-09, R8-K1b-2 and R8-K1b-3): placeEntry's `LegacyRow` item and its Place helper (placeEntry
+    is a `DictionaryStorage` body), `dictionaryStorage`'s kernel and the P2a kernel table, and `DictionaryEntryLayout`; the Drop helper
+    stays until R8-K1c.
 - **R5-M125 The owner confirms C8e's two departures** (owner, 2026-10-25, after C8e's design; verbatim 「C8e の逸脱 2 件（Dictionary カーネルの
   corpus O2 A/B を C8e・C8f・C9c のうち最も遅いものへ移し、C8e は一時カーネルで参考測定すること、Dictionary のグルーの対象を要素グルーではなく Drop 行が宣言する clearEntries とすること）を承認します。」) The
   departures R5-M124 records are confirmed: (i) plan row C8e's Dictionary kernel O2 moves to the later of C8e, C8f and C9c, since the
@@ -16316,7 +16321,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Why per-Type facts.** They are over each Type's own facts, with `alignmentOf<T>()` = `stride<(u8, [0 of T])>()`, and no aggregate of K and V is laid out. `Layout` decides Oversized before limits (R5-M52) and the slot is implementation storage, so a K or V over a generation limit keeps its Resource record.
   - **Premises.** Alignments are powers of two at most 16; sizes are multiples of alignment; an aggregate's alignment is its parts' largest. These are this implementation's placement (IMPL 21.1.1 says "at least").
   - **Depth margin.** `alignmentOf` adds two placement levels, so the margin against Binding's storage-nesting bound (PD30) and `Layout.MaximumHeight` (64) is one level. A change of either bound must re-run `AValueNestKeepsTheStorageBoundsRecords`.
-  - **Staged copy.** Every library body that addresses a slot reads `slotStride`, `keyAt` and `valueAt` (R8-K1b-1: the offsets are `DictionaryStorage` bodies, `keyAt` at `slot + 16`, `valueAt` at `Align(16 + stride<K>(), alignmentOf<V>())`, beside `slotStride` under one comment). `DictionaryEntryLayout.Of` stays the second statement for `dictionaryStorage`'s stride (its `.1`, read by nothing) and `placeEntry`'s Place helper until K1b-2 (PLAN G640). From K1b-1 to K1b-2 the offsets are in both statements: the helper writes a placed entry at `Of`'s offsets and the bodies read at the library's, equal under the premises above, so the agreement on one buffer covers the offsets as it covered the stride. The natives observe it (`DictionarySlotStrides`: `(i32, i128)`, `(i32, string)`, `Z16`, `(i128, u8)`, `((), ())`), in place of the static value-offset assertion. From K1b-2 `Of` is read by nothing (R8-M11), and K1b-3 removes it.
+  - **Staged copy.** Every library body that addresses a slot reads `slotStride`, `keyAt` and `valueAt` (R8-K1b-1: the offsets are `DictionaryStorage` bodies, `keyAt` at `slot + 16`, `valueAt` at `Align(16 + stride<K>(), alignmentOf<V>())`, beside `slotStride` under one comment). `DictionaryEntryLayout.Of` stays the second statement for `dictionaryStorage`'s stride (its `.1`, read by nothing) and `placeEntry`'s Place helper until K1b-2 (PLAN G640). From K1b-1 to K1b-2 the offsets are in both statements: the helper writes a placed entry at `Of`'s offsets and the bodies read at the library's, equal under the premises above, so the agreement on one buffer covers the offsets as it covered the stride. The natives observe it (`DictionarySlotStrides`: `(i32, i128)`, `(i32, string)`, `Z16`, `(i128, u8)`, `((), ())`), in place of the static value-offset assertion. From K1b-2 `Of` is read by nothing (R8-M11), and R8-K1b-3 removed it (R8-M11).
   - **Owning iteration does not move:** a by-value `Dictionary<Bad, V>` is already rejected at its parameter and moves (pre-existing, valid under SPEC 8.15.3; PLAN G641). Its storage-height bound stays dev's (62 accepted, 63 rejected).
   - **Supersedes** R5-M124's `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows.
   - **Counts:** `CompilerFunctionKind` 62 → 59, `KimiDeclarationId` 196 → 193, catalog 192 → 189, `StorageKernelKind` 4 → 2, `LegacyWriter` 11 → 9.
@@ -16346,8 +16351,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     margin there is zero. A change to either bound, or to `alignmentOf`'s two levels, re-runs
     `AValueNestKeepsTheStorageBoundsRecords`. The other bodies keep one level.
   - **R7-M11's temporary `WritesThrough` row** (`StoragePlaceDictionaryEntry 0`) is discharged.
-  - **Staged (K1b-3):** the Place helper, `DictionaryEntryLayout.Of` (now read by nothing), the Dictionary kernel and its table, and
-    the `LegacyRow` item kind are unreachable until K1b-3 removes them (PLAN G640).
+  - **Removed at R8-K1b-3** (behavior-preserving): the Place helper, `DictionaryEntryLayout.Of`, the Dictionary kernel and its table
+    (`StorageKernelKind` and its row, input and writer), the `LegacyRow` item kind (`AdmitRow`) and `HelperNeeds.Memory`, which only
+    the Place row declared (PLAN G640 closed). `MonoKind` 9 → 8, `LegacyWriter` 7 → 5, `DictionaryHelperKind` 2 → 1,
+    `[Transitional("R8")]` 23 → 17. Staged to R8-K1c with the Drop helper's one-row table: its `Storage` column and `Shape`'s key and
+    value (no reader), `StoredValue` (a one-field wrapper) and `DictionaryHelper.Key`/`.Value` (read only by the kept-helper match),
+    and `DictionaryCallee.Append` (no Backend reader; two tests read it through `KimiLibrary.DictionaryStorage`).
   - **Counts:** `CompilerFunctionKind` 57 → 55, `KimiDeclarationId` 191 → 190, catalog 187 → 186.
 - **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
   - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).

@@ -4,8 +4,7 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Dictionary rows of FunctionCodegen written in place (SPEC 4.3, 4.9.5, 4.9.7, 16.3.2; R5 plan C8e; DECISIONS R5-M124), beside the storage
-// kernels (FunctionCodegen.Storage) and placeEntry, whose call runs its LegacyRow item's helper (FunctionCodegen.Intrinsics' Routine): a
+// The Dictionary rows of FunctionCodegen written in place (SPEC 4.3, 4.9.5, 4.9.7, 16.3.2; R5 plan C8e; DECISIONS R5-M124): a
 // Dictionary from none, a call of its target, the body of the DictionaryStorage function the Dictionary runtime declares for construction
 // (initialize, LegacyRuntimeHelpers.Construction), at the aggregate's Place; and a Dictionary's glue level, its glue item's Drop helper
 // called with the glue's own parameters (the Array glue's form), which calls the glue's target, the clearEntries instance, when the entries

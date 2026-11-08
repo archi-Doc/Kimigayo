@@ -23,15 +23,12 @@
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
-// and the erased Self, or a gap); a bodyless callee whose legacy row writes its call in its instance (placeEntry) targets its function
-// instance's LegacyRow item (AdmitRow: the function and the erased Subst, no body, represented by the storage its handle parameter
-// designates; DECISIONS R5-M121, R5-M124); a Dictionary from none targets the body of the DictionaryStorage
+// and the erased Self, or a gap); a Dictionary from none targets the body of the DictionaryStorage
 // function the Dictionary runtime declares for construction, initialize (Declared, through TyCtxt's F2c view); a
 // type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
 // a DropGlue's direct parts, DropGlue.Parts, an Array's the destroyArray instance, a Dictionary's the clearEntries instance its Drop row
-// declares when an entry may need a drop, and a LegacyRow's declared callee, placeEntry's append body;
-// InstanceCollector.Witnesses.cs: a comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a
-// property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
+// declares when an entry may need a drop; InstanceCollector.Witnesses.cs: a comparison item's direct parts' items and witnesses
+// (Comparison, DECISIONS R5-M166), a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
@@ -61,7 +58,7 @@
 // R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
 // gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
-// a 17th generation of an identity (a body's or LegacyRow's definition, a DropGlue's declaration) on an admission chain, its height grown
+// a 17th generation of an identity (a body's definition, a DropGlue's declaration) on an admission chain, its height grown
 // at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd, once per key; a type-driven key whose Type is higher than
 // 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.

@@ -290,7 +290,7 @@ public class DictionaryLibraryTest
         Assert.Contains(sel.Library.DictionaryUnlink, generated);
 
         // The library reach of the hidden DictionaryStorage instances in the checked set (DECISIONS R4-M13a, R5-M27, R5-M124), where the old
-        // analysis collected the Dictionary runtime's callees for every Dictionary Type: placeEntry's LegacyRow item targets append, which
+        // analysis collected the Dictionary runtime's callees for every Dictionary Type: the placeEntry body calls append, which
         // reaches appendSlot; the Dictionary from none targets initialize, which reaches clearLinks; tryInsert and remove reach findEntry.
         // The glue targets clearEntries only when an entry may need a drop (CallsEntries): never for i32 entries, and for a string value.
         // Shrinking is reached only through shrinkToFit calls; no bridge compiles it eagerly.

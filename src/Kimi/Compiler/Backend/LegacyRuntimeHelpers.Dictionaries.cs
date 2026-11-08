@@ -2,39 +2,12 @@
 
 #pragma warning disable SA1402 // The Dictionary helper records are this concern's request vocabulary.
 
-using static Kimi.Compiler.Backend.LlvmModuleText;
-
 namespace Kimi.Compiler.Backend;
 
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal enum DictionaryHelperKind : byte
 {
-    Place,
     Drop,
-}
-
-/// <summary>The physical layout of a Dictionary entry: the key and value offsets and the entry stride.</summary>
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct DictionaryEntryLayout(long KeyOffset, long ValueOffset, long Stride)
-{
-    /// <summary>Gets the layout of an entry (IMPL 21.1.3, implementation-defined): its two links first, then the key at the first offset
-    /// from 16 aligned for it, the value after the key aligned for it, and the stride the value's end aligned for the entry, whose alignment
-    /// is at least the links' 8. Since R8-K1b-2 nothing reachable reads it: placeEntry is a DictionaryStorage body and dictionaryStorage is
-    /// gone, so its readers, dictionaryStorage's stride kernel and the Place helper, are unreachable. It is the slot rule's unread second
-    /// statement beside DictionaryStorage.slotStride, keyAt and valueAt (DECISIONS R8-M8's staged copy) until R8-K1b-3 removes it with
-    /// them (PLAN G640).</summary>
-    /// <param name="key">The key's layout.</param>
-    /// <param name="value">The value's layout.</param>
-    /// <returns>The entry layout.</returns>
-    internal static DictionaryEntryLayout Of(TypeLayout key, TypeLayout value)
-    {
-        var alignment = Math.Max(8, Math.Max(key.Alignment, value.Alignment));
-        var keyOffset = Align(16, key.Alignment);
-        var valueOffset = Align(keyOffset + key.Size, value.Alignment);
-        return new(keyOffset, valueOffset, Align(valueOffset + value.Size, alignment));
-    }
-
-    private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 }
 
 /// <summary>The row of one Dictionary helper kind, readable by kind before any representation exists (X4): its ABI shape over the
@@ -60,23 +33,20 @@ internal sealed record DictionaryHelperRow(
 
 /// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal sealed record DictionaryHelper(
-    DictionaryHelperKind Kind, FunctionAbi Abi, StoredValue Key, StoredValue Value, DictionaryEntryLayout Entry)
+internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, StoredValue Key, StoredValue Value)
 {
     /// <summary>Creates the helper of a kind for an entry, named and shaped by the kind's row.</summary>
     /// <param name="kind">The helper kind.</param>
     /// <param name="key">The key descriptor.</param>
     /// <param name="value">The value descriptor.</param>
-    /// <param name="entry">The entry layout.</param>
     /// <param name="suffix">The generator's name suffix, which follows the kind's name prefix.</param>
     /// <returns>The helper.</returns>
-    internal static DictionaryHelper Create(
-        DictionaryHelperKind kind, StoredValue key, StoredValue value, DictionaryEntryLayout entry, string suffix)
-        => new(kind, LegacyRuntimeHelpers.DictionaryRow(kind).Shape(suffix, key, value), key, value, entry);
+    internal static DictionaryHelper Create(DictionaryHelperKind kind, StoredValue key, StoredValue value, string suffix)
+        => new(kind, LegacyRuntimeHelpers.DictionaryRow(kind).Shape(suffix, key, value), key, value);
 }
 
-/// <summary>SPEC 4.3, 4.9.6: the Dictionary runtime and the per-entry Dictionary helpers over the compiled DictionaryStorage sources
-/// (Windows x64 profile); the storage byte primitives they write first are the storage kernels' (LegacyRuntimeHelpers.Storage.cs).</summary>
+/// <summary>SPEC 4.3, 4.9.7: the Dictionary runtime and the per-entry Dictionary helpers over the compiled DictionaryStorage sources
+/// (Windows x64 profile).</summary>
 internal static partial class LegacyRuntimeHelpers
 {
     /// <summary>The DictionaryStorage function a Dictionary's construction from none runs (SPEC 4.3, 4.9.5), the callee the Dictionary
@@ -84,20 +54,12 @@ internal static partial class LegacyRuntimeHelpers
     /// which MIR code generation calls.</summary>
     internal const DictionaryCallee Construction = DictionaryCallee.Initialize;
 
-    // One row per kind, in DictionaryHelperKind order; a new kind adds a row. Place copies its key and value through the memory
-    // declarations, and Drop releases through the main runtime.
+    // One row per kind, in DictionaryHelperKind order; a new kind adds a row. Drop releases through the main runtime.
     // The handle a Value at slot 0 (IMPL 21.3.1), as the internal convention's kinds and logical indices place it.
     private static readonly AbiParameter Handle = new("ptr", "handle", AbiParameterKind.Value, 0);
 
     private static readonly DictionaryHelperRow[] DictionaryRows =
     [
-        new(
-            DictionaryHelperKind.Place,
-            static (suffix, key, value) => Located("__kimi_dictionary_place" + suffix, [Argument(key, "key", 1), Argument(value, "value", 2)]),
-            static (output, helper, _, append) => WriteEntryPlacement(output, helper, append!),
-            DictionaryCallee.None,
-            DictionaryCallee.Append,
-            HelperNeeds.Memory),
         new(
             DictionaryHelperKind.Drop,
             static (suffix, _, _) => Located("__kimi_dictionary_drop" + suffix, []),
@@ -129,22 +91,6 @@ internal static partial class LegacyRuntimeHelpers
         output.Write("}\n\n");
     }
 
-    // SPEC 4.9.6: typed placement only; the ordinary source append body owns growth, ordering and free-slot reuse, and reports
-    // its failures at the forwarded caller location.
-    private static void WriteEntryPlacement(TextWriter output, DictionaryHelper helper, FunctionAbi append)
-    {
-        output.Write("  %new_slot = call ptr @");
-        output.Write(append.Name);
-        output.Write("(ptr %handle, i64 ");
-        WriteNumber(output, helper.Entry.Stride);
-        output.Write(", ptr %location, i64 %location_length)\n");
-        WriteEntryAddress(output, "%new_key", "%new_slot", helper.Entry.KeyOffset);
-        WriteEntryAddress(output, "%new_value", "%new_slot", helper.Entry.ValueOffset);
-        WriteStoredArgument(output, helper.Key, "%key", "%new_key", "%key_inserted");
-        WriteStoredArgument(output, helper.Value, "%value", "%new_value", "%value_inserted");
-        output.Write("  ret void\n");
-    }
-
     // SPEC 4.9.7: clearEntries destroys the live entries when they need destruction; the buffer is then released.
     private static void WriteDictionaryDrop(TextWriter output, FunctionAbi? clear)
     {
@@ -161,9 +107,4 @@ internal static partial class LegacyRuntimeHelpers
     // A signature without a result: the handle, the leading parameters and the caller's location (SPEC 22.5.1).
     private static FunctionAbi Located(string name, ReadOnlySpan<AbiParameter> leading)
         => new(name, RuntimeAbi.Unit.ComputationType, [Handle, .. leading, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
-
-    // A stored-value argument of a helper that moves it in at its call's slot: a scalar by value, another value by address (SPEC 21.3.1).
-    private static AbiParameter Argument(in StoredValue value, string name, int slot) => value.IsScalar
-        ? new(value.Value.ComputationType, name, AbiParameterKind.Value, slot)
-        : new("ptr", name, AbiParameterKind.OwnedSlot, slot);
 }
