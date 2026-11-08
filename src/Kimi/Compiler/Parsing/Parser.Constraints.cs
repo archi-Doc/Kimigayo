@@ -29,7 +29,7 @@ public static partial class Parser
     {
         var lastError = reader.Diagnostic.LastError;
         var simple = HasSimpleConstraintSubject(ref reader);
-        var subject = simple ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
+        var subject = simple ? ParseConstraintSubject(ref reader) : ParseType(ref reader, TypeContext.Type);
         if (!simple && !IsConstraintSubject(subject) && !ReportedSince(ref reader, lastError, out _) && subject.Expected(SyntaxForm.Constraint) is { } rejected)
         {
             // The owner's O-42 (a): a constructed Type is no subject. The Constraint rests on this Error, and its requirement stays
@@ -46,7 +46,7 @@ public static partial class Parser
     internal static IsKoto ParseAssociatedConstraint(ref TokenReader reader)
     {
         var lastError = reader.Diagnostic.LastError;
-        var name = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
+        var name = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseType(ref reader, TypeContext.Type);
         return FinishConstraint(ref reader, name, lastError, finishLine: false);
     }
 
@@ -159,7 +159,7 @@ public static partial class Parser
             {
                 if (IsParenthesizedTypeRequirement(ref reader))
                 {
-                    return ParseDeclarationType(ref reader);
+                    return ParseType(ref reader, TypeContext.Type);
                 }
 
                 var openRange = reader.CurrentTokenRange;
@@ -181,7 +181,7 @@ public static partial class Parser
 
             if (reader.CurrentTokenKind.IsPrimitiveType() || reader.PeekKind(1) is TokenKind.Slash or TokenKind.OpenBrace || reader.CurrentTokenKind is TokenKind.OpenBracket or TokenKind.Self)
             {
-                return ParseDeclarationType(ref reader);
+                return ParseType(ref reader, TypeContext.Type);
             }
 
             var name = ParseConstraintSubject(ref reader);

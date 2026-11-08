@@ -331,7 +331,7 @@ public static partial class Parser
             reader.Diagnostic.Add(origin.Span, DiagnosticCode.LegacyBorrowOrigin_Kd);
             var cause = reader.Diagnostic.LastError;
             reader.Advance(); // The slash belongs to the malformed Type, not to its enclosing parameter list.
-            var target = ParseType(ref reader);
+            var target = ParseType(ref reader, TypeContext.Type);
             return new ErrorKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, Math.Max(origin.Span.End, target.Span.End))) { Cause = cause };
         }
 
