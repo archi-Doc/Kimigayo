@@ -15,6 +15,7 @@ public class InlineLayoutTest
     private const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n";
     private const string BindingCycle = "contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct S\n    Self is C\n";
     private const string BorrowSlot = "contract C\n    associate Item\nstruct Box<T> {s}\n    T is C\n";
+    private const string TwoReferences = "contract C<U>\n    associate Item\nstruct Box<T>\n    T is C<i32>\n    public var next: Option<T.(C<i32>).Item>\nstruct S\n    Self is C<i32>\n    Self is C<i64>\n";
 
     [Theory]
     [InlineData("struct Node\n    let value: i32\n    let next: Node\n", "Node")]
@@ -105,6 +106,10 @@ public class InlineLayoutTest
     [InlineData("contract Has2\n    associate Out\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is PH<W<(X, X)>>\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\n", "Library", "Has2.Out is PH<W<(X, X)>>")]
     [InlineData("contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: Option<T.(C).Item>\nstruct Wrap\n    public var b: Box<S>\nstruct S\n    Self is C\n    associate C.Item is Wrap\n", "Library", "struct | C.Item is Wrap")]
     [InlineData("contract C\n    associate Item\nstruct W\n    let s: S.(C).Item\nstruct S\n    Self is C\n    associate C.Item is Option<W>\n", "Library", "struct")]
+    [InlineData("contract K\ncontract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: Option<T.(C).Item>\nstruct H<X>\n    Self is C when X is K\n        associate C.Item is K\n        associate C.Item is Box<H<X>>\n", "Library", "C.Item is Box<H<X>>")]
+    [InlineData("contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: Option<T.(C).Item>\nstruct S\n    Self is C\n    associate C.Item is Box<S> and Copy\n", "Library", "C.Item is Box<S> and Copy")]
+    [InlineData(TwoReferences + "    associate C<i64>.Item is Box<S>\n    associate C<i32>.Item is Box<S>\n", "Library", "C<i32>.Item is Box<S>")]
+    [InlineData(TwoReferences + "    associate C<i32>.Item is Box<S>\n    associate C<i64>.Item is Box<S>\n", "Library", "C<i32>.Item is Box<S>")]
     [InlineData(BindingCycle + "    associate C.Item is Array<Box<S>>\n", "Library", "")]
     [InlineData(BindingCycle + "    associate C.Item is Option<rc/Box<S>>\n", "Library", "")]
     [InlineData(BindingCycle + "    associate C.Item is raw/Box<S>\n", "Library", "")]

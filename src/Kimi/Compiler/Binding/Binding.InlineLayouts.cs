@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 //   ProjectionSpecification's outcome (a binding with its Subject, conformance path and identity), the premise proof of a node's scope,
 //   and Binding.IsRecursive (SPEC 8.3.3).
 // - Outputs: AdtDef.InlineCycle and one InvalidInlineLayout_Kd at each such declaration, in storageDeclarations order, and one at each
-//   such binding: its specification, the clause whose conjunction yields its identity (SPEC 8.5.1), else its conformance clause.
+//   such binding: its specification (SpecificationPart, SPEC 8.5.1), else its conformance clause.
 // - Representation: a node per struct or enum declaration (its storage walked and proven in the declaration's scope) and per associated
 //   binding of a non-inherited conformance path (its binding walked and proven in that path's Scope, SPEC 8.8.2's D + P, keyed by the
 //   path and the identity; a binding's Origin arguments never change what it stores inline), each with its summary: the abstract parts
@@ -38,10 +38,6 @@ public sealed partial class Binding
     private readonly TypeMemo<bool> layoutParts = new(); // The composite parts one node's storage walk met.
     private int inlineIndex;
     private long inlineGrowth;
-
-    private static bool YieldsIdentity(BoundConstraint? constraint)
-        => constraint is { Kind: ConstraintKind.TypeIdentity } ||
-            (constraint is { Kind: ConstraintKind.And } && (YieldsIdentity(constraint.Left) || YieldsIdentity(constraint.Right)));
 
     private void ValidateInlineLayouts()
     {
@@ -91,7 +87,7 @@ public sealed partial class Binding
         {
             if (this.inlineSummaryPool[i] is { Path: { } path, Cyclic: true } node)
             {
-                this.Fail(this.BindingSite(path, node.Identity), BindingFailure.InvalidInlineLayout);
+                this.Fail(this.SpecificationPart(path, node.Identity) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
             }
         }
     }
@@ -115,39 +111,6 @@ public sealed partial class Binding
 
         return summary;
     }
-
-    // Where a binding is written (SPEC 8.5.1): the clause of its root path whose conjunction yields its identity atom, in the conditional
-    // block or among the Type's members; an inferred binding has none, and its record is at the conformance clause.
-    private Koto BindingSite(BoundConformancePath path, BoundRequirement identity)
-    {
-        var root = path.RootPath;
-        if (root.Declaration.Parent is SyntaxFormKoto syntax && TryConditionalBlock(syntax, out var block))
-        {
-            for (var i = 0; i < block.Items.Count; i++)
-            {
-                if (block.Items[i] is IsKoto { IsAssociatedConstraint: true } clause && this.Specifies(clause, identity))
-                {
-                    return clause;
-                }
-            }
-        }
-
-        var container = (DeclarationContainerKoto)root.Type.Declaration;
-        for (var i = 0; i < container.Members.Count; i++)
-        {
-            if (container.Members[i] is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
-                this.Specifies(clause, identity))
-            {
-                return clause;
-            }
-        }
-
-        return root.Declaration;
-    }
-
-    // SPEC 8.5.1: a specification is the clause whose conjunction elimination yields a Type-identity atom for its identity.
-    private bool Specifies(IsKoto clause, BoundRequirement identity)
-        => this.AssociatedIdentity(clause.Left.BoundType) == identity && YieldsIdentity(clause.BoundConstraint);
 
     // Tarjan's visit: the node's walk, then, at a component's root, its members re-walked while a summary grows (a cyclic component only:
     // a node on no cycle reads only finished summaries). A re-walk that reaches a node below the root merges the component into the
