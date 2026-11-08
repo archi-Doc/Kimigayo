@@ -199,7 +199,7 @@ public class ConversionEmissionTest
 
     private static (BigInteger Min, BigInteger Max) Range(string name)
     {
-        var width = ScalarTypes.Width(BoundType.Primitives[name], 64);
+        var width = ScalarTypes.Width(BoundType.Primitives[name]);
         return name[0] == 'i' ? (-(BigInteger.One << (width - 1)), (BigInteger.One << (width - 1)) - 1) : (0, (BigInteger.One << width) - 1);
     }
 

@@ -117,7 +117,7 @@ public class ConstantLengthBindingTest
     public void EveryIntegerTypeChecksItsOwnIntermediateRange(string name)
     {
         var type = BoundType.Primitives[name];
-        var width = ScalarTypes.Width(type, 64);
+        var width = ScalarTypes.Width(type);
         var max = (System.Numerics.BigInteger.One << (width - (ScalarTypes.Signed(type) ? 1 : 0))) - 1;
         var declaration = $"let Max: {name} = {max}\n";
         var valid = MinimalEmissionTest.Analyze(declaration + "let row: [(Max - Max) of u8]");
@@ -170,5 +170,22 @@ public class ConstantLengthBindingTest
                 throw new InvalidOperationException("Constant length Binding failed.");
             }
         }));
+    }
+
+    // SPEC 4.2 (O-79 (a)): a length is representable in the profile's isize in every Compilation, with or without a target; a
+    // substituted length is bounded the same way (ValidLength).
+    [Theory]
+    [InlineData("func p<T>(x: ref/[0 of T]) => ()", true)]
+    [InlineData("func p<T>(x: ref/[65536 of T]) => ()", true)]
+    [InlineData("func p(x: ref/[9223372036854775807 of u8]) => ()", true)]
+    [InlineData("group Sizes\n    public let M: usize = 2\nfunc p(x: ref/[(Sizes.M + 1) of u8]) => ()", true)]
+    [InlineData("func take<length N>(x: ref/[N of u8]) => ()\nfunc p(x: ref/[4294967296 of u8]) => take(x)", true)]
+    [InlineData("func p<T>(x: ref/[(-1) of T]) => ()", false)]
+    [InlineData("func p(x: ref/[9223372036854775808 of u8]) => ()", false)]
+    [InlineData("func p(x: ref/[(9223372036854775807 + 1) of u8]) => ()", false)]
+    public void LengthsUseTheProfileWidthInEveryTargetMode(string source, bool valid)
+    {
+        string[] expected = valid ? [] : [nameof(Kimi.DiagnosticCode.InvalidTypeFormation_Kd)];
+        Assert.Equal(expected, CompilationTestHelper.BindInEveryTargetMode(source));
     }
 }

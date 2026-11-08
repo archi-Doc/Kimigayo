@@ -382,7 +382,7 @@ public static partial class Parser
         Koto parameterType;
         if (reader.TryConsume(TokenKind.Colon))
         {
-            parameterType = ParseDeclarationType(ref reader);
+            parameterType = ParseType(ref reader, TypeContext.Type);
         }
         else if (anonymous || allowsReceiverShorthand)
         {
@@ -425,7 +425,7 @@ public static partial class Parser
             return new ErrorKoto(ref reader, arrow) { Cause = reader.Diagnostic.LastError };
         }
 
-        return ParseDeclarationType(ref reader);
+        return ParseType(ref reader, TypeContext.Type);
     }
 
     /// <summary>Parses <c>base(arguments)</c> after the colon of a constructor header (SPEC 6.3.1).</summary>

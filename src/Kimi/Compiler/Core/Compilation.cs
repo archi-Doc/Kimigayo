@@ -85,11 +85,6 @@ public partial class Compilation
     public IrTarget IrTarget { get; private set; } = IrTarget.Invalid;
 
     /// <summary>
-    /// Gets the target pointer width in bits.
-    /// </summary>
-    public int PointerWidth => this.IrTarget.PointerWidth;
-
-    /// <summary>
     /// Gets the configured external Kotonoha dependencies.
     /// </summary>
     public KotonohaIdentifier[] KotonohaArray { get; }

@@ -19,6 +19,35 @@ namespace Kimi.Compiler;
 // Prohibitions: a directive's selection belongs to Parser.Directives; this part parses no item.
 public static partial class Parser
 {
+    /// <summary>The words of a declaration header line (Appendix F.6), per token kind (<see cref="HeaderWords"/>).</summary>
+    private enum HeaderWord : byte
+    {
+        /// <summary>No header word: the line is no modifier header.</summary>
+        None,
+
+        /// <summary>An access word, <c>open</c> or <c>static</c>.</summary>
+        Modifier,
+
+        /// <summary>A word that introduces a declaration.</summary>
+        DeclarationIntroducer,
+
+        /// <summary>A word that introduces an accessor (<c>get</c>, <c>set</c>).</summary>
+        AccessorIntroducer,
+    }
+
+    /// <summary>What a header line is (<see cref="ScanHeaderModifiers"/>).</summary>
+    private enum HeaderScan
+    {
+        /// <summary>No modifier header: its words, if any, are ordinary Names and the item reads it.</summary>
+        Ordinary,
+
+        /// <summary>A function header whose <c>virtual</c>, <c>override</c> and <c>unsafe</c> words are modifiers.</summary>
+        FunctionModifiers,
+
+        /// <summary>An unavailable modifier or a dispatch modifier off a function was reported; the reader stands at the introducer.</summary>
+        Reported,
+    }
+
     /// <summary>Gets whether an attribute chain holds an attribute in its place: one reported as misplaced is kept only so the
     /// source round-trips, and it marks nothing (DIAGNOSTICS.md §4.4).</summary>
     /// <param name="attribute">The first attribute of the chain.</param>
@@ -96,10 +125,16 @@ public static partial class Parser
                 return false;
             }
 
-            if (inspectHeader && allowCompileTimeDirectives && TryConsumeUnavailableModifiers(ref reader, out functionModifiers))
+            if (inspectHeader && allowCompileTimeDirectives)
             {
-                isEnd = false;
-                return true;
+                var header = ScanHeaderModifiers(ref reader, HeaderWord.DeclarationIntroducer);
+                if (header == HeaderScan.Reported)
+                {
+                    isEnd = false;
+                    return true;
+                }
+
+                functionModifiers = header == HeaderScan.FunctionModifiers;
             }
 
             inspectHeader = false;
@@ -120,43 +155,21 @@ public static partial class Parser
                         reader.DispatchModifierSpan = reader.CurrentTokenRange;
                     }
 
-                    ReadFlag(ref reader, flag);
+                    ReadModifierFlag(ref reader, flag);
                     continue;
                 }
             }
 
             if (tokenKind == TokenKind.Identifier && reader.PeekKind(1) == TokenKind.Func && reader.IsCurrentIdentifier(Constants.UnsafeKeyword))
             {
-                ReadFlag(ref reader, ModifierKind.Unsafe);
+                ReadModifierFlag(ref reader, ModifierKind.Unsafe);
                 continue;
             }
 
             switch (tokenKind)
             {
                 case TokenKind.Separator:
-                    if (reader.ModifierKind != ModifierKind.NoModifier)
-                    {
-                        // Modifiers share the line of the word that introduces their declaration (Appendix F.6), so modifiers
-                        // that end their line introduce nothing: the declaration is missing after them and they are dropped,
-                        // while attributes before them still precede the next declaration. A static, already reported, is
-                        // no modifier that needs one. An indented body after them would be the missing declaration's, so it is
-                        // skipped with the header, as after a header that fails (OmitDeclaration).
-                        if ((reader.ModifierKind & ~ModifierKind.Static) != ModifierKind.NoModifier)
-                        {
-                            var cause = reader.Expect(SyntaxForm.Declaration);
-                            if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                            {
-                                OmitDeclaration(ref reader, cause);
-                                inspectHeader = true;
-                                continue;
-                            }
-                        }
-
-                        reader.ModifierKind = ModifierKind.NoModifier;
-                        reader.DispatchModifierSpan = default;
-                    }
-
-                    reader.Advance();
+                    EndModifierLine(ref reader);
                     inspectHeader = true;
                     continue;
 
@@ -170,70 +183,25 @@ public static partial class Parser
 
                 case TokenKind.Open:
                     openSpan = reader.CurrentTokenRange;
-                    ReadFlag(ref reader, ModifierKind.Open);
+                    ReadModifierFlag(ref reader, ModifierKind.Open);
                     continue;
 
                 case TokenKind.Public:
                 case TokenKind.Protected:
                 case TokenKind.Private:
                 case TokenKind.Internal:
-                    ReadAccessibility(ref reader, GetAccessibilityModifier(tokenKind));
+                    ReadAccessibilityModifier(ref reader, GetAccessibilityModifier(tokenKind));
                     continue;
 
                 case TokenKind.Sharp:
                     inspectHeader = true;
-                    if (reader.ModifierKind != ModifierKind.NoModifier)
+                    if (ConsumeSharpPrefix(ref reader, allowCompileTimeDirectives))
                     {
-                        if (reader.PeekKind(1) is TokenKind.If or TokenKind.Switch or TokenKind.Case)
-                        {
-                            // A directive is an item of its own (Appendix F.11): the modifiers before it introduce nothing.
-                            if ((reader.ModifierKind & ~ModifierKind.Static) != ModifierKind.NoModifier)
-                            {
-                                reader.Expect(SyntaxForm.Declaration);
-                            }
-
-                            reader.ModifierKind = ModifierKind.NoModifier;
-                            reader.DispatchModifierSpan = default;
-                        }
-                        else
-                        {
-                            // Attributes precede a declaration's modifiers (Appendix F.6): one after them is misplaced, and it
-                            // is kept for the declaration as that Error's recovery.
-                            reader.ReportMisplacedAttributes();
-                            continue;
-                        }
-                    }
-
-                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
-                    {
-                        ParseCompileTimeIfPrefix(ref reader);
-                        reader.HasCompileTimeIfPrefix = true;
                         continue;
                     }
 
-                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.Switch)
-                    {
-                        isEnd = false;
-                        return false;
-                    }
-
-                    if (reader.PeekKind(1) == TokenKind.Case)
-                    {
-                        if (allowCompileTimeDirectives)
-                        {
-                            // Its Condition is validated and its body is parsed as excluded syntax (SPEC 19.4).
-                            reader.HasCompileTimeIfPrefix |= ParseOrphanCompileTimeCase(ref reader);
-                            continue;
-                        }
-
-                        reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideSwitch_Kd);
-                        SkipItemForRecovery(ref reader);
-                        reader.ClearContext();
-                        continue;
-                    }
-
-                    _ = ParseAttributeKoto(ref reader);
-                    continue;
+                    isEnd = false;
+                    return false;
 
                 default:
                     if (tokenKind == TokenKind.EndBlock)
@@ -255,59 +223,146 @@ public static partial class Parser
         ReportDanglingHeader(ref reader);
         isEnd = true;
         return false;
+    }
 
-        // Attributes, modifiers or a compile-time prefix at the end of a body or of the source introduce no declaration (SPEC 6.7):
-        // the declaration is missing after them, and the pending header is dropped.
-        static void ReportDanglingHeader(ref TokenReader reader)
+    /// <summary>Ends a line of the item prefix. Modifiers share the line of the word that introduces their declaration (Appendix F.6), so
+    /// modifiers that end their line introduce nothing: the declaration is missing after them and they are dropped, while attributes before
+    /// them still precede the next declaration. A static, already reported, is no modifier that needs one. An indented body after them
+    /// would be the missing declaration's, so it is skipped with the header, as after a header that fails (OmitDeclaration).</summary>
+    /// <param name="reader">The token reader at the line's Separator.</param>
+    private static void EndModifierLine(ref TokenReader reader)
+    {
+        if (reader.ModifierKind != ModifierKind.NoModifier)
         {
-            if (reader.HasCompileTimeIfPrefix || reader.AttributeKoto is not null || reader.ModifierKind != ModifierKind.NoModifier)
+            if ((reader.ModifierKind & ~ModifierKind.Static) != ModifierKind.NoModifier)
+            {
+                var cause = reader.Expect(SyntaxForm.Declaration);
+                if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                {
+                    OmitDeclaration(ref reader, cause);
+                    return;
+                }
+            }
+
+            reader.ModifierKind = ModifierKind.NoModifier;
+            reader.DispatchModifierSpan = default;
+        }
+
+        reader.Advance();
+    }
+
+    /// <summary>Consumes a <c>#</c> form of the item prefix: a compile-time directive prefix (Appendix F.11) or an attribute (F.6.1).</summary>
+    /// <param name="reader">The token reader at <c>#</c>.</param>
+    /// <param name="allowCompileTimeDirectives">Whether lowercase compile-time directives are accepted.</param>
+    /// <returns><see langword="false"/> when a <c>#switch</c> starts: it is the item itself; otherwise the prefix continues.</returns>
+    private static bool ConsumeSharpPrefix(ref TokenReader reader, bool allowCompileTimeDirectives)
+    {
+        if (reader.ModifierKind != ModifierKind.NoModifier)
+        {
+            if (reader.PeekKind(1) is not (TokenKind.If or TokenKind.Switch or TokenKind.Case))
+            {
+                // Attributes precede a declaration's modifiers (Appendix F.6): one after them is misplaced, and it is kept for the
+                // declaration as that Error's recovery.
+                reader.ReportMisplacedAttributes();
+                return true;
+            }
+
+            // A directive is an item of its own (Appendix F.11): the modifiers before it introduce nothing.
+            if ((reader.ModifierKind & ~ModifierKind.Static) != ModifierKind.NoModifier)
             {
                 reader.Expect(SyntaxForm.Declaration);
-                reader.ClearContext();
             }
+
+            reader.ModifierKind = ModifierKind.NoModifier;
+            reader.DispatchModifierSpan = default;
         }
 
-        static void ReadFlag(ref TokenReader reader, ModifierKind flag)
+        if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
         {
-            if (reader.ModifierKind.HasFlag(flag))
-            {
-                reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, reader.GetSpan(reader.CurrentToken).ToString());
-            }
-
-            reader.ModifierKind |= flag;
-            reader.Advance();
+            ParseCompileTimeIfPrefix(ref reader);
+            reader.HasCompileTimeIfPrefix = true;
+            return true;
         }
 
-        static void ReadAccessibility(ref TokenReader reader, ModifierKind kind)
+        if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.Switch)
         {
-            var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
-            if (acc == default)
+            return false;
+        }
+
+        if (reader.PeekKind(1) == TokenKind.Case)
+        {
+            if (allowCompileTimeDirectives)
             {
-                reader.ModifierKind |= kind;
-            }
-            else if ((acc == ModifierKind.Protected && kind == ModifierKind.Internal) || (acc == ModifierKind.Private && kind == ModifierKind.Protected))
-            {
-                reader.ModifierKind = (reader.ModifierKind & ~(ModifierKind)CompilerHelper.AccessibilityModifierMask) |
-                    (acc == ModifierKind.Protected ? ModifierKind.ProtectedOrInternal : ModifierKind.ProtectedAndInternal);
-            }
-            else if (acc == kind)
-            {
-                reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, kind.ToText());
-            }
-            else
-            {
-                reader.AddDiagnostic(DiagnosticCode.MultipleAccessibilityModifiers_Kd);
+                // Its Condition is validated and its body is parsed as excluded syntax (SPEC 19.4).
+                reader.HasCompileTimeIfPrefix |= ParseOrphanCompileTimeCase(ref reader);
+                return true;
             }
 
-            reader.Advance();
+            reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideSwitch_Kd);
+            SkipItemForRecovery(ref reader);
+            reader.ClearContext();
+            return true;
+        }
+
+        _ = ParseAttributeKoto(ref reader);
+        return true;
+    }
+
+    // Attributes, modifiers or a compile-time prefix at the end of a body or of the source introduce no declaration (SPEC 6.7): the
+    // declaration is missing after them, and the pending header is dropped.
+    private static void ReportDanglingHeader(ref TokenReader reader)
+    {
+        if (reader.HasCompileTimeIfPrefix || reader.AttributeKoto is not null || reader.ModifierKind != ModifierKind.NoModifier)
+        {
+            reader.Expect(SyntaxForm.Declaration);
+            reader.ClearContext();
         }
     }
 
-    // Look only through a same-header modifier sequence. These spellings remain
-    // ordinary identifiers everywhere else, including calls and declaration names.
-    private static bool TryConsumeUnavailableModifiers(ref TokenReader reader, out bool functionModifiers, bool accessor = false)
+    private static void ReadModifierFlag(ref TokenReader reader, ModifierKind flag)
     {
-        functionModifiers = false;
+        if (reader.ModifierKind.HasFlag(flag))
+        {
+            reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, reader.GetSpan(reader.CurrentToken).ToString());
+        }
+
+        reader.ModifierKind |= flag;
+        reader.Advance();
+    }
+
+    private static void ReadAccessibilityModifier(ref TokenReader reader, ModifierKind kind)
+    {
+        var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
+        if (acc == default)
+        {
+            reader.ModifierKind |= kind;
+        }
+        else if ((acc == ModifierKind.Protected && kind == ModifierKind.Internal) || (acc == ModifierKind.Private && kind == ModifierKind.Protected))
+        {
+            reader.ModifierKind = (reader.ModifierKind & ~(ModifierKind)CompilerHelper.AccessibilityModifierMask) |
+                (acc == ModifierKind.Protected ? ModifierKind.ProtectedOrInternal : ModifierKind.ProtectedAndInternal);
+        }
+        else if (acc == kind)
+        {
+            reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, kind.ToText());
+        }
+        else
+        {
+            reader.AddDiagnostic(DiagnosticCode.MultipleAccessibilityModifiers_Kd);
+        }
+
+        reader.Advance();
+    }
+
+    /// <summary>Scans a header line for modifier words before its introducer (Appendix F.6): a word among <c>unsafe</c>,
+    /// <c>virtual</c>, <c>override</c> and <c>abstract</c> is a modifier only when access words, <c>open</c>, <c>static</c> and such
+    /// words follow it on the same line before an introducer; elsewhere these spellings are ordinary Names, in calls and declaration
+    /// Names too. The reader is not advanced unless the header is reported.</summary>
+    /// <param name="reader">The token reader at the start of the header.</param>
+    /// <param name="introducer">The introducers the header admits: a declaration's or an accessor's.</param>
+    /// <returns>What the line is; for <see cref="HeaderScan.Reported"/> the reader stands at the introducer.</returns>
+    private static HeaderScan ScanHeaderModifiers(ref TokenReader reader, HeaderWord introducer)
+    {
         var unavailable = default(Token);
         var dispatch = default(Token);
         var previousEnd = reader.CurrentTokenRange.Start;
@@ -316,7 +371,7 @@ public static partial class Parser
             var token = reader.PeekToken(offset);
             if (!reader.SameLine(previousEnd, token.Span.Start))
             {
-                return false;
+                return HeaderScan.Ordinary;
             }
 
             previousEnd = token.Span.End;
@@ -343,41 +398,31 @@ public static partial class Parser
                     continue;
                 }
 
-                if (text is "unsafe")
-                {
-                    continue;
-                }
-
-                if (!accessor && text is "specialize" && reader.PeekKind(offset + 1) == TokenKind.Func)
+                // A specialization's `specialize` precedes `func`, which no accessor list admits.
+                if (text is "unsafe" || (text is "specialize" && reader.PeekKind(offset + 1) == TokenKind.Func))
                 {
                     continue;
                 }
             }
 
-            if (token.Kind is TokenKind.Public or TokenKind.Internal or TokenKind.Private or
-                TokenKind.Protected or TokenKind.Open or TokenKind.Static)
+            var word = HeaderWords[(byte)token.Kind];
+            if (word == HeaderWord.Modifier)
             {
                 continue;
             }
 
-            var introducer = accessor
-                ? token.Kind is TokenKind.Get or TokenKind.Set
-                : token.Kind is TokenKind.RootGroup or TokenKind.Group or TokenKind.Struct or TokenKind.Enum or
-                    TokenKind.Contract or TokenKind.Extension or TokenKind.Func or TokenKind.Init or TokenKind.Drop or
-                    TokenKind.Let or TokenKind.Var or TokenKind.Computed or TokenKind.Property or TokenKind.Associate;
-            if (!introducer)
+            if (word != introducer)
             {
-                return false;
+                return HeaderScan.Ordinary;
             }
 
             if (unavailable.Kind != TokenKind.Invalid)
             {
                 reader.Diagnostic.Add(unavailable.Span, DiagnosticCode.UnavailableFeature_Kd, reader.GetSpan(unavailable).ToString());
             }
-            else if (token.Kind == TokenKind.Func && !accessor)
+            else if (token.Kind == TokenKind.Func)
             {
-                functionModifiers = true;
-                return false;
+                return HeaderScan.FunctionModifiers;
             }
             else if (dispatch.Kind != TokenKind.Invalid)
             {
@@ -385,14 +430,14 @@ public static partial class Parser
             }
             else
             {
-                return false;
+                return HeaderScan.Ordinary;
             }
 
             reader.Advance(offset);
-            return true;
+            return HeaderScan.Reported;
         }
 
-        return false;
+        return HeaderScan.Ordinary;
     }
 
     /// <summary>Parses an attribute expression.</summary>

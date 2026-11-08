@@ -192,7 +192,7 @@ public sealed partial class Binding
                         argumentName = UnwrapTypeSyntax(parentheses.Type);
                     }
 
-                    if (isLength && this.TypeName(argumentName, scope, TypeLookupRole.Any) is not null)
+                    if (isLength && this.TypeName(argumentName, scope, LookupRole.Any) is not null)
                     {
                         var typeSlot = false;
                         var lengthSlot = false;

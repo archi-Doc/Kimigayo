@@ -712,7 +712,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     Parser.ValidateAssociatedParameters(ref reader, associated.Left);
                     if (reader.TryConsume(TokenKind.For))
                     {
-                        associated.FormationType = Parser.ParseType(ref reader);
+                        associated.FormationType = Parser.ParseType(ref reader, Parser.TypeContext.Type);
                         associated.FormationType.Parent = associated;
                         associated.Span = SourceSpan.FromBounds(associated.Span.Start, associated.FormationType.Span.End);
                     }
@@ -755,7 +755,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 {
                     Koto head = reader.CurrentTokenKind == TokenKind.OpenParenthesis ? Parser.ParseOriginApplication(ref reader, identifier) : identifier;
                     Parser.ValidateAssociatedParameters(ref reader, head);
-                    var formation = reader.TryConsume(TokenKind.For) ? Parser.ParseType(ref reader) : null;
+                    var formation = reader.TryConsume(TokenKind.For) ? Parser.ParseType(ref reader, Parser.TypeContext.Type) : null;
                     var associated = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, (formation ?? head).Span.End), KotoKind.AssociatedType, "associate ", formation is null ? [head] : [head, formation], separator: " for ");
                     Parser.ParseAttachedOriginBlock(ref reader, associated);
                     reader.Document(associated, SourceSpan.FromBounds(token.Span.Start, associated.Span.End));

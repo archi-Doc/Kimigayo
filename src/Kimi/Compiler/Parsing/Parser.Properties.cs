@@ -30,7 +30,7 @@ public static partial class Parser
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {
             reader.ReportMisplacedAttributes();
-            typeKoto = ParseType(ref reader);
+            typeKoto = ParseType(ref reader, TypeContext.Type);
         }
         else if (computed)
         {
@@ -111,7 +111,7 @@ public static partial class Parser
         var unavailableAccessor = false;
         while (reader.CanRead)
         {
-            if (TryConsumeUnavailableModifiers(ref reader, out _, accessor: true))
+            if (ScanHeaderModifiers(ref reader, HeaderWord.AccessorIntroducer) == HeaderScan.Reported)
             {
                 unavailableAccessor = true;
                 parsedAny = true;
@@ -199,7 +199,7 @@ public static partial class Parser
             }
 
             seenAccessor = true;
-            if (TryConsumeUnavailableModifiers(ref reader, out _, accessor: true))
+            if (ScanHeaderModifiers(ref reader, HeaderWord.AccessorIntroducer) == HeaderScan.Reported)
             {
                 unavailableAccessor = true;
                 SkipItemForRecovery(ref reader);
@@ -322,7 +322,7 @@ public static partial class Parser
                 goto CloseParameters;
             }
 
-            receiverType = ParseDeclarationType(ref reader);
+            receiverType = ParseType(ref reader, TypeContext.Type);
             end = Math.Max(end, receiverType.Span.End);
             if (kind == PropertyAccessorKind.Set && !reader.Expect(TokenKind.Comma))
             {
@@ -340,7 +340,7 @@ public static partial class Parser
                     goto CloseParameters;
                 }
 
-                valueType = ParseDeclarationType(ref reader);
+                valueType = ParseType(ref reader, TypeContext.Type);
                 end = Math.Max(end, valueType.Span.End);
             }
             else
@@ -370,7 +370,7 @@ CloseParameters:
             return new ErrorKoto(ref reader, arrow) { Cause = reader.Diagnostic.LastError };
         }
 
-        return ParseDeclarationType(ref reader);
+        return ParseType(ref reader, TypeContext.Type);
     }
 
     /// <summary>The header of one accessor: an optional access modifier and the get or set keyword.</summary>
