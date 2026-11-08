@@ -120,6 +120,15 @@ internal static partial class MirTypes
     /// <returns>The Cast's kind.</returns>
     internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
 
+    // SPEC 8.2, 8.2.3: a Type as the body's identity premises make it (TyCtxt.Premised; itself in a body without a definition), since MIR Types
+    // keep a premised parameter (DECISIONS BU-72); Agrees and the builder's walk to a compared Place read it.
+    internal static BoundType Premised(MirBody body, BoundType type) => body.Key.Decl is { } definition ? TyCtxt.Premised(definition, type) : type;
+
+    // SPEC 8.2: the one agreement under premises: Types agree as they are (Agree) or as the body's premises make them (E and S under
+    // `E is S`), which the validator checks every Type by.
+    internal static bool Agrees(MirBody body, BoundType? expected, BoundType? actual)
+        => Agree(expected, actual) || (expected is not null && actual is not null && Agree(Premised(body, expected), Premised(body, actual)));
+
     /// <summary>Gets whether two Types agree, the one Type agreement of MIR: equal but for the Origins and Origin arguments of either Type
     /// and its components, which an assignment or a call relates instead of equating (SPEC 15.3) and the ownership analysis checks (R4).
     /// Interned Types that carry no Origin agree only when identical; an unknown Type (null) agrees with any.</summary>

@@ -82,6 +82,23 @@ public sealed partial class FunctionCodegenTest
     public void StringProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
+    // SPEC 8.2.3, 13.4: under an identity premise an operand of a Type identical to string is a string, so each instance's comparison is
+    // the witness's call, as the Literal Pattern on the same Subject's is: Witnessed asks Binding's one decision (TyCtxt.OperandTerminal,
+    // the premises applied before the layer walk; R8-OT).
+    [Fact]
+    public void AnIdentityPremisedOperandCallsTheWitness()
+    {
+        var c = Analyze(IdentityPremised);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var (equal, order) = StringWitnesses(ir, c);
+        foreach (var (name, witness, count) in new[] { ("same", equal, 1), ("less", order, 1), ("first", equal, 2), ("item", order, 1) })
+        {
+            var calls = StringCallsOf(ir, c, Assert.Single(FunctionsOf(ir, c, name)));
+            Assert.Equal(count, calls.Length);
+            Assert.All(calls, x => Assert.Same(witness, x.Callee));
+        }
+    }
+
     // SPEC 13.4, 13.4.1 (DECISIONS R5-M118): each operator calls its witness, equals for == and != and compare for the others, on its
     // operands' addresses, then negates the bool or compares the i32 with 0 by its predicate; the bool is stored widened. Each witness reads
     // its records' Fields 0 and 1 through those addresses and calls its byte comparison on them, once; no routine reaches the module.
