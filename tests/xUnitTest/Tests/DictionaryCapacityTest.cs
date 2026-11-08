@@ -142,8 +142,8 @@ public class DictionaryCapacityTest
     private static (string Ir, string Reserve, string Append) Runtime()
     {
         var c = FunctionCodegenTest.GeneratedDefinitions("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)").C;
-        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.DictionaryStorage(DictionaryCallee.Reserve)));
-        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.DictionaryStorage(DictionaryCallee.Append)));
+        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.GetSymbol(KimiDeclarationId.DictionaryStorageReserve)!));
+        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.GetSymbol(KimiDeclarationId.DictionaryStorageAppend)!));
         var ir = CompilationTestHelper.WriteIr(c);
         return (ir, FunctionCodegenTest.BodyOf(c, "DictionaryStorage", "reserve"), FunctionCodegenTest.BodyOf(c, "DictionaryStorage", "append"));
     }

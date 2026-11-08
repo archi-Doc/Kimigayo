@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // The Dictionary family of MIR code generation (R5 C8e; SPEC 4.3, 4.7.3, 4.9.4-4.9.7, 16.3.2, 22.2; DECISIONS R5-M124): the storage bodies
 // reading the Handle's words; the placeEntry body's instances calling append's; a Dictionary from none calling initialize's; a
-// Dictionary's glue calling its own Drop helper, which calls the clearEntries instance only when an entry may need a drop; a Dictionary's
+// Dictionary's glue calling destroyDictionary's instance when an entry may need a drop, else releaseDictionary's; a Dictionary's
 // length; natively. The keys are user Equatable structs: a built-in key's equality is C8f's shim (BuiltinEquals).
 public sealed partial class FunctionCodegenTest
 {
@@ -145,10 +145,11 @@ public sealed partial class FunctionCodegenTest
     }
 
     // SPEC 4.3, 4.9.5, 4.9.7, 16.3.2 (DECISIONS R5-M124): `[:]` calls initialize's instance at its Place, a slot of the entry block the result
-    // is then moved from, without the old generator's bridge; a Dictionary's glue calls its own Drop helper with its parameters, which calls
-    // the clearEntries instance only for entries that may need a drop, then releases the buffer.
+    // is then moved from, without the old generator's bridge; a Dictionary's glue calls its one target with its parameters (DECISIONS R8-M5,
+    // R8-K1c): the destroyDictionary instance, which reaches the entries' destruction, for entries that may need a drop, else
+    // releaseDictionary, which visits no entry.
     [Fact]
-    public void ADictionaryIsMadeByInitializeAndDestroyedThroughItsDropHelper()
+    public void ADictionaryIsMadeByInitializeAndDestroyedByItsLibraryBody()
     {
         var c = Analyze(Dictionaries, OutputKind.Library);
         var text = Generate(c);
@@ -159,35 +160,32 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("alloca { [0 x i64], [56 x i8] }, align 8", Assert.Single(init.Operands).Shape);
         Assert.DoesNotContain("__kimi_dictionary_init", text, StringComparison.Ordinal);
 
-        var free = ir.Function("__kimi_array_free");
-        var clear = Assert.Single(FunctionsOf(ir, c, "clearEntries"));
-        foreach (var (name, callees) in new[] { ("dcKeep", new[] { clear, free }), ("dcKeepInts", new[] { free }) })
+        var destroy = FunctionsOf(ir, c, "destroyDictionary").ToArray();
+        var release = Assert.Single(FunctionsOf(ir, c, "releaseDictionary"));
+        foreach (var (name, entries) in new[] { ("dcKeep", true), ("dcKeepInts", false) })
         {
             var glue = Assert.Single(CalleesOf(Assert.Single(FunctionsOf(ir, c, name))), static x => x.Signature == "internal void (ptr, ptr, i64)");
             var call = Assert.Single(CallsOf(glue));
             Assert.Equal([glue.Parameters[0], glue.Parameters[1], glue.Parameters[2]], call.Operands);
-            Assert.Equal(callees, CalleesOf(call.Callee!));
+            Assert.True(entries ? destroy.Contains(call.Callee) : call.Callee == release, name);
         }
+
+        Assert.All(destroy, x => Assert.Contains(CalleesOf(x), y => FunctionsOf(ir, c, "destroyDictionaryEntries").Contains(y)));
+        Assert.Empty(FunctionsOf(ir, c, "clearEntries"));
+        Assert.DoesNotContain("__kimi_array_free", text, StringComparison.Ordinal);
     }
 
-    // PD8, R5-M46 (DECISIONS R5-M124): the Dictionary helpers precede every definition, each written once, and so do the memory
-    // declarations the bodies request; a module that only destroys a Dictionary has its Drop helper and no Place helper (the absence check
-    // guards against the routine coming back); a module whose bodies shrink one defines the storage byte primitives once (DECISIONS R5-M145).
+    // PD8, R5-M46, R5-M145 (DECISIONS R8-K1c): a Dictionary's operations and destruction are library bodies, so a module defines no
+    // Dictionary helper; the memory declarations the bodies request precede every definition; and a module whose bodies shrink a
+    // Dictionary defines the storage byte primitives once.
     [Fact]
-    public void DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare()
+    public void DictionaryModulesDefineNoHelperAndTheStoragePrimitivesOnce()
     {
         var text = Generate(Analyze(Dictionaries, OutputKind.Library));
+        Assert.DoesNotContain("@__kimi_dictionary_", text, StringComparison.Ordinal);
         var first = Regex.Match(text, @"define internal \S+ @__kimi_f\d+\(").Index;
-        var helpers = Regex.Matches(text, @"define internal \S+ @(__kimi_dictionary_[a-z]+_\d+)\(").ToArray();
-        Assert.NotEmpty(helpers);
-        Assert.All(helpers, x => Assert.True(x.Index < first, x.Value));
-        Assert.Equal(helpers.Length, helpers.Select(static x => x.Groups[1].Value).Distinct().Count());
         Assert.True(text.IndexOf(LlvmModuleText.MemoryDeclarations, StringComparison.Ordinal) is >= 0 and var memory && memory < first);
         Assert.Single(Regex.Matches(text, @"define internal ptr @__kimi_try_allocate\("));
         Assert.Single(Regex.Matches(text, @"define internal void @__kimi_transfer_bytes\("));
-
-        var kept = Generate(Analyze(DictionaryKeys + "func dcKeep(d: Dictionary<Key, string>) => ()\n", OutputKind.Library));
-        Assert.Matches(@"define internal void @__kimi_dictionary_drop_\d+\(", kept);
-        Assert.DoesNotMatch(@"define internal \S+ @__kimi_dictionary_place_\d+\(", kept);
     }
 }
