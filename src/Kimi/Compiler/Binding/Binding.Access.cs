@@ -35,6 +35,16 @@ public sealed partial class Binding
         _ => ModifierKind.NoModifier,
     }).ExtractAccessibilityModifiers();
 
+    private static ModifierKind DeclarationAccess(BindingSymbol symbol)
+        => (symbol.Declaration switch
+        {
+            DeclarationContainerKoto container => container.Modifier,
+            FunctionKoto function => function.Modifier,
+            PropertyAccessorKoto accessor => accessor.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier ? accessor.Modifier : ((PropertyKoto)accessor.Parent!).Modifier,
+            VariableKoto variable => variable.Modifier,
+            _ => ModifierKind.Public,
+        }).ExtractAccessibilityModifiers();
+
     // The Container or function body that declares a member; a conditional implementation block is part of its Container.
     private static Koto? DeclaringContainer(Koto declaration)
     {
@@ -104,9 +114,100 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 9.4.1, 9.4.2: Access(a) ∩ Access(b) ⊆ Access(member), decided on atoms. Each level of member's chain is a union U (a
+    // private protected level two: Kotonoha(K) and Body(C) ∪ Derived(C)); U holds when one level of a's or b's chain, itself a union,
+    // has every atom included in U.
+    private bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
+    {
+        for (var current = member; current is not null; current = EnclosingAccessDeclaration(current))
+        {
+            if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
+            {
+                break;
+            }
+
+            var access = ReferenceEquals(current, member) && memberAccess is { } specific ? specific : DeclarationAccess(current);
+            if (access == ModifierKind.Public)
+            {
+                continue;
+            }
+
+            if (access == ModifierKind.ProtectedAndInternal
+                ? !this.UnionCovered(ModifierKind.Internal, current, a, b) || !this.UnionCovered(ModifierKind.Protected, current, a, b)
+                : !this.UnionCovered(access, current, a, b))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool UnionCovered(ModifierKind access, BindingSymbol level, BindingSymbol a, BindingSymbol b)
+    {
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var current = pass == 0 ? a : b; current is not null; current = EnclosingAccessDeclaration(current))
+            {
+                if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
+                {
+                    break;
+                }
+
+                var own = DeclarationAccess(current);
+                if (own == ModifierKind.ProtectedAndInternal
+                    ? this.UnionIncluded(ModifierKind.Internal, current, access, level) || this.UnionIncluded(ModifierKind.Protected, current, access, level)
+                    : own != ModifierKind.Public && this.UnionIncluded(own, current, access, level))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 9.4.2: every atom of the union `own` gives at `current` is included in the union `access` gives at `level`. A level at the
+    // root is Kotonoha(K); Derived(S) is empty unless S is an open struct.
+    private bool UnionIncluded(ModifierKind own, BindingSymbol current, ModifierKind access, BindingSymbol level)
+    {
+        var owner = current.Scope.Owner;
+        var target = level.Scope.Owner;
+        var sameKotonoha = ReferenceEquals(current.Declaration.CodeContext.Kotonoha, level.Declaration.CodeContext.Kotonoha);
+        var kotonoha = target is DeclarationContainerKoto { IsRoot: true } || access is ModifierKind.Internal or ModifierKind.ProtectedOrInternal;
+        var body = target is not DeclarationContainerKoto { IsRoot: true } && access is not ModifierKind.Internal;
+        var derived = body && access is ModifierKind.Protected or ModifierKind.ProtectedOrInternal && target is StructKoto { Modifier: var open } && (open & ModifierKind.Open) != 0;
+        if (owner is DeclarationContainerKoto { IsRoot: true } || own is ModifierKind.Internal or ModifierKind.ProtectedOrInternal)
+        {
+            if (!(kotonoha && sameKotonoha))
+            {
+                return false;
+            }
+        }
+
+        if (owner is not DeclarationContainerKoto { IsRoot: true } && own is not ModifierKind.Internal && !(kotonoha && sameKotonoha))
+        {
+            var included = false;
+            for (var scope = current.Scope; scope is not null && !included; scope = scope.Parent)
+            {
+                included = (body && ReferenceEquals(scope.Owner, target)) || (derived && scope.Owner is StructKoto structure && this.DerivesFrom(structure.BoundSymbol, target.BoundSymbol!));
+            }
+
+            if (!included)
+            {
+                return false;
+            }
+        }
+
+        // Derived(S) of an open S: included only in Derived(C) for S that is or derives from C.
+        return owner is not DeclarationContainerKoto { IsRoot: true } && own is ModifierKind.Protected or ModifierKind.ProtectedOrInternal && owner is StructKoto { Modifier: var mine } && (mine & ModifierKind.Open) != 0
+            ? derived && this.DerivesFrom(owner.BoundSymbol, target.BoundSymbol!)
+            : true;
+    }
+
     private bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
-        => this.TypeAccessCovers(qualifier, domain, intersection ?? domain) && AccessCovers(contract, domain, intersection ?? domain) &&
-            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, intersection ?? domain));
+        => this.TypeAccessCovers(qualifier, domain, intersection ?? domain) && this.AccessCovers(contract, domain, intersection ?? domain) &&
+            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || this.AccessCovers(requirement, domain, intersection ?? domain));
 
     // A library group's function receives what the group states (WitnessReceiver).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
