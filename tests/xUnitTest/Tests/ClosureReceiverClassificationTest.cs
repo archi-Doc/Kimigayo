@@ -132,11 +132,30 @@ public class ClosureReceiverClassificationTest
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => (*pp + 0)[0] = Probe.init(2)\n    f()\n", true)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => ((*pp)@raw/i32)[0] = 5\n    f()\n", true)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => consume((*(*pp))@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p + 0, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p@raw/i32, 5)\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp + 0, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*(pp + 0), Probe.init(2))\n    f()\n", true)]
     [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (*p).v\n    let v = f()\n", false)]
     [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (p + 0)[0].v\n    let v = f()\n", false)]
     [InlineData(RawPointerProbe + "    let f = func [pp] () -> i32\n        unsafe => return (*pp)[0].v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.release(p)\n    f()\n", false)]
     public void AWriteCapabilityAccessThroughAnEnvironmentPointerIsAnExclusiveCall(string source, bool exclusive)
         => AssertCallReceiver(source, exclusive);
+
+    // SPEC 5.2, 7.7.3, 22.6 (DECISIONS R7-Y2; AGENTS: a valid form no common rule covers stays Unsupported_Kd): a foreign import's operation
+    // contract is prose, so a call passing it a pointer the environment reaches leaves the receiver undecided: the located Unsupported_Kd
+    // at the call, in a `var` Closure too.
+    [Fact]
+    public void AForeignImportPassedAnEnvironmentPointerIsUnsupported()
+    {
+        const string Source = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\n" +
+            "public func main() -> ()\n    let p = Raw.allocate<i64>(1)\n    var f = func [p] () -> i32\n        unsafe => return Native.query(p + 0)\n    let v = f()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "Native.query(p + 0)"), (error.Code, error.Span is { } span ? Source.Substring(span.Start, span.Length) : string.Empty));
+    }
 
     private const string RawDeclarations = "struct Probe\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc consume(x: Probe) => ()\n";
     private const string RawProbe = RawDeclarations + "public func main() -> ()\n    let p = Raw.allocate<Probe>(1)\n";

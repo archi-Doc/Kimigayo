@@ -21,7 +21,8 @@
 //   receiver reads (value calls, candidate selection and Callable proofs, effects and the MIR builder);
 //   CaseFreeReceiver and the captures' BareReborrows, from which a view of one case reads that case's receiver; Classified;
 //   ExclusiveUse and ExclusiveReborrow, the Exclusive cause a write record names (Binding.Diagnostics.cs); Unlisted, which
-//   BindConcreteClosure fails as the rule's net, a located Unsupported_Kd (the owner, 2026-10-25; DECISIONS R4-M145).
+//   BindConcreteClosure fails as the rule's net, a located Unsupported_Kd (the owner, 2026-10-25; DECISIONS R4-M145); Uncontracted,
+//   the calls of a foreign import passed a pointer reached from a capture, which it fails alike (DECISIONS R7-Y2).
 // - Invariants: Classify runs once per binding of a Closure that bound its body, right after it, from the facts BindClosure and
 //   BindConcreteClosure reset (Shared, no mark, no cause, not Classified); only this binding's captures are classified; the
 //   case-free receiver only strengthens, Receiver is derived from the facts once at the end and the first exclusive use while the
@@ -61,6 +62,10 @@ public sealed partial class Binding
         // index; after Classify, only those the receiver facts leave at Shared in a case (DECISIONS R4-M145).
         public List<(Koto Use, int Capture)> Unlisted { get; } = new();
 
+        // The calls of a foreign import that a pointer reached from a capture is passed to, whose contract's writes no published fact states
+        // (ContractWritesThrough; DECISIONS R7-Y2).
+        public List<Koto> Uncontracted { get; } = new();
+
         public void Classify(FunctionKoto function, BoundClosure plan)
         {
             this.takes.Clear();
@@ -69,6 +74,7 @@ public sealed partial class Binding
             this.function = function;
             this.plan = plan;
             this.Unlisted.Clear();
+            this.Uncontracted.Clear();
             if ((function.Body as Koto ?? function.ExpressionBody) is { } body)
             {
                 this.Visit(body);
@@ -270,7 +276,7 @@ public sealed partial class Binding
         private Need NeedsExclusively(Koto place, bool raw)
         {
             var use = this.UseOf(place);
-            if (use == PlaceUse.Exclusive || (raw && use == PlaceUse.Consuming))
+            if (use == PlaceUse.Exclusive || (raw && use == PlaceUse.Consuming) || this.ContractWritesThrough(place))
             {
                 return new(true, false, false);
             }
@@ -278,6 +284,30 @@ public sealed partial class Binding
             // SPEC 3.5, 8.14: a Place acquired by value without an operator (ConsumedByValue) is acquired as each case's Type is.
             var byValue = place.BoundType is { } bare && binding.BareReborrows(bare, place) ? this.ConsumedByValue(place) : false;
             return new(byValue == true, byValue == true, byValue);
+        }
+
+        // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): whether a pointer reached from a capture is passed to a call whose operation contract
+        // performs an access that needs write capability through it (IntrinsicDisposition.WritesThrough), the body's own access. A foreign
+        // import's contract is prose the compiler cannot read (SPEC 22.6), so its call is kept as Uncontracted, a located Unsupported_Kd.
+        private bool ContractWritesThrough(Koto place)
+        {
+            if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto { BoundCall: { } call } invocation ||
+                ArgumentOf(call.ArgumentOperations, place) is not { } argument)
+            {
+                return false;
+            }
+
+            if (call.Target.Declaration is FunctionKoto declaration && declaration.FindAttribute(AttributeKind.LibraryImport) is not null)
+            {
+                if (!this.Uncontracted.Contains(invocation))
+                {
+                    this.Uncontracted.Add(invocation);
+                }
+
+                return false;
+            }
+
+            return IntrinsicDisposition.WritesThrough(call.Target.CompilerFunction, argument.ParameterIndex);
         }
 
         // What the use of a Place reached from a capture needs, as the one place-use rule decides it (Binding.UseOf) over its consumer's

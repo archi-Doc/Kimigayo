@@ -246,6 +246,17 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         _ => CompilerFunctionEffect.Unclassified,
     };
 
+    // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether a body-less operation's contract performs an access that needs
+    // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
+    // (the source as a Take), an in-place destruction and a Dictionary entry's placement (until R8-K1b gives placeEntry a body). Raw.release
+    // and Raw.slice write nothing.
+    internal static bool WritesThrough(CompilerFunctionKind kind, int parameter) => kind switch
+    {
+        CompilerFunctionKind.RawInitialize or CompilerFunctionKind.StorageDestroyValues or CompilerFunctionKind.StoragePlaceDictionaryEntry => parameter == 0,
+        CompilerFunctionKind.StorageTransferBytes => parameter is 0 or 1,
+        _ => false,
+    };
+
     // The built-in form of a published node: a sequence's metadata by its member.
     internal static BuiltinForm FormOf(Koto node)
         => HirTables.Op(node) == HirOp.PrimitiveOp && node is MemberAccessKoto member ? Binding.SequenceMember(member) : BuiltinForm.None;
