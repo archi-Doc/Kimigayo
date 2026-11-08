@@ -130,7 +130,7 @@ public sealed partial class Binding
 
     private void ValidateBoundConformanceAgreement()
     {
-        foreach (var identities in this.conformancesByType.Values)
+        foreach (var identities in this.impls.ByType)
         {
             for (var i = 0; i < identities.Count; i++)
             {

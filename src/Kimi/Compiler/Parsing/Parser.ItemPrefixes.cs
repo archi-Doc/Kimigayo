@@ -14,8 +14,8 @@ namespace Kimi.Compiler;
 // Input: a reader at an item's start. Output: the pending prefix in the reader, which the item takes (TokenReader.TakeContext); whether an
 // unavailable declaration header was recognized, which its caller skips; an attribute chain's nodes.
 // Invariants: a modifier shares the line of the word that introduces its declaration, and modifiers that end their line are dropped with one
-// report; a static, and an open anywhere but before struct, is reported where it is read and kept only for recovery (Judged); a misplaced
-// attribute is kept so the source round-trips and marks nothing (HasWrittenAttribute).
+// report; a static, and an open anywhere but before struct, is reported where it is read and kept only for recovery (Judged); the prefix's
+// attributes attach only to the declaration that takes the prefix, and a misplaced or rejected attribute attaches to nothing.
 // Prohibitions: a directive's selection belongs to Parser.Directives; this part parses no item.
 public static partial class Parser
 {
@@ -48,35 +48,17 @@ public static partial class Parser
         Reported,
     }
 
-    /// <summary>Gets whether an attribute chain holds an attribute in its place: one reported as misplaced is kept only so the
-    /// source round-trips, and it marks nothing (DIAGNOSTICS.md §4.4).</summary>
-    /// <param name="attribute">The first attribute of the chain.</param>
-    /// <returns><see langword="true"/> when an attribute of the chain was not reported as misplaced.</returns>
-    internal static bool HasWrittenAttribute(AttributeKoto? attribute)
-    {
-        for (; attribute is not null; attribute = attribute.AttributeChain)
-        {
-            if (attribute.CodeContext.RecoveryCause(attribute) is null)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>Reports the pending attributes before an item that takes none (SPEC 6.7), such as a Constraint, an Origin relation
-    /// or an enum Case; each is kept for the item's first node as the recovery of its report, as a misplaced attribute is.</summary>
+    /// or an enum Case; each attaches to nothing, as a misplaced attribute does.</summary>
     /// <param name="reader">The token reader.</param>
     internal static void ReportPendingAttributes(ref TokenReader reader)
     {
         for (var attribute = reader.AttributeKoto; attribute is not null; attribute = attribute.AttributeChain)
         {
-            if (reader.CodeContext.RecoveryCause(attribute) is null)
-            {
-                reader.CodeContext.RecordRecovery(attribute, reader.Unexpected(SyntaxForm.Attribute, attribute.Span));
-            }
+            reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
         }
+
+        reader.AttributeKoto = null;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -304,7 +286,7 @@ public static partial class Parser
             return true;
         }
 
-        _ = ParseAttributeKoto(ref reader);
+        reader.AttributeKoto = ParseAttributeKoto(ref reader, reader.AttributeKoto);
         return true;
     }
 
@@ -440,16 +422,16 @@ public static partial class Parser
         return HeaderScan.Ordinary;
     }
 
-    /// <summary>Parses an attribute expression.</summary>
+    /// <summary>Parses an attribute expression and puts it before the attributes read so far.</summary>
     /// <param name="reader">The token reader.</param>
+    /// <param name="previous">The attributes read before it, last first.</param>
     /// <param name="beforeList">Whether the attribute is misplaced where the grammar expects <c>(</c>, such as before a parameter
     /// list. SPEC 6.7 sets no adjacency rule for the argument list, so there the attribute takes a list only when another
     /// <c>(</c> follows it: the last list is the one the grammar expects, as in <c>func f #Test () => ()</c>.</param>
-    /// <returns>The parsed attribute, or <see langword="null"/> after an error.</returns>
-    public static AttributeKoto? ParseAttributeKoto(ref TokenReader reader, bool beforeList = false)
+    /// <returns>The attributes with the parsed one first, or <paramref name="previous"/> after an error: a malformed attribute
+    /// attaches to nothing.</returns>
+    public static AttributeKoto? ParseAttributeKoto(ref TokenReader reader, AttributeKoto? previous, bool beforeList = false)
     {
-        var previousAttribute = reader.PopAttribute();
-
         reader.TryRead(out var attributeToken);
 
         var nameToken = reader.CurrentToken;
@@ -480,12 +462,7 @@ public static partial class Parser
                 }
             }
 
-            if (previousAttribute is not null)
-            {
-                reader.PushAttribute(previousAttribute);
-            }
-
-            return null;
+            return previous;
         }
 
         if (!wellFormed)
@@ -505,22 +482,17 @@ public static partial class Parser
         {
         }
 
-        if (previousAttribute is not null)
-        {
-            reader.PushAttribute(previousAttribute);
-        }
-
         if (!wellFormed)
         {
             // A malformed attribute attaches to nothing: its syntax Error explains it, and the declaration it precedes is checked on its own.
-            return null;
+            return previous;
         }
 
         var attributeKoto = new AttributeKoto(
             ref reader,
             SourceSpan.FromBounds(attributeToken.Span.Start, Math.Max(attributeToken.Span.End, operand.Span.End)),
             operand);
-        reader.PushAttribute(attributeKoto);
+        attributeKoto.SetAttributeChain(previous);
         reader.CodeContext.Documentation?.Suppress(attributeKoto.Span);
         return attributeKoto;
     }

@@ -25,7 +25,7 @@ public sealed partial class Binding
     /// <param name="rows">The caller-owned list to append to.</param>
     internal void EffectObligations(List<EffectObligation> rows)
     {
-        foreach (var path in this.activeConformancePaths)
+        foreach (var path in this.impls.Paths)
         {
             if (!path.IsVerified || path.Contract.Contract is not { } shape)
             {

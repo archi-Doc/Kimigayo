@@ -212,7 +212,7 @@ public static partial class Parser
 
         foreach (var parameter in function.Parameters)
         {
-            if (parameter.DefaultValue is not null || HasWrittenAttribute(parameter.AttributeChain))
+            if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
             {
                 parameter.Type.Unexpected(SyntaxForm.RequirementParameterDefault);
             }

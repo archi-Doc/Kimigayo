@@ -304,7 +304,7 @@ public sealed partial class Binding
             return ReferenceEquals(this.ContractWitness(group, contract), target);
         }
 
-        if (self.Symbol is not { } type || !this.conformancesByType.TryGetValue(type, out var identities))
+        if (self.Symbol is not { } type || this.impls.OfType(type) is not { } identities)
         {
             return false;
         }
