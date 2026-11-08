@@ -15981,6 +15981,21 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open:**
     - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
     - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
+- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149).
+  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand.
+  - **The rule.** It accepts an Integer `MirConst` only in these cases:
+    1. A Type with a width (`ScalarTypes.Width != 0`). The constant's value is the Type's N-bit payload, sign-extended: `ScalarTypes.Normalize(bits, width) == bits`. BU-133 makes Binding's `Fold` and `TryPatternLiteral` the only encoders.
+    2. A widthless Type that code generation also lowers (`FunctionCodegen.Values`): `char`; a raw pointer (null); or a Type whose instance decides it. That last test is the validator's own `Integral` (`HasIntegerArithmetic || HasAbstractPart`), owned by `MirValidator.Types` and also read by the Cast rows. It covers a Type parameter's generic literal.
+    3. Any other Type: `MirViolation.Const` (`InternalInvariant_Kd`).
+  - **Reason.** Before this entry, no rule held: C-142 N3's 2^127 validated in i32 and in u8. A widthless constant was accepted whatever its Type, a silent default over an open family. The Backend already rejects every other instance Type, so validated MIR now states the same family before code generation does.
+  - **Rejected:**
+    - accepting every widthless Type;
+    - an allowlist of the validator's own, which would be a second rule;
+    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule.
+  - **Open limits:**
+    - **N5.** `Integral`'s `HasAbstractPart` also admits an abstract non-integer Type such as `Option<T>` or `ref/T` in a generic body. The Backend's instance check closes it today. Removal condition: tighten `Integral` to what its own comment says ("an integer Type, or one whose instance decides it"), together with the Cast rows that read it.
+    - **N6 / F4.** The values in case 2 are not ranged: char's code points, null only 0, and a generic literal's 0..127.
+    - **The family is written twice,** here and in `FunctionCodegen.Values:86-96`. The proposed removal is a later unit with Back's consent: MIR publishes the family once in `MirConstKind.Integer`'s contract, for example a static `MirConst.IntegerTyped(BoundType)` = `Integral || Char || Raw`. On an instance Type `HasAbstractPart` is false, so the Backend's admission check can read the same predicate, and its copy goes.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
