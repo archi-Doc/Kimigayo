@@ -204,7 +204,8 @@ WORKFLOW "Sessions" owns this table where the two differ.
 - Each loaded unit's owner session reviews the window's merge of its hunks when a conflict was resolved by hand; a conflict-free merge
   needs no second look.
 - Between windows the sessions build and test on their branches (unit verification on their own bases); timing runs book quiet time
-  on the board (§9) and pause the others' builds.
+  on the board (§9) and pause the others' builds. Consecutive quiet slots leave a build gap: a slot starts no earlier than 15
+  minutes after the previous slot's CLOSED line, and the sessions build and test in that gap (a window may run in it; revision 44).
 
 ### 3.3 Caps and rules
 
@@ -770,7 +771,7 @@ than 24 hours without a state change is stale and the coordinator flags it; a me
 ## 4. Heavy runs (the queue: FIFO by planned start, a window first; the registry is the lock; `running n/3` in the heading)
 | id | session | run | kind | planned start | est. duration | state |
 
-## 5. Quiet time (timing; one at a time, at most two hours, booked 30 minutes ahead; others hold builds and heavy runs)
+## 5. Quiet time (timing; one at a time, at most two hours, booked 30 minutes ahead; others hold builds and heavy runs; 15 minutes between two slots for builds)
 | id | session | from | to | purpose | state |
 
 ## 6. Consents and questions between sessions
@@ -786,7 +787,8 @@ than 24 hours without a state change is stale and the coordinator flags it; a me
 Entry rules per table: a window row is announced at least 30 minutes before it opens, names its base and heavy set, and ends CLOSED
 with the dev sha and the shared base, or FAILED with the dropped unit; a queue row is added when the unit's review is ACCEPT and its
 state becomes `loaded W-nn` when a window takes it (`dropped W-nn` when the window drops it); a hold row is taken before the first edit of a shared file and released in the window that lands the unit; a
-heavy-run row precedes the registry file; a quiet-time row is booked at least 30 minutes ahead, one at a time, at most two hours; a consent
+heavy-run row precedes the registry file; a quiet-time row is booked at least 30 minutes ahead, one at a time, at most two hours, and starts no earlier than 15 minutes after
+the previous slot's CLOSED line (a build gap; revision 44); a consent
 row names the hunk and the rule it needs consent under, and its answer is quoted into the unit's commit; an owner-outbox row is added when
 a session asks the owner and closed with the verbatim answer and where it is recorded.
 
@@ -962,3 +964,4 @@ frozen.
 | 41 | 2026-11-08 | R9-F3's landing (the owner's O-85 (a), verbatim 「(a) D1で進める」; the Middle's D-150) | F3's size column gives the landed −101 (D1: an attribute attaches only to what takes it). |
 | 42 | 2026-11-09 | R7-V2a's landing (the Front's D-152; design review 2's R2-5 and R2-6) | V2's row: `VTableDef` reads member facts (SPEC 8.8.1), V2 is done with V2a, V2a2 and V2b–V2f, and the per-pass table rows move to D2 d3; D2 b covers `ImplTable`; C2 takes composite comparison and the primitive refutation. |
 | 43 | 2026-11-09 | R7-C8 U-D2's landing (the owner's O-80 (b), verbatim 「b 落とします」, and O-82, verbatim 「O-82 b」; the Front's D-148) | C8's row: U-D1 dropped, U-D2 landed (H = 8,192, S = 128 MB), U-D3 next. |
+| 44 | 2026-11-09 | The owner's answer to the Coordinator's proposal, verbatim 「すべて推奨の内容でお願いします」 (given with O-91 and O-92) | §3.2 and §9: consecutive quiet slots leave a build gap; a slot starts no earlier than 15 minutes after the previous slot's CLOSED line, and the sessions build and test in that gap (a window may run in it). Reason: five slots booked back to back on 2026-11-09 (T-65 to T-69) held every session's builds and tests for about two hours. |
