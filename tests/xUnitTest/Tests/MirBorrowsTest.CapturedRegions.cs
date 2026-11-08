@@ -228,14 +228,20 @@ public sealed partial class MirBorrowsTest
     public void AClauseOverAnEnclosingRegionIsARow(string source, string clause)
         => MirTargetSide.Check(source, (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At(clause, null)));
 
-    // An Equality row over an enclosing region is A5's too: `p outlives r` fails (15.3.6: no meet at an equality), beside the exclusive layer's
-    // own row. (i1) a stated local; (e1) a call's equal Origins, the fixed one first, where the row has no input to relate, so the record loses
-    // Binding's `relation` location and the exclusive layer's row now shows (Q13: dependent).
+    // A recorded limit, each row a valid program still rejected: the A5 oracle reads a region at a longer end only (G572's named limit, beside
+    // r18's; lifted by the unit that reads the shorter end). R's one bound p makes R, its solved value, outlive p and p outlive R (15.3.6; one
+    // bound, no meet), but a region at the shorter end is no premise, so its relation is Unknown. Each row asserts today's records so a change
+    // is seen: a stated local through `uniq` (i1), a call's equal Origins in either order (e1, also q5; i3), a clause `r == p` (c5i) and
+    // `s == r` (v3), a Function Type's parameter over R (f3v, its comparison's record).
     [Theory]
-    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n" + Main, "let h: uniq/(ref/i32 during p) = u", "uniq/(ref/i32 during p)")]
-    [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(h, r@uniq)\n    outer(s@uniq)\n" + Main, "r@uniq", "r@uniq")]
-    public void AnEqualityOverAnEnclosingRegionIsA5s(string source, string first, string second)
-        => MirTargetSide.Check(source, (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At(first, null)), (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At(second, null)));
+    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "let h: uniq/(ref/i32 during p) = u", null, "uniq/(ref/i32 during p)")]
+    [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(h, r@uniq)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "r@uniq", null, "r@uniq")]
+    [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(r@uniq, h)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "same(r@uniq, h)", "h", null)]
+    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == p\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin r == p", null, null)]
+    [InlineData(See + "func f(s: ref/i32)\n    var r = s\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin s == r\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin s == r", null, null)]
+    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    let c = func (q: ref/i32 during r) -> ref/i32 during p => q\n    let g: (ref/i32 during p) -> ref/i32 during p = c\n    return g(p)\n" + Main, DiagnosticCode.UnprovenOriginContract_Kd, "during p = c", "c", null)]
+    public void ARegionAtTheShorterEndIsARecordedLimit(string source, DiagnosticCode code, string context, string? subject, string? second)
+        => MirTargetSide.Check(source, second is null ? [(code, MirTargetSide.At(context, subject))] : [(code, MirTargetSide.At(context, subject)), (code, MirTargetSide.At(second))]);
 
     // SPEC 15.6.5 ("`a == b` is edges both ways"; DECISIONS: G572 U1): with the region second of `==`, the backward direction has it at the
     // longer end, so it is a row too and Binding's judge never takes it as holding. R's bound p: a clause `static == r` (q1), an explicit Type

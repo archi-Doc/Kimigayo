@@ -63,18 +63,6 @@ public partial class OriginRelationDiagnosticTest
         "    if true\n        let short = 2\n        let sq = short@ref\n" +
         "        let f = " + WrittenClosure + "\n        keep = k(sq, lr, lr2@ref, f)\n    return keep@follow\n";
 
-    // SPEC 15.6.1 (DECISIONS: G572 U1): a clause over an enclosing region is A5's row, and A5 names the direction of an equality that fails: the
-    // region's own direction holds by its bound.
-    [Fact]
-    public void AnEqualityClauseOverAnEnclosingRegionNamesItsFailingDirection()
-    {
-        const string source = "func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == p\n        return w\n    let n = c()\n    see(n@ref)\npublic func main() => ()\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Code);
-        Assert.Equal("origin r == p", Text(source, error.Span));
-        Assert.Equal("requires p outlives the omitted Origin of r, which is not proven", error.Label);
-    }
-
     [Theory]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
     [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    return if c => x else => y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => x else => y", "requires y outlives x, which is not proven", null)]
