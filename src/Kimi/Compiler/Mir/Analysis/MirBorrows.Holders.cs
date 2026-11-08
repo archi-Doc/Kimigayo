@@ -35,7 +35,7 @@ internal sealed partial class MirBorrows
         {
             for (var i = 0; i < locals.Length; i++)
             {
-                if (this.slots[i] == -2 && (this.named[i] || moves.Find(new(i), out _) < moves.FlowCount) == (pass == 0))
+                if (this.slots[i] == -2 && ((this.named[i] & NamedHolder) != 0 || moves.Find(new(i), out _) < moves.FlowCount) == (pass == 0))
                 {
                     this.slots[i] = this.holderCount++;
                     if (deep && this.dropSlots[i] == -2)
