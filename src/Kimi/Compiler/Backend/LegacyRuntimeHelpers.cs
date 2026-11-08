@@ -90,11 +90,13 @@ internal enum LegacyWriter : byte
     Swap,
 
     /// <summary>SPEC 4.9.6, 22.2: placeEntry, P1c's Place helper in its function's instance, its call's LegacyRow item's (ModuleCodegen.Row),
-    /// which calls the item's declared callee, append (DECISIONS R5-M124).</summary>
+    /// which calls the item's declared callee, append (DECISIONS R5-M124). No kind's row names it since R8-K1b-2 (placeEntry is a body);
+    /// R8-K1b-3 removes it with the helper (PLAN G640).</summary>
     Place,
 
     /// <summary>dictionaryStorage: the {address, entry stride} Tuple through P2a's DictionaryLayout kernel over its call's entry layout
-    /// (SPEC 22.2; DECISIONS R5-M124; FunctionCodegen.Storage's DictionaryKernel); keyAt and valueAt are bodies (R8-K1b).</summary>
+    /// (SPEC 22.2; DECISIONS R5-M124; FunctionCodegen.Storage's DictionaryKernel). No kind's row names it since R8-K1b-2 (dictionaryStorage
+    /// is gone); R8-K1b-3 removes it with the kernel (PLAN G640).</summary>
     DictionaryLayout,
 }
 
@@ -185,10 +187,6 @@ internal static partial class LegacyRuntimeHelpers
         CompilerFunctionKind.Replace => new(LegacyWriter.Replace),
         CompilerFunctionKind.Exchange => new(LegacyWriter.Exchange),
         CompilerFunctionKind.Swap => new(LegacyWriter.Swap),
-
-        // SPEC 4.9.6, 22.2 (DECISIONS R5-M124): the Dictionary storage kinds, placeEntry in its function's instance, the others inline kernels.
-        CompilerFunctionKind.StoragePlaceDictionaryEntry => new(LegacyWriter.Place),
-        CompilerFunctionKind.StorageDictionaryLayout => new(LegacyWriter.DictionaryLayout),
 
         // SPEC 22.7, 22.9, 22.10.1 (DECISIONS R5-M128): the Text, buffer, window and writer kinds and WriteLineUtf8, their formatting routines
         // (P1d's rows, one text); a Body-disposition kind without a row is a fault.

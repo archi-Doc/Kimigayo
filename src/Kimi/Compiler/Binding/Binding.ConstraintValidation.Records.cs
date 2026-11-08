@@ -47,9 +47,10 @@ public sealed partial class Binding
     // record when that clause's U fact names a failing condition. An Error, a fact resting on a limit (L) and a verdict without a fact at
     // it are RequireConstraint's record (an Error and a limit are derived from their cause, SPEC 23.1.2); the provisional pass only marks
     // an Unknown unresolved.
-    private void RequireClauses(Koto use, ConstraintProof proof, BindingMode mode)
+    private void RequireClauses(Koto use, ConstraintProof proof, BindingMode mode, BindingSymbol? declaration = null)
     {
-        if (this.TakeClauseFact(use) is not { Limit: false } held || ClauseFailure(held, null) is not { } clause || clause.Proof != proof ||
+        // A selected call's record names its declaration (`declaration`); a Function Item reference's names none.
+        if (this.TakeClauseFact(use) is not { Limit: false } held || ClauseFailure(held, declaration) is not { } clause || clause.Proof != proof ||
             proof is not (ConstraintProof.Refuted or ConstraintProof.Unknown) || (proof == ConstraintProof.Unknown && mode != BindingMode.Final))
         {
             this.RequireConstraint(use, proof, mode);

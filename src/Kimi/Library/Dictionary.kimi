@@ -39,7 +39,7 @@ public struct Dictionary<K, V>
     public func tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>
         // The search's shared Borrow ends before the exclusive handle is taken (SPEC 5.2.1).
         require DictionaryStorage.findEntry(self@follow@ref, key) == 0 else => return .Err((key@move, value@move))
-        unsafe => Storage.placeEntry<K, V>(Storage.dictionaryStorage(self).0, key@move, value@move)
+        unsafe => DictionaryStorage.placeEntry<K, V>(self, key@move, value@move)
         return .Ok(())
 
     /// Appends the pair when no equal key is stored; otherwise stores `value` at the stored key's position, destroys the
@@ -50,7 +50,7 @@ public struct Dictionary<K, V>
         let link = DictionaryStorage.findEntry(self@follow@ref, key)
         if link != 0
             unsafe => return .Some(DictionaryStorage.replaceValue(self, link, value@move))
-        unsafe => Storage.placeEntry<K, V>(Storage.dictionaryStorage(self).0, key@move, value@move)
+        unsafe => DictionaryStorage.placeEntry<K, V>(self, key@move, value@move)
         return .None
 
     /// Destroys entries in reverse insertion order, each value before its key, retaining the allocation for reuse.
