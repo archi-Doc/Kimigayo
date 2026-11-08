@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -31,6 +32,33 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     private static readonly Lazy<(Compilation Compilation, MirModelTest.Types Types)> Fixture = new(MirModelTest.Fixture);
 
     public static TheoryData<string> Rules => new(Enum.GetNames<MirViolation>());
+
+    // G620's rows, each integer Type's payload bits: a signed Type's ends and one past each; an unsigned Type's 0, its maximum (-1), the
+    // value 2^(N-1) (-2^(N-1)) and 2^(N-1) - 1, and outside: the value form of 2^(N-1) and of the maximum, 2^N, one below -2^(N-1); isize
+    // and usize at 64 bits; 128-bit payloads; dev's no-target bound tests (C-142 N3).
+    public static TheoryData<string, string, bool> IntegerConstants
+    {
+        get
+        {
+            var rows = new List<(string Type, Int128 Bits, bool Holds)>
+            {
+                ("i128", Int128.MinValue, true), ("i128", Int128.MaxValue, true), ("u128", Int128.MinValue, true), ("u128", Int128.NegativeOne, true),
+                ("i32", -(Int128.One << 127), false), ("u8", (Int128.One << 127) - 1, false),
+            };
+            foreach (var (suffix, width) in new[] { ("8", 8), ("16", 16), ("32", 32), ("64", 64), ("size", 64) })
+            {
+                var (half, full) = (Int128.One << (width - 1), Int128.One << width);
+                foreach (var sign in new[] { "i", "u" })
+                {
+                    rows.AddRange([(sign + suffix, -half, true), (sign + suffix, half - 1, true), (sign + suffix, -half - 1, false), (sign + suffix, half, false)]);
+                }
+
+                rows.AddRange([("u" + suffix, 0, true), ("u" + suffix, -1, true), ("u" + suffix, full - 1, false), ("u" + suffix, full, false)]);
+            }
+
+            return [.. rows.Select(static x => (x.Type, x.Bits.ToString(CultureInfo.InvariantCulture), x.Holds))];
+        }
+    }
 
     // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
     // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its roots', is an Opaque
@@ -1043,6 +1071,39 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Contains((MirViolation.Operation, body.Source), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // G620: an Integer constant holds a value of its integer Type as its canonical N-bit payload, sign-extended for every Type (u8's 255
+    // is -1), isize and usize at the profile's 64 bits, so every Int128 is a 128-bit payload. A payload one past either end is a Const
+    // finding at its use, and so are an unsigned value's other encoding (255 for u8's 255) and dev's no-target bound test (2^127 in i32
+    // and u8; C-142 N3), which validated before (fail-before: no range row).
+    [Theory]
+    [MemberData(nameof(IntegerConstants))]
+    public void AnIntegerConstantHoldsItsValueInItsTypesRange(string type, string bits, bool holds)
+        => AssertIntegerConstant(BoundType.Primitives[type], Int128.Parse(bits, CultureInfo.InvariantCulture), holds);
+
+    // G620: an Integer constant of a Type without a width is one of the closed family code generation also lowers (FunctionCodegen.Values):
+    // a char's code point, a raw pointer's null and a Type parameter's generic literal hold, not ranged (F4's rows); one of any other Type,
+    // bool's or a struct's, is a Const finding at its use (before: no Type row, every widthless Type held).
+    [Theory]
+    [InlineData("char", 0x10FFFF, true)]
+    [InlineData("pointer", 0, true)]
+    [InlineData("parameter", 0, true)]
+    [InlineData("bool", 1, false)]
+    [InlineData("struct", 0, false)]
+    public void AnIntegerConstantOfAWidthlessTypeIsOneCodeGenerationLowers(string type, int bits, bool holds)
+    {
+        var (c, types) = Fixture.Value;
+        var held = type switch
+        {
+            "char" => BoundType.Char,
+            "pointer" => c.Types.Pointer(BoundType.I32),
+            "parameter" => types.Pair,
+            "bool" => BoundType.Boolean,
+            _ => types.Point,
+        };
+        Assert.True(type != "parameter" || held.Kind == BoundTypeKind.Parameter);
+        AssertIntegerConstant(held, bits, holds);
+    }
+
     // The Call positions of the same rule, by the facts A5 reads and not by the result's Type: `put` returns a scalar and keeps its input through
     // `h`, `pick` keeps it in its result, `pinned` and `bound` relate it to static, which no output states; a Value callee has no declaration to
     // read, a default template's call no contract, and RawSlice's result retains its backing beyond its declaration (MirDescriptors.Retained);
@@ -1651,6 +1712,20 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         return body;
+    }
+
+    // A body assigning one Integer constant of a Type to a local of it: no finding when it holds, else one Const finding at the Assign.
+    private static void AssertIntegerConstant(BoundType type, Int128 bits, bool holds)
+    {
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var (held, block) = (MirModelTest.Local(body, type), body.AddBlock());
+        var constant = MirOperand.Const(body.Const(new(MirConstKind.Integer, type, bits)));
+        body.Push(block, MirStatement.Assign(held, MirRvalue.Use(AddOperands(body, [constant])), Broken));
+        body.Terminate(block, MirTerminator.Return(At));
+        MirViolation[] expected = holds ? [] : [MirViolation.Const];
+        Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
     // A compiled body is validated with its own compilation's Type context, whose Binding the Copy rule reads (DECISIONS BU-88).
