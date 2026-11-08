@@ -135,7 +135,7 @@ public sealed partial class Binding
         var further = FollowsContract(node);
         for (var i = 0; i < all.Count && (further || node.BindingFailure == BindingFailure.None); i++)
         {
-            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), body);
+            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node), all[i].Equality, body);
             if (further || !all[i].Equals(recorded))
             {
                 this.RecordFurtherOriginRecord(node, new(all[i] with { At = at, Destination = destination }, null));

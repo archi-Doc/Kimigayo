@@ -42,8 +42,9 @@ public sealed partial class Binding
         internal bool EffectsLimit => this.TypeParameter is not null;
     }
 
-    // SPEC 22.1, 4.6.1, 8.7: the table of the built-in Types' library conformances, one arm per Type, over a Type and a Contract's identity,
-    // which every reader holds: a fixed array's entry Contracts (PLAN G32), and every integer Type's Position.
+    // SPEC 22.1, 4.6.1, 8.7, 13.4.1: the table of the built-in Types' library conformances, one arm per Type, over a Type and a Contract's
+    // identity, which every reader holds: a fixed array's entry Contracts (PLAN G32), every integer Type's Position and string's two
+    // comparison Contracts, whose bodies are not generic, so their row has no parameter.
     internal static LibraryWitnessGroup? WitnessGroup(BoundType? self, KimiDeclarationId? contract) => self switch
     {
         { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
@@ -51,6 +52,8 @@ public sealed partial class Binding
             => new(WitnessMembers.FixedArray, "E", self.Components[0], "N"),
         { IsInteger: true, Semantics: SemanticsKind.Owner } when contract == KimiDeclarationId.Position
             => new(WitnessMembers.IntegerPosition, "I", self, null),
+        _ when ReferenceEquals(self, BoundType.String) && contract is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable
+            => new(WitnessMembers.String, null, null, null),
         _ => null,
     };
 
@@ -90,7 +93,8 @@ public sealed partial class Binding
     }
 
     // SPEC 22.1, 4.6.1, 8.7: the receiver a group's functions state: some `[N of E]`, in the ref, uniq or owning form (PLAN G32); an integer
-    // or a Type parameter (SPEC 4.6.1); string below any one layer (SPEC 13.4.1). A new group states its own; none is another's by default.
+    // or a Type parameter (SPEC 4.6.1); string, which the group's functions write as `ref/string` (SPEC 13.4.1), read through at most one
+    // layer, so a bare string passes too, though nothing else reaches this. A new group states its own; none is another's by default.
     private static bool WitnessReceiver(WitnessMembers members, BoundType type) => members switch
     {
         WitnessMembers.FixedArray => EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner },

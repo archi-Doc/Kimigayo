@@ -5,10 +5,10 @@
 // (TyCtxt.Dispatch.cs).
 // Input: Equatable or Comparable, a Type and the mode (source operators, IEEE for floats, or the Contract's mapping, whose equals is
 // NaN-reflexive).
-// Output: a ComparisonNode tree: Composite over its parts, Builtin, Witness (a closed leaf: Witness's Body under its declaring instance,
-// Synthesized), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every instance, Synthesized on a
-// Self) or None (no answer, a broken contract for a closed accepted Self that its reader records as InternalInvariant_Kd); null for a
-// Limit (Witness's). One node per (contract, self, operators), discarded at an edit (ResetDispatch).
+// Output: a ComparisonNode tree: Composite over its parts, Builtin, Witness (a closed leaf, string's among them: Witness's Body under its
+// declaring instance, Synthesized), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every
+// instance, Synthesized on a Self) or None (no answer, a broken contract for a closed accepted Self that its reader records as
+// InternalInvariant_Kd); null for a Limit (Witness's). One node per (contract, self, operators), discarded at an edit (ResetDispatch).
 // Invariants: a comparison of a closed Type has the legacy plan's leaves wherever that plan exists, which it does not for an inherited
 // witness (ComparisonCompositionTest's twin).
 // Must not: create a bridge or a CallPlan, write a diagnostic, HIR or pass state, or prove on an erased value.

@@ -319,11 +319,13 @@ public sealed partial class Binding
         else
         {
             // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one. A regional target records source edges; fixed and omitted targets keep their immediate/collecting fit.
+            // is the explained one. A region on either side leaves rows, a regional target its source edges too; fixed and omitted targets keep
+            // their immediate/collecting fit.
             for (var i = 0; i < types.Count; i++)
             {
                 ComparisonFailure fit;
-                if (!(this.HasLocalRegion(common) ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
+                var regional = this.HasLocalRegion(common) || this.HasLocalRegion(types[i]);
+                if (!(regional ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
                 {
                     context.Conflict();
                     if (failed is null)

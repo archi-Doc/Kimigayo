@@ -525,8 +525,8 @@ public struct ResolvedRange
     public func intoIterator(self: Self) -> RangeIterator<isize>
         return RangeIterator<isize>.unchecked(self.start, self.end)
 
-// SPEC 13.4.1, 22.1: the bodies of string's built-in conformances to Equatable and Comparable. No row of the witness
-// table selects them until R8-S1d2 (Binding.WitnessGroup), so nothing runs them yet; string gains no members.
+// SPEC 13.4.1, 22.1: the bodies of string's built-in conformances to Equatable and Comparable: the witness table's
+// String row selects them (Binding.WitnessGroup), and every comparison of strings calls them; string gains no members.
 internal group StringWitness
     func equals(self: ref/string, other: ref/string) -> bool
         unsafe
