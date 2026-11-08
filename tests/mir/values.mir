@@ -235,6 +235,7 @@ fn replace @164
   _6: ref/string var view @179 s1
   _7: string temp @185 s1
   _8: string temp (Result) @164
+  _9: string temp @185 s1
   s1: lexical in s0 @168
   bb0:
       StorageLive(_3) @169 s1
@@ -281,16 +282,17 @@ fn replace @164
       _8 = move _7 @184 s1
       goto bb10 @184 s1
   bb13:
-      drop _7 -> bb14 @185 s1
+      _9 = move _7 @184 s1
+      drop _7 -> bb14 [elide] @185 s1
   bb14:
       StorageDead(_7) @185 s1
       StorageDead(_6) @179 s1
-      drop _3 -> bb15 @169 s1
+      drop _3 -> bb15 [elide] @169 s1
   bb15:
       StorageDead(_3) @169 s1
-      drop _2 -> bb16 @166
+      drop _2 -> bb16 [elide] @166
   bb16:
-      drop _1 -> bb17 @165
+      drop _1 -> bb17 [elide] @165
   bb17:
       unreachable @168
 fn grouped @188
@@ -424,7 +426,7 @@ fn unfinished @199
       StorageDead(_6) @210 s1
       StorageDead(_5) @211 s1
       StorageDead(_4) @210 s1
-      drop _3 -> bb17 @209 s1
+      drop _3 -> bb17 [elide] @209 s1
   bb17:
       StorageDead(_3) @209 s1
       drop _2 -> bb18 @202 s1

@@ -132,6 +132,16 @@ internal sealed partial class MirBuilder
         var next = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(entry, info, next));
         this.current = next;
+        if (!continues && !assumed && value.Kind == MirOperandKind.Move && this.body.Locals[value.Place.Root] is var secured &&
+            MirTypes.MayNeedDrop(secured.Type, this.walked))
+        {
+            // SPEC 14.10.3, 16.2.2: on the assumed path the transfer completes after its operand is evaluated and before any cleanup, so
+            // the secured operand is delivered there too, not destroyed: where its Type may need drop (Created's rule), moved into a sink
+            // that no cleanup destroys, with no storage of its own (as a result temp, DECISIONS R5-M50) and the operand's source, never
+            // into the target's Destination, which the continuation would then hold initialized.
+            var sink = new MirPlace(this.body.AddLocal(new(secured.Type, MirLocalKind.Temp, secured.Source)));
+            this.body.Push(this.current, MirStatement.Assign(sink, MirRvalue.Use(this.body.AddOperand(value)), inner));
+        }
     }
 
     // SPEC 16.2.2, 12.2: a value secured where it is evaluated, a transfer's result before it branches and an operand before a later

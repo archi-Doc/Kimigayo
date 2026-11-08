@@ -246,18 +246,29 @@ public class ComponentSummaryTest
     // (PLAN G128, PD30's (e) row), and the value's drop glue grows through its object handle, Chain<(T, T)> at each step, so the collector
     // stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the acceptance change adds no runtime form. Since the MIR
     // decides acceptance (R6-check H5), A5's walk over the value also meets its depth bound at each call, a located OwnershipDepthLimit_Kd
-    // there (DECISIONS R4-M153), counted on this program that both sides reject (H3b; class 4 by DECISIONS Q13).
+    // there (DECISIONS R4-M153), counted on this program that both sides reject (H3b; class 4 by DECISIONS Q13). A value moved into
+    // `need` is destroyed only in need's instance, which is the gap, so the moved-out `c`'s Drop destroys nothing and asks no glue (PLAN
+    // G641; Q13's false record at it removed); the limit's record is where the value is destroyed: at `c`'s scope exit when it stays, at a
+    // local it is moved into.
     [Fact]
     public void ANewlyOwnedNonRegularValueMeetsTheGenerationLimits()
     {
-        var c = MinimalEmissionTest.Analyze(
-            "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" + Need +
-            "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
+        const string Chain = "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n";
+        var c = MinimalEmissionTest.Analyze(Chain + Need + "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(
-            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | " +
-                "Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move) | GenerationResourceLimit_Kd c@move",
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move)",
             MinimalEmissionTest.Problems(c));
+        var kept = MinimalEmissionTest.Analyze(Chain + "let c = Chain<i32>.init()\nConsole.writeLine(\"chain\")");
+        Assert.True(kept.Binding.Result.IsComplete, Describe(kept));
+        Assert.Equal(
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()",
+            MinimalEmissionTest.Problems(kept));
+        var destroyed = MinimalEmissionTest.Analyze(Chain + "let c = Chain<i32>.init()\nlet d = c@move\nConsole.writeLine(\"chain\")");
+        Assert.True(destroyed.Binding.Result.IsComplete, Describe(destroyed));
+        Assert.Equal(
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let d = c@move",
+            MinimalEmissionTest.Problems(destroyed));
     }
 
     // Immutable after Bind and pooled: a warm rebind that solves the summaries again allocates nothing, a family's settled limit included.

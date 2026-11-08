@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the compile stack S, 64 MB: the reserve of every compiler thread, the host stack of IMPL A.4 (DECISIONS R4-M178). Runs a
+// Owns the compile stack S, 128 MB: the reserve of every compiler thread, the host stack of IMPL A.4 (DECISIONS R4-M178; 128 MB by
+// the owner's O-82 (b), for the Type height limit's margin, Binding.TypeHeight.cs). Runs a
 // site's work on a pooled compiler thread while its caller waits, and makes every compiler thread (Create: the pool's,
 // AllocationMeasurement's, the tests'). Input: a state, a static work and the caller's ExecutionContext. Output: the work's result,
 // or its exception rethrown on the caller with its original stack. Invariants: a site on a compiler thread runs inline; a warm hop
@@ -19,11 +20,11 @@ using System.Runtime.ExceptionServices;
 
 namespace Kimi.Compiler;
 
-/// <summary>The compile stack: compiler threads with a 64 MB reserve, and the hop that runs a site's work on one.</summary>
+/// <summary>The compile stack: compiler threads with a 128 MB reserve, and the hop that runs a site's work on one.</summary>
 internal static class CompilerThread
 {
     /// <summary>S, the stack reserve of a compiler thread.</summary>
-    internal const int StackSize = 64 << 20;
+    internal const int StackSize = 128 << 20; // The owner's O-82 (b): 3.5 x (H + L) levels of dev's deepest walk frame.
 
     // The pool, also its own monitor.
     private static readonly Stack<Worker> Idle = new();
