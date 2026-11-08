@@ -120,7 +120,7 @@ internal static class CompileTimeConditionEvaluator
 
     private static bool TryGetInteger(Koto node, out BasicValue value)
     {
-        if (KotoHelper.SignedNumber(node, out var negative) is { AttributeChain: null } literal && literal.TryGetIntegerMagnitude(out var magnitude) &&
+        if (KotoHelper.SignedNumber(node, out var negative) is { } literal && literal.TryGetIntegerMagnitude(out var magnitude) &&
             magnitude <= (UInt128)long.MaxValue + (negative ? 1U : 0U))
         {
             value = new(negative ? (long)-(Int128)magnitude : (long)magnitude);
