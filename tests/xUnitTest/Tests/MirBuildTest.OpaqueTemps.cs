@@ -127,7 +127,7 @@ public sealed partial class MirBuildTest
         string Root(int root) => root < 0 ? "static" : body.Locals[root].Name ?? (opaque.Contains(root) ? "opaque" : "temp");
         return [.. statements.Where(x => x.Kind == MirStatementKind.Assign && c.SyntaxOf(x.Source.Syntax).Span.Start >= start).Select(x => x.Rvalue switch
         {
-            { Kind: MirRvalueKind.Ref } borrow => $"{(MirRefKind)borrow.Op} {Root(borrow.Place.Root)}",
+            { Kind: MirRvalueKind.Ref or MirRvalueKind.Storage } borrow => $"{(MirRefKind)borrow.Op} {Root(borrow.Place.Root)}",
             { Kind: MirRvalueKind.Adapt } adapt => $"adapt {Root(adapt.Place.Root)}",
             { Kind: MirRvalueKind.Use } use when body.Operands[use.Start] is { Kind: MirOperandKind.PairAcquire } operand =>
                 $"acquire {Root(operand.Place.Root)}",

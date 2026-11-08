@@ -234,6 +234,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("comparison", "Operation")]
     [InlineData("cast", "Operation")]
     [InlineData("ref", "Operation")]
+    [InlineData("storage", "Operation")] // O-92 (a), N9: exactly a fixed array, an Array or a Slice, never through a reference.
     [InlineData("upcast", "Operation")]
     [InlineData("switch", "Operation")]
     [InlineData("opaque", "Type")]
@@ -1488,6 +1489,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(Local(closure), MirRvalue.Aggregate(MirAggregateKind.Closure, Operands(broken == "capture" ? yes : one), 1, closure), "capture");
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(one, one, one), 3, types.Array));
         Assign(index, MirRvalue.Len(array));
+        var lent = Local(c.Types.Reference(SemanticsKind.Ref, types.Array));
+        Assign(pointer, MirRvalue.Storage(broken == "storage" ? lent : array, body.TypeOf(pointer)!), "storage");
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(pair, MirProjectionKind.Field, 0)))), "assign");
         var lost = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);

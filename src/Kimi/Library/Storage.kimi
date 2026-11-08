@@ -61,16 +61,16 @@ internal group Storage
     internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a
         return UniqRemainder<E>.init(value.storage, value.length)
 
-    /// Selects a range from an exclusive capability without copying elements or weakening its Loan.
+    /// Selects a range from an exclusive capability without copying elements or weakening its Loan. The one
+    /// displacement of a view's start in the library: the selected start's offset is its stride (SPEC 5.3, 8.15.3).
     internal func sliceUniq<E, R>(state: UniqRemainder<E> during source, range: R) -> UniqSlice<E> during source
         R is PositionRange
         let selected = match range.tryResolve(state.count)
             .Some(let resolved) => resolved
             .None => Storage.indexBounds()
-        var remainder = state@move
-        remainder.position += selected.start
-        remainder.count = selected.length
-        return UniqSlice<E>.init(remainder@move)
+        unsafe
+            let start = state.storage + (state.position + selected.start)
+            return UniqSlice<E>.init(UniqRemainder<E>.init(start, selected.length))
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
     /// the slot links; it does not own them.

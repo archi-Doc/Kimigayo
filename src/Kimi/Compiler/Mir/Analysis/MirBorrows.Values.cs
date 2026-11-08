@@ -28,6 +28,9 @@ internal sealed partial class MirBorrows
                 return (this.Operand(state, rvalue.Start), 0);
             case MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.IntToPointer:
                 return (this.escapedSet, 0);
+            case MirRvalueKind.Storage: // Exactly a raw Ref of an element of its Place (O-92 (a)): the Place's steps, then the element step.
+                var storage = this.Prefix(state, rvalue.Place.Root, this.AddressWalk(rvalue.Place, location)).Parents;
+                return (this.Formed(this.loanAt[location] >= 0 ? this.sets.Add(storage, this.loanBase + this.loanAt[location]) : storage), 0);
             case MirRvalueKind.Ref:
                 var (parents, issued) = this.Issued(state, rvalue.Place, reborrow: false, this.loanAt[location]);
                 return (MirRefKind)rvalue.Op == MirRefKind.Raw ? (this.Formed(this.sets.Union(parents, issued)), 0) : (parents, issued);

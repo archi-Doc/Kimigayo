@@ -87,7 +87,7 @@ internal sealed partial class MirBorrows
 
                 this.producing |= MirSteps.Prepared(this.body, statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
-                this.rawRefs |= rvalue is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.Raw };
+                this.rawRefs |= rvalue is { Kind: MirRvalueKind.Ref or MirRvalueKind.Storage, Op: (byte)MirRefKind.Raw };
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
                     this.loanAt[data.Start + i] = this.Issue(rvalue.Place, reborrow: false, (MirRefKind)rvalue.Op, statement.Place.Root, data.Start + i);

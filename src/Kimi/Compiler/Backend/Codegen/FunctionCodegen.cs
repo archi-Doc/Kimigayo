@@ -194,6 +194,9 @@ internal sealed partial class FunctionCodegen
             case MirRvalueKind.Len:
                 this.Len(statement);
                 return;
+            case MirRvalueKind.Storage:
+                this.Storage(statement);
+                return;
             case MirRvalueKind.Adapt:
                 this.Adapt(statement);
                 return;
