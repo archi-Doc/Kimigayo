@@ -27,6 +27,10 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private const string Noisy = "struct Noisy\n    Self is Equatable\n    public var n: i32 = 0\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n" +
         "        Console.writeLine(\"eq\")\n        return self.n == other.n\n";
 
+    private const string Ranked = "struct Ranked\n    Self is Comparable\n    public var n: i32 = 0\n" +
+        "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.n == other.n\n" +
+        "    public func compare(self: ref/Self, other: ref/Self) -> i32\n        Console.writeLine(\"cmp\")\n        return self.n - other.n\n";
+
     private const string Fixed = "contract Fixed: Equatable\n    effect Equatable.equals confined\nstruct Key\n    Self is Fixed\n" +
         "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n";
 
@@ -127,6 +131,32 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public func walk<C>(values: ref/C, seen: bool = H.take(values.iterate())) -> i32\n        C is Iterable\n        return 1\n" +
                 "    public func place<P>(p: P, at: Option<isize> = p.tryResolve(4)) -> i32\n        P is Position\n        return 1\n" +
                 $"struct W\n    Self is Work\n    public func run(self: ref/Self, a: ref/[2 of i32], b: i32) -> i32 => {call}\n"));
+
+    // SPEC 7.2.3, 8.11.2, 13.4.1: a default's copy compares the call's closed Self, a Tuple with a string part: A4 reads each leaf the
+    // comparison runs, the string's library witness among them, which has no environment effect; a leaf that writes to the console has one,
+    // a conflict under `confined`.
+    [Theory]
+    [InlineData("(string, i32)", "same", "bool", "", "")]
+    [InlineData("(string, i32)", "order", "i32", "", "")]
+    [InlineData("((string, i32), bool)", "same", "bool", "", "")]
+    [InlineData("(Noisy, string)", "same", "bool", Noisy, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("(Ranked, string)", "order", "i32", Ranked, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("((Noisy, string), bool)", "same", "bool", Noisy, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void AComparisonOfAStringPartReadsItsWitness(string self, string call, string result, string leaf, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems($"contract Work\n    func run(self: ref/Self, a: ref/{self}, b: ref/{self}) -> {result}\n        effect confined\n" + leaf +
+                "group H\n    public func same<T>(x: ref/T, y: ref/T, seen: bool = x.equals(y)) -> bool\n        T is Equatable\n        return seen\n" +
+                "    public func order<T>(x: ref/T, y: ref/T, seen: i32 = x.compare(y)) -> i32\n        T is Comparable\n        return seen\n" +
+                $"struct W\n    Self is Work\n    public func run(self: ref/Self, a: ref/{self}, b: ref/{self}) -> {result} => H.{call}(a, b)\n"));
+
+    // SPEC 22.2.2, 8.11.2: a lookup compares its Tuple key with each entry's, the string part by the library's witness: no environment effect.
+    [Fact]
+    public void ALookupByATupleKeyWithAStringPartIsConfined()
+        => Assert.Empty(Problems(
+            "contract Work\n    func run(self: ref/Self, d: ref/Dictionary<(string, i32), i32>) -> bool\n        effect confined\n" +
+            "struct W\n    Self is Work\n    public func run(self: ref/Self, d: ref/Dictionary<(string, i32), i32>) -> bool\n" +
+            "        let key = (\"a\", 1)\n        _ = d.tryGet(key@ref)\n        return true\n"));
 
     // SPEC 8.13, 8.13.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
     // A function item runs its selection too.

@@ -4,7 +4,8 @@
 // its struct), the catalog's premises from there outward (R1-R4; R5 for the nodes already in the graph), queried by Close from a target
 // in one Semantics case and then Outlives per source.
 // Input: a body (ExecutableBody). Output: UniversalRelations, disposed after use; oracles open at once are disposed in reverse order.
-// Invariants: a request changes no inference or obligation state (originStateVersion); the structural instances (I1-I4) answer first.
+// Invariants: a request changes no inference or obligation state (originStateVersion); the structural instances (I1-I4) answer first; a
+// local region reads as its solved value, each bound outliving the target and no bound no answer (SPEC 15.3.6), never as a premise.
 // Must not: be used after its disposal or after a change of Origin state (an InvalidOperationException).
 
 using Kimi.Compiler.Parsing;
@@ -37,6 +38,7 @@ public sealed partial class Binding
     // instances (I1-I4) answer first, as in EntailsOrigin; a request changes no inference or obligation state (originStateVersion).
     internal sealed class UniversalRelations(Binding binding) : IDisposable
     {
+        private readonly Dictionary<BoundOrigin, bool> solved = new(ReferenceEqualityComparer.Instance); // Per Close: a region's answer.
         private OriginPremiseEnvironment? environment;
         private BoundOrigin target = BoundOrigin.Static;
         private int version;
@@ -57,6 +59,7 @@ public sealed partial class Binding
         {
             var closure = this.Rented().Closure;
             this.target = target;
+            this.solved.Clear();
             closure.Close(closure.Node(target, out _), -1, caseBits);
         }
 
@@ -68,12 +71,32 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (closure.TryNode(source, out var node))
+            var named = closure.TryNode(source, out var node);
+            if (named && closure.Reached(node))
             {
-                return closure.Reached(node);
+                return true;
             }
 
-            if (source.Kind != OriginKind.Intersection)
+            if (IsLocalRegion(source))
+            {
+                if (this.solved.TryGetValue(source, out var known))
+                {
+                    return known;
+                }
+
+                binding.OriginProofMetrics?.RegionRead();
+                var sources = binding.LocalRegionSources(source);
+                var all = !sources.IsEmpty;
+                for (var i = 0; all && i < sources.Length; i++)
+                {
+                    all = this.Outlives(sources[i]);
+                }
+
+                this.solved[source] = all;
+                return all;
+            }
+
+            if (named || source.Kind != OriginKind.Intersection)
             {
                 return false; // No premise names it.
             }

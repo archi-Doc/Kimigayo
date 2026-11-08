@@ -24,10 +24,7 @@ public sealed partial class Binding
         }
 
         if (this.compilation.Library.GetSymbol(identity) is not { } contract ||
-            this.ResolveConformance(self, contract, site.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } ||
-            (name is null ? path.Witnesses.Count == 1 ? path.Witnesses[0] : null : this.FindRequirementWitness(path, contract, name)) is not { Implementation: { Declaration: FunctionKoto function } implementation, Function.BasePath: null } witness ||
-            this.StoredType(witness.Function!.DeclaringType, self) is not { } declaring)
+            this.LeafTarget(site, self, contract, name) is not ({ Declaration: FunctionKoto function } implementation, var declaring))
         {
             return null;
         }
@@ -64,6 +61,38 @@ public sealed partial class Binding
         {
             this.originScratch.Return(scratch, clearArray: true);
         }
+    }
+
+    // SPEC 8.11.3, 22.1: what a legacy leaf calls and its declaring instance: a built-in Type's library witness, as the requirement-witness core
+    // selects it, the group's function with no declaring Type (Binding.LibraryWitnesses), whose row has no EffectsLimit, as Witnesses reads
+    // one; else the conformance's own witness, not an inherited one (DECISIONS R5-M68); null where none resolves.
+    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7).")]
+    private (BindingSymbol Target, BoundType? Declaring)? LeafTarget(BindingSymbol site, BoundType self, BindingSymbol contract, string? name)
+    {
+        if (contract.Contract?.OwnRequirement() is { } requirement &&
+            this.ResolveRequirementWitness(requirement, self, contract, this.ConstraintScope(site.Declaration)) is
+            { Kind: RequirementWitnessKind.LibraryWitness, Group.EffectsLimit: false, Target: { } member })
+        {
+            return (member, null);
+        }
+
+        if (this.ResolveConformance(self, contract, site.Declaration, out var path) != ConstraintProof.Proven || path is not { IsVerified: true })
+        {
+            return null;
+        }
+
+        BoundWitness? witness;
+        if (name is null)
+        {
+            witness = path.Witnesses.Count == 1 ? path.Witnesses[0] : null;
+        }
+        else
+        {
+            witness = this.FindRequirementWitness(path, contract, name);
+        }
+
+        return witness is { Implementation: { } implementation, Function: { BasePath: null } function } &&
+            this.StoredType(function.DeclaringType, self) is { } declaring ? (implementation, declaring) : null;
     }
 
     private BoundWitness? FindRequirementWitness(BoundConformancePath path, BindingSymbol contract, string name)
