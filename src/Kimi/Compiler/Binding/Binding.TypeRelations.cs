@@ -190,7 +190,7 @@ public sealed partial class Binding
         Koto? originBinder = null)
     {
         var result = this.SubstitutePart(type, binder, arguments, lengths, originBinder ?? binder, origins, images, this.substitutedParts.Begin(this.storageVersion));
-        return result is { Height: > TypeHeightLimit } ? this.RefuseHeight() : result; // IMPL A.4: no Type higher than the limit is formed.
+        return OverHeight(result) ? this.RefuseHeight() : result; // IMPL A.4: no Type higher than the limit is formed.
     }
 
     // An Origin of a declaration-terms Type under a substitution, each atom mapped once: its SlotImage under the Origin binder's images, else

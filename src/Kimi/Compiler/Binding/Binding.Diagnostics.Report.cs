@@ -19,6 +19,11 @@ public sealed partial class Binding
     {
         var diagnostics = this.compilation.Diagnostics;
         diagnostics.Invalidate(DiagnosticPartition.Binding);
+        if (this.sitelessHeightRefusal)
+        {
+            diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.compilation.Project.FilePath); // Binding.TypeHeight.cs
+        }
+
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
@@ -76,6 +81,16 @@ public sealed partial class Binding
 
     // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
     // failure only (FailExplained), so at most one table answers for a node.
+    // SPEC 23.1.2, 8.3.3 (Limits): a Constraint whose proof failed on evidence that rests on a cause reporting missing information, an
+    // unsupported form or a reached implementation limit (a Resource record) is a consequence of that cause, never a failure of its own.
+    private bool DerivesConstraint(Koto cause)
+        => cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported || this.ResourceFailed(cause);
+
+    // A node whose failure is a reached implementation limit: its record's category is Resource (SPEC 23.1.1).
+    private bool ResourceFailed(Koto node)
+        => node.BindingFailure != BindingFailure.None && DiagnosticEntries.TryGet(this.CodeOf(node, node.BindingFailure), out var entry) &&
+            entry.Category == DiagnosticCategory.Resource;
+
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
@@ -116,10 +131,9 @@ public sealed partial class Binding
             this.ReportQualification(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
-            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
-            cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported)
+            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true && this.DerivesConstraint(cause))
         {
-            // The recorded missing Name of the Constraint is its prerequisite.
+            // The recorded cause of the Constraint is its prerequisite.
             issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
         }
         else if (issue.Failure == BindingFailure.NoInit)

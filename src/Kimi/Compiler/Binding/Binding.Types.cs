@@ -119,7 +119,7 @@ public sealed partial class Binding
 
             var annotated = syntax as TypeSemanticsKoto;
             type = this.CompleteOrigins(type, annotated, syntax, scope, context);
-            if (type is { Height: > TypeHeightLimit })
+            if (OverHeight(type))
             {
                 RestPendingOn(originDeclaration, syntax);
                 return this.HeightChecked(syntax, type);

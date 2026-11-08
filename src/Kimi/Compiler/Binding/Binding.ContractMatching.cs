@@ -107,6 +107,10 @@ public sealed partial class Binding
             {
                 this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification.
             }
+            else if (this.ResourceFailed(conformance.RootPath.Use))
+            {
+                this.failedCause ??= conformance.RootPath; // SPEC 8.3.3 (Limits): a use rests on a conformance a reached limit refused.
+            }
 
             return ConstraintProof.Error;
         }

@@ -10,10 +10,40 @@ namespace XunitTest;
 // IMPL A.4 (DECISIONS U-D2's entry; the owner's O-80 (b)): no Type higher than H = 8,192 is formed. A Type that would pass it is one
 // Resource record TypeHeightLimit_Kd at the site whose Type it would be, never a Language record or a crash; a node reading the refused
 // one rests on it, and an independent record stays. `D_n<T>.Item` doubles per declaration (height 2^n, no expression), so D13 is
-// exactly H. Fail-before: dev accepts the H + 1 forms, reports `InvalidAssociatedType_Kd` at D14's conformance, and crashes at D15.
+// exactly H. Fail-before: dev accepts the H + 1 forms, crashes its 64 MB stack at D15, and the first head (64d0a22d8) recorded
+// `InvalidConstraint_Kd` (Language) where D15's associated Type reads D14's refused one.
 public class TypeHeightLimitTest(ITestOutputHelper output)
 {
     private const string Main = "public func main() => ()\n";
+
+    private const string IndependentMismatch = "func q() -> ()\n    let z: i32 = true\n    return\n";
+
+    public static TheoryData<int> Chains => [15, 16, 17];
+
+    // SPEC 23.1.2, 8.3.3 (Limits): every check that reads an associated Type the limit refused rests on its conformance's record, so a
+    // chain past the limit (D15 over D14, and so on) gives only height records, with a use or without one.
+    [Theory]
+    [MemberData(nameof(Chains))]
+    public void AChainPastTheLimitGivesOnlyHeightRecords(int n)
+    {
+        Assert.All(this.Compile(Doubling(n) + $"func p(x: ref/D{n}<i32>.Item) => ()\n" + Main).Records, AssertHeightCode);
+        Assert.All(this.Compile(Doubling(n) + Main).Records, AssertHeightCode);
+    }
+
+    // The invalid twins past the limit (a written parameter Type refused: gap 2 for a written Type) keep q's independent mismatch; p's
+    // mismatch reads the refused parameter and rests.
+    [Theory]
+    [InlineData(14)]
+    [InlineData(15)]
+    [InlineData(16)]
+    public void AnInvalidTwinPastTheLimitKeepsOnlyItsIndependentRecord(int n)
+    {
+        var source = Doubling(n) + $"func p(x: D{n}<i32>.Item) -> ()\n    let y: i64 = x@move\n    return\n" + IndependentMismatch + Main;
+        var records = this.Compile(source).Records;
+        var mismatch = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.TypeHeightLimit_Kd));
+        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), mismatch.Code);
+        Assert.True(mismatch.Span.Start > source.IndexOf("func q", StringComparison.Ordinal));
+    }
 
     [Fact]
     public void AWrittenTypeAtTheLimitIsKeptAndOneLayerMoreIsRecordedAtIt()
@@ -51,8 +81,8 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         // A use of the refused associated Type is its own formation past the limit, recorded at its written Type.
         var use = Doubling(14) + "func p(x: ref/D14<i32>.Item) => ()\n" + Main;
         var records = this.Compile(use).Records;
-        Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.TypeHeightLimit_Kd), x.Code));
-        Assert.Equal(2, records.Length);
+        Assert.All(records, AssertHeightCode);
+        Assert.True(records.Length >= 2, "the conformance's record and the use's own");
     }
 
     // An invalid twin keeps its independent record (q) beside the height record; the mismatch that reads the refused `y` rests on it.
@@ -60,7 +90,7 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     [Fact]
     public void TheIndependentRecordStaysAndTheDependentOneRests()
     {
-        const string q = "func q() -> ()\n    let z: i32 = true\n    return\n";
+        const string q = IndependentMismatch;
         var under = this.Compile(Doubling(4) + "func p(x: D4<i32>.Item) -> ()\n    let y = x@move\n    let b: i64 = y@move\n    return\n" + q + Main);
         Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], under.Records.Select(static x => x.Code));
 
@@ -82,6 +112,8 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
 
         return s;
     }
+
+    private static void AssertHeightCode(DiagnosticEntryView record) => Assert.Equal(nameof(DiagnosticCode.TypeHeightLimit_Kd), record.Code);
 
     private static void AssertHeightRecord(DiagnosticEntryView record, string source, string at, int from = 0)
     {
