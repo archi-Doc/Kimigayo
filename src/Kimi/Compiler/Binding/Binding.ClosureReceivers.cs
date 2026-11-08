@@ -7,7 +7,7 @@
 //   Place reached from a capture (the capture itself or a Place its path reaches through NextPathStep's steps: a part of it, a
 //   captured referent, a raw pointer's referent) whose use needs it exclusively (NeedsExclusively, by the same rule over its
 //   consumer's takes; past a raw step also a Take or an in-place destruction, and the path continues through a pointer derived from
-//   a reached one, DerivesPointer: SPEC 7.7.3's environment rule), or a nested entry that Reborrows or exclusively borrows an outer
+//   a reached one, Below: SPEC 7.7.3's environment rule), or a nested entry that Reborrows or exclusively borrows an outer
 //   environment binding, makes it Exclusive; every other use borrows (Shared). An acquisition of the binding itself
 //   by value without an operator (TakenByCase: as the Adjust rule takes it from its consumer, a discarded Place included, or a
 //   nested bare entry) that Reborrows in some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked
@@ -177,17 +177,26 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 5.2.1 condition 3's derived pointers, a closed list (5.3, 5.4): a displacement `p + n` or `p - n`, a conversion between raw
-        // pointer Types, an Origin-stating or Origin-dropping conversion or fit, or an identity conversion, each keeping the operand's
-        // provenance. No other form derives: a `usize` round trip has none (5.5), and a pointer a call with a body returns is not derived
-        // from its arguments (the owner's O-76 (b) (i)). R7-Y2c's copies through the body's locals read this list.
-        private static bool DerivesPointer(Koto place) => ReferenceTypes.IsPointer(place.BoundType) && place.Parent switch
+        // One step of the walk from a node toward what it is reached from (UsesExclusively climbs it): a group's operand, the path's next
+        // Place (NextPathStep, step), or a derived pointer's operand, SPEC 5.2.1 condition 3's closed list (5.3, 5.4): a displacement
+        // `p + n` or `p - n`, a conversion between raw pointer Types, an Origin-stating or Origin-dropping conversion or fit, or an identity
+        // conversion, each keeping the operand's provenance; null where none. No other form derives: a `usize` round trip has none (5.5), and
+        // a pointer a call with a body returns is not derived from its arguments (the owner's O-76 (b) (i)).
+        private static Koto? Below(Koto node, out PathStep step)
         {
-            BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus } displacement => ReferenceEquals(displacement.Left, place) && ReferenceTypes.IsPointer(displacement.BoundType),
-            ConversionKoto { ConversionBinding: ConversionBinding.Pointer or ConversionBinding.Identity } conversion =>
-                ReferenceEquals(conversion.Left, place) && ReferenceTypes.IsPointer(conversion.BoundType),
-            _ => false,
-        };
+            step = NextPathStep(node, out var next);
+            return node switch
+            {
+                ParenthesizedKoto group => group.Operand,
+                LabeledKoto label => label.Target,
+                _ when !ReferenceEquals(next, node) => next,
+                BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus } displacement when ReferenceTypes.IsPointer(displacement.BoundType) &&
+                    ReferenceTypes.IsPointer(displacement.Left.BoundType) => displacement.Left,
+                ConversionKoto { ConversionBinding: ConversionBinding.Pointer or ConversionBinding.Identity } conversion when
+                    ReferenceTypes.IsPointer(conversion.BoundType) && ReferenceTypes.IsPointer(conversion.Left.BoundType) => conversion.Left,
+                _ => null,
+            };
+        }
 
         // SPEC 7.7.2, 7.7.3: a nested Closure's entries of this binding's captures, each taken as the one place-use rule's Take takes its
         // acquisition (BoundCapture.Adjust) at the nested Closure: moving an outer environment value is Consuming; Reborrowing it or
@@ -259,14 +268,14 @@ public sealed partial class Binding
                 }
 
                 // SPEC 7.7.3: past a raw pointer's pointee the environment's write authority is what an access needs. A pointer derived
-                // from an environment pointer (DerivesPointer) is that pointer, and a pointer read through a raw Place the environment
-                // reaches is read from the environment (the owner's O-76 (c) (i)), so the walk continues past a raw step.
-                var step = NextPathStep(place.Parent!, out var next);
-                raw |= step == PathStep.RawFollow && ReferenceEquals(next, place);
-                if (!(IsGroup(place.Parent) || ReferenceEquals(next, place) || DerivesPointer(place)))
+                // from an environment pointer (Below) is that pointer, and a pointer read through a raw Place the environment reaches is
+                // read from the environment (the owner's O-76 (c) (i)), so the walk continues past a raw step.
+                if (!ReferenceEquals(Below(place.Parent!, out var step), place))
                 {
                     return new(PlaceUse.Shared, listed);
                 }
+
+                raw |= step == PathStep.RawFollow;
             }
         }
 
