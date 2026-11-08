@@ -8,7 +8,7 @@ A fixed array `[N of T]` has a compile-time length `N` and stores its elements i
 
 The identity of `[N of T]` includes the evaluated length and the complete element Type, including Semantics and Origins: `[(2 + 2) of i32]` is `[4 of i32]`. No implicit conversion exists between arrays of different lengths, between fixed arrays and `Array<T>`, or between owning arrays and Slices.
 
-Elements are stored inline in index order, without heap allocation; nested arrays vary the innermost index contiguously. With `d = stride(T)`, element `i` is at offset `i * d`, the alignment is `alignment(T)` (also for `N = 0`), and size and array stride are `N * d`. When `d = 0`, distinct elements may share an address. Sizes are checked against the target's limits and nonnegative `isize`; an unrepresentable concrete layout is a compile-time error. `[0 of T]` has size zero and initializes and destroys nothing, but `T` is still checked, and a struct storing `[0 of Self]` inline is a recursive layout error. Pointer and reference referents create no inline edge.
+Elements are stored inline in index order, without heap allocation; nested arrays vary the innermost index contiguously. With `d = stride(T)`, element `i` is at offset `i * d`, the alignment is `alignment(T)` (also for `N = 0`), and size and array stride are `N * d`. When `d = 0`, distinct elements may share an address. Sizes are checked against nonnegative `isize` ([§22](22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions)); an unrepresentable concrete layout is a compile-time error. `[0 of T]` has size zero and initializes and destroys nothing, but `T` is still checked, and a struct storing `[0 of Self]` inline is a recursive layout error. Pointer and reference referents create no inline edge.
 
 ```kimi
 let a: [4 of i32] = [1, 2, 3, 4]
@@ -21,7 +21,7 @@ struct Node
 
 ## 4.2. Length expressions
 
-A length is a nonnegative compile-time integer representable in the profile's `isize`; a generic length stays symbolic until instantiation (grammar: `ArrayLength`, `LengthExpression`, [§F.5](appendices/F-syntax-summary.md#f5-types)).
+A length is a nonnegative compile-time integer representable in `isize` ([§22](22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions)); a generic length stays symbolic until instantiation (grammar: `ArrayLength`, `LengthExpression`, [§F.5](appendices/F-syntax-summary.md#f5-types)).
 
 A length expression admits integer literals, length parameters, Constant-readable Bindings, grouping, unary `+` and `-`, and binary `+`, `-`, `*`, `/` and `%`. A **Constant-readable Binding** is an integer `let` local, or a static stored Property with an accessible standard `get`, whose initializer uses only these forms, recursively. Parameters, `var`, instance Fields, custom or computed accessors, calls and cyclic initializers are excluded. In a dependent length it is replaced by its initializer (Normalization, [§4.4.2](#442-formation-obligations-and-normalization)).
 
