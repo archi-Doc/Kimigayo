@@ -3,12 +3,12 @@
 // Owns the body a callee runs in an item's instance (R5 package K 4.5; SPEC 8.13.3; DECISIONS R5-M30, R5-M36, R5-M70, R5-M74, R5-M116): a
 // Closure's body under its context, a function item's function or a requirement Item's witness, the implementation a function's
 // substitution selects, and for a function without a MIR body the requirement its published row runs, the glue of what it destroys in
-// place (each on the Type below a parameter, Below), its LegacyRow item when its legacy row writes its call in its instance (DECISIONS
-// R5-M121), or what its intrinsic's row names (and, where the row says so, its Type argument's layout verdict, K 4.8); and the body of a
-// DictionaryStorage function a legacy row or the Dictionary runtime declares as its callee (Declared; DECISIONS R5-M124).
+// place (each on the Type below a parameter, Below), or what its intrinsic's row names (and, where the row says so, its Type argument's
+// layout verdict, K 4.8); and the body of a DictionaryStorage function the Dictionary runtime declares as its callee (Declared; DECISIONS
+// R5-M124).
 // Input: a closed Closure or function item Type, or a function with its composed substitution; the program's bodies; TyCtxt
 // (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, Published, Signature, DictionaryStorage); the intrinsic
-// dispositions and rows; the legacy rows' declared callees.
+// dispositions and rows; the legacy rows' layout needs.
 // Output: the admitted item (Admit, the witness rows of InstanceCollector.Witnesses.cs, a glue of InstanceCollector.Glue.cs or an
 // intrinsic's row), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a callee without a
 // body or row (a foreign function) or a refused edge.
@@ -64,14 +64,12 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 2, 6 and 8 (DECISIONS R5-M30, R5-M74, R5-M116): a callee without a MIR body whose published row runs a requirement on the
     // Type below a parameter (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on
     // that Type under the composed substitution; one whose published row destroys the Type below a parameter in place (replace, SPEC 15.7:
-    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); one whose
-    // legacy row writes its call in its instance (LegacyRow.InInstance: placeEntry), its LegacyRow
-    // item (K 4.5 row 2; DECISIONS R5-M121, R5-M124, AdmitRow); the function of an intrinsic, reached by its Item (a call of it is an
-    // Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), read only for a
-    // row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (a
-    // foreign function, an intrinsic whose row reads no Type argument). A legacy or intrinsic row whose need is TypeArguments (a whole-value
-    // update, a Dictionary kernel, IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8; DECISIONS
-    // R5-M108, R5-M149).
+    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); the
+    // function of an intrinsic, reached by its Item (a call of it is an Intrinsic callee), the target its row names under the Item's Type
+    // argument, a part of the Item Type its site made (In), read only for a row that reads one (IntrinsicRow.ReadsTypeArgument, as at an
+    // intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (a foreign function, an intrinsic whose row reads no Type argument).
+    // A legacy or intrinsic row whose need is TypeArguments (a whole-value update, IntrinsicRow.Need) makes each of the call's Type
+    // arguments a use at the call first (K 4.8; DECISIONS R5-M108, R5-M149).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
         if (subst is not null && LegacyRuntimeHelpers.Row(function.CompilerFunction) is { Need: LayoutNeed.TypeArguments })
@@ -87,11 +85,6 @@ internal sealed partial class InstanceCollector
         if (this.types.Published(function) is { InPlace: true, Destroys: >= 0 and var destroys })
         {
             return this.Below(subject, function, subst, destroys) is { } destroyed ? this.GlueOf(item, subject, destroyed) : -1;
-        }
-
-        if (LegacyRuntimeHelpers.Row(function.CompilerFunction) is { InInstance: true })
-        {
-            return this.AdmitRow(item, subject, function, subst);
         }
 
         if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id } ||
@@ -125,10 +118,10 @@ internal sealed partial class InstanceCollector
     }
 
     // X4, F2c (DECISIONS R5-M28, R5-M124, R8-A1d): the one owner of a target the compiler names: the body of a library function (a
-    // DictionaryStorage function a legacy row or the Dictionary runtime declares as its callee, by TyCtxt's symbol view: placeEntry's append,
-    // a Dictionary from none's initialize, a Dictionary glue's clearEntries; a nonempty Array literal's growArray; an Array glue's destroyArray),
-    // admitted for a site under the substitution given (a generic one's; null for one that does not instantiate); a declared callee without
-    // a body is a broken contract.
+    // DictionaryStorage function the Dictionary runtime declares as its callee, by TyCtxt's symbol view: a Dictionary from none's
+    // initialize, a Dictionary glue's clearEntries; a nonempty Array literal's growArray; an Array glue's destroyArray), admitted for a
+    // site under the substitution given (a generic one's; null for one that does not instantiate); a declared callee without a body is a
+    // broken contract.
     private int Declared(MirProgram program, int item, SourceRef site, BindingSymbol function, Subst? subst)
     {
         if (program[new(function, MirBodyKind.Fn)] is { } body)

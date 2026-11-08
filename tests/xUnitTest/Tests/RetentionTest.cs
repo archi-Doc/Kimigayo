@@ -958,9 +958,9 @@ public sealed partial class RetentionTest
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
-    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 4.9.6): DictionaryStorage.placeEntry takes the Dictionary's exclusive borrow (R8-K1b-2; it took a
-    // `raw/Dictionary<K, V>` handle before, with the same row), so the call stores its key and value in the Dictionary it borrows, and the
-    // borrow as a read through it, never its own value (DECISIONS R4-M116): an insertion's published effect. A raw result that states no
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4, 4.9.6): DictionaryStorage.placeEntry takes the Dictionary's exclusive borrow, so the call stores
+    // its key and value in the Dictionary it borrows, and the borrow as a read through it, never its own value (DECISIONS R4-M116): an
+    // insertion's published effect. A raw result that states no
     // Origin retains its input as a value and by its chain (rule A, DECISIONS BU-40) is `allocate`'s row above.
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).

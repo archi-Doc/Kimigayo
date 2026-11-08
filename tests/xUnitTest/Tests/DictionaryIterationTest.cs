@@ -217,8 +217,8 @@ public class DictionaryIterationTest
     // `reserve` and `shrinkToFit` read the Handle by path since R8-K1b-2 (no `(raw/Dictionary<K, V>, isize)` result one level above it), so
     // Binding's storage-nesting bound (StorageHeightLimit) cuts at the Dictionary's own nesting: each accepts the last depth, where
     // `alignmentOf<V>` reaches Layout.MaximumHeight exactly (a margin of zero), and one deeper gives A5's OwnershipDepthLimit_Kd and the
-    // bound's Unsupported_Kd, for a Tuple, an Option and a fixed-array nest. A change of either bound or of alignmentOf's two levels moves
-    // these rows.
+    // bound's Unsupported_Kd, for a Tuple, an Option, a fixed-array and a struct nest (one declared struct per level, S0 holding the i32).
+    // A change of either bound or of alignmentOf's two levels moves these rows.
     [Theory]
     [InlineData("(u8, {0})", 62, "d.clear()")]
     [InlineData("Option<{0}>", 31, "d.clear()")]
@@ -229,7 +229,10 @@ public class DictionaryIterationTest
     [InlineData("(u8, {0})", 62, "d.shrinkToFit()")]
     [InlineData("Option<{0}>", 31, "d.shrinkToFit()")]
     [InlineData("[1 of {0}]", 62, "d.shrinkToFit()")]
-    public void AValueNestKeepsTheStorageBoundsRecords(string layer, int last, string operation)
+    [InlineData("S{1}", 62, "d.clear()", "struct S{1}\n    public var v: {0}\n")]
+    [InlineData("S{1}", 62, "d.reserve(1)", "struct S{1}\n    public var v: {0}\n")]
+    [InlineData("S{1}", 62, "d.shrinkToFit()", "struct S{1}\n    public var v: {0}\n")]
+    public void AValueNestKeepsTheStorageBoundsRecords(string layer, int last, string operation, string declaration = "")
     {
         Assert.Empty(DiagnosticCorpus.Check(Program(last)).Diagnostics);
         Assert.Equal(
@@ -238,13 +241,15 @@ public class DictionaryIterationTest
 
         string Program(int depth)
         {
-            var type = "i32";
+            var (type, declarations) = ("i32", string.Empty);
             for (var i = 0; i < depth; i++)
             {
-                type = string.Format(System.Globalization.CultureInfo.InvariantCulture, layer, type);
+                declarations += string.Format(System.Globalization.CultureInfo.InvariantCulture, declaration, type, i);
+                type = string.Format(System.Globalization.CultureInfo.InvariantCulture, layer, type, i);
             }
 
-            return $"func f(d: uniq/Dictionary<i32, {type}>) -> isize\n    {operation}\n    return 0\npublic func main()\n    let g = f\n    return\n";
+            return declarations +
+                $"func f(d: uniq/Dictionary<i32, {type}>) -> isize\n    {operation}\n    return 0\npublic func main()\n    let g = f\n    return\n";
         }
     }
 }

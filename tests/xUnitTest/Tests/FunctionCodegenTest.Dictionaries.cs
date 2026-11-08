@@ -7,11 +7,10 @@ using Xunit;
 
 namespace XunitTest;
 
-// The Dictionary family of MIR code generation (R5 C8e; SPEC 4.3, 4.7.3, 4.9.4-4.9.7, 16.3.2, 22.2; DECISIONS R5-M124): the storage kernels
-// written inline over their call's entry layout; placeEntry calling its LegacyRow item's Place helper, which calls append's instance; a
-// Dictionary from none calling initialize's; a Dictionary's glue calling its own Drop helper, which calls the clearEntries instance only when
-// an entry may need a drop; a Dictionary's length; natively. The keys are user Equatable structs: a built-in key's
-// equality is C8f's shim (BuiltinEquals).
+// The Dictionary family of MIR code generation (R5 C8e; SPEC 4.3, 4.7.3, 4.9.4-4.9.7, 16.3.2, 22.2; DECISIONS R5-M124): the storage bodies
+// reading the Handle's words; the placeEntry body's instances calling append's; a Dictionary from none calling initialize's; a
+// Dictionary's glue calling its own Drop helper, which calls the clearEntries instance only when an entry may need a drop; a Dictionary's
+// length; natively. The keys are user Equatable structs: a built-in key's equality is C8f's shim (BuiltinEquals).
 public sealed partial class FunctionCodegenTest
 {
     // The user keys: Key, an i64 (with an i32 value, the key at 16, the value at 24, a stride of 32), and Small, a u8 (the key at 16, an i32
@@ -107,7 +106,7 @@ public sealed partial class FunctionCodegenTest
     // address the slot, keyAt at the key's byte offset 16 (valueAt's offset is computed from K's stride and V's alignment, which the
     // natives run; the stride is observed by the allocation-byte natives, R8-K1b-2); a Dictionary's length is its live count, the word at 24.
     [Fact]
-    public void TheDictionaryKernelsWriteTheHandlesWordsOverTheEntryLayout()
+    public void TheStorageBodiesReadTheHandlesWords()
     {
         var c = Analyze(Dictionaries, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
@@ -171,9 +170,9 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // PD8, R5-M46 (DECISIONS R5-M124): the Dictionary helpers precede every definition, each written once, with the memory declarations
-    // placeEntry's row declares, so a module that only destroys a Dictionary has no Place helper; a module whose bodies shrink one defines the storage
-    // byte primitives once (DECISIONS R5-M145).
+    // PD8, R5-M46 (DECISIONS R5-M124): the Dictionary helpers precede every definition, each written once, and so do the memory
+    // declarations the bodies request; a module that only destroys a Dictionary has its Drop helper and no Place helper (the absence check
+    // guards against the routine coming back); a module whose bodies shrink one defines the storage byte primitives once (DECISIONS R5-M145).
     [Fact]
     public void DictionaryHelpersPrecedeTheDefinitionsWithTheRuntimeTheirRowsDeclare()
     {

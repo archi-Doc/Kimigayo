@@ -537,10 +537,9 @@ public partial class LayoutTest
     }
 
     // SPEC 4.7.3, 22.2 (DECISIONS R5-M124): each handle row names its length word, which a Len reads: a Slice's and an Array's Field 1, a
-    // Dictionary's DictionaryStorage.Handle Field `length`, its live count; dictionaryStorage's {address, stride} Tuple lies at 0 and 8, the
-    // words P2a's DictionaryLayout kernel stores.
+    // Dictionary's DictionaryStorage.Handle Field `length`, its live count.
     [Fact]
-    public void TheHandlesLengthWordsAndTheDictionaryLayoutTupleAreTheKernelsWords()
+    public void TheHandlesLengthWordsAreTheirLenWords()
     {
         var c = MirBuildTest.Compile("func f(entries: uniq/Dictionary<i32, i64>) => entries.reserve(1)\n");
         var dictionary = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type)
@@ -551,8 +550,6 @@ public partial class LayoutTest
         Assert.Equal(3, Layout.LengthWord(dictionary));
         Assert.Equal(1, Layout.LengthWord(new BoundType("a", BoundTypeKind.Array, components: [BoundType.I32])));
         Assert.Equal(1, Layout.LengthWord(new BoundType("s", BoundTypeKind.Slice, components: [BoundType.I32])));
-        var tuple = c.Types.Tuple([c.Types.Pointer(dictionary), BoundType.ISize]);
-        Assert.Equal(new[] { 0, 8 }, c.Layout.Of(tuple).Value!.Layout.FieldOffsets.ToArray());
     }
 
     // IMPL 21.1.3 (R8-R1a): a library struct and a row state one handle's words, so each struct's placement equals its handle's row for
