@@ -316,7 +316,8 @@ public sealed partial class Binding
     // The one rule of what a use of a Place needs of it (SPEC 4.7.1, 7.7.3, 8.14, 13.5.6, 15.1.5, 15.1.6): the strongest of its takes that
     // stand (the two rows, Take) and its parent's own operation on it, which no row states: an explicit adaptation that borrows it
     // exclusively in some admitted case (BorrowsExclusively: an exclusive borrow, an object view upcast, a case adaptation), an assignment
-    // or update target, or an Exclusive-mode `for` or `match` Subject. ClosureEffects reads it for a Closure's receiver (DECISIONS R7-Y2).
+    // or update target, or an Exclusive-mode `for` or `match` Subject. The HIR publisher reads it for indexUniq (ExclusiveUse), ClosureEffects
+    // for a Closure's receiver (DECISIONS R7-Y2); neither decides a use's need itself.
     private PlaceUse UseOf(Koto child, HirAdjust last, HirAdjust earlier, Koto? parent, HirOp parentOp)
     {
         var own = parent switch
@@ -383,6 +384,11 @@ public sealed partial class Binding
         // Whether a node's takes claim it (Claimed), of the rows this record wrote.
         internal readonly bool Claimed(Koto node) => this.Owns(node) && binding.Claimed(node, HirTables.AdjustOf(node), HirTables.PlanOf(node).Adjust);
 
+        // What a node's use needs (Binding.UseOf), of the rows this record wrote and its parent's operation.
+        internal readonly PlaceUse UseOf(Koto node, Koto? parent, HirOp parentOp) => this.Owns(node)
+            ? binding.UseOf(node, HirTables.AdjustOf(node), HirTables.PlanOf(node).Adjust, parent, parentOp)
+            : binding.UseOf(node, default, default, parent, parentOp);
+
         // Whether a node is of the module being published.
         internal readonly bool Owns(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId < table.Hir.Adjusts!.Length;
     }
@@ -408,13 +414,13 @@ public sealed partial class Binding
         }
 
         // Whether a node's use needs write or exclusive capability, which selects a user index's indexUniq (SPEC 4.7.1; DECISIONS BU-8): the
-        // capability its takes need, by the rows they wrote (Claimed), or it is updated or exclusively borrowed, or
-        // an exclusive use (the parent's) reaches it as the receiver of a Field or an element, as a group's operand or as the reference,
-        // handle or pair layer a follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw
-        // Place, whose capability its path does not decide (SPEC 5.2).
+        // one place-use rule over the rows its takes wrote (UseOf, in some admitted case or in every one), or an exclusive use (the
+        // parent's) reaches it as the receiver of a Field or an element, as a group's operand or as the reference, handle or pair layer a
+        // follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw Place, whose capability
+        // its path does not decide (SPEC 5.2).
         private bool ExclusiveUse(Koto node, Koto? parent, HirOp parentOp, bool exclusive)
-            => this.uses.Claimed(node) || (parentOp == HirOp.Borrow && binding.Exclusive(parent!.BoundType)) ||
-            ((parentOp is HirOp.Assign or HirOp.CompoundAssign || (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref ||
-                parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(parent!))) && ReferenceEquals(Operand(parent), node));
+            => this.uses.UseOf(node, parent, parentOp) is PlaceUse.ByCase or PlaceUse.Exclusive ||
+            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(parent!) &&
+                ReferenceEquals(Operand(parent), node));
     }
 }
