@@ -10420,6 +10420,9 @@ resumed by R4-M86 (2026-10-20).
     `dblbad-14` to `-16` keep their independent record; review 2's `req-13` and `req-13-self` (a conformance member past H: only
     height records) and their twin with an independent mismatch (both reported); `let` chains of more than 8,192 statements. No
     test, library or milestone program (whole suite on the prototype and the Session).
+  - IMPL A.4 states the limit only (the owner's O-89 (a), verbatim 「O89 aで決定します」); the measure is `BoundType.Height` (BU-71),
+    the depth of the compiler's internal term for the Type, `BoundType`. Rejected: an enumeration of the counted parts in IMPL (three
+    independent reviews each found a new gap against the code: every enumeration is a second copy of the measure).
 - **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
   R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
 
