@@ -162,4 +162,18 @@ public class QualificationRequiredTest
             Assert.Equal(qualifier.Length != 0, CompilationTestHelper.Reload(c).Bind().IsComplete);
         }
     }
+
+    // SPEC 9.5 (R7-N2d): a projected base stops a name as a nominal one does, also before the clause can be bound, in a clause, a
+    // Constraint and behind an opening alias; each was accepted before.
+    [Theory]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\npublic open struct N\n    public func far(self) -> i32 => 2\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\n    struct U: N\n        public init() => ()")]
+    [InlineData("alias G1\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\ngroup G1\n    public open struct N\n        public init() => ()\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\n    struct U: N\n        public init() => ()")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public struct N\n    public init() => ()\nstruct N\nstruct T: Source.HasBase.Parent\n    Self is K<N>\n    public init(): base() => ()")]
+    [InlineData("contract K<T>\ncontract K2<T>\ncontract HasItem\n    associate Item\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    Self is HasItem\n    associate HasItem.Item is i32\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is K<Q.N>\n        Self is K2<T.(HasItem).Item>\n        public init(): base() => ()")]
+    public void AProjectedBaseStopsANameAsANominalOneDoes(string source)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.QualificationRequired_Kd);
+    }
 }

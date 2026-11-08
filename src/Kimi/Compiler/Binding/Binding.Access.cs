@@ -386,20 +386,20 @@ public sealed partial class Binding
 
     private bool DerivesFrom(BindingSymbol? type, BindingSymbol target)
     {
-        // The current language has one inline base. The bound limits invalid cycles too.
-        for (var depth = 0; type is not null && depth <= this.nodes.Count; depth++)
+        if (ReferenceEquals(type, target))
         {
-            if (ReferenceEquals(type, target))
-            {
-                return true;
-            }
+            return true;
+        }
 
-            if (type.Declaration is not StructKoto { BaseClause: { } syntax } structure)
+        if (type?.Declaration is StructKoto structure)
+        {
+            foreach (var layer in this.BaseLayers(structure))
             {
-                break;
+                if (ReferenceEquals(layer, target))
+                {
+                    return true;
+                }
             }
-
-            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
         }
 
         return false;
