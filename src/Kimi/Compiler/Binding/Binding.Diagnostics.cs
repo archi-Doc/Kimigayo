@@ -632,7 +632,6 @@ public sealed partial class Binding
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
-        this.synthesizedCalls?.Clear();
         this.callableConstraints?.Clear();
         this.clauseConstraints?.Clear();
         this.pendingJudgments?.Clear();

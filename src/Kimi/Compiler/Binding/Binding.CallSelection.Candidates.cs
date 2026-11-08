@@ -599,7 +599,8 @@ public sealed partial class Binding
             premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
             return proof switch
             {
-                ConstraintProof.Proven or ConstraintProof.Unknown => CandidateApplicability.Applicable, // SPEC 10.1: an Unknown is an obligation checked after selection.
+                // SPEC 10.1: an Unknown is an obligation checked after selection.
+                ConstraintProof.Proven or ConstraintProof.Unknown => CandidateApplicability.Applicable,
                 ConstraintProof.Refuted => CandidateApplicability.Inapplicable,
                 ConstraintProof.Error => CandidateApplicability.Error,
                 _ => CandidateApplicability.Pending,

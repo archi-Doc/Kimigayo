@@ -187,7 +187,8 @@ public sealed partial class Binding
         if (target.Declaration is FunctionKoto function)
         {
             // The declared signature stays the trial's part until R7-C2 (b) (PLAN G375): read here it would fault on library declarations.
-            var bindings = new CandidateBindings(function, target, call.TypeArguments, call.LengthArguments, call.ConformingType, call.DeclaringType, call.DeclaringType, default, false);
+            var bindings = new CandidateBindings(
+                function, target, call.TypeArguments, call.LengthArguments, call.ConformingType, call.DeclaringType, call.DeclaringType, default, false);
             proof = this.StepFiveConjunction(bindings, scope, false, null);
         }
         else
@@ -241,7 +242,17 @@ public sealed partial class Binding
         var function = bindings.Function;
         var open = !bindings.Unbound.IsEmpty;
         var clauseOwner = bindings.InfersOwner ? null : bindings.DeclaringType; // A constructor inferring its owner's slots (10.8.1) has none yet.
-        var proof = this.CheckConstraints(function.TypeConstraints, function, bindings.Slots, scope, bindings.Self, clauseOwner, bindings.Lengths, incomplete: incomplete || open, skipUnresolved: open, slotOwner: slotOwner);
+        var proof = this.CheckConstraints(
+            function.TypeConstraints,
+            function,
+            bindings.Slots,
+            scope,
+            bindings.Self,
+            clauseOwner,
+            bindings.Lengths,
+            incomplete: incomplete || open,
+            skipUnresolved: open,
+            slotOwner: slotOwner);
         if (bindings.Owner is { } owner)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
@@ -249,7 +260,10 @@ public sealed partial class Binding
         else if (bindings.InfersOwner && bindings.DeclaringType is not null && slotOwner is StructKoto openOwner)
         {
             // A constructor whose owner Type is not closed yet judges its owner's clauses over the slots inferred so far (10.8.1).
-            proof = CombineProof(proof, this.CheckConstraints(openOwner.ConstraintNodes, openOwner, bindings.Slots, scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty), true);
+            proof = CombineProof(
+                proof,
+                this.CheckConstraints(openOwner.ConstraintNodes, openOwner, bindings.Slots, scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
+                true);
         }
 
         var own = CallOwnSlots(function);
@@ -785,7 +799,16 @@ public sealed partial class Binding
     // - Prohibitions: no judgment but step 5's conjunction reads it; it holds no verdict.
     private readonly ref struct CandidateBindings
     {
-        internal CandidateBindings(FunctionKoto function, BindingSymbol target, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> lengths, BoundType? self, BoundType? declaringType, BoundType? owner, SlotSet unbound, bool infersOwner)
+        internal CandidateBindings(
+            FunctionKoto function,
+            BindingSymbol target,
+            ReadOnlySpan<BoundType?> slots,
+            ReadOnlySpan<BoundLength?> lengths,
+            BoundType? self,
+            BoundType? declaringType,
+            BoundType? owner,
+            SlotSet unbound,
+            bool infersOwner)
         {
             this.Function = function;
             this.Target = target;

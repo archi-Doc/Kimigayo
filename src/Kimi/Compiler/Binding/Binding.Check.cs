@@ -60,10 +60,11 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(node, invalidTarget);
             }
-            else if (node is InvocationKoto { BoundCall: { } } synthesized && this.synthesizedCalls?.GetValueOrDefault(synthesized) is { BindingFailure: not BindingFailure.None } consumer)
+            else if (node is InvocationKoto { BoundCall: { } } synthesized &&
+                this.synthesizedCalls?.GetValueOrDefault(synthesized) is { BindingFailure: not BindingFailure.None } consumer)
             {
                 // SPEC 23.1.2: a synthesized call is its consumer's witness call (an iteration's entry or step, an index, a view, a range, a
-                // requirement, a write); a consumer that failed its own check of the same subject leaves the call resting on it.
+                // requirement, a write); a consumer that has already failed leaves the call resting on it.
                 this.CompleteDependent(synthesized, consumer);
             }
             else if (node is InvocationKoto { BoundCall: { } call })
@@ -122,6 +123,8 @@ public sealed partial class Binding
                 this.CompleteDependent(consumer, call);
             }
         }
+
+        calls.Clear(); // The pass's synthesized calls are settled; the next pass binds its own.
     }
 
     // The pass summary: each node's state, counted once the failures are decided, and each failed node's issue, or its derived issue.

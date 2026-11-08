@@ -197,8 +197,10 @@ public sealed partial class Binding
             var constructor = function.IsConstructor;
             var arguments = constructor ? this.Types.AsSpan(0, CallSlotCount(function)) : slots;
             binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
-            var closedOwner = this.DeclaringType is { } declaringType ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
-            var bindings = new CandidateBindings(function, function.BoundSymbol!, arguments, this.Lengths, this.Self, this.DeclaringType, closedOwner, unbound, constructor);
+            var closedOwner = this.DeclaringType is { } declaringType
+                ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
+            var bindings = new CandidateBindings(
+                function, function.BoundSymbol!, arguments, this.Lengths, this.Self, this.DeclaringType, closedOwner, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
             proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true); // The trial's alone until R7-C2 (b) (PLAN G375).
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
