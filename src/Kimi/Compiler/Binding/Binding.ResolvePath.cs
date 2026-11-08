@@ -5,9 +5,10 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// ResolvePath: a written Type name resolved to its declaration by SPEC 9.5's stages, 9.6's member steps and `::` paths (DECISIONS R7-N1a).
-// - Responsibility: the one evaluation of a Type name and its one publication. b, c, d, e and f bring the rest of name resolution here.
-// - Inputs: the name's syntax, the use's scope, the role and the written Type-argument count.
+// ResolvePath: a written name resolved to its declaration by SPEC 9.5's stages, 9.6's member steps and `::` paths (DECISIONS BU-122).
+// - Responsibility: the one evaluation of a Type name or an unqualified value name and its one publication. c, d, e and f bring the rest
+//   of name resolution here.
+// - Inputs: the name's syntax, the use's scope, the role (its namespace with it) and the written Type-argument count.
 // - Outputs: a ResolvedPath (how the path ended, the selected symbol, a stage stop's typed facts); its steps stand on nameSteps.
 // - Invariants: evaluation writes nothing on the use's nodes or in a table keyed by them, and reads no state a publication writes. It may
 //   force a declaration query (a base clause, an alias target), whose facts and records are that declaration's own. PublishPath alone
@@ -41,6 +42,7 @@ public sealed partial class Binding
     private enum NameStepKind : byte
     {
         Head,
+        ImportGroup,
         Member,
         InheritedMember,
         RootMember,
@@ -49,8 +51,9 @@ public sealed partial class Binding
         AmbiguousRole,
     }
 
-    // One step of a path, with what its publication writes (PublishPath's table).
-    private readonly record struct NameStep(NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier = null, AliasImport Import = default);
+    // One step of a path, with what its publication writes (PublishPath's table). A Head's role names the namespace whose stop it clears.
+    private readonly record struct NameStep(
+        NameStepKind Kind, Koto Use, BindingSymbol? Symbol, BindingSymbol? Qualifier = null, AliasImport Import = default, LookupRole Role = LookupRole.Any);
 
     private readonly record struct ResolvedPath(PathEnd End, BindingSymbol? Symbol, Koto Use, QualificationFact Stop = default);
 
@@ -91,6 +94,8 @@ public sealed partial class Binding
         return target.Parent is ConversionKoto conversion && ReferenceEquals(conversion.Right, target);
     }
 
+    // The symbol a Type name selects, published. Its qualifiers' Types are bound once, in the role of the form the name selects, by
+    // BindContainerReference for a nested Type and by BindAssociatedProjection for a projection base (SPEC 15.4.2).
     private BindingSymbol? TypeName(Koto syntax, BindingScope scope, LookupRole role, int arity = 0)
     {
         var mark = this.nameSteps.Count;
@@ -102,6 +107,14 @@ public sealed partial class Binding
         }
 
         return this.PublishPath(path, mark);
+    }
+
+    // An unqualified value name (SPEC 9.5 in the Value namespace), for a form that selects now. It takes no early-read note (BaseLayers):
+    // a value use need not spell its name (a capture's source is looked up at its function), and the note is evaluated again by syntax.
+    private BindingSymbol? Lookup(string name, BindingScope scope, Koto use)
+    {
+        var mark = this.nameSteps.Count;
+        return this.PublishPath(this.ResolveName(name, scope, use, LookupRole.Value, 0), mark);
     }
 
     // SPEC 13.5.1: each role fixes its own first eligible lookup stage before the two roles are compared.
@@ -124,12 +137,15 @@ public sealed partial class Binding
             {
                 case NameStepKind.Head:
                     this.importCandidates?.GetValueOrDefault(step.Use)?.Clear();
-                    this.qualificationStops?.Remove((step.Use, true));
+                    this.qualificationStops?.Remove((step.Use, step.Role != LookupRole.Value));
                     if (step.Import.Environment is not null)
                     {
                         this.importedContainers[step.Use] = step.Import;
                     }
 
+                    break;
+                case NameStepKind.ImportGroup:
+                    this.AddImportCandidates(step.Use, step.Qualifier!, step.Symbol!);
                     break;
                 case NameStepKind.Member:
                     var member = (MemberAccessKoto)step.Use;
@@ -164,9 +180,9 @@ public sealed partial class Binding
                     step.Use.BindingState = BindingState.Resolved;
                     break;
                 case NameStepKind.AmbiguousRole:
-                    this.Fail(step.Use, BindingFailure.Ambiguous, true);
+                    this.Fail(step.Use, BindingFailure.Ambiguous, unresolved: true);
                     break;
-                default:
+                case NameStepKind.AdaptationTarget:
                     // A target that already failed selects nothing (SPEC 13.5.1: fitting never reopens the search).
                     refused = step.Use.BindingState == BindingState.Invalid;
                     if (!refused)
@@ -175,6 +191,8 @@ public sealed partial class Binding
                     }
 
                     break;
+                default:
+                    throw new UnreachableException();
             }
         }
 
@@ -184,17 +202,19 @@ public sealed partial class Binding
             case PathEnd.Selected:
                 return refused ? null : path.Symbol;
             case PathEnd.Ambiguous:
-                this.Fail(path.Use, BindingFailure.Ambiguous, true);
+                this.Fail(path.Use, BindingFailure.Ambiguous, unresolved: true);
                 return null;
             case PathEnd.QualificationStop:
                 this.RecordQualificationStop(path.Use, path.Stop);
                 return null;
-            default:
+            case PathEnd.Unresolved:
                 return null;
+            default:
+                throw new UnreachableException();
         }
     }
 
-    // The evaluation alone, for a question that selects nothing (a repair's check, a namespace's verdict).
+    // The evaluation alone, for a question that selects nothing (a repair's check that a qualifier names its Container alone).
     private BindingSymbol? ProbePath(string name, BindingScope scope, Koto use, LookupRole role)
     {
         var mark = this.nameSteps.Count;
@@ -290,14 +310,13 @@ public sealed partial class Binding
     private ResolvedPath ResolveName(string name, BindingScope scope, Koto use, LookupRole role, int arity)
     {
         var step = this.nameSteps.Count;
-        this.nameSteps.Add(new(NameStepKind.Head, use, null));
+        this.nameSteps.Add(new(NameStepKind.Head, use, null, Role: role));
         for (var current = scope; current is not null; current = current.Parent)
         {
-            var candidates = default(TypeCandidates);
-            this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, role, arity);
-            if (candidates.First is not null)
+            var stage = role == LookupRole.Value ? this.ValueStage(current, scope, use, name) : this.TypeStage(current, scope, use, name, role, arity, step);
+            if (stage.End != PathEnd.Unresolved)
             {
-                return this.SelectedPath(candidates, use, step);
+                return stage;
             }
 
             if (this.InheritedStop(current, scope, use, name, role, arity) is { } stop)
@@ -311,7 +330,43 @@ public sealed partial class Binding
             return new(PathEnd.Selected, reference, use);
         }
 
-        return this.aliasResolutionDepth != 0 ? new(PathEnd.Unresolved, null, use) : this.ResolveImportedType(name, scope, use, role, arity, step);
+        if (this.aliasResolutionDepth != 0)
+        {
+            return new(PathEnd.Unresolved, null, use);
+        }
+
+        return role == LookupRole.Value ? this.ResolveImportedValue(name, scope, use, step) : this.ResolveImportedType(name, scope, use, role, arity, step);
+    }
+
+    private ResolvedPath TypeStage(BindingScope current, BindingScope scope, Koto use, string name, LookupRole role, int arity, int step)
+    {
+        var candidates = default(TypeCandidates);
+        this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, role, arity);
+        return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
+    }
+
+    // SPEC 9.3, 9.5: a stage's first visible, accessible value; an instance member with no receiverless candidate beside it at a Container
+    // stops the lookup (qualification required).
+    private ResolvedPath ValueStage(BindingScope current, BindingScope scope, Koto use, string name)
+    {
+        var head = current.Values.GetValueOrDefault(name);
+        for (var candidate = head; candidate is not null; candidate = candidate.Next)
+        {
+            if ((candidate.Kind == BindingSymbolKind.Local && candidate.Declaration.Span.End > use.Span.Start) ||
+                !this.ParameterVisible(candidate) || !this.Accessible(candidate, scope))
+            {
+                continue;
+            }
+
+            if (current.Owner is DeclarationContainerKoto && IsInstanceMember(candidate) && !this.HasReceiverlessCandidate(head!, scope, LookupRole.Value))
+            {
+                return new(PathEnd.QualificationStop, null, use, new(current, scope, candidate, name, LookupRole.Value, 0));
+            }
+
+            return new(PathEnd.Selected, candidate, use);
+        }
+
+        return new(PathEnd.Unresolved, null, use);
     }
 
     // An alias target's segment and a default alias's segment: one unfiltered selection with its ambiguity reported (part e folds both walks).
@@ -321,7 +376,7 @@ public sealed partial class Binding
         this.AddTypeCandidates(ref candidates, head, scope, LookupRole.Any, 0);
         if (candidates.Ambiguous)
         {
-            this.Fail(use, BindingFailure.Ambiguous, true);
+            this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
             return null;
         }
 
@@ -338,7 +393,11 @@ public sealed partial class Binding
         // Retain a mismatching declaration for the existing formation/arity diagnostic.
         // A populated nearer stage must never fall through to an outer or default stage.
         var symbol = candidates.Match ?? candidates.First;
-        this.nameSteps[step] = this.nameSteps[step] with { Import = candidates.Import };
+        if (candidates.Import.Environment is not null)
+        {
+            this.nameSteps[step] = this.nameSteps[step] with { Import = candidates.Import };
+        }
+
         return new(PathEnd.Selected, symbol, use);
     }
 

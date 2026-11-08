@@ -99,6 +99,8 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 9.5.1: function groups from several sources of one stage gather into one group (an ImportGroup step); any other kind beside a
+    // source is ambiguous, which the caller returns.
     private bool MergeImport(Koto use, BindingSymbol candidate, ref BindingSymbol? imported)
     {
         if (imported is null)
@@ -114,10 +116,16 @@ public sealed partial class Binding
 
         if (imported.Kind != BindingSymbolKind.Function || candidate.Kind != BindingSymbolKind.Function)
         {
-            this.Fail(use, BindingFailure.Ambiguous, true);
             return false;
         }
 
+        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported));
+        return true;
+    }
+
+    // An ImportGroup step's publication: the use's gathered group, which its call reads (BindCallCore).
+    private void AddImportCandidates(Koto use, BindingSymbol imported, BindingSymbol candidate)
+    {
         this.importCandidates ??= new();
         if (!this.importCandidates.TryGetValue(use, out var candidates))
         {
@@ -127,7 +135,6 @@ public sealed partial class Binding
 
         Add(imported, candidates);
         Add(candidate, candidates);
-        return true;
 
         static void Add(BindingSymbol head, List<BindingSymbol> candidates)
         {
@@ -175,72 +182,56 @@ public sealed partial class Binding
         return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
     }
 
-    private BindingSymbol? LookupImportedValue(string name, BindingScope scope, Koto use)
+    // SPEC 9.5 stages 5 and 6 in the Value namespace: one stage's sources together (9.5.1). A use holds one imported environment, so two
+    // differing ones are Ambiguous: an implementation limit, not SPEC's rule (PLAN). A default alias's segment may fail here (part e).
+    private ResolvedPath ResolveImportedValue(string name, BindingScope scope, Koto use, int step)
     {
         BindingSymbol? imported = null;
+        var import = default(AliasImport);
+        var ambiguous = false;
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
-        for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
+        for (var i = 0; !ambiguous && documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
             var target = this.AliasTarget(alias.Declaration!);
-            if (target is null || !target.Values.TryGetValue(name, out var candidate))
+            if (target is null || !target.Values.TryGetValue(name, out var candidate) || this.AccessibleImport(candidate, scope) is not { } accessible)
             {
                 continue;
             }
 
-            candidate = this.AccessibleImport(candidate, scope);
-            if (candidate is null)
+            ambiguous = !this.MergeImport(use, accessible, ref imported) ||
+                (alias.Environment is { } environment && import.Environment is { } previous && !ReferenceEquals(previous, environment));
+            if (!ambiguous && alias.Environment is not null)
             {
-                continue;
-            }
-
-            if (!this.MergeImport(use, candidate, ref imported))
-            {
-                return null;
-            }
-
-            if (alias.Environment is { } importedEnvironment)
-            {
-                if (this.importedContainers.TryGetValue(use, out var previous))
-                {
-                    if (!ReferenceEquals(previous.Environment, importedEnvironment))
-                    {
-                        this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
-                        return null;
-                    }
-
-                    alias = previous.MergeWitness(alias);
-                }
-
-                this.importedContainers[use] = alias;
+                import = import.Environment is null ? alias : import.MergeWitness(alias);
             }
         }
 
-        if (imported is not null)
+        // The sources merged before an ambiguity keep their environment as the use's import, as the table did.
+        if (import.Environment is not null)
         {
-            return imported;
+            this.nameSteps[step] = this.nameSteps[step] with { Import = import };
+        }
+
+        if (ambiguous || imported is not null)
+        {
+            return new(ambiguous ? PathEnd.Ambiguous : PathEnd.Selected, ambiguous ? null : imported, use);
         }
 
         foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
             var target = this.DefaultAliasTarget(use, path);
-            if (target is null || !target.Values.TryGetValue(name, out var candidate))
-            {
-                continue;
-            }
-
-            var accessible = this.AccessibleImport(candidate, scope);
-            if (accessible is null)
+            if (target is null || !target.Values.TryGetValue(name, out var candidate) || this.AccessibleImport(candidate, scope) is not { } accessible)
             {
                 continue;
             }
 
             if (!this.MergeImport(use, accessible, ref imported))
             {
-                return null;
+                return new(PathEnd.Ambiguous, null, use);
             }
         }
 
-        return imported;
+        return new(imported is null ? PathEnd.Unresolved : PathEnd.Selected, imported, use);
     }
 }

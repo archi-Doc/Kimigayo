@@ -41,53 +41,6 @@ public sealed partial class Binding
         return head;
     }
 
-    // The unqualified value lookup (SPEC 9.5); a Type name resolves through ResolvePath.
-    private BindingSymbol? Lookup(string name, BindingScope scope, Koto use)
-    {
-        this.importCandidates?.GetValueOrDefault(use)?.Clear();
-        this.qualificationStops?.Remove((use, false));
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Values.TryGetValue(name, out var symbol))
-            {
-                for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
-                {
-                    if (candidate.Kind == BindingSymbolKind.Local && candidate.Declaration.Span.End > use.Span.Start)
-                    {
-                        continue;
-                    }
-
-                    if (!this.ParameterVisible(candidate))
-                    {
-                        continue;
-                    }
-
-                    if (!this.Accessible(candidate, scope))
-                    {
-                        continue;
-                    }
-
-                    if (current.Owner is DeclarationContainerKoto && IsInstanceMember(candidate) &&
-                        !this.HasReceiverlessCandidate(symbol, scope, LookupRole.Value))
-                    {
-                        this.RecordQualificationStop(use, new(current, scope, candidate, name, LookupRole.Value, 0));
-                        return null;
-                    }
-
-                    return candidate;
-                }
-            }
-
-            if (this.InheritedStop(current, scope, use, name, LookupRole.Value, 0) is { } stop)
-            {
-                this.RecordQualificationStop(use, stop);
-                return null;
-            }
-        }
-
-        return this.aliasResolutionDepth != 0 ? null : this.LookupImportedValue(name, scope, use);
-    }
-
     private BoundType? BindType(Koto syntax, BindingScope scope)
         => this.BindType(syntax, scope, this.TypeContext(syntax, scope));
 
