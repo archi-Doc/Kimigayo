@@ -417,6 +417,24 @@ public sealed partial class HirFormsTest
         Assert.Equal(["t.1 1", "fixed[2] 2", "p.x -", "t.0 0"], rows);
     }
 
+    // SPEC 3.1, 13.5.4 (G620): an Integer constant has one encoding on its own plan row (Folded), its Type's N-bit sign-extended payload,
+    // whether a literal or a folded conversion spells it.
+    [Theory]
+    [InlineData("let a: u8 = 255", "255", "-1")]
+    [InlineData("let a = (-1)@wrap<u8>", "(-1)@wrap<u8>", "-1")]
+    [InlineData("let a: u64 = 18446744073709551615", "18446744073709551615", "-1")]
+    [InlineData("let a: Wrapping<u16> = 65535", "65535", "-1")]
+    [InlineData("let a: i8 = -128", "-128", "-128")]
+    [InlineData("let a: u8 = 127", "127", "127")]
+    public void AnIntegerConstantIsItsSignExtendedPayload(string source, string spelling, string folded)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(x => source.Substring(x.Span.Start, x.Span.Length) == spelling && HirTables.PlanOf(x).Folded is not null);
+        Assert.Equal(folded, HirTables.PlanOf(node).Folded!.Value.ToString(CultureInfo.InvariantCulture));
+    }
+
     // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user
     // index its selected index or indexUniq call, a view its element or slice call; a key resolution reads the evaluated receiver's length;
     // an interpolation passed directly to writeLine is marked; a ResolvedRange loop Copies its positions.

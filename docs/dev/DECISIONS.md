@@ -10370,6 +10370,23 @@ resumed by R4-M86 (2026-10-20).
   - Cost: RP8 (pinned A/B/A') decides the default-versus-reference comparer cost on these tables; bound cold at most +3,968 B on its
     rows, warm 0.
   - Open: PLAN G387 stays open. U0 gives it the pair key, but no scaling row shows a form that reaches the pair table and fails before.
+- **BU-133 One encoding of an Integer constant: its Type's N-bit sign-extended payload, decided by Binding** (2026-11-08; PLAN
+  G620, the Middle's design C-149, F's design review with B1 and B2 accepted; U1, the Front's part). Binding's `Folded` column held two
+  encodings of an unsigned constant whose top bit is set. A number literal (`Binding.Hir.Fold`) and the builder's Literal Pattern
+  (`MirBuilder.Match.LiteralTest`, from magnitude and sign) gave the plain value (u8 255 as 255). A folded conversion gave the
+  sign-extended payload (`(-1)@wrap<u8>` as -1), which `ScalarTypes.Normalize` documents as canonical. So one value had two constants.
+  - The one canonical form of an Integer constant is its Type's value in N-bit sign-extended form (`ScalarTypes.Normalize`, the bits of
+    `ScalarTypes.TryLiteral`). Binding decides it: `Fold` encodes a literal, `CompleteFolded` a folded conversion, and
+    `TryPatternLiteral` a Literal Pattern, whose `PatternLiteral.Bits` replaces `Magnitude` and `Negative`. The MIR builder copies
+    `PatternLiteral.Bits` and builds no constant from magnitude and sign.
+  - A literal its Type does not hold keeps its value modulo 2^N. That is the operand of a folded wrap conversion, or the number under a
+    direct literal's sign. It is never evaluated, but `HirColumnsTest` requires a value on every evaluated Literal row. A generic
+    literal (0 through 127, SPEC 8.7.4) is its own value in every instance, so a Type whose instance decides its width keeps the value.
+  - Visible effect: none for users (acceptance, records, Hover and diagnostic text, IR). `Folded` and the MIR dumps change for unsigned
+    constants at or above 2^(N-1): u8 200 prints `-56_u8`.
+  - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
+    have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
+  - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -15941,6 +15958,29 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:**
     - a Copy-callee clause beside Visit (a second rule);
     - a bind-time failed row for the bare rule's Move (shared across Binding, H1 and MIR, for records on programs already rejected).
+- **R7-M13 Pointers derived through a Closure body's locals** (2026-11-08; R7-Y2c, PLAN G251 (1)'s `rv-c-rawcopyptr`; Major; design review 2 ACCEPT, C-147; the owner's O-76 (b) (i), (c) (i) and O-83 (a), verbatim 「O-83 (a)で決定」) SPEC 5.2.1 condition 3, 5.3, 7.7.3.
+  - **Definitions.** ClosureEffects records each pointer-typed body local's definitions: an initializer, or an assigned value. A compound displacement keeps the local's provenance (SPEC 5.3). Each definition is recorded by the root that `Below`'s steps descend to.
+  - **What each local holds.** `Holds` is Own, Environment, or both. It is computed as one least fixpoint, bounded by the locals.
+  - **Roots.**
+    - A call's result is its own root (O-76 (b) (i)).
+    - A pointer read through a raw Place that the environment reaches is the environment's (O-76 (c) (i)).
+  - **A use of a local whose every definition derives from an environment pointer** starts UsesExclusively past its own Place.
+    - An assignment of the local is no environment use.
+    - Before a raw step, only an operation contract's write through the local counts.
+  - **The named limit (O-83 (a)).** A write-capability access through a local whose definitions hold both an environment pointer and a pointer of its own is a located `Unsupported_Kd` at the write's use of the local. It goes through `Undecided`, the one channel for uses whose need no fact decides, shared with the foreign-import call.
+    - An Own initializer counts as a definition. So a local initialized from its own allocation and then always overwritten from an environment pointer is Undecided too.
+    - Removal condition: Binding publishes its reaching-definitions fact for Closure pointer locals (PLAN G628, a Front unit).
+  - **One walk step.** `Below` is the walk's one step in both directions, the climb and `RootOf`'s descent. It replaces `DerivesPointer` and UsesExclusively's three-clause step test.
+  - **Cost.** One pass per local. A reverse-ordered assignment chain is quadratic in the worst case, and the scaling row bounds it. A worklist over the definitions by root, about +15 lines and linear, is the named alternative.
+  - **Moves.**
+    - Invalid programs now rejected with `InvalidAssignment_Kd` at the call: `rv-c-rawcopyptr` and its forms (copy, displacement, conversion, `*pp`, the contract write, `q += 1`, Take).
+    - Mixed-definition writes become `Unsupported_Kd`. This includes 9 valid forms that the base accepts, which is O-83 (a)'s named limit. The generated gate has 96 instances over 8 shapes.
+  - **Rejected:**
+    - a flow-insensitive Exclusive (a conservative Language error on a valid program, which also leaks into every Receiver reader);
+    - a bind-time reaching-definitions fact for one classifier. It is deferred to G628 instead.
+  - **Open:**
+    - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
+    - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi

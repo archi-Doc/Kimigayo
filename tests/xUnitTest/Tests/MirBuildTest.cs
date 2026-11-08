@@ -131,6 +131,19 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public void OneIntegerValueIsOneConstant()
+    {
+        // G620: a Literal Pattern's constant is the bits Binding published, the encoding of a literal and a folded conversion, so one u8 value
+        // spelled three ways is one interned constant (fail-before: 255 and -1, two).
+        var c = Compile("func f(x: u8) -> i32\n    let a: u8 = 255\n    let b = (-1)@wrap<u8>\n    return match x\n        255 => 1\n        _ => 0\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Int128[] expected = [-1];
+        Assert.Equal(expected, f.Consts.ToArray().Where(static x => x.Kind == MirConstKind.Integer && x.Type.Underlying.Name == "u8").Select(static x => x.Bits));
+    }
+
     // SPEC 16.2.2 (DECISIONS R5-M50, R4-M132): the temp a transfer delivers whole into _0 after the Scope Exit is the body's result in
     // transit (MirLocalRole.Result): a return leaving a scope with a cleanup has one, a body's tail value writes _0 and has none, a
     // constructor's return none (its target is a Unit temp), a default template whose tail construct a transfer leaves one, at the
