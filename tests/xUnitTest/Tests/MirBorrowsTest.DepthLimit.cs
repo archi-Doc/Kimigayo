@@ -75,6 +75,28 @@ public sealed partial class MirBorrowsTest
         }
     }
 
+    // SPEC 8.15.3, IMPL 21.3.2 (R8-K1a): a Dictionary nest's owning iteration keeps dev's storage-height bound though the owned remainder
+    // now holds the consumed Dictionary's Handle whole: 62 levels accepted, one deeper the resource records.
+    [Fact]
+    public void ADictionaryOwningIterationsBoundIsDevs()
+    {
+        Assert.Empty(DiagnosticCorpus.Check(Program(62)).Diagnostics);
+        var rejected = DiagnosticCorpus.Check(Program(63)).Diagnostics;
+        Assert.Contains(rejected, static x => x.Code == DepthLimit);
+        Assert.Contains(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+
+        static string Program(int depth)
+        {
+            var type = "i32";
+            for (var i = 0; i < depth; i++)
+            {
+                type = $"Dictionary<i32, {type}>";
+            }
+
+            return $"public func main()\n    var d: {type} = [:]\n    for (k, v) in d@move\n        Console.writeLine(\"x\")\n";
+        }
+    }
+
     // The program of AnUnclassifiedDestructionOrCallIsUnsupported.
     private const string UnclassifiedPin = "func deep(n: Nest<ref/i32 during a>)\n    let r = n@ref\nfunc unborrowed(n: Nest<ref/i32 during a>)\n    let r = 1\n" +
         "func made()\n    var y = 1\n    let n = Nest<ref/i32>.init(value: y@ref)\nfunc unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n";
