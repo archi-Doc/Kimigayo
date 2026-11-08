@@ -52,19 +52,18 @@ internal sealed partial class MirBuilder
             node);
     }
 
-    // SPEC 13.4, 14.8.1: the comparison TyCtxt.Comparison gives the left operand's Type below its ref and uniq layers (the right one's after a
-    // Never left) where a library witness runs it (Binding.WitnessGroup, read first so that a scalar operator asks no memo); null where the
-    // operator runs it. So a pair-layered left operand stays on the operator table's routine, and a pair-layered right one after a plain left
-    // reaches the witness (Compared): the one walk of those layers is R8-S1e's (PLAN).
-    private ComparisonNode? Witnessed(MirBinaryOp relation, int start)
+    // SPEC 13.4, 13.5.5, 14.8.1: the comparison TyCtxt.Comparison gives the Type the left operand compares (the right one's after a Never
+    // left), Binding's decision for that operand below its ref, uniq and qualifying pair layers (TyCtxt.OperandTerminal), where a library
+    // witness runs it (Binding.WitnessGroup, read first so that a scalar operator asks no memo); null where the operator runs it.
+    private ComparisonNode? Witnessed(MirBinaryOp relation, int start, Koto left, Koto right)
     {
         if (relation < MirBinaryOp.Eq)
         {
             return null;
         }
 
-        var left = this.TypeOf(this.arguments[start]);
-        var terminal = Binding.ComparisonReferent(ReferenceEquals(left, BoundType.Never) ? this.TypeOf(this.arguments[start + 1])! : left!);
+        var never = ReferenceEquals(this.TypeOf(this.arguments[start]), BoundType.Never);
+        var terminal = compilation.Types.OperandTerminal(never ? right : left, this.TypeOf(this.arguments[never ? start + 1 : start])!);
         var contract = relation is MirBinaryOp.Eq or MirBinaryOp.Ne ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable;
         var row = Binding.WitnessGroup(terminal, contract) is null ? null
             : compilation.Types.Comparison(compilation.Library.GetSymbol(contract)!, terminal, operators: true);

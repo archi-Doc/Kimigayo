@@ -17,15 +17,20 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 3.4.3, 13.4, 13.5.5: the Type a built-in operator's operand or a selection's receiver denotes, below its ref and uniq layers and
+    // each qualifying pair layer in the operand's scope: the one statement of it, which TyCtxt.OperandTerminal publishes to the MIR builder.
+    internal BoundType OperandTerminal(Koto operand, BoundType type) => ComparisonReferent(this.ComparisonThroughPairs(operand, type));
+
     // SPEC 13.4, 13.5.5: the Type a comparison operand denotes once its qualifying pair layers are followed; the operand is
-    // then shared-borrowed through the layer where a reference to it is required.
+    // then shared-borrowed through the layer where a reference to it is required. The operand's scope is read only at a pair layer.
     private BoundType ComparisonThroughPairs(Koto operand, BoundType type)
     {
-        var scope = this.ConstraintScope(operand);
+        BindingScope? scope = null;
         for (var depth = 0; depth < 8; depth++)
         {
             var terminal = ComparisonReferent(type);
-            if (this.FollowablePair(terminal, scope, out var target) == SemanticsMask.None)
+            if (!TryPairLayer(terminal, out _, out _) ||
+                this.FollowablePair(terminal, scope ??= this.ConstraintScope(operand), out var target) == SemanticsMask.None)
             {
                 return depth == 0 ? type : terminal;
             }
@@ -49,8 +54,7 @@ public sealed partial class Binding
             return Complete(binary, BoundType.Boolean);
         }
 
-        left = this.ComparisonThroughPairs(binary.Left, left);
-        right = this.ComparisonThroughPairs(binary.Right, right);
+        // SPEC 3.5.3: Unit behind ref and uniq layers alone is read; one below a pair layer is inspected (OperandTerminal follows it).
         if (!ReferenceEquals(left, BoundType.Unit) && ReferenceEquals(ComparisonReferent(left), BoundType.Unit))
         {
             this.adaptations[binary.Left] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
@@ -61,8 +65,9 @@ public sealed partial class Binding
             this.adaptations[binary.Right] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
         }
 
-        left = ComparisonReferent(left);
-        right = ComparisonReferent(right);
+        left = this.OperandTerminal(binary.Left, left);
+        right = this.OperandTerminal(binary.Right, right);
+
         if (!FitsType(right, left, out var failure))
         {
             if (this.CommonOriginType(left, right, out _) is not { } common)

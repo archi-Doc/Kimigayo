@@ -20,9 +20,6 @@ public sealed partial class Binding
         return left ? id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id;
     }
 
-    private BoundType ArithmeticTerminal(Koto operand, BoundType type)
-        => ComparisonReferent(this.ComparisonThroughPairs(operand, type));
-
     private bool HasArithmeticPremise(BoundType type, KimiDeclarationId id, BindingScope scope)
         => this.Library.GetSymbol(id) is { } contract && this.HasContractFact(type, contract, scope);
 
@@ -68,7 +65,7 @@ public sealed partial class Binding
         var leftLiteral = IsUnfittedLiteral(binary.Left);
         var rightLiteral = IsUnfittedLiteral(binary.Right);
         var left = leftLiteral ? null : this.BindIndependentOperand(binary.Left, scope);
-        var leftCore = left is null ? null : this.ArithmeticTerminal(binary.Left, left);
+        var leftCore = left is null ? null : this.OperandTerminal(binary.Left, left);
         var ordinary = leftCore is not null && (UserArithmeticProvider(leftCore) || this.HasArithmeticPremise(leftCore, ArithmeticContract(operation), scope));
         // SPEC 14.9.2, 10.5.1: a built-in input Type still guides a Literal control-flow operand, every result source a literal, surveyed
         // without committing their defaults; such an operand cannot supply a user provider.
@@ -80,7 +77,7 @@ public sealed partial class Binding
 
         // A fixed left provider can give the other operand a bounded expected Type after selection.
         var right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
-        var rightCore = right is null ? null : this.ArithmeticTerminal(binary.Right, right);
+        var rightCore = right is null ? null : this.OperandTerminal(binary.Right, right);
         if ((!leftLiteral && this.RestsOn(binary.Left, left)) || (!rightLiteral && this.RestsOn(binary.Right, right)))
         {
             // Missing inputs defer provider selection, while successful operand facts retain independent prohibitions.
@@ -186,7 +183,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var self = this.ArithmeticTerminal(unary.Operand, operand);
+        var self = this.OperandTerminal(unary.Operand, operand);
         if ((self.IsNumeric || this.IsGenericWrapping(self, scope)) || !(UserArithmeticProvider(self) || this.HasArithmeticPremise(self, KimiDeclarationId.Negatable, scope)))
         {
             return false;

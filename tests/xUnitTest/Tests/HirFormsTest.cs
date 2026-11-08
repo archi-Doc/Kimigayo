@@ -232,6 +232,28 @@ public sealed partial class HirFormsTest
         Assert.DoesNotContain(c.BuildMir().Records(MirRecordClass.Construction), x => x.Subject == SourceRef.Of(jump));
     }
 
+    // SPEC 3.5.3, 13.4, 13.5.5: a comparison operand of Unit behind ref layers alone is read (ReferentRead); one below qualifying pair
+    // layers is inspected through a shared borrow, at every depth Binding follows them, the eighth included (R8-S1e: the walk's
+    // fallthrough there once left the ref layer, so the operand was read).
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(8, false)]
+    public void AUnitOperandBelowPairLayersIsNotRead(int layers, bool read)
+    {
+        var type = "ref/() during o0";
+        for (var k = 1; k <= layers; k++)
+        {
+            type = $"s/({type}) during o{k}";
+        }
+
+        var c = MinimalEmissionTest.Analyze($"func f<s/T>(value: {type}) -> bool\n    s is ref or uniq\n    return value == ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var comparison = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single(static x => x.Akind == KotoKind.EqualsEquals);
+        Assert.Equal(read ? HirAdaptation.ReferentRead : HirAdaptation.SharedBorrow, HirTables.AdjustOf(comparison.Left).Adaptation);
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]

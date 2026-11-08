@@ -312,7 +312,7 @@ public sealed partial class Binding
             return false;
         }
 
-        terminal = this.ArithmeticTerminal(operand, type);
+        terminal = this.OperandTerminal(operand, type);
         return this.BuiltinNumeric(terminal, scope);
     }
 
