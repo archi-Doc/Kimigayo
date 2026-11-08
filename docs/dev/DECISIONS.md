@@ -906,6 +906,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   drops, but the SPEC 15.1.3 rule undecided or false errors from joined bits); replaying or re-solving per view; storing Types in
   the record; rows on MirBody; flags per Drop; a separate event walk; removing the builder's copy-time rule; a new diagnostic
   code. Not temporary.
+  - Superseded in part by R8-M10 (OI-1a): a Drop only check edges reach now has one Elide row where nothing of its Place is initialized, and check-only code is judged by that row alone.
 - **R4-M6b** (2026-10-12; U5b, NEW-F9; refines R4-M6a's input) A destructor's `self` is no owner (SPEC 16.3.1). The
   builder registers its end cleanup as the layer's field cleanup (SPEC 16.3.2) through `Cleanup.Fields` (`FieldCleanup`): after the
   body's Scope Exit, on the normal end and in every return's drop tree, a Drop of each own Field whose Type may need drop, last to
@@ -11694,6 +11695,7 @@ structure is recorded here by the unit that first implements it.
       array's also its length and stride, a destructor's its instance). It needs a new variable-length key (MonoKey's fields are
       fixed) and an Open row's level (`FunctionCodegen.Drops`) reading the dropped value's Type instead of its glue item's
       representative, which the move-path steps follow; a speculative mechanism (AGENTS "Short").
+  - Superseded in part by R8-M10 (OI-1a): the clause "A2's verdicts do not narrow the checked set"; a check-only Drop with an Elide row asks no drop glue.
 - **R5-M62 `VTableDef` and `TyCtxt.Applies`, a struct family's dispatch shape** (2026-10-19; plan F4; under R5-M18 form 1 and
   R5-M61) A permanent declaration table (`Binding/VTableDef.cs`, R2b-D3's deferred view) kept on the struct's `AdtDef` (`VTable`),
   and a view beside `TyCtxt.Witness` (`TyCtxt.Dispatch.cs`). `PrepareVirtualOverrides` fills the table at its end, once slot
@@ -16207,6 +16209,24 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves: IR only.** A comparison whose left operand has a qualifying pair layer (`value == "x"`, `value: s/string` under `s is ref or uniq`) calls `StringWitness.equals`/`compare` instead of the routines; a Never left with a pair-layered right string operand (n1) collects the witness instance in its dead block; at exactly 8 nested qualifying pair layers over `ref/()` (t8/f8) the Unit operand is inspected through a shared borrow. No acceptance or record moves.
   - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself goes at R8-S1e-b.
   - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
+- **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
+  YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
+  checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
+  - **Rule.** A check-only Drop has one Elide row where nothing of its Place is initialized on any assumed path, else none, never
+    another verdict (A4 relies on it: such a row elaborates nothing, no flag, no codegen, no destructor). `MirDropTable.Elides` is the
+    one statement of "this Drop destroys nothing in a view", which A5 (`Dropping`) and the instance collector read; the collector
+    requests no DropGlue for such a Drop, and keeps every glue of a body whose verdicts are inexact (`Incomplete`).
+  - **A transfer's secured operand is delivered on its assumed path** (SPEC 14.10.3 "before any cleanup", 16.2.2): `MirBuilder.Transfer`
+    moves it on the check edge into a temp of its own that no cleanup destroys, never into the target's Destination (which would
+    initialize it on the continuation: false `ReassignedLet_Kd`). The temp is made only where `MirTypes.MayNeedDrop` holds,
+    `Created`'s condition, with this as its second call site.
+  - **Why the old clauses no longer hold.** R5-M60's kept parity with the old CollectionDrop path, which is gone; R4-M6a's kept A2 to
+    elaboration, and an Elide row elaborates nothing.
+  - **Moves.** Acceptance: a collection handle over an element whose layout fails, passed, moved or returned by value with nothing
+    destroyed (members and twins in the commit). Records (Q13): false records at the Drops of moved-out or never-initialized values.
+  - **Rejected:** the collector deriving "nothing initialized" itself (a second owner of A2's fact); a destruction laying out an element
+    only where its destruction runs (accepts `I_dDrop`, `I_aDrop`, against the planning session's ruling); a move into the Destination
+    on the check edge.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
