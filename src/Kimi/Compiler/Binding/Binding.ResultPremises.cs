@@ -15,10 +15,10 @@ namespace Kimi.Compiler;
 // replaced a required Origin. One visitor serves both.
 public sealed partial class Binding
 {
-    // The parts one well-formedness visit met, and those one borrow layer's stored visit met, each with the substituted and argument
-    // parts it last met them beside (VisitWellFormedPremises; DECISIONS BU-55, R4-M164 U1e).
-    private readonly TypeMemo<(BoundType Result, BoundType? Actual)> wellFormedParts = new();
-    private readonly TypeMemo<(BoundType Result, BoundType? Actual)> storedParts = new();
+    // The pattern parts one well-formedness visit met, and those one borrow layer's stored visit met, each beside its argument part, with
+    // the substituted part it last met that pair with (VisitWellFormedPremises; DECISIONS BU-55, R4-M164 U1e).
+    private readonly TypeMemo<(BoundType Pattern, BoundType? Argument), BoundType> wellFormedParts = new();
+    private readonly TypeMemo<(BoundType Pattern, BoundType? Argument), BoundType> storedParts = new();
 
     // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
     private FunctionKoto? resultPremiseExcluded;
@@ -198,19 +198,19 @@ public sealed partial class Binding
 
     // Whether a query of VisitWellFormedPremises meets a pattern part beside these parts for the first time; a leaf, or a part that
     // stores no Origin, is cheaper to visit again than to record.
-    private static bool FirstMet(TypeMemo<(BoundType Result, BoundType? Actual)> parts, BoundType pattern, BoundType result, BoundType? actual, uint query)
+    private static bool FirstMet(TypeMemo<(BoundType Pattern, BoundType? Argument), BoundType> parts, BoundType pattern, BoundType result, BoundType? actual, uint query)
     {
         if (pattern.Components.Count == 0 || !pattern.StoresOrigin)
         {
             return true;
         }
 
-        if (parts.TryGet(pattern, query, out var met) && ReferenceEquals(met.Result, result) && ReferenceEquals(met.Actual, actual))
+        if (parts.TryGet((pattern, actual), query, out var met) && ReferenceEquals(met, result))
         {
             return false;
         }
 
-        parts.Set(pattern, query, (result, actual));
+        parts.Set((pattern, actual), query, result);
         return true;
     }
 
@@ -509,9 +509,9 @@ public sealed partial class Binding
     // argument's own Type, which is well formed, it covers only the positions that the fit replaced. Each entry call is one query of
     // wellFormedParts, each borrow layer's stored visit one of storedParts: a part met again beside the same parts only repeats what its
     // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
-    // once per distinct (substituted, argument) pair beside which it is met consecutively: linear where the pair follows from the part
-    // (no argument, or an argument Type that is the instantiated parameter itself), but argument parts that diverge and alternate beside
-    // a shared pattern part can still cost 2^n, as before U1e (an open issue).
+    // once per distinct argument part beside it (TypeMemo's pair) and change of its substituted part between consecutive meets of that
+    // pair; each skip prunes a revisit whose first visit completed in the query. Whether that bounds a form whose argument parts alternate
+    // beside a shared pattern part is unshown (PLAN G387).
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
         => this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
 

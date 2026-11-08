@@ -53,6 +53,21 @@ public class ClosureReceiverClassificationTest
         Assert.Equal(SemanticsKind.Owner, closure.ClosureOf()!.Receiver);
     }
 
+    // SPEC 7.7.3, 3.5, 23.1.2 (R7-Y2b): a Consuming call Copies a captured Copy Closure, which only reads it, so the outer Closure stays
+    // Shared and `ref/F` supplies its call; a Non-Copy one needs `g@move()`, a Move out of the environment (Consuming), whose call through
+    // `ref/F` is invalid. The bare call of a Non-Copy one fails, and its failure explains its callee: no Consuming need rests on it.
+    [Theory]
+    [InlineData("    let n: i32 = 1\n    let g = func [n] () -> i32 => n@move\n    let f = func [g] () -> i32 => g()\n", SemanticsKind.Ref, "")]
+    [InlineData("    let s = \"a\"\n    let g = func [s@move] () -> string => s@move\n    let f = func [g@move] () -> string => g@move()\n", SemanticsKind.Owner, "InvalidAssignment_Kd r")]
+    [InlineData("    let s = \"a\"\n    let g = func [s@move] () -> string => s@move\n    let f = func [g@move] () -> string => g()\n", SemanticsKind.Ref, "TransferRequired_Kd g")]
+    public void AConsumingCallIsConsumingWhereItMovesTheCapturedClosure(string head, SemanticsKind receiver, string records)
+    {
+        var source = "public func main() -> ()\n" + head + "    let r = f@ref\n    let v = r()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Last(static x => x.IsAnonymous).ClosureOf()!;
+        Assert.Equal((receiver, records), (f.Receiver, Records(source)));
+    }
+
     [Fact]
     public void AnExclusiveBodyNeedsAWritableClosure()
     {
@@ -285,9 +300,10 @@ public class ClosureReceiverClassificationTest
     // so the call is Exclusive there. A Closure publishes the receiver every case has and marks such captures; a case's receiver is
     // the case-free one, raised to Exclusive where a marked capture's case Type is an exclusive layer, and Receiver is the strongest
     // over the cases. Each row: per Closure in source order, the case-free receiver, the owner and uniq cases' receivers and the
-    // marked captures. A value position its consumer takes by value (ClosureEffects.ConsumedByValue: an argument of a call or a value
+    // marked captures. A value position its consumer takes by case (ClosureEffects.TakenByCase: an argument of a call or a value
     // call, an assignment's source, a Dictionary entry, through parentheses too) acquires as a bare use does; a Reborrow of a Place reached
-    // through a capture, and an explicit case adaptation of a capture that is no pair layer, count in every case.
+    // through a capture, and an explicit case adaptation of a capture that is no pair layer, count in every case. An explicit transfer of
+    // the capture moves it out of the environment in every case (Consuming, R7-Y2b).
     [Theory]
     [InlineData("    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
     [InlineData("    let h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n    h()\n", "Ref Ref Uniq [value]")]
@@ -303,6 +319,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("    var h = func [value] () -> ()\n        _ = 1\n", "Ref Ref Ref []")]
     [InlineData("    let pair = (value, 1)\n    var h = func [pair@move] () -> ()\n        let local = pair.0\n        _ = local\n", "Uniq Uniq Uniq []")]
     [InlineData("    var local: i32 = 1\n    var h = func [var local] () -> ()\n        let k = local@s/i32\n", "Uniq Uniq Uniq []")]
+    [InlineData("    let h = func [value] () -> ()\n        take(value@move)\n", "Owner Owner Owner []")]
     public void EachAdmittedCaseHasTheReceiverItsFactsGive(string body, string expected)
     {
         var c = MinimalEmissionTest.Analyze(PairHead + body + PairMain);
@@ -382,7 +399,8 @@ public class ClosureReceiverClassificationTest
     // SPEC 14.2.2, 3.5, 3.5.1, 7.7.3 (DECISIONS R4-M145; PLAN G251 (7)): a captured Place in Discard Context is acquired as at a value
     // position: a stored exclusive reference Reborrows, so its Closure is Exclusive and a `let` Closure's call invalid, as a statement,
     // in parentheses and as a discarded `if` or `match` body, as `let k = value` is; a Copy capture is read and stays Shared; a bare
-    // Non-Copy capture needs its Move spelled, and `title@move` makes the call Consuming, so it needs `h@move`. Each row: the records
+    // Non-Copy capture needs its Move spelled, and `title@move` makes the call Consuming, so it needs `h@move`; so does the bare rule's
+    // Move row of `title` (R7-Y2b: a record dependent on the failed acquisition, DECISIONS Q13). Each row: the records
     // under `let h`, under `var h`, and of the same use outside a Closure (a discarded Copy local's lint, DiscardedValue_Kd, there).
     [Theory]
     [InlineData("value\n", "InvalidAssignment_Kd h", "", "")]
@@ -391,7 +409,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("match c\n    true => value\n    false => ()\n", "InvalidAssignment_Kd h", "", "")]
     [InlineData("let k = value\n_ = k@move\n", "InvalidAssignment_Kd h", "", "")]
     [InlineData("count\n", "", "", "DiscardedValue_Kd count")]
-    [InlineData("title\n", "TransferRequired_Kd title", "TransferRequired_Kd title", "TransferRequired_Kd title")]
+    [InlineData("title\n", "TransferRequired_Kd title; TransferRequired_Kd h", "TransferRequired_Kd title; TransferRequired_Kd h", "TransferRequired_Kd title")]
     [InlineData("title@move\n", "TransferRequired_Kd h", "TransferRequired_Kd h", "")]
     public void ADiscardedCapturedPlaceIsAcquiredAsAtAValuePosition(string use, string letRecords, string varRecords, string freeRecords)
     {
