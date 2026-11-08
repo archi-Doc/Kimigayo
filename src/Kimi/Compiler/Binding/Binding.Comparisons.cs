@@ -54,19 +54,19 @@ public sealed partial class Binding
             return Complete(binary, BoundType.Boolean);
         }
 
-        // SPEC 3.5.3: Unit behind ref and uniq layers is read. Until R8-S1e 2/3 the test reads the Type the pair walk returns, as before.
-        var (leftPairs, rightPairs) = (this.ComparisonThroughPairs(binary.Left, left), this.ComparisonThroughPairs(binary.Right, right));
-        left = this.OperandTerminal(binary.Left, left);
-        right = this.OperandTerminal(binary.Right, right);
-        if (!ReferenceEquals(leftPairs, BoundType.Unit) && ReferenceEquals(left, BoundType.Unit))
+        // SPEC 3.5.3: Unit behind ref and uniq layers alone is read; one below a pair layer is inspected (OperandTerminal follows it).
+        if (!ReferenceEquals(left, BoundType.Unit) && ReferenceEquals(ComparisonReferent(left), BoundType.Unit))
         {
             this.adaptations[binary.Left] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
         }
 
-        if (!ReferenceEquals(rightPairs, BoundType.Unit) && ReferenceEquals(right, BoundType.Unit))
+        if (!ReferenceEquals(right, BoundType.Unit) && ReferenceEquals(ComparisonReferent(right), BoundType.Unit))
         {
             this.adaptations[binary.Right] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
         }
+
+        left = this.OperandTerminal(binary.Left, left);
+        right = this.OperandTerminal(binary.Right, right);
 
         if (!FitsType(right, left, out var failure))
         {

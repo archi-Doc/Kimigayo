@@ -153,7 +153,7 @@ internal sealed partial class MirBuilder
             PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
             _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
         })));
-        if (this.Witnessed(MirBinaryOp.Eq, start) is { } comparison)
+        if (this.Witnessed(MirBinaryOp.Eq, start, position.Source, position.Source) is { } comparison)
         {
             this.Compared(value, comparison, MirBinaryOp.Eq, start, position.Source);
         }
