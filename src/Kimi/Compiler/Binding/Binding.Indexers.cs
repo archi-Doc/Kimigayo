@@ -281,8 +281,7 @@ public sealed partial class Binding
         }
 
         // Like every synthesized call, its own failure is a published fact that the index expression rests on.
-        this.nodes.Add(call);
-        return this.BindCall(call, scope, null) is null ? null : call;
+        return this.BindSynthesizedCall(source, call, scope) is null ? null : call;
     }
 
     // A user or view index expression's UniqIndexable fact (uniqIndexing).

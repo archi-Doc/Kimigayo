@@ -17,6 +17,9 @@ namespace Kimi.Compiler;
 // - Prohibitions: the counting decides no failure and writes no fact the publisher reads.
 public sealed partial class Binding
 {
+    // Each call Binding synthesized in this pass, with its consumer (BindSynthesizedCall).
+    private Dictionary<InvocationKoto, Koto>? synthesizedCalls;
+
     private BindingResult Check(BindingMode mode)
     {
         this.ProduceFailures(mode);
@@ -57,9 +60,15 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(node, invalidTarget);
             }
+            else if (node is InvocationKoto { BoundCall: { } } synthesized && this.synthesizedCalls?.GetValueOrDefault(synthesized) is { BindingFailure: not BindingFailure.None } consumer)
+            {
+                // SPEC 23.1.2: a synthesized call is its consumer's witness call (an iteration's entry or step, an index, a view, a range, a
+                // requirement, a write); a consumer that failed its own check of the same subject leaves the call resting on it.
+                this.CompleteDependent(synthesized, consumer);
+            }
             else if (node is InvocationKoto { BoundCall: { } call })
             {
-                this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
+                this.RequireClauses(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
             }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
@@ -84,7 +93,35 @@ public sealed partial class Binding
             }
         }
 
+        this.SettleSynthesizedCalls();
         this.FailNeededSites(); // The sites the loop's checks needed (BU-76).
+    }
+
+    // SPEC 10.1, 23.1.2 (DECISIONS: G572 U2a): a call Binding synthesizes for a consumer (an iteration's entry and step, an
+    // index, a view, a range, an operator's or a comparison's requirement, a formatting write, an object creation) is bound into `nodes`,
+    // so the Final loop judges its obligation, and with its consumer, which rests on it when that loop fails it (SettleSynthesizedCalls):
+    // no Resolved node stands over a failed call.
+    private BoundType? BindSynthesizedCall(Koto consumer, InvocationKoto call, BindingScope scope)
+    {
+        this.nodes.Add(call);
+        (this.synthesizedCalls ??= new(ReferenceEqualityComparer.Instance))[call] = consumer;
+        return this.BindCall(call, scope, null);
+    }
+
+    private void SettleSynthesizedCalls()
+    {
+        if (this.synthesizedCalls is not { } calls)
+        {
+            return;
+        }
+
+        foreach (var (call, consumer) in calls)
+        {
+            if (call.BindingFailure != BindingFailure.None && consumer.BindingFailure == BindingFailure.None)
+            {
+                this.CompleteDependent(consumer, call);
+            }
+        }
     }
 
     // The pass summary: each node's state, counted once the failures are decided, and each failed node's issue, or its derived issue.

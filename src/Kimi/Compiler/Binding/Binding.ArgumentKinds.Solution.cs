@@ -197,41 +197,10 @@ public sealed partial class Binding
             var constructor = function.IsConstructor;
             var arguments = constructor ? this.Types.AsSpan(0, CallSlotCount(function)) : slots;
             binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
-            var proof = binding.CheckConstraints(
-                function.TypeConstraints,
-                function,
-                arguments,
-                this.Scope,
-                this.Self,
-                constructor ? null : this.DeclaringType,
-                this.Lengths,
-                incomplete: incomplete || !unbound.IsEmpty,
-                skipUnresolved: !unbound.IsEmpty,
-                slotOwner: this.SlotOwner);
-            if (this.DeclaringType is { } declaringType)
-            {
-                var closedOwner = constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType;
-                if (closedOwner is not null)
-                {
-                    proof = CombineProof(proof, binding.CheckTypeConstraints(closedOwner, this.Scope), true);
-                }
-                else if (constructor && this.SlotOwner is StructKoto owner)
-                {
-                    var ownerSlots = this.Types.AsSpan(0, CallSlotCount(function));
-                    var ownerProof = binding.CheckConstraints(
-                        owner.ConstraintNodes, owner, ownerSlots, this.Scope, incomplete: true, skipUnresolved: !unbound.IsEmpty);
-                    proof = CombineProof(proof, ownerProof, true);
-                }
-            }
-
-            proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true);
-            // A substitution must be a valid complete Type independently of whether the function constrains or uses that slot (SPEC 8.1.3).
-            for (var i = 0; i < slots.Length; i++)
-            {
-                proof = CombineProof(proof, this.SlotProof(slots, i, unbound), true);
-            }
-
-            proof = CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
+            var closedOwner = this.DeclaringType is { } declaringType ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
+            var bindings = new CandidateBindings(function, function.BoundSymbol!, arguments, this.Lengths, this.Self, this.DeclaringType, closedOwner, unbound, constructor);
+            var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
+            proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true); // The trial's alone until R7-C2 (b) (PLAN G375).
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
             var clause = binding.ProofClause(proof); // G351a: at the trial's verdict.
             proof = binding.EndProof(proof);
@@ -290,21 +259,6 @@ public sealed partial class Binding
 
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.
-        private readonly ConstraintProof SlotProof(ReadOnlySpan<BoundType?> slots, int slot, SlotSet unbound)
-        {
-            if (CallOwnSlots(this.Function)[slot] is LengthParameterKoto)
-            {
-                return this.Lengths[slot] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown;
-            }
-
-            if (slots[slot] is { } argument)
-            {
-                return this.Binding.CheckTypeConstraints(argument, this.Scope);
-            }
-
-            return unbound.Contains(slot) ? ConstraintProof.Proven : ConstraintProof.Unknown;
-        }
-
         // Replaces the open regions of each argument whose Callable signature holds one, marking that argument unless `fixedOnly`.
         private readonly bool StandIns(int[] mapping, Span<BoundType?> slots, Span<BoundArgumentOperation> targets, bool fixedOnly)
         {

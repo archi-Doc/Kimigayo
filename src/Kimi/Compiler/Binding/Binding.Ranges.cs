@@ -287,7 +287,7 @@ public sealed partial class Binding
         this.ResetSynthetic(lengthArgument);
         this.ResetSynthetic(lengthArgument.Left);
         this.ResetSynthetic(lengthArgument.Right);
-        return this.BindCall(call, scope, null) is null ? null : call;
+        return this.BindSynthesizedCall(source, call, scope) is null ? null : call;
     }
 
     // SPEC 4.6.3: a range key whose written boundaries are integers of any PrimitiveInteger Type, read through references,
@@ -429,7 +429,7 @@ public sealed partial class Binding
             : range.Start is not null ? this.PositionSyntaxCall(range, "from", start, null, range.Start, null)
             : range.End is not null ? this.PositionSyntaxCall(range, "to", end, null, range.End, null)
             : this.PositionSyntaxCall(range, "all", null, null, null, null);
-        return this.BindCall(call, scope, null) is null ? Complete(range, null) : Complete(range, type);
+        return this.BindSynthesizedCall(range, call, scope) is null ? Complete(range, null) : Complete(range, type);
     }
 
     // The Type of a written range boundary known independently of the context, read through references; null for an
@@ -486,7 +486,7 @@ public sealed partial class Binding
         }
 
         var call = this.PositionSyntaxCall(node, "fromEnd", offset, null, node.Operand, null);
-        return this.BindCall(call, scope, null) is null ? Complete(node, null) : Complete(node, this.FromEndType(offset));
+        return this.BindSynthesizedCall(node, call, scope) is null ? Complete(node, null) : Complete(node, this.FromEndType(offset));
     }
 
     // The T of `^x`: a literal-only operand takes the T of an expected FromEnd<T>, else i32 (SPEC 4.6.2).
