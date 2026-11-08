@@ -25,13 +25,17 @@ group DictionaryStorage
             self.previous = previous
             self.next = next
 
-    /// The slot stride, the one statement every body that addresses a slot reads: the Links' 16 bytes, then a `K` and a `V`,
-    /// rounded up to the slot's alignment, the largest of the Links' 8 and theirs (IMPL 21.1.1; the slot is implementation storage,
-    /// IMPL 21.1.3). It reads each Type's own stride and alignment and lays out no aggregate of them, so a `K` or `V` over a generation
-    /// limit is that limit's record (IMPL 21.3.2), and the slot's size is no layout obligation of the program (SPEC 8.15.3). Until
-    /// K1b removes it, the compiler's `DictionaryEntryLayout.Of` is the slot rule's second statement, for the remaining kernels and
-    /// `placeEntry`'s helper, and agrees with this one on one buffer: on `placeEntry`'s path its stride reaches `append`, which passes it
-    /// on to `reserve`, `grow` and `appendSlot`, while `reserveEntries`, `shrinkEntries`, `removeEntry` and `clearEntries` pass this one.
+    // The slot rule (IMPL 21.1.1; the slot is implementation storage, IMPL 21.1.3): the Links' 16 bytes at the slot's start, the key
+    // at 16, the value at the key's end aligned for it, the stride the value's end aligned for the slot, whose alignment is the largest
+    // of the Links' 8 and theirs. `slotStride`, `keyAt` and `valueAt` state it, the one statement every body that addresses a slot
+    // reads. They read each Type's own stride and alignment and lay out no aggregate of them, so a `K` or `V` over a generation limit
+    // is that limit's record (IMPL 21.3.2), and the slot's size is no layout obligation of the program (SPEC 8.15.3). Premises: every
+    // alignment is a power of two at most 16 (IMPL 21.1.3), so 16 is aligned for every key, and every size is a multiple of its
+    // alignment. Until K1b's second part removes it, the compiler's `DictionaryEntryLayout.Of` states the same rule for
+    // `dictionaryStorage`'s stride and `placeEntry`'s helper, which writes a placed entry at its offsets and hands its stride to
+    // `append`, which passes it on to `reserve`, `grow` and `appendSlot`.
+
+    /// The slot stride: the Links, a `K` and a `V`, rounded up to the slot's alignment.
     internal func slotStride<K, V>() -> isize
         let key = alignmentOf<K>()
         let value = alignmentOf<V>()
@@ -44,6 +48,18 @@ group DictionaryStorage
     // The alignment of `T`: the stride of a byte and no `T`, which this implementation aligns as `T` (IMPL 21.1.1). Its one stored
     // part is the byte, so its size stays within every limit; a `T` over a limit is that limit's record.
     func alignmentOf<T>() -> isize => Storage.stride<(u8, [0 of T])>()
+
+    /// Returns the address of the key in the slot that starts at `slot`, with the provenance and authority of `slot`.
+    ///
+    /// - safety: `slot` starts a slot in the slot storage of a `Dictionary<K, V>`.
+    internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K => (slot + 16)@raw/K
+
+    /// Returns the address of the value in the slot that starts at `slot`, with the provenance and authority of `slot`.
+    ///
+    /// - safety: `slot` starts a slot in the slot storage of a `Dictionary<K, V>`.
+    internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V
+        let alignment = alignmentOf<V>()
+        return (slot + (16 + Storage.stride<K>() + alignment - 1) / alignment * alignment)@raw/V
 
     /// Reads a Dictionary's `capacity` (SPEC 4.9.5).
     internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize
@@ -77,7 +93,7 @@ group DictionaryStorage
             let stride = slotStride<K, V>()
             let slot = (*handle).buffer + (link - 1) * stride
             unlink(handle, stride, link)
-            return .Some(((*Storage.keyAt<K, V>(slot))@move, (*Storage.valueAt<K, V>(slot))@move))
+            return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
     /// Replaces the value of the live entry at `link` and returns the old one, which is secured before the new one
     /// is placed.
@@ -87,8 +103,8 @@ group DictionaryStorage
         K is Equatable
         unsafe
             let slot = (*(Storage.dictionaryStorage(value).0@raw/Handle)).buffer + (link - 1) * slotStride<K, V>()
-            let previous = (*Storage.valueAt<K, V>(slot))@move
-            Raw.initialize(Storage.valueAt<K, V>(slot), replacement@move)
+            let previous = (*valueAt<K, V>(slot))@move
+            Raw.initialize(valueAt<K, V>(slot), replacement@move)
             return previous@move
 
     // The capacity operations carry the standard operation's caller location to every failure they detect (SPEC 22.5.1).

@@ -303,6 +303,38 @@ public sealed partial class MirBuildTest
         });
     }
 
+    // SPEC 8.2.3, 13.4 (R8-OT): a comparison operand whose Type an identity premise makes layered (T is ref/string or uniq/string, ref/U
+    // over U is ref/string, under an explicit ref, uniq or pair layer, on either side, in a Closure or before a Literal Pattern) compares
+    // the terminal string: each comparison is its witness's call (no equality BinaryOp; an ordering compares compare's i32 with 0), walked
+    // from a borrow retyped to the premised Type (Viewed), with no finding (fail-before: InternalInvariant_Kd where the other side reaches
+    // the witness, else a BinaryOp at T); a conflict through the retyped view is the analysis' record.
+    [Theory]
+    [InlineData("func same<s/U, T>(x: ref/string during o, value: s/T) -> bool\n    s is ref or uniq\n    T is ref/string during o\n    return value == \"x\"\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, l: T) -> bool\n    T is ref/string during o\n    return \"x\" == l\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, a: ref/string, l: T) -> bool\n    T is ref/string during o\n    return a == l\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: T) -> bool\n    T is uniq/string during o\n    return \"x\" == l\n", false)]
+    [InlineData("func f<T>(x: ref/string during o, l: T) -> bool\n    T is ref/string during o\n    let c = func [l] () => l == \"a\"\n    return c()\n", false)]
+    [InlineData("func same<T, U>(x: ref/string during o, l: T, r: U) -> bool\n    T is ref/string during o\n    U is string\n    return l == r and r <= l\n", false)]
+    [InlineData("func pick<T>(x: ref/string during o, l: T) -> i32\n    T is ref/string during o\n    if l == \"a\" => return 1\n    match l\n        \"b\" => return 2\n        _ => return 3\n", false)]
+    [InlineData("func same<T, U>(x: ref/string during o, l: T, r: T) -> bool\n    U is string\n    T is ref/U during o\n    return l == \"a\" or l < r\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, v: uniq/T) -> bool\n    T is ref/string during o\n    return v == \"a\"\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, v: ref/T) -> bool\n    T is uniq/string during o\n    return v == \"a\"\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: T, r: T) -> bool\n    T is uniq/string during o\n    return l == r or l < r\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: ref/T, r: ref/T) -> bool\n    T is uniq/string during o\n    return l == r\n", false)]
+    [InlineData("func same<T>(x: ref/string during o, l: T, r: T) -> bool\n    T is ref/(ref/string during o) during o\n    return l == r\n", false)]
+    [InlineData("func same<T, U>(x: ref/string during o, l: T, r: T) -> bool\n    U is ref/string during o\n    T is ref/U during o\n    return l == r or l < r\n", false)]
+    [InlineData("func same<T>(x: uniq/string during o, l: T, r: T) -> bool\n    T is uniq/string during o\n    return l == r\n", false)]
+    [InlineData("func f<T>(x: ref/string during o, v: uniq/T) -> bool\n    T is ref/string during o\n    let u = v@follow@uniq\n    let b = v == \"a\"\n    u@follow = x\n    return b\n", true)]
+    public void APremiseGivenLayerIsWalkedToTheComparedPlace(string source, bool conflict)
+    {
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "same" or "pick" or "f" });
+        Assert.DoesNotContain(body.Statements.ToArray(), static x => x.Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Eq or (byte)MirBinaryOp.Ne });
+        Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
+    }
+
     // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the
     // Function Type with its own Origins, not the call's, whose result is bound to the argument.
     [Fact]

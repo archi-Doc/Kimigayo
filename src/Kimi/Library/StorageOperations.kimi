@@ -1,13 +1,5 @@
 // Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.2). Their comments state their operation
 // contracts (SPEC 5.2).
-/// Returns the address of the key in the slot that starts at `slot`, with the provenance and authority of `slot`.
-///
-/// - safety: `slot` starts a slot in the slot storage of a `Dictionary<K, V>`.
-internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K
-/// Returns the address of the value in the slot that starts at `slot`, with the provenance and authority of `slot`.
-///
-/// - safety: `slot` starts a slot in the slot storage of a `Dictionary<K, V>`.
-internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V
 /// Returns the address of the Dictionary that `value` borrows, with the provenance, authority and excepted Loan
 /// (SPEC 5.2.1 conditions 1, 3 and 4) that `@raw` of the argument's referent has in the caller, and the slot stride;
 /// no entry is acquired.

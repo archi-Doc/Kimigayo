@@ -58,8 +58,9 @@ public static partial class Parser
 
         var hasInlineAccessors = reader.TryConsume(TokenKind.Has, out var hasSpan, false);
 
-        reader.RestoreContext(propertyContext);
+        reader.RestoreContext(propertyContext with { AttributeKoto = null });
         var property = new PropertyKoto(ref reader, token, nameKoto, typeKoto, initializerKoto, hasInlineAccessors);
+        property.SetAttributeChain(propertyContext.AttributeKoto);
         reader.Document(property, SourceSpan.FromBounds(token.Span.Start, nameKoto.Span.End), propertyContext.AttributeKoto);
         reader.Hover(property, nameKoto.Span);
 
