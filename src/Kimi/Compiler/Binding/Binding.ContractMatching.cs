@@ -61,7 +61,7 @@ public sealed partial class Binding
 
     private bool AccessPart(BoundType type, BindingSymbol a, BindingSymbol b, uint query)
     {
-        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !AccessCovers(symbol, a, b))
+        if (type.Symbol is { Kind: BindingSymbolKind.Type } symbol && !this.AccessCovers(symbol, a, b))
         {
             return false;
         }
@@ -658,5 +658,5 @@ public sealed partial class Binding
     }
 
     private bool ConformanceAccessible(BoundConformancePath conformance, FunctionKoto implementation)
-        => AccessCovers(implementation.BoundSymbol!, conformance.Type, conformance.Contract);
+        => this.AccessCovers(implementation.BoundSymbol!, conformance.Type, conformance.Contract);
 }
