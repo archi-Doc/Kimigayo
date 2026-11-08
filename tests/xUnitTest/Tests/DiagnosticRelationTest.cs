@@ -98,11 +98,8 @@ public class DiagnosticRelationTest
 
     private static TestDiagnostic[] Publish(string source, out bool ownership)
     {
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Check(source);
         ownership = c.Problems.Count != 0;
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.ReportAnalysis();
         return TestDiagnostics.Of(c, "Hello.kimi");
     }
 }
