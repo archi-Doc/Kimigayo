@@ -572,9 +572,9 @@ public sealed partial class Binding
     // Binding.Check's Final prologue, before the summaries' sites (FailNeededSites) and the derived uses resting on either (BU-76).
     private void PublishNeededLimits()
     {
-        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        for (var i = 0; i < this.impls.Paths.Count; i++)
         {
-            if (this.activeConformancePaths[i] is { Needed: true } path)
+            if (this.impls.Paths[i] is { Needed: true } path)
             {
                 this.Fail(path.Use, BindingFailure.Unsupported);
             }

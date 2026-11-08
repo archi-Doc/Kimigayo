@@ -16035,6 +16035,20 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **N5.** `Integral`'s `HasAbstractPart` also admits an abstract non-integer Type such as `Option<T>` or `ref/T` in a generic body. The Backend's instance check closes it today. Removal condition: tighten `Integral` to what its own comment says ("an integer Type, or one whose instance decides it"), together with the Cast rows that read it.
     - **N6 / F4.** The values in case 2 are not ranged: char's code points, null only 0, and a generic literal's 0..127.
     - **The family is written twice,** here and in `FunctionCodegen.Values:86-96`. The proposed removal is a later unit with Back's consent: MIR publishes the family once in `MirConstKind.Integer`'s contract, for example a static `MirConst.IntegerTyped(BoundType)` = `Integral || Char || Raw`. On an instance Type `HasAbstractPart` is false, so the Backend's admission check can read the same predicate, and its copy goes.
+- **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
+  Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
+  per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
+  registration order. Two registrars add paths through `Register` (Self clauses and conditional blocks,
+  `Binding.Contracts.Registration`; inherited paths, `Binding.InheritedConformances`); every other component reads the table through
+  `Find`, `OfType`, `ByType`, `Identities`, `Paths`, `Path` and `TryPath`; `Reset` empties it at each pass until R7-D2b's stamped
+  tables. Verification stays with ContractMatching and InheritedConformances, availability with `ResolveConformance`. The concept's
+  name is "path" until R7-V2b renames the record `ImplDecl`. Supersedes R2b-D3 for `ImplTable` ("built by their first reader"): the
+  name now denotes Binding's store, which already existed as four unowned Binding fields read by the solver,
+  `ResolveRequirementWitness`, Hover and the other Binding components, so it is not a view derived for a later reader. Refines R4-M11
+  for the name only: the MIR view R4-M11 declined stays unbuilt and its reason holds (MIR reads witnesses through `TyCtxt`;
+  `PublishedBindingTypes` is unchanged). R2b-D3 still holds for `UniversalRelations`, `EffectBoundTable` (R7-V2f decides) and
+  `AvailableBounds` (R7-C7). Demand-built paths come with R7-D2 d3. Rejected: keeping the fields in Registration (the readers would
+  change again in V2b, V2c and D2b); renaming the record in V2a (it is renamed in V2b, the part that changes its meaning).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
