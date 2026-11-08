@@ -272,7 +272,7 @@ internal sealed partial class MirBuilder
 
         if (integer.Name is "isize" or "usize")
         {
-            return compilation.PointerWidth;
+            return ScalarTypes.SizeWidth;
         }
 
         return int.TryParse(integer.Name.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var width) ? width : 0;

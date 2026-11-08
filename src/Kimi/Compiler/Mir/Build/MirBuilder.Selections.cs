@@ -96,7 +96,7 @@ internal sealed partial class MirBuilder
         {
             var value = position.Kind == MirOperandKind.Move ? MirOperand.Copy(position.Place) : position;
             var test = this.Temp(BoundType.Boolean, node);
-            var extreme = Int128.One << (compilation.PointerWidth - 1);
+            var extreme = Int128.One << (ScalarTypes.SizeWidth - 1);
             if (this.Width(type, out var signed) == 0)
             {
                 this.Compare(test, MirBinaryOp.Le, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type))), value, outside, node);
