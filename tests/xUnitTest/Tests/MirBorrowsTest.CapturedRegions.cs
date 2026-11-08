@@ -160,8 +160,10 @@ public sealed partial class MirBorrowsTest
     // contract alone, so a `var`'s region over a `static` source is no `static` there. Invalid, accepted by dev, rejected now: an erasure
     // (s2h), a call's argument (s2c), a Callable bound (c12). An acceptance hole closed, no limit. The same rule, each invalid under O-61 (a)
     // and rejected on dev too (G572 U3): a held Closure over a `static`-only region erased at a stated `let` (e6v), at a call's argument
-    // (e6c), at a Field of Function Type (s9), and in a nested body (c11).
+    // (e6c), at a Field of Function Type (s9), and in a nested body (c11). Invalid under O-61 (a) too (G572 U1): an erasure whose input needs
+    // `p outlives R`, R's one bound p, a region's solved value not read there (f3v; SPEC 15.6.1, 15.3.7).
     [Theory]
+    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    let c = func (q: ref/i32 during r) -> ref/i32 during p => q\n    let g: (ref/i32 during p) -> ref/i32 during p = c\n    return g(p)\n" + Main, DiagnosticCode.UnprovenOriginContract_Kd, "during p = c", "c")]
     [InlineData(See + "func t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    let f: () -> ref/i32 during static = c@move\n    see(f())\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "c@move", null)]
     [InlineData(See + "func two(f: () -> ref/i32 during static)\n    see(f())\nfunc t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    two(c@move)\n" + Main, DiagnosticCode.NoApplicableOverload_Kd, "two(c@move)", null)]
     [InlineData(See + "struct H\n    public var f: () -> ref/i32 during static\n    public init(f: () -> ref/i32 during static)\n        self.f = f@move\nfunc g(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let h = H.init(c@move)\n    see(h.f())\n" + Main, DiagnosticCode.NoApplicableOverload_Kd, "H.init(c@move)", null)]
@@ -228,19 +230,18 @@ public sealed partial class MirBorrowsTest
     public void AClauseOverAnEnclosingRegionIsARow(string source, string clause)
         => MirTargetSide.Check(source, (DiagnosticCode.UnprovenOriginRelation_Kd, MirTargetSide.At(clause, null)));
 
-    // A recorded limit, each row a valid program still rejected: the A5 oracle reads a region at a longer end only (G572's named limit, beside
-    // r18's; lifted by the unit that reads the shorter end). R's one bound p makes R, its solved value, outlive p and p outlive R (15.3.6; one
-    // bound, no meet), but a region at the shorter end is no premise, so its relation is Unknown. Each row asserts today's records so a change
-    // is seen: a stated local through `uniq` (i1), a call's equal Origins in either order (e1, also q5; i3), a clause `r == p` (c5i, also
-    // a4v) and `s == r` (v3), a Function Type's parameter over R (f3v, its comparison's record), the laws `r == (r and p)` (l2v) and
-    // `(r and p) outlives r` (l4v), and the Closure writing p into its `[var r]` (z3v).
+    // A recorded limit, each row a valid program still rejected: a region at the shorter end of a direction of a relation the body checks (of
+    // `==` or `outlives`); a comparison with a Function Type reads the contract alone (O-61 (a)) and is no member. R reads as its solved value,
+    // the meet of its bounds (15.3.6), so R's one bound p makes R outlive p and p outlive R, but the A5 oracle reads that value at a longer end
+    // only (G572's named limit, beside r18's; lifted by the unit that reads the shorter end). Each row asserts today's records so a change is
+    // seen: a stated local through `uniq` (i1), a call's equal Origins in either order (e1, also q5; i3), a clause `r == p` (c5i, also a4v)
+    // and `s == r` (v3), the laws `r == (r and p)` (l2v) and `(r and p) outlives r` (l4v), and the Closure writing p into its `[var r]` (z3v).
     [Theory]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "let h: uniq/(ref/i32 during p) = u", null, "uniq/(ref/i32 during p)")]
     [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(h, r@uniq)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "r@uniq", null, "r@uniq")]
     [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(r@uniq, h)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "same(r@uniq, h)", "h", null)]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == p\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin r == p", null, null)]
     [InlineData(See + "func f(s: ref/i32)\n    var r = s\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin s == r\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin s == r", null, null)]
-    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    let c = func (q: ref/i32 during r) -> ref/i32 during p => q\n    let g: (ref/i32 during p) -> ref/i32 during p = c\n    return g(p)\n" + Main, DiagnosticCode.UnprovenOriginContract_Kd, "during p = c", "c", null)]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == (r and p)\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin r == (r and p)", null, null)]
     [InlineData(See + "func f(p: ref/i32)\n    var a: i32 = 3\n    var r = p\n    r = a@ref\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin (r and p) outlives r\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin (r and p) outlives r", null, null)]
     [InlineData("func put(h: uniq/(ref/i32 during o), v: ref/i32 during o)\n    h@follow = v\nfunc f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    var c = func [var r, p] () -> ref/i32 during p\n        put(r@uniq, p)\n        return r\n    return c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "r@uniq, p)", "p", null)]
