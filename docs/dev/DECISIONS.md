@@ -8712,6 +8712,7 @@ resumed by R4-M86 (2026-10-20).
   - Open: N3, ProjectionSpecification publishing an inherited binding's source path with the base subject, so the walk loses its
     inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
     a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
+  - Superseded in part by BU-128 (R7-V5b-1, the owner's O-70 (a)): "a cycle of binding nodes alone is its conformance's error" no longer holds; a binding-only inline cycle is judged at the binding, and `Binding.InlineLayouts.cs`' "no record for a binding node" is withdrawn.
 
 - **BU-67 BU-52's interim class and S2's forms are correct errors under SPEC 15.6's whole-holder text** (2026-10-30; the owner's answer
   on G264 S1, verbatim 「(B)」; supersedes BU-52's interim class in part and R5-M129 in part) SPEC 15.6 (Holders: storage the body does
@@ -10257,6 +10258,34 @@ resumed by R4-M86 (2026-10-20).
     error on a valid form; it should become a located `Unsupported_Kd` (AGENTS Diagnostics) in the unit that lifts or marks the limit.
     (5) `RegionChain` also counts a pending atom (`HasLocalRegion`): at a clause's gate it forms a row where dev judged the relation; the
     review's `z14`, `z14i` are right on the head, no other program found.
+- **BU-128 A binding-only inline cycle is judged at the binding** (2026-11-08; R7-V5b-1, PLAN G588; the owner's O-70 (a), verbatim
+  「すべてa」) SPEC 6.2, 8.5.1, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
+  conformance's error (SPEC 8.3.3)") and the prohibition "no record for a binding node" in `Binding.InlineLayouts.cs`: O-54 (a) makes a
+  binding's Type no formation obligation of its conformance, so the conformance stops being the cycle's judge (with S3, R7-C2 (b)).
+  - Rule: every completed associated binding of a non-inherited conformance path is a root of the inline walk, after the
+    declarations; a node is invalid iff it lies on a cycle of the edges, a declaration and a binding alike. A binding reports
+    `InvalidInlineLayout_Kd` at its specification, the clause whose conjunction yields its identity atom (8.5.1; r2, k2: not a
+    constraining clause before it; k4: `is Box<S> and Copy` is one; k5, k5v: of two bound references only the one on the cycle),
+    else at the conformance clause (inferred).
+  - One owner of the site (review B6): the record is at `SpecificationPart(path, identity)`, the one answer to "which clause specifies
+    this identity", which also feeds `InferenceHole` and `VerifyConformance`'s missing-binding branch. Its test of a fixing clause is
+    now `AssociatedIdentityType`, the predicate `AssociatedFormation` uses: per SPEC 8.5.1 a conjunction yielding a Type-identity atom
+    specifies (its example `is i32 and Copy // Specifies i32`); the old kind list called such an `And` no specification. Of the nine
+    `ConstraintKind`s only that case changes. Implementation review 2's nine SPEC-labelled twins (`review-evidence-v5b\mk_rev5b1-2.sh`:
+    8.5.1's examples A `i32 and Copy` and B `i32 or i64`; p1b, a conjunction with nothing to infer from; p5, the atom on the right;
+    p3 and p9, a wrong implementation, also in a conditional block; p7, two atoms `i32 and i64`; p8, SPEC's `Pack` example; p10, an
+    unresolved name) give the same records on 884c31bff, a237c87c7 and b8080e332. An `And` specification was never an inference hole
+    (`Collect` adds its atom as a candidate). Deleted: the unit's own copy (`BindingSite`, `Specifies`, `YieldsIdentity`).
+  - Node key: the conformance path and the associated identity, which `ProjectionSpecification` now publishes with its outcome; two
+    bindings with one Type stay two nodes (r7: only the one that reaches itself reports). A binding's Origin arguments never change
+    what it stores inline.
+  - Mixed cycles: a declaration and a binding on one cycle both report (s2b). A binding that only reaches a cycle does not (z1's
+    `A is Box<S>`). l3i's binding reaches itself by 6.2 (W's Field is written `S.(C).Item`), but its walk reads W's failed summary,
+    whose record stands: its own record is suppressed by rule W (DECISIONS Q13), not by the representation.
+  - `AdtDef.InlineCycle` stays declaration-level, Layout its only reader; a conformance resting on its failed binding names no Type
+    after the failed Binding, which Layout rejects without a record. No instance-level fact.
+  - Rejected: reporting at the struct whose instance is infinite (valid for other arguments, x7); reporting only components without a
+    declaration (a mode); keying by the binding's Type (r7 reports both bindings); a new instance-level fact for Layout.
 - **BU-129 R7-E1d A clause's resting failure yields to its owner's own** (2026-11-08; plan §5.1 E1, `ruling-r2.md` §3; D-2; SPEC 15.3.3,
   23.1.2; DIAGNOSTICS rule 4). `FailOriginClause` writes `InvalidOrigin` into the owner of a failed Origin clause with an edge to the
   clause, a value that rests on another node. `Fail` lets the owner's own later failure take that slot and removes the clause's edge, so the

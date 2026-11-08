@@ -111,6 +111,8 @@ A `struct` declares a named composite Core. Its Fields have complete Types, incl
 
 **Finite inline storage.** A struct or enum declaration is invalid if its inline storage (Fields, the direct base, Case payloads, Tuple and fixed-array elements, including zero-length arrays, and Type arguments that a declaration stores inline) reaches the same declaration again, with any Type arguments, without passing through a borrow, raw pointer or object handle. The check is made at the declaration, whether or not the Type is used or instantiated, and is a Language error, never a Resource diagnostic. Only growth of distinct instantiations through an indirection (for example polymorphic recursion) can reach a generation limit.
 
+An associated-Type binding whose Type's inline storage reaches that binding again, through the same positions, is invalid in the same way, at the binding (its specification, or the conformance when the binding is inferred).
+
 ```kimi
 struct Shared
     var next: Option<rc/Shared>         // OK: an object handle is an indirection.
@@ -120,6 +122,21 @@ struct Node
 
 struct Grow<T>
     var more: Option<Grow<(T, T)>>      // Error: inline recursion, whatever the arguments.
+
+contract C
+    associate Item
+
+struct Hold<T>
+    T is C
+    var next: T.(C).Item
+
+struct S
+    Self is C
+    associate C.Item is Hold<S>         // Error: Hold<S> stores S.(C).Item, which is Hold<S>, inline.
+
+struct R
+    Self is C
+    associate C.Item is Array<Hold<R>>  // OK: a sequence is an indirection.
 ```
 
 ### 6.2.1. Logical declaration order
