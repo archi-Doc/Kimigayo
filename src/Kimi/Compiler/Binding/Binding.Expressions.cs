@@ -115,41 +115,14 @@ public sealed partial class Binding
     private static bool LiteralCategoryMatches(NumberLiteralKoto literal, BoundType type)
         => literal.IsInteger ? type.HasIntegerArithmetic : type.IsFloatingPoint;
 
-    private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative, int pointerWidth)
+    private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative)
     {
         if (type.IsFloatingPoint)
         {
             return ScalarTypes.TryFloatLiteral(literal, type, negative, out _);
         }
 
-        return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
-    }
-
-    // SPEC 3.1.1: a wrapping integer Type fits literals by the range of its integer argument.
-    private static bool FitsIntegerMagnitude(UInt128 magnitude, BoundType type, bool negative, int pointerWidth)
-    {
-        if (!type.HasIntegerArithmetic)
-        {
-            return false;
-        }
-
-        var name = type.Underlying.Name;
-        var signed = name[0] == 'i';
-        var bits = name is "isize" or "usize" ? pointerWidth : int.Parse(name.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
-        if (bits == 0)
-        {
-            // A target-independent literal must fit even the smallest integer
-            // storage width. Larger native-sized literals still require a target.
-            bits = 8;
-        }
-
-        if (negative && !signed)
-        {
-            return magnitude == 0;
-        }
-
-        var max = signed ? ((UInt128)1 << (bits - 1)) - (negative ? (UInt128)0 : 1) : bits == 128 ? UInt128.MaxValue : ((UInt128)1 << bits) - 1;
-        return magnitude <= max;
+        return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
     }
 
     // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
@@ -213,7 +186,7 @@ public sealed partial class Binding
 
         if (number is not null)
         {
-            return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative, this.compilation.PointerWidth);
+            return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative);
         }
 
         return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
@@ -462,7 +435,7 @@ public sealed partial class Binding
                     return this.RecordMismatch(node, node, new(null, found), numberType, ComparisonFailure.Shape);
                 }
 
-                return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
+                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
             case NullLiteralKoto:
                 return expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
             case BaseReferenceKoto baseReference:

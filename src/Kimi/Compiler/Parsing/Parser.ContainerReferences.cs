@@ -199,9 +199,6 @@ public static partial class Parser
         }
     }
 
-    internal static Koto ParseContainerReference(ref TokenReader reader)
-        => ParseType(ref reader, parseOrigin: true);
-
     internal static bool IsBoundContainerReference(ref TokenReader reader)
     {
         for (var i = 0; ; i++)

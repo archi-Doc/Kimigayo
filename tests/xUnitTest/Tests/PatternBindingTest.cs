@@ -252,13 +252,14 @@ public class PatternBindingTest
     }
 
     [Theory]
-    [InlineData("isize", "2147483647", true)]
-    [InlineData("isize", "2147483648", false)]
-    [InlineData("isize", "-2147483648", true)]
-    [InlineData("isize", "-2147483649", false)]
-    [InlineData("usize", "4294967295", true)]
-    [InlineData("usize", "4294967296", false)]
-    public void PointerSizedPatternsUsePreparedTarget(string type, string literal, bool valid)
+    [InlineData("isize", "2147483648", true)]
+    [InlineData("isize", "9223372036854775807", true)]
+    [InlineData("isize", "9223372036854775808", false)]
+    [InlineData("isize", "-9223372036854775808", true)]
+    [InlineData("isize", "-9223372036854775809", false)]
+    [InlineData("usize", "18446744073709551615", true)]
+    [InlineData("usize", "18446744073709551616", false)]
+    public void PointerSizedPatternsUseTheProfileWidth(string type, string literal, bool valid)
     {
         var c = Parse($"func f(x: {type}) => match x\n    {literal} => ()\n    _ => ()", "i686-unknown-linux-gnu");
         Assert.Equal(valid, c.Bind().IsComplete);

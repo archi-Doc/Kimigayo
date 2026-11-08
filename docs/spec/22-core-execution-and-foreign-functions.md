@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-This revision defines one executable target profile, windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)). Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)) and the size limits of concrete layouts ([§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation)); an Unsupported report may depend on it. Building, running or testing a program for any other target is Unsupported.
+This revision defines one executable target profile, windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)). Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
 
 ## 22.1. Required Kimi declarations
 

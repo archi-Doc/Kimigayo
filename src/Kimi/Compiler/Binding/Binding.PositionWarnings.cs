@@ -29,11 +29,11 @@ public sealed partial class Binding
             return false;
         }
 
-        var width = ScalarTypes.Width(node.BoundType, this.compilation.PointerWidth);
+        var width = ScalarTypes.Width(node.BoundType);
         var signed = ScalarTypes.Signed(node.BoundType!);
         // Resolution only admits [0, isize.MaxValue]. Saturate outside that interval before forming inequalities,
         // so even a u128 maximum or a negated i128 minimum cannot overflow their arithmetic.
-        var limit = (Int128)1 << (this.compilation.PointerWidth - 1);
+        var limit = (Int128)1 << (ScalarTypes.SizeWidth - 1);
         value = signed ? Int128.Clamp(SignedLiteral(bits, width), -limit, limit) : bits >= (UInt128)limit ? limit : (Int128)bits;
         return true;
     }
@@ -43,7 +43,7 @@ public sealed partial class Binding
     {
         bits = 0;
         node = KotoHelper.UnwrapParentheses(node);
-        if (node.BoundType is not { IsInteger: true } type || ScalarTypes.Width(type, this.compilation.PointerWidth) is not (> 0 and var width))
+        if (node.BoundType is not { IsInteger: true } type || ScalarTypes.Width(type) is not (> 0 and var width))
         {
             return false;
         }
@@ -203,7 +203,7 @@ public sealed partial class Binding
     private void CheckLiteralPosition(Koto node, LiteralRole role, long fixedLength)
     {
         var syntax = KotoHelper.UnwrapParentheses(node);
-        var maximumLength = this.compilation.PointerWidth == 32 ? int.MaxValue : long.MaxValue;
+        var maximumLength = long.MaxValue;
         bool everyLength;
         bool atLength;
         if (role == LiteralRole.Range)

@@ -559,7 +559,7 @@ public sealed partial class Binding
         var negative = syntax.Akind == KotoKind.PrefixMinus;
         if ((negative ? ((UnaryKoto)syntax).Operand : syntax) is NumberLiteralKoto number)
         {
-            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !FitsIntegerMagnitude(magnitude, type, negative, this.compilation.PointerWidth))
+            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !ScalarTypes.TryLiteral(type, magnitude, negative, out _))
             {
                 return false;
             }

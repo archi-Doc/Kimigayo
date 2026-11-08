@@ -1,9 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // SPEC 15.6.5's classes of an Origin in a body B, as Binding's judge and the C1-F4 view read them: fixed by the contract (FixedOrigin), fixed
-// in B (FixedIn), a region B judges through its sources (RegionIn, HasRegionIn for a meet's operands), an Origin B judges through the
-// sources the region graph records (SourcesIn) or may bound (BoundableIn), a finite Origin local to B (BodyLocalIn), a relation A5 judges
-// as a row (BodyChain, 2a0-D D1), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom). They share one rule, the
+// in B (FixedIn), a region B judges through its sources (RegionIn), an Origin B judges through the sources the region graph records
+// (SourcesIn) or may bound (BoundableIn), a finite Origin local to B (BodyLocalIn), a relation A5 judges as a row (BodyChain, 2a0-D D1;
+// RegionChain), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom). They share one rule, the
 // view's row 6 (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an
 // enclosing body formed, are fixed; in a Closure k's body and the bodies nested in it, that row also fixes k's receiver Origin ρ (SPEC
 // 15.6.5: a receiver Origin), and until k is classified ρ and k's environment atoms are pending, neither fixed nor finite (DECISIONS
@@ -104,33 +104,22 @@ public sealed partial class Binding
     // SPEC 15.3.6, 15.6.5: a local region that `body` judges through its sources; an enclosing body's region is fixed in it.
     internal static bool RegionIn(BoundOrigin origin, ExecutableBody body) => IsLocalRegion(origin) && !EnclosingAtom(origin, body);
 
-    // RegionIn of an Origin or of an operand of its meet.
-    internal static bool HasRegionIn(BoundOrigin origin, ExecutableBody body)
-    {
-        if (RegionIn(origin, body))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (HasRegionIn(origin.Operands[i], body))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.6.5: an Origin a relation formed in `body` may bound in the region graph: a local region, a Borrow's Origin or a meet, unless
     // it is an enclosing body's atom, fixed in `body`.
     internal static bool BoundableIn(BoundOrigin origin, ExecutableBody body)
         => (IsLocalRegion(origin) || origin.Kind is OriginKind.Projection or OriginKind.Anchor or OriginKind.Intersection) && !EnclosingAtom(origin, body);
 
-    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation is a body chain, a row A5 judges, when one of its ends, as the caller has it at its use,
-    // is not fixed in `body` (an Unbound end counts); a fixed-fixed relation is Binding's to judge (A3 §7, until R7).
-    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body) => !FixedIn(longer, body) || !FixedIn(shorter, body);
+    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation (`==` when `equality`) is a body chain, a row A5 judges, when one of its ends, as the
+    // caller has it at its use, is not fixed in `body` (an Unbound end counts), or when it is a region chain; any other fixed-fixed relation
+    // is Binding's to judge (A3 §7, until R7).
+    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter, bool equality, ExecutableBody body)
+        => !FixedIn(longer, body) || !FixedIn(shorter, body) || RegionChain(longer, shorter, equality, body);
+
+    // SPEC 15.3.6, 15.6.5: a relation in `body` with a local region at a longer end of a direction it requires (both ends of `==`, SPEC 15.6.5
+    // "edges both ways"), an enclosing body's, fixed there, included: the region's value is known only once every body is bound, so A5
+    // alone reads it (UniversalRelations.Outlives) and Binding leaves a row; the judge answers Unknown for it (JudgeOriginAtoms).
+    internal static bool RegionChain(BoundOrigin longer, BoundOrigin shorter, bool equality, ExecutableBody body)
+        => body.IsBody && (HasLocalRegion(longer) || (equality && HasLocalRegion(shorter)));
 
     // SPEC 15.6.1: whether a relation is Refuted in `body`: its longer end is a finite Origin local to it and its shorter end fixed in it, or
     // its longer end is Unstated (UnstatedRelation).

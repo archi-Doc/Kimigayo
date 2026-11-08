@@ -9,37 +9,16 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1202 // Parsing helpers are grouped by syntax.
 
-// Bodies and their items (SPEC 14.2.1, Appendix F.4.1, F.4.4, F.10.1): the item loop of an executable body with its directive targets and
-// arms and its Constraint prefix (SPEC 7.5, 19.4), one block item's dispatch, a required indented block, a single-item body, and a directive's
-// body among declarations.
-// Input: a reader at a body or an item; an ExecutableItemState for the enclosing body. Output: a CodeBlockKoto, or an item's node, or null
-// when the item was omitted. Selected items only: excluded syntax is parsed with the same grammar and its items are dropped.
+// Bodies and their items (SPEC 14.2.1, Appendix F.4.1, F.4.4, F.10.1, F.11): the one item loop of every item list that names
+// Directive<Item>, with its directive targets and arms (SPEC 19.4); an executable body's items and their Constraint prefix (SPEC 7.5);
+// one block item's dispatch, a required indented block and a single-item body.
+// Input: a reader at a body or an item; an IItemList for the enclosing list. Output: a CodeBlockKoto, or an item's node, or null when the
+// item was omitted. Selected items only: excluded syntax is parsed with the same grammar into the owner its list prepares.
 // Invariants: an indented body's items are regions of their own; a block ends at its last written token; an item that read nothing is
 // stepped over, so the loop ends.
-// Prohibitions: the forms of an item belong to their own parts; the selection of a directive to Parser.Directives.
+// Prohibitions: the forms of an item belong to their own parts and lists; the selection of a directive to Parser.Directives.
 public static partial class Parser
 {
-    internal static CodeBlockKoto ParseDeclarationDirectiveBody(ref TokenReader reader, DeclarationContainerKoto declarationContext)
-    {
-        if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-        {
-            return ParseRequiredBlock(ref reader);
-        }
-
-        var start = reader.CurrentTokenRange.Start;
-        var temporary = declarationContext.CreateDetached(reader.CodeContext, reader.CurrentTokenRange);
-        temporary.Parse(ref reader);
-        var items = new List<Koto>();
-        items.AddRange(temporary.TypeConstraints);
-        items.AddRange(temporary.Members);
-        items.AddRange(temporary.NestedDeclarationContainers);
-        var block = new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd)), items)
-        {
-            DeclarationContext = declarationContext.TokenKind,
-        };
-        return block;
-    }
-
     /// <summary>Parses an indentation-delimited expression block.</summary>
     /// <param name="reader">The token reader positioned at <see cref="TokenKind.StartBlock"/>.</param>
     /// <returns>The parsed block.</returns>
@@ -58,33 +37,50 @@ public static partial class Parser
         // The items of an indented body are regions of their own (SPEC F.4.1, F.4.4), whichever construct owns the body.
         var region = reader.EnterRegion();
         var blockContext = reader.TakeContext();
-        var items = default(TemporaryKotoList);
-        var state = new ExecutableItemState(function, originOwner);
-        var end = ParseExecutableBlockItems(ref reader, ref items, ref state);
+        var list = new ExecutableItems(function, originOwner);
+        reader.Advance(); // StartBlock
+        var end = ParseItems(ref reader, ref list);
         reader.RestoreContext(blockContext);
         reader.RestoreRegion(region);
         return new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, end)),
-            items.ToArray());
+            list.Items.ToArray());
     }
 
-    /// <summary>Parses one indented block, from its StartBlock through its EndBlock, appending its selected items.</summary>
-    /// <param name="reader">The token reader positioned at <see cref="TokenKind.StartBlock"/>.</param>
-    /// <param name="items">The selected items of the enclosing executable body.</param>
-    /// <param name="state">The Constraint-prefix state of the enclosing body, shared by its directive targets and arms.</param>
-    /// <returns>The end offset of the block.</returns>
-    /// <remarks>
-    /// Directive targets and arms are parsed by this same loop (SPEC 19.4): a selected one adds its items directly; excluded
-    /// syntax is parsed with the same grammar and recovery, extends the source-order Constraint prefix, and is dropped.
-    /// </remarks>
-    private static int ParseExecutableBlockItems(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
+    /// <summary>An item list that names <c>Directive&lt;Item&gt;</c> (SPEC F.11): its directive targets and arms keep its item category.</summary>
+    internal interface IItemList
     {
-        reader.Advance(); // StartBlock
-        return ParseExecutableItems(ref reader, ref items, ref state);
+        /// <summary>Gets a value indicating whether each indented list of this category needs a source item before selection (SPEC 14.2.1).</summary>
+        bool RequiresItem { get; }
+
+        /// <summary>Prepares the owner of the excluded syntax the loop enters next (SPEC 19.4).</summary>
+        /// <param name="reader">The token reader, before the excluded syntax.</param>
+        void EnterExcluded(ref TokenReader reader);
+
+        /// <summary>Parses one item of this category at the reader, its prefixes consumed.</summary>
+        /// <param name="reader">The token reader.</param>
+        void ParseItem(ref TokenReader reader);
+
+        /// <summary>Adds the marker of a <c>#switch</c> that selected no arm (SPEC 19.3).</summary>
+        /// <param name="reader">The token reader.</param>
+        /// <param name="unselected">The marker.</param>
+        void AddUnselected(ref TokenReader reader, Koto unselected);
     }
 
-    private static int ParseExecutableItems(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state, bool stopAtCaseGroupBoundary = false)
+    /// <summary>Parses the items of one indented list after its StartBlock, through its EndBlock: the one item loop of every list that
+    /// names <c>Directive&lt;Item&gt;</c> (SPEC F.6, F.10.1, F.11).</summary>
+    /// <typeparam name="TList">The item category of the list.</typeparam>
+    /// <param name="reader">The token reader after the list's StartBlock.</param>
+    /// <param name="list">The list, shared by its directive targets and arms.</param>
+    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
+    /// <returns>The end offset of the list.</returns>
+    /// <remarks>
+    /// Directive targets and arms are parsed by this same loop (SPEC 19.4): a selected one adds its items to the list; excluded
+    /// syntax is parsed with the same grammar and recovery into the owner <see cref="IItemList.EnterExcluded"/> prepares.
+    /// </remarks>
+    internal static int ParseItems<TList>(ref TokenReader reader, ref TList list, bool stopAtCaseGroupBoundary = false)
+        where TList : IItemList, allows ref struct
     {
         var hasSourceItem = false;
         while (reader.CanRead)
@@ -102,7 +98,7 @@ public static partial class Parser
                     return reader.PreviousSyntaxEnd;
                 }
 
-                if (!hasSourceItem)
+                if (!hasSourceItem && list.RequiresItem)
                 {
                     reader.Expect(SyntaxForm.Body);
                 }
@@ -136,17 +132,18 @@ public static partial class Parser
             hasSourceItem = true;
             if (reader.IsExcluded)
             {
+                list.EnterExcluded(ref reader);
                 var region = BeginExcludedRegion(ref reader);
-                ParseExecutableDirectiveOrItem(ref reader, ref items, ref state);
+                ParseDirectiveOrItem(ref reader, ref list);
                 EndExcludedRegion(ref reader, region);
             }
             else if (reader.HasCompileTimeIfPrefix || IsCompileTimeSwitchStart(ref reader))
             {
-                ParseExecutableDirectiveOrItem(ref reader, ref items, ref state);
+                ParseDirectiveOrItem(ref reader, ref list);
             }
             else
             {
-                ParseExecutableItem(ref reader, ref items, ref state);
+                list.ParseItem(ref reader);
             }
         }
 
@@ -154,7 +151,8 @@ public static partial class Parser
         return reader.PreviousSyntaxEnd;
     }
 
-    private static void ParseExecutableDirectiveOrItem(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
+    private static void ParseDirectiveOrItem<TList>(ref TokenReader reader, ref TList list)
+        where TList : IItemList, allows ref struct
     {
         if (IsCompileTimeSwitchStart(ref reader))
         {
@@ -163,25 +161,29 @@ public static partial class Parser
             {
                 if (invalidItems)
                 {
+                    list.EnterExcluded(ref reader);
                     var start = BeginInvalidSwitchItems(ref reader);
-                    ParseExecutableItems(ref reader, ref items, ref state, stopAtCaseGroupBoundary: true);
+                    ParseItems(ref reader, ref list, stopAtCaseGroupBoundary: true);
                     EndInvalidSwitchItems(ref reader, start);
                 }
                 else if (selected)
                 {
-                    ParseExecutableBlockItems(ref reader, ref items, ref state);
+                    reader.Advance(); // StartBlock
+                    ParseItems(ref reader, ref list);
                 }
                 else
                 {
+                    list.EnterExcluded(ref reader);
                     var region = BeginExcludedRegion(ref reader, header, header.Start);
-                    ParseExecutableBlockItems(ref reader, ref items, ref state);
+                    reader.Advance(); // StartBlock
+                    ParseItems(ref reader, ref list);
                     EndExcludedRegion(ref reader, region);
                 }
             }
 
             if (arms.Unselected(ref reader) is { } unselected)
             {
-                items.Add(unselected);
+                list.AddUnselected(ref reader, unselected);
             }
 
             return;
@@ -190,11 +192,34 @@ public static partial class Parser
         if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
         {
             RejectDirectiveBlockAttributes(ref reader);
-            ParseExecutableBlockItems(ref reader, ref items, ref state);
+            reader.Advance(); // StartBlock
+            ParseItems(ref reader, ref list);
             return;
         }
 
-        ParseExecutableItem(ref reader, ref items, ref state);
+        list.ParseItem(ref reader);
+    }
+
+    /// <summary>The items of an executable body (SPEC F.10.1): excluded syntax extends its Constraint prefix and is dropped.</summary>
+    /// <param name="function">The function whose body this is, if any.</param>
+    /// <param name="originOwner">The declaration that owns leading Origin relations, if not the function.</param>
+    private ref struct ExecutableItems(FunctionKoto? function, Koto? originOwner) : IItemList
+    {
+        public TemporaryKotoList Items;
+
+        private ExecutableItemState state = new(function, originOwner);
+
+        public readonly bool RequiresItem => true;
+
+        public readonly void EnterExcluded(ref TokenReader reader)
+        {
+        }
+
+        public void ParseItem(ref TokenReader reader)
+            => ParseExecutableItem(ref reader, ref this.Items, ref this.state);
+
+        public void AddUnselected(ref TokenReader reader, Koto unselected)
+            => this.Items.Add(unselected);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -364,9 +389,15 @@ public static partial class Parser
                 var trailing = reader.PeekKind(-1) == TokenKind.Comma;
                 var closed = reader.TryConsume(TokenKind.CloseParenthesis);
                 DiagnosticKey? malformed = null;
-                if (!closed || arguments.Length is < 1 or > 2 || trailing ||
-                    (labels is not null && labels.Length > 0 && labels[0] is not null) ||
-                    (arguments.Length == 2 && (labels is null || labels.Length < 2 || labels[1] != "message")))
+
+                // "(" Expression ("," "message" ":" Expression)? ")" (SPEC F.10.1): an unlabeled condition and an optional message.
+                var wellFormed = closed && !trailing && arguments.Length switch
+                {
+                    1 => labels is null or [] or [null, ..],
+                    2 => labels is [null, "message", ..],
+                    _ => false,
+                };
+                if (!wellFormed)
                 {
                     malformed = reader.Unexpected(SyntaxForm.TestVerificationArguments, start.Span);
                 }
@@ -393,6 +424,13 @@ public static partial class Parser
         }
 
         var token = reader.CurrentToken;
+        if (IsContainerDeclarationStart(ref reader))
+        {
+            // No Container nests in an executable block (SPEC 6.1.1); the declaration is skipped with its body.
+            OmitDeclaration(ref reader, reader.Unexpected(token.Kind == TokenKind.Extension ? SyntaxForm.ExtensionDeclaration : SyntaxForm.ContainerDeclaration, token.Span));
+            return null;
+        }
+
         switch (token.Kind)
         {
             case TokenKind.Let:
@@ -415,11 +453,6 @@ public static partial class Parser
 
                 ParseNamedFunctionBody(ref reader, function);
                 return function;
-
-            case TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract when IsContainerDeclarationStart(ref reader):
-                // No Container nests in an executable block (SPEC 6.1.1); the declaration is skipped with its body.
-                OmitDeclaration(ref reader, reader.Unexpected(token.Kind == TokenKind.Extension ? SyntaxForm.ExtensionDeclaration : SyntaxForm.ContainerDeclaration, token.Span));
-                return null;
 
             default:
                 return ParseExpression(ref reader);
@@ -449,17 +482,24 @@ public static partial class Parser
             : new DeferredBlockKoto(ref reader, span, body, body.IsExpressionBody);
     }
 
-    // The required indented body of a construct, parsed as its owning function's block when it has one (a function expression's).
-    internal static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader, bool statementHeader = false, FunctionKoto? function = null)
+    // The required indented body after a construct's header, parsed as its owning function's block when it has one (a function expression's).
+    internal static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader, FunctionKoto? function = null)
     {
+        // Inside a single-item body, every construct with a Body in the same region, an anonymous function included, uses one
+        // (SPEC F.4.4); the indented body is still parsed.
+        if (reader.SingleBodyRegion)
+        {
+            reader.Expect(SyntaxForm.ArrowBody);
+        }
+
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             return ParseFunctionBlock(ref reader, function);
         }
 
-        // A token left on a statement header's line, before the indented body that follows, is where the header's line should
-        // end, as after a function header; the body is still the header's.
-        if (statementHeader && reader.IndentedBodyFollows())
+        // A token left on the header's line, before the indented body that follows, is where the header's line should end, as
+        // after a function header; the body is still the header's.
+        if (reader.IndentedBodyFollows())
         {
             reader.Expect(SyntaxForm.LineEnd);
             reader.SkipHeaderLine();
@@ -467,36 +507,20 @@ public static partial class Parser
         }
 
         // An empty body is supplied where the body is missing. It is a recovery: a check that reads its Type or its normal
-        // completion reads the parser's guess and rests on the Error (DIAGNOSTICS.md §4.3). The rest of a statement header's line
-        // goes with it, so an aligned else on the next line still continues the header.
+        // completion reads the parser's guess and rests on the Error (DIAGNOSTICS.md §4.3). The rest of the header's line goes
+        // with it, so an aligned else on the next line still continues the header.
         var cause = reader.Expect(SyntaxForm.Body);
         var supplied = new CodeBlockKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0), []);
         reader.CodeContext.RecordRecovery(supplied, cause);
-        if (statementHeader)
-        {
-            reader.SkipHeaderLine();
-        }
-
+        reader.SkipHeaderLine();
         return supplied;
-    }
-
-    /// <summary>Reports an indented body where its region requires a single-item body: inside a single-item body, every construct
-    /// with a Body in the same region, an anonymous function included, uses one (SPEC F.4.4). The body is still parsed.</summary>
-    /// <param name="reader">The token reader, where the construct's body starts.</param>
-    internal static void CheckIndentedBodyRegion(ref TokenReader reader)
-    {
-        if (reader.SingleBodyRegion)
-        {
-            reader.Expect(SyntaxForm.ArrowBody);
-        }
     }
 
     internal static CodeBlockKoto ParseRequiredBody(ref TokenReader reader, bool ifBody = false)
     {
         if (reader.CurrentTokenKind != TokenKind.EqualsGreaterThan)
         {
-            CheckIndentedBodyRegion(ref reader);
-            return ParseRequiredBlock(ref reader, true);
+            return ParseRequiredBlock(ref reader);
         }
 
         var expression = ParseSingleBodyItem(ref reader, ifBody);

@@ -75,6 +75,12 @@ internal sealed partial class MirBuilder
     // SPEC 13.2, 13.3.1: a built-in binary operator on the operands pushed since start, its check Proven where IMPL 21.3.3 omits it.
     private void Binary(MirPlace destination, BinaryKoto node, MirBinaryOp op, int start, BoundType type)
     {
+        if (this.Witnessed(op, start) is { } comparison)
+        {
+            this.Compared(destination, comparison, op, start, node);
+            return;
+        }
+
         var proven = this.Proven(op, type, this.arguments[^1]);
         this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
     }
@@ -253,7 +259,7 @@ internal sealed partial class MirBuilder
     private bool Within(BoundType source, BoundType target) => this.Width(source, out var signed) is var from and > 0 &&
         this.Width(target, out var wide) is var to and > 0 && (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
 
-    // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the target's pointer width; 0 for
+    // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the profile's width (SPEC 22); 0 for
     // another Type, such as a Type parameter, whose instance decides it.
     private int Width(BoundType type, out bool signed)
     {
@@ -266,7 +272,7 @@ internal sealed partial class MirBuilder
 
         if (integer.Name is "isize" or "usize")
         {
-            return compilation.PointerWidth;
+            return ScalarTypes.SizeWidth;
         }
 
         return int.TryParse(integer.Name.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var width) ? width : 0;

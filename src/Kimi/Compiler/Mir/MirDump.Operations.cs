@@ -144,7 +144,7 @@ internal static partial class MirDump
                         .Append(Type(constant.Type)),
                     MirConstKind.Bool => text.Append(constant.Bits != 0 ? "true" : "false"),
                     MirConstKind.Unit => text.Append("()"),
-                    MirConstKind.String => text.Append('"').Append(
+                    MirConstKind.String => text.Append(constant.IsRecord ? "record \"" : "\"").Append(
                         ((string?)constant.Value)?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(
                         "\n",
                         "\\n")).Append('"'),

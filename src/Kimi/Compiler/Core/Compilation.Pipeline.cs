@@ -1,8 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the public entry path for post-Binding phases and their Problem records.
-// Input: a prepared compilation. Output: analysis, the constructed and validated MIR (ConstructMir), that MIR analyzed with its checked set
-// (BuildMir, which composes it), and diagnostics (DECISIONS R5-M156); generation has its own entry (Compilation.Generation.cs, R5 C0a).
+// Owns a check's phase sequence (Check) and the public entry path for post-Binding phases and their Problem records.
+// Input: a prepared compilation whose inputs are established. Output: the check's verdict (Check: final Binding, the startup check and the
+// analysis, each followed by its records, then a test build's discovery), analysis, the constructed and validated MIR (ConstructMir), that
+// MIR analyzed with its checked set (BuildMir, which composes it), and diagnostics (DECISIONS R5-M156); generation has its own entry
+// (Compilation.Generation.cs, R5 C0a).
 // The MIR decides acceptance (DECISIONS R5-M185): Analysis is verified when the MIR of the version exists and its rows hold no Error, its
 // rows being every merged problem of its report (construction and collection records, the analyses' problems) and its validator findings,
 // which Problems gives and Core's publisher publishes (Compilation.Publication.cs; SPEC 8.15.3, 23.2.2; DECISIONS R5-M156, R5-M184).
@@ -103,6 +105,34 @@ public partial class Compilation
         }
 
         this.PublishMirRecords();
+    }
+
+    /// <summary>Checks the established inputs (SPEC 23.2.2): the one phase sequence of a check, which every command and the check service
+    /// run through <c>Project</c>. Final Binding, the startup check (a test build's test startup, else the project's output kind; IMPL
+    /// 20.6.1) and the analysis each run whatever an earlier one found (SPEC 23.1.2) and publish their records; an accepted test build
+    /// discovers its tests, the catalog its generation reads. It is not a site: it composes sites that hop to a compiler thread
+    /// themselves (Bind, BuildMir, ReportAnalysis, TestCatalog.Discover; DECISIONS R4-M178) and runs the startup check and Binding's and
+    /// the startup's publication on its caller's thread.</summary>
+    /// <returns>Whether the check accepted the program (<see cref="Accepts"/>).</returns>
+    internal bool Check()
+    {
+        this.Bind();
+        this.Binding.ReportDiagnostics();
+        _ = this.IsTestBuild ? this.Binding.CheckTestStartup() : this.Binding.CheckStartup(this.Project.ProjectFile.OutputKind);
+        this.Binding.ReportStartupDiagnostics();
+        this.Analyze();
+        this.ReportAnalysis();
+        if (!this.Accepts)
+        {
+            return false;
+        }
+
+        if (this.IsTestBuild)
+        {
+            this.Tests.Discover(this);
+        }
+
+        return true;
     }
 
     /// <summary>Gets whether the latest <see cref="Analyze"/> judged a function's own body without a problem (R6-check H6, H0b §2.1;

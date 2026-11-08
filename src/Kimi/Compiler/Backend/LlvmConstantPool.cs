@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns a module's private UTF-8 constants (SPEC 21.4; DECISIONS R5-M14): equal strings share one constant, named by kind
-// (__kimi_text, __kimi_location) in first-use order.
-// Input: nonempty strings and their kind. Output: constant indices, and per constant its name, UTF-8 byte length and definition
-// line, which LlvmModuleText.WriteHeader writes.
+// Owns a module's private UTF-8 constants (SPEC 21.4; DECISIONS R5-M14) and the constant string records over them (IMPL 21.1.3): equal
+// strings share one constant, named by kind (__kimi_text, __kimi_location, __kimi_record) in first-use order, and one record.
+// Input: nonempty strings and their kind; a comparison's literal, empty or not, for its record. Output: constant indices, and per constant
+// its name, UTF-8 byte length (a record's, of its bytes) and definition line, which LlvmModuleText.WriteHeader writes.
 // Invariants: every byte is escaped (raw source text never enters IR; NUL is data); entries, names and definitions are retained
-// across Clear, so a warm module allocates nothing for constants it has seen.
-// Must not intern the empty string (it has no backing constant) or read syntax, HIR, Binding internals or MIR.
+// across Clear, so a warm module allocates nothing for constants it has seen. A record is Static, so it is never released.
+// Must not intern the empty string as bytes (it has no backing constant: its record's data is null) or read syntax, HIR, Binding internals
+// or MIR.
 
 using System.Globalization;
 using System.Text;
@@ -18,6 +19,7 @@ internal enum LlvmConstantKind : byte
 {
     Text,
     Location,
+    Record,
 }
 
 /// <summary>
@@ -26,13 +28,14 @@ internal enum LlvmConstantKind : byte
 /// </summary>
 internal sealed class LlvmConstantPool
 {
-    private static readonly string[] Prefixes = ["__kimi_text", "__kimi_location"];
+    private static readonly string[] Prefixes = ["__kimi_text", "__kimi_location", "__kimi_record"];
 
     private readonly List<Entry> entries = new();
     private readonly StringBuilder scratch = new();
     private readonly Dictionary<string, int> indices = new(StringComparer.Ordinal);
-    private readonly List<string>[] names = [new(), new()];
-    private readonly int[] kindCounts = new int[2];
+    private readonly Dictionary<string, int> records = new(StringComparer.Ordinal);
+    private readonly List<string>[] names = [new(), new(), new()];
+    private readonly int[] kindCounts = new int[3];
     private int count;
 
     internal int Count => this.count;
@@ -44,6 +47,7 @@ internal sealed class LlvmConstantPool
     {
         this.count = 0;
         this.indices.Clear();
+        this.records.Clear();
         this.kindCounts.AsSpan().Clear();
     }
 
@@ -74,6 +78,29 @@ internal sealed class LlvmConstantPool
         return index;
     }
 
+    /// <summary>Returns the constant string record of a literal, Static over its pooled bytes: the address a shared reference to it holds.</summary>
+    /// <param name="value">The literal; the empty string's record has null data and length zero.</param>
+    /// <returns>The constant index.</returns>
+    internal int InternRecord(string value)
+    {
+        if (this.records.TryGetValue(value, out var index))
+        {
+            return index;
+        }
+
+        var bytes = value.Length == 0 ? null : this[this.Intern(value, LlvmConstantKind.Text)];
+        index = this.count++;
+        if (index == this.entries.Count)
+        {
+            this.entries.Add(new());
+        }
+
+        var name = this.GetName(LlvmConstantKind.Record, this.kindCounts[(int)LlvmConstantKind.Record]++);
+        this.entries[index].SetRecord(name, bytes?.Name ?? string.Empty, bytes?.ByteLength ?? 0);
+        this.records.Add(value, index);
+        return index;
+    }
+
     private string GetName(LlvmConstantKind kind, int ordinal)
     {
         var list = this.names[(int)kind];
@@ -96,6 +123,19 @@ internal sealed class LlvmConstantPool
 
         /// <summary>Gets the complete <c>@name = private unnamed_addr constant ...</c> line.</summary>
         internal string Definition { get; private set; } = string.Empty;
+
+        // A record's Value is its bytes' constant's name, empty for null data; a later module may give that name other text of another length.
+        internal void SetRecord(string name, string bytes, int length)
+        {
+            if (ReferenceEquals(this.Name, name) && this.Value == bytes && this.ByteLength == length)
+            {
+                return;
+            }
+
+            (this.Name, this.Value, this.ByteLength) = (name, bytes, length);
+            var (type, data) = (RuntimeAbi.String.Layout.StorageType, bytes.Length == 0 ? "null" : "@" + bytes);
+            this.Definition = $"@{name} = private unnamed_addr constant {type} {{ ptr {data}, i64 {length}, i8 {RuntimeAbi.StaticReleaseKind} }}, align 8\n";
+        }
 
         internal void Set(string value, string name, StringBuilder text)
         {

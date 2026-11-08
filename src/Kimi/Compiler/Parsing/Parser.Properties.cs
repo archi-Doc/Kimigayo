@@ -30,7 +30,7 @@ public static partial class Parser
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {
             reader.ReportMisplacedAttributes();
-            typeKoto = ParseType(ref reader);
+            typeKoto = ParseType(ref reader, TypeContext.Type);
         }
         else if (computed)
         {
@@ -212,90 +212,96 @@ public static partial class Parser
                 continue;
             }
 
-            var accessorToken = header.Keyword;
-            var accessorKind = header.Kind;
-            RejectCallableOriginList(ref reader);
-            var hasSignature = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
-
-            Koto? receiverType = null;
-            Koto? valueType = null;
-            var signatureEnd = accessorToken.Span.End;
-            if (hasSignature)
-            {
-                ParseAccessorParameters(ref reader, accessorKind, out receiverType, out valueType, out signatureEnd);
-            }
-
-            var returnType = ParseAccessorReturnType(ref reader);
-            if (hasSignature && returnType is null)
-            {
-                reader.Expect(SyntaxForm.AccessorResult);
-            }
-
-            if (accessorKind == PropertyAccessorKind.Set && returnType is not null &&
-                returnType is not TupleTypeKoto { ElementNodes.Count: 0 })
-            {
-                // The recovery keeps the setter's Unit result, so its body is checked as a setter body.
-                returnType.Unexpected(SyntaxForm.SetterResult);
-                returnType = new TupleTypeKoto(ref reader, returnType.Span, []);
-            }
-
-            var accessor = new PropertyAccessorKoto(
-                ref reader,
-                SourceSpan.FromBounds(header.Start, Math.Max(signatureEnd, returnType?.Span.End ?? accessorToken.Span.End)),
-                header.Modifier,
-                accessorKind,
-                null,
-                returnType,
-                hasSignature,
-                receiverType,
-                valueType);
-            Koto? body = default;
-            if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
-            {
-                body = ParseSingleBodyItem(ref reader);
-            }
-            else if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-            {
-                var block = ParseFunctionBlock(ref reader, null, accessor);
-                body = property.IsContractRequirement && block.Items.Count == 0 ? null : block;
-            }
-
-            // An accessor that needs a signature, or that carries a result Type or a body, lacks its parameter list right after the keyword.
-            if (!hasSignature && (returnType is not null || body is not null || property.IsContractRequirement || property.DeclarationKind == PropertyDeclarationKind.Computed))
-            {
-                reader.Missing(SyntaxForm.AccessorParameters, accessorToken.Span.End);
-            }
-
-            if (property.IsContractRequirement)
-            {
-                // A requirement accessor is a bare signature: no access modifier and no body.
-                if (header.Modifier != ModifierKind.NoModifier)
-                {
-                    RejectAccessorModifier(ref reader, property, accessor, header);
-                }
-
-                if (body is not null)
-                {
-                    body.Unexpected(SyntaxForm.RequirementBody);
-                }
-            }
-            else if (hasSignature && body is null)
-            {
-                reader.Expect(SyntaxForm.Body);
-            }
-
-            accessor.SetBody(body);
-            AddPropertyAccessor(ref reader, property, accessor, accessorToken);
-
-            if (body is not CodeBlockKoto)
-            {
-                reader.ExpectLineEnd();
-            }
+            ParseAccessor(ref reader, property, header);
         }
 
         property.CompleteSpan(Math.Max(property.Span.End, blockStart.End));
         reader.Expect(SyntaxForm.Accessor);
         return unavailableAccessor;
+    }
+
+    // One accessor of an indented accessor list after its header (SPEC F.7): its signature, its body and the line's end.
+    private static void ParseAccessor(ref TokenReader reader, PropertyKoto property, in AccessorHeader header)
+    {
+        var accessorToken = header.Keyword;
+        var accessorKind = header.Kind;
+        RejectCallableOriginList(ref reader);
+        var hasSignature = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
+
+        Koto? receiverType = null;
+        Koto? valueType = null;
+        var signatureEnd = accessorToken.Span.End;
+        if (hasSignature)
+        {
+            ParseAccessorParameters(ref reader, accessorKind, out receiverType, out valueType, out signatureEnd);
+        }
+
+        var returnType = ParseAccessorReturnType(ref reader);
+        if (hasSignature && returnType is null)
+        {
+            reader.Expect(SyntaxForm.AccessorResult);
+        }
+
+        if (accessorKind == PropertyAccessorKind.Set && returnType is not null &&
+            returnType is not TupleTypeKoto { ElementNodes.Count: 0 })
+        {
+            // The recovery keeps the setter's Unit result, so its body is checked as a setter body.
+            returnType.Unexpected(SyntaxForm.SetterResult);
+            returnType = new TupleTypeKoto(ref reader, returnType.Span, []);
+        }
+
+        var accessor = new PropertyAccessorKoto(
+            ref reader,
+            SourceSpan.FromBounds(header.Start, Math.Max(signatureEnd, returnType?.Span.End ?? accessorToken.Span.End)),
+            header.Modifier,
+            accessorKind,
+            null,
+            returnType,
+            hasSignature,
+            receiverType,
+            valueType);
+        Koto? body = default;
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
+        {
+            body = ParseSingleBodyItem(ref reader);
+        }
+        else if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        {
+            var block = ParseFunctionBlock(ref reader, null, accessor);
+            body = property.IsContractRequirement && block.Items.Count == 0 ? null : block;
+        }
+
+        // An accessor that needs a signature, or that carries a result Type or a body, lacks its parameter list right after the keyword.
+        if (!hasSignature && (returnType is not null || body is not null || property.IsContractRequirement || property.DeclarationKind == PropertyDeclarationKind.Computed))
+        {
+            reader.Missing(SyntaxForm.AccessorParameters, accessorToken.Span.End);
+        }
+
+        if (property.IsContractRequirement)
+        {
+            // A requirement accessor is a bare signature: no access modifier and no body.
+            if (header.Modifier != ModifierKind.NoModifier)
+            {
+                RejectAccessorModifier(ref reader, property, accessor, header);
+            }
+
+            if (body is not null)
+            {
+                body.Unexpected(SyntaxForm.RequirementBody);
+            }
+        }
+        else if (hasSignature && body is null)
+        {
+            reader.Expect(SyntaxForm.Body);
+        }
+
+        accessor.SetBody(body);
+        AddPropertyAccessor(ref reader, property, accessor, accessorToken);
+
+        if (body is not CodeBlockKoto)
+        {
+            reader.ExpectLineEnd();
+        }
     }
 
     private static void ParseAccessorParameters(
@@ -316,7 +322,7 @@ public static partial class Parser
                 goto CloseParameters;
             }
 
-            receiverType = ParseDeclarationType(ref reader);
+            receiverType = ParseType(ref reader, TypeContext.Type);
             end = Math.Max(end, receiverType.Span.End);
             if (kind == PropertyAccessorKind.Set && !reader.Expect(TokenKind.Comma))
             {
@@ -334,7 +340,7 @@ public static partial class Parser
                     goto CloseParameters;
                 }
 
-                valueType = ParseDeclarationType(ref reader);
+                valueType = ParseType(ref reader, TypeContext.Type);
                 end = Math.Max(end, valueType.Span.End);
             }
             else
@@ -364,7 +370,7 @@ CloseParameters:
             return new ErrorKoto(ref reader, arrow) { Cause = reader.Diagnostic.LastError };
         }
 
-        return ParseDeclarationType(ref reader);
+        return ParseType(ref reader, TypeContext.Type);
     }
 
     /// <summary>The header of one accessor: an optional access modifier and the get or set keyword.</summary>
