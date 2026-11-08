@@ -43,7 +43,7 @@ public sealed partial class Binding
         => target.Parent is DiscardKoto discard ? ReferenceEquals(discard.Operand, target) : !IsValueContext(target);
 
     // The outermost group around `node`, the node its consumer takes (DECISIONS R4-M145): IsBareAcquisitionPosition, ClosureEffects'
-    // ConsumedByValue and the HIR publisher's discard rows read this one rule.
+    // TakenByCase and the HIR publisher's discard rows read this one rule.
     private static Koto Grouped(Koto node)
     {
         while (IsGroup(node.Parent))
