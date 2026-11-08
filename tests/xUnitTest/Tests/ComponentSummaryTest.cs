@@ -189,8 +189,9 @@ public class ComponentSummaryTest
     }
 
     // SPEC 8.3.3 (DECISIONS BU-22): a conformance binding that uses itself at a deeper instance grows a proof without end, at the use
-    // (the growth guard) and in a summary's walk (Error resting on the stored Type); the conformance has its own record, and Binding ends.
-    // A deeper instance of a declaration reached through another conformance is no such growth and stays exact.
+    // (the growth guard) and in a summary's walk (Error resting on the stored Type); the binding, which stores itself inline, has its own
+    // record (SPEC 6.2, DECISIONS BU-128), and Binding ends. A deeper instance of a declaration reached through another conformance is no
+    // such growth and stays exact.
     [Theory]
     [InlineData("n1", "func inspect(a: PH<W<i32>>)\n    need(a@move)", "PH<W<(X, X)>>", "Unknown")]
     [InlineData("n2", "struct S\n    let p: PH<W<i32>>\nfunc inspect(a: S)\n    need(a@move)", "PH<W<(X, X)>>", "Error")]
@@ -206,7 +207,7 @@ public class ComponentSummaryTest
         var f = Function(c, "inspect");
         Assert.Equal(owned, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f).ToString());
         Assert.True(complete == (owned == "Proven"), id);
-        Assert.Equal(!complete, records.Contains("UnprovenConstraint_Kd Self is Has2"));
+        Assert.Equal(!complete, records.Contains("InvalidInlineLayout_Kd Has2.Out is " + binding));
         Assert.DoesNotContain(records, static x => x.StartsWith("Unsupported_Kd", StringComparison.Ordinal));
     }
 

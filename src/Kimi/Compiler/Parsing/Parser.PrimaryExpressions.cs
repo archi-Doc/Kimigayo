@@ -26,7 +26,7 @@ public static partial class Parser
         switch (tokenKind)
         {
             case TokenKind.ColonColon:
-                return ParseRootName(ref reader, false);
+                return ParseRootName(ref reader);
 
             case TokenKind.Dot:
                 return ParseInferredCase(ref reader);
@@ -132,7 +132,7 @@ public static partial class Parser
 
             case TokenKind.OpenParenthesis:
                 return IsBoundContainerQualifier(ref reader, out var borrowOrigin) && !borrowOrigin
-                    ? ParseDeclarationType(ref reader, parseFunctionType: false, parseContainerSuffix: false)
+                    ? ParseType(ref reader, TypeContext.Qualifier)
                     : ParseParenthesizedExpression(ref reader);
 
             case TokenKind.OpenBracket:

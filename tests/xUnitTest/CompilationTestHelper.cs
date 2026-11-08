@@ -30,6 +30,24 @@ internal static class CompilationTestHelper
         return c;
     }
 
+    // SPEC 22 (O-79 (a)): validity reads isize and usize at the profile's width, so a source's Binding records are windows-x64's without
+    // a target and with a narrower one (i686: 32-bit, AVR: 16-bit pointers). Returns those records' codes.
+    internal static string[] BindInEveryTargetMode(string source)
+    {
+        string[]? profile = null;
+        foreach (var target in new[] { WindowsProfile.Target, null, "i686-pc-windows-msvc", "avr-unknown-unknown" })
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(target is null || c.Prepare(target));
+            c.Kotonoha.AddSource(new SourceDocument("Modes.kimi", source));
+            c.Bind();
+            string[] codes = [.. c.Binding.Issues.Select(static x => x.Code.ToString())];
+            Assert.Equal(profile ??= codes, codes);
+        }
+
+        return profile!;
+    }
+
     internal static Compilation ParseSuccess(string source, string? path = null)
     {
         var c = Parse(source, path);

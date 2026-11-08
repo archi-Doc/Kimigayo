@@ -150,7 +150,7 @@ public sealed partial class Binding
     private BoundType? BindAssociatedRefinement(IsKoto clause, OriginApplicationKoto application, MemberAccessKoto member, BindingScope scope)
     {
         var owner = scope.Owner.BoundSymbol!;
-        var qualifier = this.TypeName(member.Left, scope, TypeLookupRole.Any);
+        var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
         if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
         {
             qualifier = this.BindContractReference(member.Left, qualifier, scope);
