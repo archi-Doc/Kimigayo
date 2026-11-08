@@ -5,8 +5,8 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Mir;
 
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
-// - Responsibility: the Types values flow between agree (Agree, Agrees: MirTypes.Agree, modulo Origins, or as the body's premises
-//   make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
+// - Responsibility: the Types values flow between agree (Agree, by MirTypes.Agrees: MirTypes.Agree, modulo Origins, or as the body's
+//   premises make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
 //   Adapts); every Semantics case view resolves each Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule
 //   1's (MirValidator.SharedPaths); and the temps whose Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
@@ -99,7 +99,7 @@ internal sealed partial class MirValidator
                     var resolved = cases.Adapt(site, out var operation);
                     var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
                         ? cases.Type(stored) : null;
-                    if (operation == ConversionBinding.None || (borrowed is not null && !this.Agrees(resolved.Type!.Components[0], borrowed)))
+                    if (operation == ConversionBinding.None || (borrowed is not null && !MirTypes.Agrees(body, resolved.Type!.Components[0], borrowed)))
                     {
                         this.Report(MirViolation.Operation);
                         break;
@@ -148,15 +148,9 @@ internal sealed partial class MirValidator
             return ReferenceEquals(type, BoundType.Never) ? null : type;
         }
 
-        // SPEC 8.2: Types agree (MirTypes.Agree) as they are, or as the body's premises make them (TyCtxt.Premised): E and S under `E is S`.
-        private readonly bool Agrees(BoundType? expected, BoundType? actual)
-            => MirTypes.Agree(expected, actual) || (body.Key.Decl is { } definition && MirTypes.Agree(
-                TyCtxt.Premised(definition, expected!),
-                TyCtxt.Premised(definition, actual!)));
-
         private readonly void Agree(BoundType? expected, BoundType? actual)
         {
-            if (!this.Agrees(expected, actual))
+            if (!MirTypes.Agrees(body, expected, actual))
             {
                 this.Report(MirViolation.Type);
             }
@@ -192,15 +186,15 @@ internal sealed partial class MirValidator
                 MirRvalueKind.BinaryOp => (op >= MirBinaryOp.Eq ? BoundType.Boolean : first, op switch
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
-                    >= MirBinaryOp.Eq => this.Agrees(Terminal(first), Terminal(second)),
+                    >= MirBinaryOp.Eq => MirTypes.Agrees(body, Terminal(first), Terminal(second)),
                     MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
-                    _ => this.Agrees(first, second),
+                    _ => MirTypes.Agrees(body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||
-                    (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && this.Agrees(referent, place) &&
+                    (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && MirTypes.Agrees(body, referent, place) &&
                     (MirRefKind)rvalue.Op switch
                     {
                         MirRefKind.Shared => reference.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef,

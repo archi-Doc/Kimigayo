@@ -17,9 +17,14 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 3.4.3, 13.4, 13.5.5: the Type a built-in operator's operand or a selection's receiver denotes, below its ref and uniq layers and
-    // each qualifying pair layer in the operand's scope: the one statement of it, which TyCtxt.OperandTerminal publishes to the MIR builder.
-    internal BoundType OperandTerminal(Koto operand, BoundType type) => ComparisonReferent(this.ComparisonThroughPairs(operand, type));
+    // SPEC 3.4.3, 8.2.3, 13.4, 13.5.5: the Type a built-in operator's operand or a selection's receiver denotes, in the operand's scope: its
+    // Type as the identity premises make it, below its ref and uniq layers and each qualifying pair layer: the one statement of it, which
+    // TyCtxt.OperandTerminal publishes to the MIR builder, whose Types keep a premised parameter (DECISIONS BU-72).
+    internal BoundType OperandTerminal(Koto operand, BoundType type)
+    {
+        var premised = type.ContainsParameter ? this.SubstituteIdentityPremises(type, this.ConstraintScope(operand)) : type;
+        return ComparisonReferent(this.ComparisonThroughPairs(operand, premised));
+    }
 
     // SPEC 13.4, 13.5.5: the Type a comparison operand denotes once its qualifying pair layers are followed; the operand is
     // then shared-borrowed through the layer where a reference to it is required. The operand's scope is read only at a pair layer.
