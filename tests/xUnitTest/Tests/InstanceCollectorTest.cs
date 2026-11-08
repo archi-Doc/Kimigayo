@@ -821,11 +821,11 @@ public sealed partial class InstanceCollectorTest
     // PLAN G128); a drop glue cycle through 130 structs growing once per lap; a written nest of 130 behind a handle, past the height cap
     // of 128; a branching non-regular Type, at the 1,025th glue item of its declaration; and the Known limit, growth written into a chain
     // of distinct functions (each adding Option), at its 17th generation, though nothing recurs. A refused key is refused once: a
-    // destructor creating a growing object requests its glue key from the creation, the descriptor and the local's handle glue, one record
-    // at the first request. The cap is the requested Type's: a handle past it is refused though an earlier handle admitted the release key
-    // its glue shares (U11).
+    // destructor creating a growing object requests its glue key from the descriptor and the local's handle glue (the creation's temp is
+    // moved into the object, so its Drop destroys nothing and asks none, PLAN G641), one record at the first request. The cap is the
+    // requested Type's: a handle past it is refused though an earlier handle admitted the release key its glue shares (U11).
     [Theory]
-    [InlineData("requested", "GenerationResourceLimit_Kd Expanding<Marker<T>>.init()")]
+    [InlineData("requested", "GenerationResourceLimit_Kd Kimi.Intrinsics.makeObj(Expanding<Marker<T>>.init())")]
     [InlineData("mutual", "GenerationResourceLimit_Kd f(value@move, n)")]
     [InlineData("handle", "Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()")]
     [InlineData("cycle", "GenerationResourceLimit_Kd let v: Option<obj/C1<i32>> = .None")]
@@ -1209,9 +1209,10 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.8, X34 (DECISIONS R5-M124, R8-K1b-2): a literal's entry placement, the placeEntry body instance over the Dictionary's K and V,
-    // lays out the value: an oversized or rejected value refuses it at the literal and at its entry's key, where the entry's insertion is
-    // (SPEC 22.5.1; DECISIONS R5-M144), after the literal's own records, the collector's admission order (the records of its other uses are
-    // at the same sites); an i64 value admits it (the counterpart). No LegacyRow item remains (R8-K1b-3 removes the kind).
+    // lays out the value: an oversized or rejected value refuses it at its entry's key, where the entry's insertion is (SPEC 22.5.1;
+    // DECISIONS R5-M144), after the literal's own records, the collector's admission order (the records of its other uses are at the same
+    // sites; the literal's temp is moved into `d`, so its Drop destroys nothing and records none, PLAN G641); an i64 value admits it (the
+    // counterpart). No LegacyRow item remains (R8-K1b-3 removes the kind).
     [Theory]
     [InlineData(Huge, "OversizedLayout_Kd")]
     [InlineData("P<()>", "InvalidCLayout_Kd")]
@@ -1221,8 +1222,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} {value}", $"{code} v@move", $"{code} [Key.init(1): v@move]", $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]",
-                $"{code} Key.init(1)"];
+            : [$"{code} {value}", $"{code} v@move", $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]", $"{code} Key.init(1)"];
         Assert.Equal(records, c.BuildMir().Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
         Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
@@ -1438,9 +1438,11 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["()", "uniq/Bag", "Array<i32>"], Signature(Item(program, set, "PropertyWitness Bag StorageSet")));
         Assert.Equal(["ref/Array<i32>", "ref/Bag"], Signature(Item(program, set, "PropertyWitness Bag StorageBorrow")));
         Assert.Empty(program.Records(MirRecordClass.Collection));
+        // `[1, 2]` is one Array aggregate, which targets growArray's body (R8-A1d); it is moved into the set, so its Drop destroys nothing
+        // and asks no glue (PLAN G641).
         Assert.Equal(
-            ["library Fn growArray in group Storage", "PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
-            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` is one Array aggregate, which targets growArray's body (R8-A1d).
+            ["library Fn growArray in group Storage", "PropertyWitness Bag StorageSet", "PropertyWitness Bag StorageBorrow"],
+            Targets(program, set, "Fn refill [Bag]"));
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));

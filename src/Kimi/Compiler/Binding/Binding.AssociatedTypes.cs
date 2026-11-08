@@ -124,7 +124,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (type.Symbol is { } symbol && this.conformancesByType.TryGetValue(symbol, out var list))
+            if (type.Symbol is { } symbol && this.impls.OfType(symbol) is { } list)
             {
                 for (var i = 0; i < list.Count; i++)
                 {
@@ -415,9 +415,9 @@ public sealed partial class Binding
 
     private void PrepareAssociatedBindings()
     {
-        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        for (var i = 0; i < this.impls.Paths.Count; i++)
         {
-            var path = this.activeConformancePaths[i];
+            var path = this.impls.Paths[i];
             if (!ReferenceEquals(path.RootPath, path) || path.InheritedFrom is not null)
             {
                 continue;
@@ -462,14 +462,18 @@ public sealed partial class Binding
             }
         }
 
-        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        for (var i = 0; i < this.impls.Paths.Count; i++)
         {
-            var path = this.activeConformancePaths[i];
+            var path = this.impls.Paths[i];
             var shape = path.Contract.Contract!;
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
                 var associated = shape.AssociatedTypes[j];
-                if (this.ResolveAssociated(path, associated, out _) is { } result && !this.PendingAssociatedType(result))
+                // The conformance is the site of a Type its associated binding would form past the height limit (Binding.TypeHeight.cs).
+                var frame = this.BeginConsultation(path.Declaration);
+                var resolved = this.ResolveAssociated(path, associated, out _);
+                this.EndConsultation(path.Declaration, frame);
+                if (resolved is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[associated] = result;
                 }
@@ -512,6 +516,12 @@ public sealed partial class Binding
     private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated, out bool pending)
     {
         pending = this.AssociatedEvidencePending;
+        if (this.RefusedConformance(path))
+        {
+            pending = false;
+            return null;
+        }
+
         if (path.InheritedFrom is not null)
         {
             BoundType? inheritedResult = null;
@@ -694,7 +704,7 @@ public sealed partial class Binding
     // names `qualifier` in `scope` (NamesReference) as the declaring reference of `associated`.
     private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier, BindingScope scope)
     {
-        if (!this.conformancesByType.TryGetValue(owner, out var identities))
+        if (this.impls.OfType(owner) is not { } identities)
         {
             return null;
         }

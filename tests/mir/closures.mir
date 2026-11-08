@@ -21,6 +21,7 @@ fn makeAdder @12
   _2: closure (i32) -> i32 temp @20 s1
   _3: (i32) -> i32 temp @20 s1
   _4: (i32) -> i32 temp (Result) @12
+  _5: (i32) -> i32 temp @20 s1
   s1: lexical in s0 @18
   bb0:
       StorageLive(_2) @20 s1
@@ -43,7 +44,8 @@ fn makeAdder @12
       _4 = move _3 @19 s1
       goto bb3 @19 s1
   bb6:
-      drop _3 -> bb7 @20 s1
+      _5 = move _3 @19 s1
+      drop _3 -> bb7 [elide] @20 s1
   bb7:
       StorageDead(_3) @20 s1
       StorageDead(_2) @20 s1
@@ -234,7 +236,7 @@ fn run @25
   bb21:
       StorageDead(_5) @43 s1
       StorageDead(_3) @36 s1
-      drop _2 -> bb22 @32 s1
+      drop _2 -> bb22 [elide] @32 s1
   bb22:
       StorageDead(_2) @32 s1
       StorageDead(_1) @28 s1
