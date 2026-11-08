@@ -44,7 +44,7 @@ internal sealed partial class MirBorrows
     {
         var kept = this.Kept(found, element, via);
         var dropped = (this.pass & DropTier) != 0;
-        if (element <= Writable)
+        if (element <= Unformed)
         {
             if (element == Escaped)
             {

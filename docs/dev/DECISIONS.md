@@ -5786,6 +5786,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Its recorded limit is removed by R4-M184 (PLAN G570): Scope, Tense and Order are accepted, and no R7-O2 dependency remains.
 - **R4-M183 A store through a stated raw layer writes what its Origin covers (PLAN G338)** (2026-11-08; the owner's O-55 (c), verbatim 「O-55は(c)でお願いします。」, leaves Binding's rows; the owner's exception to AGENTS' narrow-subset rule, O-60, verbatim 「すべて (a)」). SPEC 5.2.1, 5.7's table. W's first step at a raw parameter's own stated layer: the argument's referents and the first step of each exclusive input whose outer Origin is that Origin (`MirBorrows.Cover`); only the `null` literal written at the call adds no E there, under the owner's exception (O-60): a `null` reaching the parameter any other way stays dev's false error, a named limit (PLAN G598). Rejected: dropping E for an empty set (seven invalid programs accepted, since A5 does not follow a scalar written through a raw pointer); a null set element (a must-fact in A5's may-sets, stopped by reading); W replacing q's referents (`c5`: a fit lets q address a second holder); "a value naming nothing writes nothing" at every store (it makes `a8` valid, ahead of G339's row and of G581; and it reads no Origin). None where another input also names the Origin: a slot keeper's storage has no first step (`keeperBad`); none for a Value callee. A5 reads the members through `TyCtxt.LayerMembers` over `Binding.LayerMembers`, a new reader of Binding's one `RawMembers`, since ArchitectureRulesTest's raw Origin role ratchet leaves Mir/ no read of a raw layer's Origin; no row changes. Option A's per-holder exclusion was prototyped and failed (`fj2`); evidence in the G338 state file, for O-55's return.
   - Amended by R4-M185 (PLAN G584): a Function Item's Value call covers as a direct call; "none for a Value callee" now holds for Closures, Function-typed parameters and erased values only.
+  - Amended by R4-M186 (G598-1): the literal test is A5's must-null fact; O-60's exception remains for the residue PLAN G598 lists.
 - **R4-M184 One region, one tense: a Closure's result keeps an enclosing region, and a local region reaches the meet of all its sources (PLAN G570)** (2026-11-08; Major; C-108; replaces G553's rule and removes its limit) SPEC 15.3.6, 15.4.4, 15.6.4, 15.6.5, 15.8.2.
   - Cause. `ResolveLocalResultOrigins` cut an inferred result from an enclosing region R to R's sources as of the literal, while every other reading of R is whole-body (`JudgeLocalRegion`). So one Origin had two forms and two tenses: result against environment (G553), result against parameter and later bounds (Kind U: Argument, Store, Order, reading freed memory in straight-line code). Every G553 shape reconciled a whole-body region published as of one moment.
   - Rule. (1) A published result resolves only its own body's regions (`RegionIn`): an enclosing region is fixed there (BU-28) and stays, so the inferred form is the annotated form. (2) A region of an enclosing anonymous function is a Closure Type's Origin argument (`Binds`, R4-M159), so it leaves its body as its sources; this also opens the stated form, Unsupported before. (3) A local region reaches the meet of all its sources, read at the retention in the tense of Binding's fit (`AddRegionMeet`): retention's own edge, in a per-computation environment no proof reads. `BoundClosure.CapturedRegions`, its writers and `retentionCaptured` go.
@@ -5804,6 +5805,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Why it is sound: a Function Item value's target and slot order are fixed. Distinct declarations have distinct Item Types (7.7.4), and slots are positional (7.3.4). Closures, Function-typed parameters and erased values are not Items, so they stay uncovered.
   - Moves. A Function Item's Value call in its own body, with `null` at a stated raw parameter and every member of its Origin an exclusive input, is newly accepted: `rec1` and the gate's 56 valid programs. Outside the own body the call keeps its located `Unsupported_Kd` at `null`; only false `ComparisonLoanConflict_Kd` records go, 168 record-only moves (Q13).
   - Rejected: reading the Value call's instantiated signature (a Type argument's Origin would look stated); a covering column in Binding's rows (frozen by O-55 (c)); covering Closures.
+- **R4-M186 An empty argument set at a covered store is null: A5's must-null fact (PLAN G598)** (2026-11-09; Major; design reviews 1
+  REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 ACCEPT; the Middle's reviewer; amends R4-M183) SPEC 5.1, 5.2, 5.3, 5.4, 5.5,
+  5.7 Fits, 15.6.4.
+  - Amends R4-M183: the literal test becomes A5's must-null fact (Φ_N). A5's sets gain the marker Φ_N, which no check reads, in every
+    state a store gives an exposed holder and in every call result. An exposed holder is a local that a non-shared direct Loan or
+    address of the body names, or that an Opaque site touched: a pointer the body formed may write its bytes at any later point, also
+    by a store A5 reads none of (a callee's scalar store, a pun; SPEC 5.2, 5.5: no other pointer reaches a local). Every non-null pointer
+    then carries a Loan, an address, Φ_E or Φ_N, so the empty set is a value null on every path. `MirBorrows.Calls`' Keep drops the argument's
+    own first step (E) at a covered store where its value is the empty set; `NullLiteral` is deleted.
+  - O-60's exception remains for the residue, which PLAN G598 lists as a class: a null that A5's must-null fact cannot prove at the
+    store. It includes integer zero, an Origin shared with a `ref` input, `during self`, a stated layer inside a Tuple (a0t), a8 (G339's
+    reading), an address-taken null local, `id(null)`, nulls read through an input, E or a static, a joined part store, and Array
+    elements. Each was rejected by dev; none newly.
+  - R4-M183's rejected option "dropping E for an empty set" is superseded: its reason (A5 does not follow a scalar written through a raw
+    pointer) is closed by exposure and Φ_N on call results. Its rejected "null set element" keeps its reason (a may-set cannot kill an
+    element) and stays rejected; Φ_N has the opposite polarity and is only added.
+  - Exposure shares the flow-holder table (`MirBorrows.Loans`' `named`: NamedHolder still selects the flow holders, unchanged;
+    ExposedHolder marks an exposed holder). Φ_N enters at a store into an exposed holder's own Place, at a store through a reference
+    into each exposed holder Refs names, at every holder a call's W writes but E (W follows only non-shared Loans and addresses), and
+    in every call result; E and a holder a shared Loan alone names get none (a write through such a path is undefined, 5.2.1 cond. 3).
+  - Rejected: Φ_N in every store through a reference and every W target (E and shared-only holders too: no soundness need, and cost);
+    Φ_N only in a call result whose set would otherwise be empty (it leans on the Loan-ending argument); N10, only in a call result
+    with no element that is never removed (Φ_E or an address), which keeps the fact independent of Loan endings and is cheaper, not
+    needed at RP8's cost (RawStores warm Analyze B/A 1.028, A'/A 0.992; Hello and Milestone26 within A'/A; warm 0 B), kept as the cut if
+    a later measurement asks for it.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9353,6 +9379,10 @@ resumed by R4-M86 (2026-10-20).
     question and keyed by the interned Type. It is a TyCtxt view (R5-M61), cleared in `ResetViews`. The Checker takes its body's facts
     once (`Copies`). `MirEffects`, `MirTypes.Destruction` and code generation read the same facts. `TyCtxt.Copy(definition, type)` is
     gone. No second cache. A warm validation still allocates nothing.
+  - Amended by BU-138 (G642, 2026-11-09). The Copy facts (`TyCtxt.CopyFacts.Copy`) answer "Copy in every Semantics case"
+    (`Binding.CopiesInEveryCase`). The answer is still Binding's, and MIR only reads it. Its five readers: the validator's Copy rule,
+    `MirEffects`, `MirTypes.Destruction`, `MirBorrows.Destructions` and `ModuleCodegen.Objects`. A Type that is Copy in every case
+    destroys nothing in any instance.
 - **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after the
   joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03 (PLAN G396))
   - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
@@ -10476,6 +10506,29 @@ resumed by R4-M86 (2026-10-20).
     is read by demand (COMPILER_ARCHITECTURE's temporary structures).
   - Rejected: a check at conformance clauses alone (it misses function and struct Constraints); the opt-out as a declaration query
     now (it needs R7-D2 d3's demand binding of the opt-out clause).
+- **BU-138 An acquisition's Copy evidence is per Semantics case: `Binding.CopiesInEveryCase`** (2026-11-09; PLAN G642, C-154,
+  D-137, the Middle's consent C-155 with L1-L3; design reviews 1 REVISE, 2 ACCEPT, implementation review ACCEPT; amends BU-88)
+  - Rule (SPEC 8.14, 8.15.2, 3.5, 6.3.4, 7.7.3, 15.1.6): an acquisition that needs Copy evidence has it when the complete Type in
+    every Semantics case of the pair binders in scope is proven Copy by 8.3; no case adds a premise.
+  - Owner: `Binding.PairCases.cs`, beside `CaseType`. The 8.3 proof decides first. Only when it is Unknown and the Type publishes
+    `ContainsPairLayer` is each case's Type proven. Where the cases exceed `PairBinder.CaseBound` (64 inclusive; 65 are not
+    analyzed), the 8.3 proof decides alone; that definition records `OwnershipCaseLimit_Kd` (`CheckCaseBound`). A warm query
+    allocates nothing.
+  - Binding readers (7): `BareAcquire` (a Type that is not itself a pair layer Copies; a pair layer keeps `BareAcquisition`'s per-case
+    plan); `AcquireValueCallee`'s Consuming row (its own `ProveCopy` row was deleted); `@copy`; the identity conversion; the explicit
+    adaptation's and the object view's bare-Place rows; `Patterns.AcquireBinding`; `CompleteTransfer`'s 6.3.4 part.
+  - MIR readers (5), through `TyCtxt.CopyFacts`: the validator's Copy rule (`MirValidator.Rvalues.cs`), A5's effects
+    (`MirEffects.Solve.cs`), drop observation (`MirTypes.Destruction.cs`), drop retention (`MirBorrows.Destructions.cs`) and the
+    object payload copy (`ModuleCodegen.Objects.cs`).
+  - Invariant: in every case, the per-case plan of a Type that is not itself a pair layer is the same, because no case Type of it is
+    a `uniq` reference. So the plan is `HirAcquire.Copy`, and no HIR or MIR form is added.
+  - Every other `ProveCopy` reader has another meaning and keeps the 8.3 proof: a fill's Constraint; a Property certificate; a
+    witness's StorageCopy; Refuted/Proven tests and lints; the inspection temporary's borrow; an Error branch; the public query.
+  - Acceptance moves: valid programs with such a Type are accepted. The R7-Y2b gate's four are among them, and so is an A5 move: a
+    Closure Copy in every case meets `effect confined` (`MirEffects.Solve`, the Middle's fail-first pair e1/e2).
+  - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
+    inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
+    rule); a validator exemption (MIR would then decide a Binding fact).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -13298,6 +13351,8 @@ structure is recorded here by the unit that first implements it.
     a `DropGlueRow` per collection (no consumer before C8e); re-pointing the old lowering to the map (D5).
   - Amended by R5's census unit U6 (PLAN G157 (30); 2026-11-01): the Helpers' result parts are chosen by `ArrayHelperRow.Result`, not by
     kind arms (R5-M16's amendment).
+  - Superseded by R8-M11 (2026-11-09, R8-K1b-3): the `LegacyRow` item kind (`MonoKind.LegacyRow`, `AdmitRow`) is removed; its last
+    row, placeEntry's, became a `DictionaryStorage` body at R8-K1b-2, and the Array rows went at R8-A1d.
 - **R5-M122 The owner confirms C8d's departure** (owner, 2026-10-25, after C8d's design; verbatim 「C8d の逸脱（Array カーネルの corpus O2 A/B を C8d
   と C9c の遅い方へ移し、C8d は一時カーネルで参考測定すること）も承認します。」) The departure R5-M121 records is confirmed: plan row C8d's Array kernel O2 moves to the
   later of C8d and C9c, since the `Array` corpus kernel's checksum line needs interpolation (C9c) under MIR code generation; C8d measured
@@ -13377,6 +13432,9 @@ structure is recorded here by the unit that first implements it.
     `Compilation.Pipeline.cs`); catalog rows or `KimiDeclarationId`s for initialize (R5-M28); the MIR builder calling initialize or append
     (a second literal form); new IntrinsicIds (PD21); Kimigayo bodies now (R8); re-pointing the old lowering to the map (D5).
   - Superseded in part by R8-M8 (2026-11-08, R8-K1a): the `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows; the Dictionary remainders are Kimigayo bodies in `Storage.kimi`.
+  - Superseded in part by R8-M11 (2026-11-09, R8-K1b-2 and R8-K1b-3): placeEntry's `LegacyRow` item and its Place helper (placeEntry
+    is a `DictionaryStorage` body), `dictionaryStorage`'s kernel and the P2a kernel table, and `DictionaryEntryLayout`; the Drop helper
+    stays until R8-K1c.
 - **R5-M125 The owner confirms C8e's two departures** (owner, 2026-10-25, after C8e's design; verbatim 「C8e の逸脱 2 件（Dictionary カーネルの
   corpus O2 A/B を C8e・C8f・C9c のうち最も遅いものへ移し、C8e は一時カーネルで参考測定すること、Dictionary のグルーの対象を要素グルーではなく Drop 行が宣言する clearEntries とすること）を承認します。」) The
   departures R5-M124 records are confirmed: (i) plan row C8e's Dictionary kernel O2 moves to the later of C8e, C8f and C9c, since the
@@ -16263,7 +16321,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Why per-Type facts.** They are over each Type's own facts, with `alignmentOf<T>()` = `stride<(u8, [0 of T])>()`, and no aggregate of K and V is laid out. `Layout` decides Oversized before limits (R5-M52) and the slot is implementation storage, so a K or V over a generation limit keeps its Resource record.
   - **Premises.** Alignments are powers of two at most 16; sizes are multiples of alignment; an aggregate's alignment is its parts' largest. These are this implementation's placement (IMPL 21.1.1 says "at least").
   - **Depth margin.** `alignmentOf` adds two placement levels, so the margin against Binding's storage-nesting bound (PD30) and `Layout.MaximumHeight` (64) is one level. A change of either bound must re-run `AValueNestKeepsTheStorageBoundsRecords`.
-  - **Staged copy.** Every library body that addresses a slot reads `slotStride`, `keyAt` and `valueAt` (R8-K1b-1: the offsets are `DictionaryStorage` bodies, `keyAt` at `slot + 16`, `valueAt` at `Align(16 + stride<K>(), alignmentOf<V>())`, beside `slotStride` under one comment). `DictionaryEntryLayout.Of` stays the second statement for `dictionaryStorage`'s stride (its `.1`, read by nothing) and `placeEntry`'s Place helper until K1b-2 (PLAN G640). From K1b-1 to K1b-2 the offsets are in both statements: the helper writes a placed entry at `Of`'s offsets and the bodies read at the library's, equal under the premises above, so the agreement on one buffer covers the offsets as it covered the stride. The natives observe it (`DictionarySlotStrides`: `(i32, i128)`, `(i32, string)`, `Z16`, `(i128, u8)`, `((), ())`), in place of the static value-offset assertion. From K1b-2 `Of` is read by nothing (R8-M11), and K1b-3 removes it.
+  - **Staged copy.** Every library body that addresses a slot reads `slotStride`, `keyAt` and `valueAt` (R8-K1b-1: the offsets are `DictionaryStorage` bodies, `keyAt` at `slot + 16`, `valueAt` at `Align(16 + stride<K>(), alignmentOf<V>())`, beside `slotStride` under one comment). `DictionaryEntryLayout.Of` stays the second statement for `dictionaryStorage`'s stride (its `.1`, read by nothing) and `placeEntry`'s Place helper until K1b-2 (PLAN G640). From K1b-1 to K1b-2 the offsets are in both statements: the helper writes a placed entry at `Of`'s offsets and the bodies read at the library's, equal under the premises above, so the agreement on one buffer covers the offsets as it covered the stride. The natives observe it (`DictionarySlotStrides`: `(i32, i128)`, `(i32, string)`, `Z16`, `(i128, u8)`, `((), ())`), in place of the static value-offset assertion. From K1b-2 `Of` is read by nothing (R8-M11), and R8-K1b-3 removed it (R8-M11).
   - **Owning iteration does not move:** a by-value `Dictionary<Bad, V>` is already rejected at its parameter and moves (pre-existing, valid under SPEC 8.15.3; PLAN G641). Its storage-height bound stays dev's (62 accepted, 63 rejected).
   - **Supersedes** R5-M124's `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows.
   - **Counts:** `CompilerFunctionKind` 62 → 59, `KimiDeclarationId` 196 → 193, catalog 192 → 189, `StorageKernelKind` 4 → 2, `LegacyWriter` 11 → 9.
@@ -16293,8 +16351,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     margin there is zero. A change to either bound, or to `alignmentOf`'s two levels, re-runs
     `AValueNestKeepsTheStorageBoundsRecords`. The other bodies keep one level.
   - **R7-M11's temporary `WritesThrough` row** (`StoragePlaceDictionaryEntry 0`) is discharged.
-  - **Staged (K1b-3):** the Place helper, `DictionaryEntryLayout.Of` (now read by nothing), the Dictionary kernel and its table, and
-    the `LegacyRow` item kind are unreachable until K1b-3 removes them (PLAN G640).
+  - **Removed at R8-K1b-3** (behavior-preserving): the Place helper, `DictionaryEntryLayout.Of`, the Dictionary kernel and its table
+    (`StorageKernelKind` and its row, input and writer), the `LegacyRow` item kind (`AdmitRow`) and `HelperNeeds.Memory`, which only
+    the Place row declared (PLAN G640 closed). `MonoKind` 9 → 8, `LegacyWriter` 7 → 5, `DictionaryHelperKind` 2 → 1,
+    `[Transitional("R8")]` 23 → 17. Staged to R8-K1c with the Drop helper's one-row table: its `Storage` column and `Shape`'s key and
+    value (no reader), `StoredValue` (a one-field wrapper) and `DictionaryHelper.Key`/`.Value` (read only by the kept-helper match),
+    and `DictionaryCallee.Append` (no Backend reader; two tests read it through `KimiLibrary.DictionaryStorage`).
   - **Counts:** `CompilerFunctionKind` 57 → 55, `KimiDeclarationId` 191 → 190, catalog 187 → 186.
 - **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
   - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).
