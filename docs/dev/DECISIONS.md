@@ -15731,6 +15731,18 @@ R8-M* and R9-M* by the stage of the recording unit.
   - `AdtDef.Base` is null on an inline cycle: an error at the container stands, and no walk reads past it (`c26`, `rx8c`).
   - Removes `memberLookupVisiting`, `qualificationVisiting`, two depth-bounded loops, two recursions, the read's four copies, `DeclStates`.
   - Rejected: a Type in the query's output (binds clauses before associated specifications); a per-declaration array (N² entries); a three-valued `Accessible`; binding by demand now (R7-D2 d3); a clause read that consulted a clause not ready waiting too (`nt42`); `Unsupported_Kd` on a first difference (`rx1`, `j4`); no query state (Chain300 25-27 ms against 19.5 ms); a seed refilled by each Bind's first run (its records alternated, `nt46`); dropping the seed at each Bind (a warm Bind of a second-run program runs twice: +20-34% in design review 2).
+- **R7-M10 Access inclusion is decided on SPEC 9.4.2's atoms** (2026-11-08; R7-N3a; Major; no design review, F's ruling 3) SPEC 9.4.1,
+  9.4.2, 9.4.4, 9.4.6, 6.2.2.
+  - Rule: `AccessCovers(member, a, b)` (`Access(a) ∩ Access(b) ⊆ Access(member)`) reads each level of a chain as a union of `Body(C)`,
+    `Kotonoha(K)` and `Derived(S)` (empty unless S is an open struct); a `private protected` level is its two unions. A level of the
+    member holds when one level of a's or b's chain has every atom inside it (`UnionCovered`, `UnionIncluded`, over `DerivesFrom`):
+    `Body(X) ⊆ Derived(C)` when X is or is nested in a struct deriving from C, `Derived(S) ⊆ Derived(C)` when S is or derives from C.
+  - Owner: the access component, `Binding.Access.cs`; `AccessCovers` and `DeclarationAccess` moved there from
+    `Binding.ContractMatching.cs`, where `ExternallyVisible` stays (Documentation's public-docs filter, another contract).
+  - Removes `PrivateDomainWithin` and the lexical-only `protected` arms.
+  - Rejected: a `DerivedDomainWithin` guard (misses protected levels on the left: `ra3`, `w1`, `w6`-`w8`); a normalized domain value
+    (allocation per check on the `TypeAccessCovers` walk).
+  - Closes the owner's O-65 (a) named limit (`rx1c` accepted) and N2d's ten crash-to-error programs (`p2`, `p4`, `p8`, `p9`, `rc4`, `rc5`, `ru2`, `nt5`, `nt13`, `nt23`); PLAN G592 closed.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
