@@ -13194,6 +13194,7 @@ structure is recorded here by the unit that first implements it.
     uncollected); a placeEntry clause in AdmitRow (Designated serves every row); `InstanceCollector(…, KimiLibrary)` (the held
     `Compilation.Pipeline.cs`); catalog rows or `KimiDeclarationId`s for initialize (R5-M28); the MIR builder calling initialize or append
     (a second literal form); new IntrinsicIds (PD21); Kimigayo bodies now (R8); re-pointing the old lowering to the map (D5).
+  - Superseded in part by R8-M8 (2026-11-08, R8-K1a): the `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows; the Dictionary remainders are Kimigayo bodies in `Storage.kimi`.
 - **R5-M125 The owner confirms C8e's two departures** (owner, 2026-10-25, after C8e's design; verbatim 「C8e の逸脱 2 件（Dictionary カーネルの
   corpus O2 A/B を C8e・C8f・C9c のうち最も遅いものへ移し、C8e は一時カーネルで参考測定すること、Dictionary のグルーの対象を要素グルーではなく Drop 行が宣言する clearEntries とすること）を承認します。」) The
   departures R5-M124 records are confirmed: (i) plan row C8e's Dictionary kernel O2 moves to the later of C8e, C8f and C9c, since the
@@ -15979,6 +15980,18 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **`llvm.memcpy`** is declared bare (`LlvmModuleText.MemoryDeclarations`): `transferBytes` brings the declaration into modules that `ReferenceEmissionTest`'s `Assert.DoesNotContain("noalias", ir)` reads whole, and LLVM restores the intrinsic's own attributes.
   - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` is still admitted by the validator until then.
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
+- **R8-M8 The Dictionary remainders are bodies; the slot stride is stated once, by the owner's (e)** (Back, 2026-11-08; R8-K1a; Major; design reviews 1-2 ACCEPT at revision 2; the owner's O-68 (e), verbatim 「O-68はeでお願いいたす」; on R8-M2 and R8-M6; supersedes in part R5-M124) SPEC 5.2.1, 8.15.3; IMPL 21.1.1, 21.1.3.
+  - **Owner.** `borrowStorage`, `borrowStorageUniq` and `ownStorage` over a Dictionary are Kimigayo bodies in `Storage.kimi` over `DictionaryStorage.Handle` (IMPL 21.1.3): the shared views read `buffer`, `head` and `length` through the path they are given (R8-A1d's rule) and take `Loan<...>.init()` (R8-M6); the owning remainder holds the consumed Dictionary's Handle whole (R8-A1d's (a′), SPEC 5.2.1's third limit).
+  - **The views' move.** No remainder stores the stride, so a view formed with no entry read lays out nothing of K or V: views over a K or V whose layout fails become accepted (SPEC 8.15.3; the class and its members are named in the commit). An invalid program loses only its formation record (R8-M2 as extended by R8-A1d's B2), and a resource-rejected one's record moves from the formation to the first read.
+  - **The slot rule is (e)** (the owner, O-68): no `Slot<K, V>` record. The slot is the Links' 16 bytes, the key at 16, the value at `Align(16 + stride(K), alignment(V))`, and the stride `DictionaryStorage.slotStride<K, V>()` = `Align(16 + stride(K) + stride(V), max(8, alignment(K), alignment(V)))`. These are dev's offsets and stride byte for byte. K1a states the stride and K1b the offsets.
+  - **Why per-Type facts.** They are over each Type's own facts, with `alignmentOf<T>()` = `stride<(u8, [0 of T])>()`, and no aggregate of K and V is laid out. `Layout` decides Oversized before limits (R5-M52) and the slot is implementation storage, so a K or V over a generation limit keeps its Resource record.
+  - **Premises.** Alignments are powers of two at most 16; sizes are multiples of alignment; an aggregate's alignment is its parts' largest. These are this implementation's placement (IMPL 21.1.1 says "at least").
+  - **Depth margin.** `alignmentOf` adds two placement levels, so the margin against Binding's storage-nesting bound (PD30) and `Layout.MaximumHeight` (64) is one level. A change of either bound must re-run `AValueNestKeepsTheStorageBoundsRecords`.
+  - **Staged copy.** Every library body that addresses a slot reads `slotStride`; `DictionaryEntryLayout.Of` stays the second statement for `dictionaryStorage`, `keyAt`, `valueAt` and `placeEntry`'s helper until K1b (PLAN G640).
+  - **Owning iteration does not move:** a by-value `Dictionary<Bad, V>` is already rejected at its parameter and moves (pre-existing, valid under SPEC 8.15.3; PLAN G641). Its storage-height bound stays dev's (62 accepted, 63 rejected).
+  - **Supersedes** R5-M124's `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows.
+  - **Counts:** `CompilerFunctionKind` 62 → 59, `KimiDeclarationId` 196 → 193, catalog 192 → 189, `StorageKernelKind` 4 → 2, `LegacyWriter` 11 → 9.
+  - **Rejected:** a `Slot<K, V>` or `(K, V)` stride (B1), an alignment intrinsic (expressible once the Front's rule holds), C layout (SPEC 6.7.1).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
