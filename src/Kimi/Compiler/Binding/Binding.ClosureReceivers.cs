@@ -39,7 +39,8 @@ public sealed partial class Binding
 {
     private ClosureEffects? closureEffects;
 
-    /// <summary>Gets the children's takes ClosureEffects recorded (once per consumer and selection) and the definitions it read, which a scaling check reads.</summary>
+    /// <summary>Gets the children's takes ClosureEffects recorded (once per consumer and selection) and the definitions it read, which a
+    /// scaling check reads.</summary>
     internal long ClosureWork => this.closureEffects?.Work ?? 0;
 
     // One reusable visitor classifies each closure's receiver from the uses of its captures (SPEC 7.7.3); it never visits a
@@ -98,7 +99,8 @@ public sealed partial class Binding
             this.Derive();
             foreach (var use in this.localUses)
             {
-                if (this.holds.TryGetValue(use.BoundSymbol!, out var held) && held.HasFlag(Holds.Environment) && this.UsesExclusively(use, null).Use == PlaceUse.Exclusive)
+                if (this.holds.TryGetValue(use.BoundSymbol!, out var held) && held.HasFlag(Holds.Environment) &&
+                    this.UsesExclusively(use, null).Use == PlaceUse.Exclusive)
                 {
                     if (held != Holds.Environment)
                     {
@@ -205,7 +207,8 @@ public sealed partial class Binding
                 this.holds.TryAdd(declared, Holds.None);
             }
             else if (node is BinaryKoto { Akind: KotoKind.Equals } assignment &&
-                KotoHelper.UnwrapParentheses(assignment.Left).BoundSymbol is { Kind: BindingSymbolKind.Local } assigned && ReferenceTypes.IsPointer(assigned.Type))
+                KotoHelper.UnwrapParentheses(assignment.Left).BoundSymbol is { Kind: BindingSymbolKind.Local } assigned &&
+                ReferenceTypes.IsPointer(assigned.Type))
             {
                 this.definitions.Add((assigned, RootOf(assignment.Right)));
                 this.holds.TryAdd(assigned, Holds.None);
@@ -317,7 +320,9 @@ public sealed partial class Binding
             var raw = false;
             for (var place = capture; ; place = place.Parent!)
             {
-                var need = owned is null && !raw ? new Need(this.ContractWritesThrough(place) ? PlaceUse.Exclusive : PlaceUse.Shared, true) : this.NeedsExclusively(place, raw);
+                var need = owned is null && !raw
+                    ? new Need(this.ContractWritesThrough(place) ? PlaceUse.Exclusive : PlaceUse.Shared, true)
+                    : this.NeedsExclusively(place, raw);
                 listed = ReferenceEquals(place, capture) ? need.Listed : listed;
                 if (need.Use is PlaceUse.ByCase or PlaceUse.Exclusive)
                 {
