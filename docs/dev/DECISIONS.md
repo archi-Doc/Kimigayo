@@ -10370,6 +10370,23 @@ resumed by R4-M86 (2026-10-20).
   - Cost: RP8 (pinned A/B/A') decides the default-versus-reference comparer cost on these tables; bound cold at most +3,968 B on its
     rows, warm 0.
   - Open: PLAN G387 stays open. U0 gives it the pair key, but no scaling row shows a form that reaches the pair table and fails before.
+- **BU-133 One encoding of an Integer constant: its Type's N-bit sign-extended payload, decided by Binding** (2026-11-08; PLAN
+  G620, the Middle's design C-149, F's design review with B1 and B2 accepted; U1, the Front's part). Binding's `Folded` column held two
+  encodings of an unsigned constant whose top bit is set. A number literal (`Binding.Hir.Fold`) and the builder's Literal Pattern
+  (`MirBuilder.Match.LiteralTest`, from magnitude and sign) gave the plain value (u8 255 as 255). A folded conversion gave the
+  sign-extended payload (`(-1)@wrap<u8>` as -1), which `ScalarTypes.Normalize` documents as canonical. So one value had two constants.
+  - The one canonical form of an Integer constant is its Type's value in N-bit sign-extended form (`ScalarTypes.Normalize`, the bits of
+    `ScalarTypes.TryLiteral`). Binding decides it: `Fold` encodes a literal, `CompleteFolded` a folded conversion, and
+    `TryPatternLiteral` a Literal Pattern, whose `PatternLiteral.Bits` replaces `Magnitude` and `Negative`. The MIR builder copies
+    `PatternLiteral.Bits` and builds no constant from magnitude and sign.
+  - A literal its Type does not hold keeps its value modulo 2^N. That is the operand of a folded wrap conversion, or the number under a
+    direct literal's sign. It is never evaluated, but `HirColumnsTest` requires a value on every evaluated Literal row. A generic
+    literal (0 through 127, SPEC 8.7.4) is its own value in every instance, so a Type whose instance decides its width keeps the value.
+  - Visible effect: none for users (acceptance, records, Hover and diagnostic text, IR). `Folded` and the MIR dumps change for unsigned
+    constants at or above 2^(N-1): u8 200 prints `-56_u8`.
+  - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
+    have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
+  - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -15921,6 +15938,27 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a `DerivedDomainWithin` guard (misses protected levels on the left: `ra3`, `w1`, `w6`-`w8`); a normalized domain value
     (allocation per check on the `TypeAccessCovers` walk).
   - Closes the owner's O-65 (a) named limit (`rx1c` accepted) and N2d's ten crash-to-error programs (`p2`, `p4`, `p8`, `p9`, `rc4`, `rc5`, `ru2`, `nt5`, `nt13`, `nt23`); PLAN G592 closed.
+- **R7-M15 One reading of SPEC 9.4.1's table: a use is a point of Body(its Container)** (2026-11-08; R7-N3b; Major; no design
+  review, F's ruling 3) SPEC 9.4.1, 9.4.2, 9.4.3.
+  - Rule: `AccessUnions(symbol)` is the one reading of the table's rows: the unions a chain's levels give, below the root; a public
+    level gives none, a `private protected` level two (Kotonoha(K), then Body(C) ∪ Derived(C)), any other one. A declaration's domain
+    is their intersection. `AccessCovers` requires each union of the member's chain to hold, `UnionCovered` finds one union of a's or
+    b's chain inside it, and `Accessible` requires each union of the symbol's chain to include the use; no reader splits a row.
+  - `UnionIncluded(own, at, union, level)` decides one union inside one union on atoms; it reads a scope: a declaration's own scope,
+    or a use's scope read as `private` (a point of Body(its Container); at the root, Kotonoha(K)).
+  - SPEC 9.4.3 stays one condition, `ReceiverRuleHolds`: a protected instance member reached only through Derived(C) (the use is not
+    in Body(C), nor in Kotonoha(K) for `protected internal`) needs a struct enclosing the use that derives from C and a receiver whose
+    Effective Core derives from that struct.
+  - Why the row is decoded per chain and not inside `UnionIncluded` (the ruling's first form): a domain is covered by a member's
+    `private protected` level when each of its two unions is covered, possibly by two different levels of the domain's chain. Decoding
+    the row inside `UnionIncluded` would require one domain level to cover both, which rejects valid `x1` (`private protected struct
+    T` in open C; `protected func f(t: C.T)` in `internal open struct S: C`: Kotonoha(K) is covered by S's level, Body(C) ∪ Derived(C)
+    by f's). Measured on a throwaway build of that form; `x1` and its invalid twin `x1c` are rows of `ApiAccessBindingTest`.
+  - Removes `Accessible`'s second copy of the table (`sameModule`, `lexical`, the root rule, the access switch) and the three
+    `private protected` splits (`AccessCovers`, `UnionCovered`, `Accessible`).
+  - Rejected: 9.4.3 inside the inclusion (an atom-reporting result, a mode steering it); the row decoded inside `UnionIncluded` (above).
+  - Derived(C) of a struct that is not open is empty (SPEC 9.4.1), and Derived follows the declared base clauses (9.4.2): a struct that
+    names a sealed base gains the independent access record where it reads the sealed base's protected member (the class below).
 - **R7-M11 `Binding.UseOf`, one place-use rule** (2026-11-08; R7-Y2a, PLAN G251 (1), (3), (5); Major; implementation review ACCEPT, C-136; the owner's O-21 (ii), verbatim 「(ii) で決定」, and O-76 (b) (i), (c) (i), verbatim 「O76は推奨どおりでお願いします」) SPEC 4.7.1, 5.2.1, 7.7.3, 8.14, 15.1.5, 15.1.6. What a use of a Place needs of it (SPEC 4.7.1, 7.7.3, 8.14, 15.1.5, 15.1.6) is decided once, by the Adjust rule: the strongest of the child's two rows' takes (`Take`: ByCase, a bare pair-case acquisition that Reborrows in some case, tested first; Exclusive, an operation's exclusive target, an exclusive borrow or a Reborrow of an exclusive Type; Consuming, a Move) and its parent's own operation, which no row states and which never moves its operand (`BorrowsExclusively`: an exclusive borrow, view upcast or case adaptation in some case; an assignment or update target; an Exclusive-mode Subject). `PlaceUse` is a Binding representation, not a column (O-40 (a): no rows at bind time) and not a HIR vocabulary entry. The HIR publisher reads it for `indexUniq` (ByCase or Exclusive), keeping only its down-propagation, which stops at a raw Place (SPEC 5.2). ClosureEffects reads it over its finder's rows (one `TakesOf`, the shared selection, which `ConsumedByValue` also reads) and owns SPEC 7.7.3's environment rule: past a raw step a Take or in-place destruction needs write capability; `DerivesPointer` is 5.2.1 condition 3's closed list (a displacement, a raw-pointer conversion or fit, an identity conversion; groups are walk steps); the owner's O-76 (c) (i): a pointer read through a raw Place the environment reaches is read from the environment, so the raw rule, `DerivesPointer` and the contract rule apply past a raw step; O-76 (b) (i): a pointer a call with a body returns is not derived (`DerivesPointer` lists no call). A call whose operation contract performs a write-capability access through an argument is the body's access (the owner's O-21 (ii)): the compiler-function table's written inputs, `IntrinsicDisposition.WritesThrough` next to `Effect(kind)` (`RawInitialize` 0, `StorageTransferBytes` 0 and 1, `StorageDestroyValues` 0, `StoragePlaceDictionaryEntry` 0; `Raw.release`, `Raw.slice` none). `StoragePlaceDictionaryEntry`'s row is temporary: R8-K1b gives `placeEntry` a body, and R8-G1 replaces the kind table. A foreign import's contract is prose (SPEC 22.6): its call in any Closure body passed such a pointer is a located `Unsupported_Kd` (`ClosureEffects.Uncontracted`) until imports state their writes; the OQ-1 census found no corpus program. MIR's borrow check decides nothing here; it is the observer that made the two old rules' disagreement an `InternalInvariant_Kd` (N14, h1). Discharges R7-M6's staged sentence ('Y2's `PlaceUse` states a bare take's mode'): `Take` reads the child's Type, and no row field is written. Amends R7-M8's `Claimed` text only in that `Take` replaces `Claims`; BU-8 and Y3's `HirAdjust.Exclusive` stand; D5's selection is per node, under BU-8's open item. **Staged:** Consuming is decided twice, by `Take` (a Move row, read only by the raw rule) and by ClosureEffects' Visit syntax test (the environment's Consuming); removal condition: R7-Y2b folds the second (its Copy-callee move named, SPEC 7.7.3 "A Consuming call Copies a Copy Closure"). Discharged by R7-M12 (R7-Y2b). A pointer copied through a body local stays Shared until R7-Y2c, which reads `DerivesPointer`. **Moves:** h1 `InternalInvariant_Kd` to accepted with `indexUniq`, h3 `InternalInvariant_Kd` to `CallActivationConflict_Kd` (Y2a-2); in a `let` Closure, accepted to rejected (all invalid): a Take or in-place destruction through an environment pointer, a write through a displaced or converted pointer, through `*pp` included (Y2a-3), and `Raw.initialize` through such a pointer (Y2a-4); a foreign import passed one: accepted to `Unsupported_Kd`. **Deleted:** `Claims`, `LendsExclusively`, `NeedsExclusively`' parent switch and recorded-Reborrow clause, the second consumer walk of `ConsumedByValue`, the publisher's Borrow and assignment clauses. **Rejected:** a bind-time column; the raw rule inside the shared fact (5.2); a ClosureEffects case per operation; every or no raw argument of a foreign import counted as written.
 - **R7-M12 ClosureEffects reads `Take` for Consuming, the by-case mark and a nested entry** (2026-11-08; R7-Y2b, PLAN G251's staged sentence; Major; design review ACCEPT and implementation review 2 ACCEPT, F, C-145) SPEC 3.2, 3.5, 7.7.3, 8.14.
   - **The rule.** ClosureEffects reads the one rule, `Binding.Take` (R7-M11), for three decisions: the environment's Consuming, the by-case mark, and a nested entry's need.
@@ -15941,6 +15979,44 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:**
     - a Copy-callee clause beside Visit (a second rule);
     - a bind-time failed row for the bare rule's Move (shared across Binding, H1 and MIR, for records on programs already rejected).
+- **R7-M13 Pointers derived through a Closure body's locals** (2026-11-08; R7-Y2c, PLAN G251 (1)'s `rv-c-rawcopyptr`; Major; design review 2 ACCEPT, C-147; the owner's O-76 (b) (i), (c) (i) and O-83 (a), verbatim 「O-83 (a)で決定」) SPEC 5.2.1 condition 3, 5.3, 7.7.3.
+  - **Definitions.** ClosureEffects records each pointer-typed body local's definitions: an initializer, or an assigned value. A compound displacement keeps the local's provenance (SPEC 5.3). Each definition is recorded by the root that `Below`'s steps descend to.
+  - **What each local holds.** `Holds` is Own, Environment, or both. It is computed as one least fixpoint, bounded by the locals.
+  - **Roots.**
+    - A call's result is its own root (O-76 (b) (i)).
+    - A pointer read through a raw Place that the environment reaches is the environment's (O-76 (c) (i)).
+  - **A use of a local whose every definition derives from an environment pointer** starts UsesExclusively past its own Place.
+    - An assignment of the local is no environment use.
+    - Before a raw step, only an operation contract's write through the local counts.
+  - **The named limit (O-83 (a)).** A write-capability access through a local whose definitions hold both an environment pointer and a pointer of its own is a located `Unsupported_Kd` at the write's use of the local. It goes through `Undecided`, the one channel for uses whose need no fact decides, shared with the foreign-import call.
+    - An Own initializer counts as a definition. So a local initialized from its own allocation and then always overwritten from an environment pointer is Undecided too.
+    - Removal condition: Binding publishes its reaching-definitions fact for Closure pointer locals (PLAN G628, a Front unit).
+  - **One walk step.** `Below` is the walk's one step in both directions, the climb and `RootOf`'s descent. It replaces `DerivesPointer` and UsesExclusively's three-clause step test.
+  - **Cost.** One pass per local. A reverse-ordered assignment chain is quadratic in the worst case, and the scaling row bounds it. A worklist over the definitions by root, about +15 lines and linear, is the named alternative.
+  - **Moves.**
+    - Invalid programs now rejected with `InvalidAssignment_Kd` at the call: `rv-c-rawcopyptr` and its forms (copy, displacement, conversion, `*pp`, the contract write, `q += 1`, Take).
+    - Mixed-definition writes become `Unsupported_Kd`. This includes 9 valid forms that the base accepts, which is O-83 (a)'s named limit. The generated gate has 96 instances over 8 shapes.
+  - **Rejected:**
+    - a flow-insensitive Exclusive (a conservative Language error on a valid program, which also leaks into every Receiver reader);
+    - a bind-time reaching-definitions fact for one classifier. It is deferred to G628 instead.
+  - **Open:**
+    - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
+    - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
+- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149).
+  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand.
+  - **The rule.** It accepts an Integer `MirConst` only in these cases:
+    1. A Type with a width (`ScalarTypes.Width != 0`). The constant's value is the Type's N-bit payload, sign-extended: `ScalarTypes.Normalize(bits, width) == bits`. BU-133 makes Binding's `Fold` and `TryPatternLiteral` the only encoders.
+    2. A widthless Type that code generation also lowers (`FunctionCodegen.Values`): `char`; a raw pointer (null); or a Type whose instance decides it. That last test is the validator's own `Integral` (`HasIntegerArithmetic || HasAbstractPart`), owned by `MirValidator.Types` and also read by the Cast rows. It covers a Type parameter's generic literal.
+    3. Any other Type: `MirViolation.Const` (`InternalInvariant_Kd`).
+  - **Reason.** Before this entry, no rule held: C-142 N3's 2^127 validated in i32 and in u8. A widthless constant was accepted whatever its Type, a silent default over an open family. The Backend already rejects every other instance Type, so validated MIR now states the same family before code generation does.
+  - **Rejected:**
+    - accepting every widthless Type;
+    - an allowlist of the validator's own, which would be a second rule;
+    - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule.
+  - **Open limits:**
+    - **N5.** `Integral`'s `HasAbstractPart` also admits an abstract non-integer Type such as `Option<T>` or `ref/T` in a generic body. The Backend's instance check closes it today. Removal condition: tighten `Integral` to what its own comment says ("an integer Type, or one whose instance decides it"), together with the Cast rows that read it.
+    - **N6 / F4.** The values in case 2 are not ranged: char's code points, null only 0, and a generic literal's 0..127.
+    - **The family is written twice,** here and in `FunctionCodegen.Values:86-96`. The proposed removal is a later unit with Back's consent: MIR publishes the family once in `MirConstKind.Integer`'s contract, for example a static `MirConst.IntegerTyped(BoundType)` = `Integral || Char || Raw`. On an instance Type `HasAbstractPart` is false, so the Backend's admission check can read the same predicate, and its copy goes.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -16074,6 +16150,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **`llvm.memcpy`** is declared bare (`LlvmModuleText.MemoryDeclarations`): `transferBytes` brings the declaration into modules that `ReferenceEmissionTest`'s `Assert.DoesNotContain("noalias", ir)` reads whole, and LLVM restores the intrinsic's own attributes.
   - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` is still admitted by the validator until then.
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
+  - Amended by R8-M9 (the owner's O-84 (a)): the staged removal moves to R8-S1e-b, after the Front's one-owner unit (C-151); R8-S1e-a closes the pair-layered left operand's route.
 - **R8-M8 The Dictionary remainders are bodies; the slot stride is stated once, by the owner's (e)** (Back, 2026-11-08; R8-K1a; Major; design reviews 1-2 ACCEPT at revision 2; the owner's O-68 (e), verbatim 「O-68はeでお願いいたす」; on R8-M2 and R8-M6; supersedes in part R5-M124) SPEC 5.2.1, 8.15.3; IMPL 21.1.1, 21.1.3.
   - **Owner.** `borrowStorage`, `borrowStorageUniq` and `ownStorage` over a Dictionary are Kimigayo bodies in `Storage.kimi` over `DictionaryStorage.Handle` (IMPL 21.1.3): the shared views read `buffer`, `head` and `length` through the path they are given (R8-A1d's rule) and take `Loan<...>.init()` (R8-M6); the owning remainder holds the consumed Dictionary's Handle whole (R8-A1d's (a′), SPEC 5.2.1's third limit).
   - **The views' move.** No remainder stores the stride, so a view formed with no entry read lays out nothing of K or V: views over a K or V whose layout fails become accepted (SPEC 8.15.3; the class and its members are named in the commit). An invalid program loses only its formation record (R8-M2 as extended by R8-A1d's B2), and a resource-rejected one's record moves from the formation to the first read.
@@ -16086,6 +16163,13 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Supersedes** R5-M124's `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows.
   - **Counts:** `CompilerFunctionKind` 62 → 59, `KimiDeclarationId` 196 → 193, catalog 192 → 189, `StorageKernelKind` 4 → 2, `LegacyWriter` 11 → 9.
   - **Rejected:** a `Slot<K, V>` or `(K, V)` stride (B1), an alignment intrinsic (expressible once the Front's rule holds), C layout (SPEC 6.7.1).
+- **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
+  - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).
+  - **Premises first (R8-OT; the owner's O-84 (a), C-151).** In the operand's `ConstraintScope`, which `ComparisonThroughPairs` reads only at a pair layer, the operand's Type as the identity premises of that scope make it comes first (`SubstituteIdentityPremises`, as Binding substitutes node Types), so the compared Type has one owner. `Witnessed` reads it in the operand's scope, and MIR reads the premises through `MirTypes.Premised` in the definition's scope. Both see the same identity premises: SPEC 8.2.3 takes them only from the constrained declaration, or from a conditional conformance's scope and block, which enclose the operand's scope, never from a body. MIR Types keep a premised parameter (BU-72), so MIR's agreement under premises is one function, `MirTypes.Agrees`, which the validator checks every Type by. On the walk to a compared Place, the builder's `Viewed` starts, where the premises change a Place's Type, from a shared borrow retyped by a copy to `ref/` of the premised Type, so every layer the premises give on that walk is a real MIR layer. That root retype is G355's interim on the inspection path, removed by G355's identity query. This closes R8-S1e's open issue N5 (the Front's C-138 review).
+  - **Published.** `TyCtxt.OperandTerminal(Koto, BoundType)` publishes it for MIR; `MirBuilder.Witnessed` reads it for an operator's operand (the right one's after a Never left) and a Literal Pattern's position (an identity there).
+  - **Moves: IR only.** A comparison whose left operand has a qualifying pair layer (`value == "x"`, `value: s/string` under `s is ref or uniq`) calls `StringWitness.equals`/`compare` instead of the routines; a Never left with a pair-layered right string operand (n1) collects the witness instance in its dead block; at exactly 8 nested qualifying pair layers over `ref/()` (t8/f8) the Unit operand is inspected through a shared borrow. No acceptance or record moves.
+  - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself goes at R8-S1e-b.
+  - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

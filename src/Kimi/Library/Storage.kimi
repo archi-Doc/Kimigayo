@@ -377,13 +377,13 @@ internal group Storage
     internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)
         unsafe
             let capacity = (*handle).capacity
-            let largest: i64 = 9223372036854775807
+            let largest: isize = 9223372036854775807
             // SPEC 4.5, 4.9.5: zero-sized elements need no bytes, so every count fits without allocation.
             if stride == 0
                 (*handle).data = Raw.allocate<u8>(0)
-                (*handle).capacity = largest@isize
+                (*handle).capacity = largest
                 return
-            let maximum = (largest / stride@i64)@isize
+            let maximum = largest / stride
             if minimum > maximum
                 Storage.allocationSizeExceeded()
             // SPEC 4.9.8: amortized doubling, clamped; optional rounding never rejects a representable minimum.

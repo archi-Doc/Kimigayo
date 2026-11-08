@@ -52,19 +52,19 @@ internal sealed partial class MirBuilder
             node);
     }
 
-    // SPEC 13.4, 14.8.1: the comparison TyCtxt.Comparison gives the left operand's Type below its ref and uniq layers (the right one's after a
-    // Never left) where a library witness runs it (Binding.WitnessGroup, read first so that a scalar operator asks no memo); null where the
-    // operator runs it. So a pair-layered left operand stays on the operator table's routine, and a pair-layered right one after a plain left
-    // reaches the witness (Compared): the one walk of those layers is R8-S1e's (PLAN).
-    private ComparisonNode? Witnessed(MirBinaryOp relation, int start)
+    // SPEC 13.4, 13.5.5, 14.8.1, 8.2.3: the comparison TyCtxt.Comparison gives the Type the left operand compares (the right one's after a
+    // Never left), Binding's one decision for that operand (TyCtxt.OperandTerminal: its Type as the identity premises make it, below its
+    // ref, uniq and qualifying pair layers), where a library witness runs it (Binding.WitnessGroup, read first so that a scalar operator asks
+    // no memo); null where the operator runs it.
+    private ComparisonNode? Witnessed(MirBinaryOp relation, int start, Koto left, Koto right)
     {
         if (relation < MirBinaryOp.Eq)
         {
             return null;
         }
 
-        var left = this.TypeOf(this.arguments[start]);
-        var terminal = Binding.ComparisonReferent(ReferenceEquals(left, BoundType.Never) ? this.TypeOf(this.arguments[start + 1])! : left!);
+        var never = ReferenceEquals(this.TypeOf(this.arguments[start]), BoundType.Never);
+        var terminal = compilation.Types.OperandTerminal(never ? right : left, this.TypeOf(this.arguments[never ? start + 1 : start])!);
         var contract = relation is MirBinaryOp.Eq or MirBinaryOp.Ne ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable;
         var row = Binding.WitnessGroup(terminal, contract) is null ? null
             : compilation.Types.Comparison(compilation.Library.GetSymbol(contract)!, terminal, operators: true);
@@ -100,8 +100,23 @@ internal sealed partial class MirBuilder
             return MirOperand.Const(this.body.Const(this.body.Consts[operand.Arg] with { Type = compilation.Types.Reference(SemanticsKind.Ref, type) }));
         }
 
-        return this.TypeOf(operand) is { Semantics: SemanticsKind.Ref, Components: [var referent] } && ReferenceEquals(referent, type) ? operand
-            : this.Inspected(this.Follow(operand.Place, 16, type), node);
+        if (this.TypeOf(operand) is { Semantics: SemanticsKind.Ref, Components: [var referent] } && ReferenceEquals(referent, type))
+        {
+            return operand;
+        }
+
+        // SPEC 8.2.3, 13.4: a Place whose Type the body's premises make another (T is uniq/string) is walked as that Type, every layer of
+        // it: a shared borrow of it, retyped by a copy into a reference to the premised Type (MirTypes.Agrees admits it), whose referent the
+        // walk then follows, since MIR Types keep the parameter (DECISIONS BU-72).
+        var place = operand.Place;
+        if (this.body.TypeOf(place) is { } actual && MirTypes.Premised(this.body, actual) is var premised && !MirTypes.Agree(actual, premised))
+        {
+            var view = this.Temp(compilation.Types.Reference(SemanticsKind.Ref, premised), node);
+            this.Set(view, MirRvalue.Use(this.body.AddOperand(this.Borrow(SemanticsKind.Ref, place, node))), node);
+            place = this.body.Project(view, MirProjectionKind.Deref, 0);
+        }
+
+        return this.Inspected(this.Follow(place, 16, type), node);
     }
 
     // SPEC 13.4: a tuple operator is one Requirement call of its Contract's own requirement on its Self (TyCtxt.Synthesized) under the

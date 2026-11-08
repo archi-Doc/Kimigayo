@@ -103,6 +103,7 @@ public class ApiAccessBindingTest
     [InlineData("public open struct C\n    protected struct Y\n        public init() => ()\n    public init() => ()\npublic open struct S: C\n    public init(): base() => ()\n    protected func make() -> C.Y => C.Y.init()")] // w7
     [InlineData("public open struct S\n    private protected struct Y\n        public init() => ()\n    private protected func make() -> Y => Y.init()\n    public init() => ()")] // w8
     [InlineData("open struct B<T>\n    protected struct N<U>\n        public init() => ()\n    public func m(self) -> i32 => 1\n    public init() => ()\nopen struct D<T>: B<T>\n    public init(): base() => ()\nstruct E<T>: D<B<T>>\n    public init(): base() => ()\n    protected func g(self, n: E<T>.N<i8>) -> i32 => self.m()")] // rg1
+    [InlineData("public open struct C\n    private protected struct T\n        public init() => ()\n    public init() => ()\ninternal open struct S: C\n    public init(): base() => ()\n    protected func f(t: C.T) => ()")] // x1: T's two unions, each covered by another level of f's chain
     public void DerivedDomainsCoverProtectedLevels(string source)
     {
         var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
@@ -122,11 +123,24 @@ public class ApiAccessBindingTest
     [InlineData("contract K<T>\nopen struct Q\n    protected open struct N\n        public init() => ()\n    public init() => ()\nstruct T2\n    public init() => ()\n    func h<X>(self, x: ref/X) -> i32\n        X is K<Q.N>\n        return 1", "InvalidConstraint_Kd", 8)] // w9c
     [InlineData("contract HasItem\n    associate Item\nopen struct Q\n    protected open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Q\n    Self is HasItem\n    associate HasItem.Item is Q.N\n    public init(): base() => ()", "InaccessibleBinding_Kd", 8)] // w10
     [InlineData("contract HasItem\n    associate Item\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is HasItem\n        associate HasItem.Item is Q.N\n        public init(): base() => ()", "InaccessibleBinding_Kd", 18)] // rx1d
+    [InlineData("public open struct C\n    private protected struct T\n        public init() => ()\n    public init() => ()\npublic open struct S: C\n    public init(): base() => ()\n    protected func f(t: C.T) => ()", "InaccessibleBinding_Kd", 7)] // x1c
     public void UncoveredDomainsKeepTheirRecords(string source, string code, int line)
     {
         var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == code && source.AsSpan(0, x.Node.Span.Start).Count('\n') + 1 == line);
+    }
+
+    // SPEC 9.4.1, 9.4.3 (R7-N3b): a use is a point of Body(its Container), and Derived(C) of a struct that is not open is empty, so C's
+    // protected member is inaccessible from D whatever D's clause names (b6; D: C is also rejected by SPEC 6.2.2). It was read as
+    // reached through D's failed clause before.
+    [Fact]
+    public void ASealedStructHasNoDerivedDomain()
+    {
+        const string source = "struct C\n    public func c(self) -> i32 => 1\n    protected func pc(self) -> i32 => 1\nstruct D: C\n    public init() => ()\n    func g(self) -> i32 => self.pc() + self.c()";
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == "InaccessibleBinding_Kd" && source.AsSpan(0, x.Node.Span.Start).Count('\n') == 5);
     }
 
     [Trait("Purpose", "Allocation")]

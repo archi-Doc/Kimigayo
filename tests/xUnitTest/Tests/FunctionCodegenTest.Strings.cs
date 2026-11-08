@@ -39,6 +39,19 @@ public sealed partial class FunctionCodegenTest
         "let d = less<uniq/i32>(z@uniq)\nlet e = pick<ref/i32>(y@ref)\nlet f = pick<uniq/i32>(z@uniq)\nlet g = generic(y@ref, z@ref)\n" +
         "let h = generic(z@uniq, y@ref)\nConsole.writeLine(\"\\(a) \\(b) \\(c) \\(d) \\(e) \\(f) \\(g) \\(h)\")\nConsole.writeLine(y)\n";
 
+    // SPEC 8.2.3, 13.4, 14.8.1: operands of a Type identical to string under an identity premise, T is string or an associated Type's
+    // H.Item is string, as T, ref/T and ref/H.Item, by operators and a Literal Pattern on the same Subject: a guard of their values, whose
+    // operator comparisons stay on the string column until R8-S1e-b (the owner's O-84 (a)).
+    private const string IdentityPremised =
+        "func same<T>(a: ref/T, b: ref/T) -> bool\n    T is string\n    return a == b\n" +
+        "func less<T>(a: T, b: T) -> bool\n    T is string\n    return a < b\n" +
+        "func first<T>(v: ref/T) -> i32\n    T is string\n    if v == \"a\" => return 1\n    match v\n        \"b\" => return 2\n        _ => return 3\n" +
+        "contract Holder\n    associate Item\nstruct Box\n    Self is Holder\n    associate Holder.Item is string\n" +
+        "func item<H>(a: ref/H.Item, b: ref/H.Item) -> bool\n    H is Holder\n    H.Item is string\n    return a < b\n" +
+        "var x = \"a\"\nvar y = \"b\"\nvar z = \"c\"\nlet h1 = same<string>(x@ref, y@ref)\nlet h2 = less<string>(\"a\", \"b\")\n" +
+        "let h3 = first<string>(x@ref)\nlet h4 = first<string>(y@ref)\nlet h5 = first<string>(z@ref)\nlet h6 = item<Box>(x@ref, y@ref)\n" +
+        "Console.writeLine(\"\\(h1) \\(h2) \\(h3) \\(h4) \\(h5) \\(h6)\")\n";
+
     // SPEC 13.4 (DECISIONS R5-M118): string comparisons natively: every operator, literals and the empty string,
     // NUL bytes and UTF-8 order, a uniq layer, literal Patterns, tuple orderings and constants stored in aggregates.
     public static TheoryData<string, string, string> StringPrograms => new()
@@ -61,12 +74,30 @@ public sealed partial class FunctionCodegenTest
             "beta\nsecond\n"
         },
         { "StringPairLayers", PairLayered, "true true false true 1 2 false true\nx\n" },
+        { "StringIdentityPremises", IdentityPremised, "false true 1 2 3 true\n" },
     };
 
     [Theory]
     [MemberData(nameof(StringPrograms))]
     public void StringProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
+
+    // SPEC 8.2.3, 13.4: under an identity premise an operand of a Type identical to string is a string, so each instance's comparison is
+    // the witness's call, as the Literal Pattern on the same Subject's is: Witnessed asks Binding's one decision (TyCtxt.OperandTerminal,
+    // the premises applied before the layer walk; R8-OT).
+    [Fact]
+    public void AnIdentityPremisedOperandCallsTheWitness()
+    {
+        var c = Analyze(IdentityPremised);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var (equal, order) = StringWitnesses(ir, c);
+        foreach (var (name, witness, count) in new[] { ("same", equal, 1), ("less", order, 1), ("first", equal, 2), ("item", order, 1) })
+        {
+            var calls = StringCallsOf(ir, c, Assert.Single(FunctionsOf(ir, c, name)));
+            Assert.Equal(count, calls.Length);
+            Assert.All(calls, x => Assert.Same(witness, x.Callee));
+        }
+    }
 
     // SPEC 13.4, 13.4.1 (DECISIONS R5-M118): each operator calls its witness, equals for == and != and compare for the others, on its
     // operands' addresses, then negates the bool or compares the i32 with 0 by its predicate; the bool is stored widened. Each witness reads
@@ -109,10 +140,9 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(LegacyRuntimeHelpers.StringComparisons, text, StringComparison.Ordinal);
     }
 
-    // SPEC 13.4: an operand of a qualifying pair layer denotes its terminal Place, so its comparison is the witness's call too, the operator's
-    // table reached by no case. Fail-first for R8-S1e (PLAN), whose one walk of those layers gives it the witness: the row is Explicit until
-    // that unit lands and removes the marker.
-    [Fact(Explicit = true)]
+    // SPEC 13.4, 13.5.5: an operand of a qualifying pair layer, left or right, denotes its terminal Place, so its comparison is the witness's
+    // call too (TyCtxt.OperandTerminal, Binding's decision for the operand), and no routine reaches the module.
+    [Fact]
     public void APairLayeredOperandCallsTheWitness()
     {
         var c = Analyze(PairLayered);

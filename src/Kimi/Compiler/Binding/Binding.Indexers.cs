@@ -87,7 +87,7 @@ public sealed partial class Binding
         var layered = core;
         if (TryPairLayer(core, out _, out _))
         {
-            core = ComparisonReferent(this.ComparisonThroughPairs(source.Left, core!)); // SPEC 13.5.5: and past each followable pair layer.
+            core = this.OperandTerminal(source.Left, core!); // SPEC 13.5.5: and past each followable pair layer.
         }
 
         // SPEC 4.7, 4.7.1: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it

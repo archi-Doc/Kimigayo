@@ -232,6 +232,28 @@ public sealed partial class HirFormsTest
         Assert.DoesNotContain(c.BuildMir().Records(MirRecordClass.Construction), x => x.Subject == SourceRef.Of(jump));
     }
 
+    // SPEC 3.5.3, 13.4, 13.5.5: a comparison operand of Unit behind ref layers alone is read (ReferentRead); one below qualifying pair
+    // layers is inspected through a shared borrow, at every depth Binding follows them, the eighth included (R8-S1e: the walk's
+    // fallthrough there once left the ref layer, so the operand was read).
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(8, false)]
+    public void AUnitOperandBelowPairLayersIsNotRead(int layers, bool read)
+    {
+        var type = "ref/() during o0";
+        for (var k = 1; k <= layers; k++)
+        {
+            type = $"s/({type}) during o{k}";
+        }
+
+        var c = MinimalEmissionTest.Analyze($"func f<s/T>(value: {type}) -> bool\n    s is ref or uniq\n    return value == ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var comparison = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single(static x => x.Akind == KotoKind.EqualsEquals);
+        Assert.Equal(read ? HirAdaptation.ReferentRead : HirAdaptation.SharedBorrow, HirTables.AdjustOf(comparison.Left).Adaptation);
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]
@@ -393,6 +415,24 @@ public sealed partial class HirFormsTest
         var rows = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && HirTables.PlaceOf(x).Kind is HirPlaceKind.Field or HirPlaceKind.ConstIndex)
             .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {HirTables.PlanOf(x).Folded?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
         Assert.Equal(["t.1 1", "fixed[2] 2", "p.x -", "t.0 0"], rows);
+    }
+
+    // SPEC 3.1, 13.5.4 (G620): an Integer constant has one encoding on its own plan row (Folded), its Type's N-bit sign-extended payload,
+    // whether a literal or a folded conversion spells it.
+    [Theory]
+    [InlineData("let a: u8 = 255", "255", "-1")]
+    [InlineData("let a = (-1)@wrap<u8>", "(-1)@wrap<u8>", "-1")]
+    [InlineData("let a: u64 = 18446744073709551615", "18446744073709551615", "-1")]
+    [InlineData("let a: Wrapping<u16> = 65535", "65535", "-1")]
+    [InlineData("let a: i8 = -128", "-128", "-128")]
+    [InlineData("let a: u8 = 127", "127", "127")]
+    public void AnIntegerConstantIsItsSignExtendedPayload(string source, string spelling, string folded)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(x => source.Substring(x.Span.Start, x.Span.Length) == spelling && HirTables.PlanOf(x).Folded is not null);
+        Assert.Equal(folded, HirTables.PlanOf(node).Folded!.Value.ToString(CultureInfo.InvariantCulture));
     }
 
     // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user

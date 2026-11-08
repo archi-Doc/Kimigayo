@@ -106,11 +106,9 @@ group DictionaryStorage
         unsafe
             if additional < 0
                 Storage.argumentOutOfRange()
-            // The bound is the largest isize of the windows-x64 profile, written as i64 so that the source stays
-            // target-independent; the conversions are exact there.
-            let maximumSize: i64 = 9223372036854775807
+            let maximumSize: isize = 9223372036854775807
             let length = (*handle).length
-            if additional@i64 > maximumSize - length@i64
+            if additional > maximumSize - length
                 Storage.countOverflow()
             let minimum = length + additional
             grow(handle, stride, minimum)
@@ -122,8 +120,8 @@ group DictionaryStorage
             if capacity >= minimum
                 return
             // Every entry has links, even when K and V have zero size: stride is positive.
-            let maximumSize: i64 = 9223372036854775807
-            let maximum = (maximumSize / stride@i64)@isize
+            let maximumSize: isize = 9223372036854775807
+            let maximum = maximumSize / stride
             if minimum > maximum
                 Storage.allocationSizeExceeded()
             // Optional geometric rounding must never reject a representable minimum.
