@@ -136,7 +136,7 @@ fn consumedThenReturned @42
   bb16:
       unreachable check bb1 @48 s1
   bb17:
-      drop _10 -> bb18 @63 s1
+      drop _10 -> bb18 [elide] @63 s1
   bb18:
       StorageDead(_10) @63 s1
       StorageDead(_9) @61 s1
@@ -145,7 +145,7 @@ fn consumedThenReturned @42
       _8 = const 3_i32 @66 s1
       goto bb9 @66 s1
   bb20:
-      drop _2 -> bb21 @44
+      drop _2 -> bb21 [elide] @44
   bb21:
       unreachable @46
 fn returnThenExit @68
