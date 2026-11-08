@@ -250,8 +250,8 @@ public sealed partial class KimiLibrary
     /// Position (SPEC 4.6.1); integers gain no members from it.</summary>
     internal DeclarationContainerKoto? IntegerPositionMembers { get; }
 
-    /// <summary>Gets the internal Kimi group whose receiver functions are string's comparison bodies (SPEC 13.4.1), which no row of the
-    /// witness table selects until R8-S1d2; string gains no members from it.</summary>
+    /// <summary>Gets the internal Kimi group whose receiver functions are string's comparison bodies (SPEC 13.4.1), which the witness
+    /// table's String row selects; string gains no members from it.</summary>
     internal DeclarationContainerKoto? StringWitnessMembers { get; }
 
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a

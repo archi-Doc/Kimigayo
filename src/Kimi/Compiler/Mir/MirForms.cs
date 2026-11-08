@@ -8,6 +8,8 @@
 
 #pragma warning disable SA1402 // The forms of a body belong together.
 
+using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
+
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A Place (plan 5.4): a root, a local from 0 or a static (<c>~index</c> into <see cref="MirBody.Statics"/>), and its
@@ -204,6 +206,11 @@ internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int1
 {
     /// <summary>Gets a Location constant's site, the SourceRef its bits hold as <c>Module &lt;&lt; 32 | Id</c>.</summary>
     internal SourceRef Site => new((ushort)(this.Bits >> 32), (int)(this.Bits & uint.MaxValue));
+
+    /// <summary>Gets a value indicating whether this is a string constant at a shared reference, a comparison's literal, whose value is a
+    /// constant record's address: its Type tells it from a string constant at the string Type, which has no value of its own. It is an input
+    /// only, of a Call that keeps nothing of it (MirValidator).</summary>
+    internal bool IsRecord => this.Kind == MirConstKind.String && this.Type.Semantics == SemanticsKind.Ref;
 }
 
 /// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,

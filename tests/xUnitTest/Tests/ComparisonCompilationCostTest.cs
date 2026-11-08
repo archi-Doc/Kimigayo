@@ -45,4 +45,32 @@ public class ComparisonCompilationCostTest
             }
         }));
     }
+
+    // SPEC 13.4, 14.8.1: a string comparison is one witness call, an operator's and each of a Literal Pattern's eight arms, with no plan per
+    // site: warm Binding and warm MIR allocate nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("    return text == \"a\" or text < \"b\" or text != other")]
+    [InlineData("    match text\n        \"a\" => return true\n        \"b\" => return true\n        \"c\" => return true\n        \"d\" => return true\n" +
+        "        \"e\" => return true\n        \"f\" => return true\n        \"g\" => return true\n        \"h\" => return true\n        _ => return false")]
+    public void WarmStringComparisonBindingAndMirAllocateNothing(string body)
+    {
+        const string Head = "func test(text: ref/string, other: ref/string) -> bool\n";
+        var c = MinimalEmissionTest.Analyze(Head + body + "\nlet text = \"a\"\nif test(text, text) => Console.writeLine(text)");
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("Repeated comparison Binding failed.");
+            }
+        }));
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            _ = c.BuildMir();
+        }));
+    }
 }

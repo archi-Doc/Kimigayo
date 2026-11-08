@@ -145,7 +145,9 @@ public class ReferenceEmissionTest
         Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var ir = writer.ToString();
         const string Shared = @"ptr noundef nonnull align 8 dereferenceable\(24\) %\w+";
-        var same = Assert.Single(Regex.Matches(ir, @"(?ms)^define internal i1 @([\w.]+)\(" + Shared + ", " + Shared + @"\) #0 \{\n.*?^\}"));
+        var text = Assert.Single(FunctionCodegenTest.ItemTexts(c, "same"));
+        var same = Regex.Match(text, @"(?ms)^define internal i1 @([\w.]+)\(" + Shared + ", " + Shared + @"\) #0 \{\n.*?^\}");
+        Assert.True(same.Success);
         Assert.Single(Regex.Matches(ir, @"call i1 @" + Regex.Escape(same.Groups[1].Value) + @"\(" + Shared + ", " + Shared + @"\)"));
         Assert.DoesNotContain("noalias", ir);
         Assert.DoesNotContain("readonly", same.Value);
