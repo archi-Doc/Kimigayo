@@ -40,15 +40,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.7.3: derived structs inherit the opt-out. Bases are resolved by name here,
-        // before headers bind, so that every later object formation sees the effective state.
-        for (var n = 0; n < this.nodes.Count; n++)
-        {
-            if (this.nodes[n] is StructKoto { BaseClause: not null } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
-            {
-                symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
-            }
-        }
+        this.PublishInheritedOptOuts();
 
         void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use, bool standalone)
         {
@@ -84,28 +76,27 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 8.7.3: derived structs inherit the opt-out. Nominal bases are read here, before headers bind, so that every later object
+    // formation sees the effective state; a clause not ready ends the chain, and this runs again once clauses are bindable.
+    private void PublishInheritedOptOuts()
+    {
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is StructKoto { BaseClause: not null } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
+            {
+                symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
+            }
+        }
+    }
+
     private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
     {
-        // The current language has one inline base. The bound limits invalid cycles too.
-        for (var depth = 0; structure.BaseClause is { } syntax && depth <= this.nodes.Count; depth++)
+        foreach (var layer in this.BaseLayers(structure))
         {
-            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
-            if (type is null)
+            if (layer.ObjectPayloadOptOut is { } optOut)
             {
-                return null;
+                return optOut;
             }
-
-            if (type.ObjectPayloadOptOut is not null)
-            {
-                return type.ObjectPayloadOptOut;
-            }
-
-            if (type.Declaration is not StructKoto next)
-            {
-                return null;
-            }
-
-            structure = next;
         }
 
         return null;

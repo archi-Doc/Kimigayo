@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<BindingSymbol> qualificationVisiting = new(ReferenceEqualityComparer.Instance);
     private Dictionary<(Koto Use, bool Type), QualificationFact>? qualificationStops;
     private Dictionary<Koto, QualificationFact>? qualificationFailures;
 
@@ -139,16 +138,10 @@ public sealed partial class Binding
 
     private BindingSymbol? InheritedDeclaration(StructKoto structure, string name, BindingScope scope, bool type, TypeLookupRole role)
     {
-        if (structure.BaseClause is not { } syntax || !this.qualificationVisiting.Add(structure.BoundSymbol!))
+        // Declaration names only: no generic argument substitution or conditional proof selects a member.
+        foreach (var layer in this.BaseLayers(structure))
         {
-            return null;
-        }
-
-        try
-        {
-            // Resolve only declaration names; no generic argument substitution or conditional proof selects a member.
-            var parent = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], TypeLookupRole.NoContainer);
-            if (parent?.Declaration is not StructKoto baseDeclaration || !this.scopes.TryGetValue(baseDeclaration, out var members))
+            if (layer.Declaration is not StructKoto baseDeclaration || !this.scopes.TryGetValue(baseDeclaration, out var members))
             {
                 return null;
             }
@@ -160,13 +153,9 @@ public sealed partial class Binding
                     return candidate;
                 }
             }
+        }
 
-            return this.InheritedDeclaration(baseDeclaration, name, scope, type, role);
-        }
-        finally
-        {
-            this.qualificationVisiting.Remove(structure.BoundSymbol!);
-        }
+        return null;
     }
 
     private void ReportQualification(Koto node, DiagnosticRequirement requirement)

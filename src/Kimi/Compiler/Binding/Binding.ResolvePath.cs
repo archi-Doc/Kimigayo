@@ -89,7 +89,14 @@ public sealed partial class Binding
     private BindingSymbol? TypeName(Koto syntax, BindingScope scope, TypeLookupRole role, int arity = 0)
     {
         var mark = this.nameSteps.Count;
-        return this.PublishPath(this.ResolvePath(syntax, scope, role, arity), mark);
+        var reads = this.notReadyReads;
+        var path = this.ResolvePath(syntax, scope, role, arity);
+        if (reads != this.notReadyReads)
+        {
+            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[syntax] = new(scope, role, arity, path.Symbol);
+        }
+
+        return this.PublishPath(path, mark);
     }
 
     // SPEC 13.5.1: each role fixes its own first eligible lookup stage before the two roles are compared.
@@ -187,6 +194,14 @@ public sealed partial class Binding
     {
         var mark = this.nameSteps.Count;
         var path = this.ResolveName(name, scope, use, role, 0);
+        this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
+        return path.Symbol;
+    }
+
+    private BindingSymbol? ProbePath(Koto syntax, BindingScope scope, TypeLookupRole role, int arity)
+    {
+        var mark = this.nameSteps.Count;
+        var path = this.ResolvePath(syntax, scope, role, arity);
         this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
         return path.Symbol;
     }
