@@ -46,6 +46,9 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the most edges of one environment.</summary>
     internal int MaxEdges { get; private set; }
 
+    /// <summary>Gets the local regions the fixed-fixed oracle read through their bounds (<c>UniversalRelations.Outlives</c>).</summary>
+    internal long RegionReads { get; private set; }
+
     /// <summary>Gets the worklist insertions of all closures.</summary>
     internal long Insertions { get; private set; }
 
@@ -89,6 +92,8 @@ internal sealed class OriginProofMetrics
         Array.Clear(this.edges);
         this.queries.Clear();
     }
+
+    internal void RegionRead() => this.RegionReads++;
 
     internal void Enter(BoundOrigin longer, BoundOrigin shorter, Koto use, int depth)
     {

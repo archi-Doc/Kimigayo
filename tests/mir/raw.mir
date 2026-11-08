@@ -110,7 +110,8 @@ fn derefCompare @67
       StorageLive(_3) @73 s2
       StorageLive(_4) @76 s2
     * _4 = &(*_1): ref/string @76 s2
-      _3 = Eq(move _4, const "text") proven @75 s2
+      _3 = equals(move _4, const record "text") -> bb1 @75 s2
+  bb1:
       StorageDead(_4) @76 s2
       _2 = const () @72 s2
       StorageDead(_3) @73 s2
@@ -133,7 +134,8 @@ fn indexCompare @79
     * _4 = Add(copy _1, const 0_isize) proven @88 s2
       StorageLive(_5) @88 s2
       _5 = &(*_4): ref/string @88 s2
-      _3 = Eq(move _5, const "text") proven @87 s2
+      _3 = equals(move _5, const record "text") -> bb1 @87 s2
+  bb1:
       StorageDead(_5) @88 s2
       StorageDead(_4) @88 s2
       _2 = const () @84 s2

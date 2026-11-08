@@ -160,12 +160,40 @@ internal static class AllocationMeasurement
     }
 
     // The allocation of a warm hop (CompilerThread.Run), on its caller and on its worker, which no window on a compiler thread takes:
-    // Run refuses such a caller. From the calling thread, not a compiler thread: the standard warm-up of hops, the step that retires
-    // the allocation contexts, then MeasuredOperations hops on one worker, each reading that worker's counter. The result is the
-    // caller's allocation over the hops and the worker's between its first and last reading; no repeated or retried window. It needs
-    // an isolated collection (AllocationIsolationCollection): another test's hop could take the worker between two hops, and the
-    // measurement then fails ("two workers").
+    // Run refuses such a caller. From a plain thread of its own, started under the calling thread's context, so that the warm-up
+    // creates the thread's cached jobs whatever the calling thread ran before: the standard warm-up of hops, the step that retires
+    // the allocation contexts, then MeasuredOperations hops on one worker, each reading that worker's counter. Every other measured
+    // hop pauses its caller before it and its work before the reading, 1 ms, past both waits' spin, so that the caller's and the
+    // worker's waits really block in the window, as well as end in the spin (G580). The result is the caller's allocation over the
+    // hops and the worker's between its first and last reading; no repeated or retried window. It needs an isolated collection
+    // (AllocationIsolationCollection): another test's hop could take the worker between two hops, and the measurement then fails
+    // ("two workers").
     internal static (long Caller, long Worker) MeasureHops()
+    {
+        (long Caller, long Worker) allocated = default;
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                allocated = Hops();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.Start();
+        thread.Join();
+        if (failure is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+
+        return allocated;
+    }
+
+    private static (long Caller, long Worker) Hops()
     {
         for (var i = 0; i < WarmupOperations; i++)
         {
@@ -178,13 +206,27 @@ internal static class AllocationMeasurement
         var last = first;
         for (var i = 1; i < MeasuredOperations; i++)
         {
-            last = CompilerThread.Run(0, Reading);
+            var pause = i % 2;
+            Pause(pause);
+            last = CompilerThread.Run(pause, Reading);
         }
 
         var caller = GC.GetAllocatedBytesForCurrentThread() - before;
         return first.Worker == last.Worker ? (caller, last.Allocated - first.Allocated) : throw new InvalidOperationException("The hops ran on two workers.");
 
-        static (int Worker, long Allocated) Reading(int unused) => (Environment.CurrentManagedThreadId, GC.GetAllocatedBytesForCurrentThread());
+        static (int Worker, long Allocated) Reading(int pause)
+        {
+            Pause(pause);
+            return (Environment.CurrentManagedThreadId, GC.GetAllocatedBytesForCurrentThread());
+        }
+
+        static void Pause(int milliseconds)
+        {
+            if (milliseconds > 0)
+            {
+                Thread.Sleep(milliseconds);
+            }
+        }
     }
 
     // A runtime pause that is not a collection can charge the unused tail of a partially used allocation context (up to ~8 KB)
