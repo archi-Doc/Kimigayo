@@ -9,10 +9,11 @@ namespace Kimi.Compiler.Backend;
 // The operator rows (R5 plan C1a, C1b, C8a, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80, R5-M92): a BinaryOp or UnaryOp into its
 // Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's terminal Type class, each operand read at
 // its terminal Place through its ref and uniq layers (SPEC 13.4; TerminalAddress). No string reaches it: a string comparison is its library
-// witness's call (MirBuilder's Compared, at Binding.OperandTerminal's terminal; R8-S1e-b). A Proven operation (MirRvalue.Proven, the
-// builder's IMPL 21.3.3 fact) writes no check; any other check Aborts at the statement's location text (SPEC 22.5.1-22.5.2). A checked
-// 128-bit operation requests its overflow intrinsics' declarations, which the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an
-// operator with no entry is a broken contract (DECISIONS R5-M143).
+// witness's call (MirBuilder's Compared, at Binding.OperandTerminal's terminal; R8-S1e-b), and MirValidator rejects a comparison BinaryOp
+// at a string (OperandsCompare). A Proven operation (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check
+// Aborts at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation requests its overflow intrinsics'
+// declarations, which the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operator with no entry is a broken contract
+// (DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
     // The first UnaryOp's row.
