@@ -321,6 +321,17 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Problems("func take<U, F>(f: ref/F, value: U)\n    F is Callable<(U) -> ()>\n        effect confined\n    f(value@move)\n" +
                 $"func consume<T>(v: T) => ()\nfunc user<T>(v: T)\n{premise}    take(consume<T>, v@move)\n"));
 
+    // SPEC 8.11.4, 8.14, 8.15.2 (G642, C-155 L1): a Closure Copy in every Semantics case (owner or ref, T is Copy) destroys nothing in
+    // any instance, so the owner call meets `effect confined`; in an rc case the capture is no Copy, so its drop owes the bound.
+    [Theory]
+    [InlineData("owner or ref", "value", "")]
+    [InlineData("owner or rc", "value@move", "UnsatisfiedEffectBound_Kd c@move 18446744073709551615")]
+    public void AClosureCopyInEveryCaseMeetsAConfinedBound(string admitted, string capture, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems("func run<F>(f: F) -> i32\n    F is Callable<owner, () -> i32>\n        effect confined\n    return f@move()\n" +
+                $"func h<s/T>(value: s/T) -> i32\n    s is {admitted}\n    T is Copy\n    let c = func [{capture}] () -> i32\n        return 1\n    return run(c@move)\n"));
+
     // SPEC 8.11.4: a call through an abstract input takes the bounds of its one Callable signature; with several, only the call's
     // arguments chose among them, which MIR does not keep: a located limit (DECISIONS R4-M23).
     [Theory]

@@ -405,7 +405,7 @@ public sealed partial class Binding
             }
 
             // SPEC 7.7.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
-            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && this.ProveCopy(receiverType, call) != ConstraintProof.Proven)
+            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.CopiesInEveryCase(receiverType, this.ConstraintScope(call)))
             {
                 this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
                 return false;

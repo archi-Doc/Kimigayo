@@ -654,7 +654,8 @@ public sealed partial class Binding
         var position = plan.PositionStorage[index];
         var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
         var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-            : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
+            : proof == ConstraintProof.Proven || (proof == ConstraintProof.Unknown && this.CopiesInEveryCase(position.MatchedType, this.ConstraintScope(position.Source)))
+                ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
             : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
         plan.PositionStorage[index] = position with { Acquisition = acquisition };
     }
