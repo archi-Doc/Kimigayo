@@ -34,15 +34,12 @@ public sealed class CompilationEntryTest
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
+        c.Project.ProjectFile.OutputKind = output;
         Assert.True(c.Prepare(WindowsProfile.Target));
         var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "public func first() => ()\npublic func second() => ()\n";
         var statements = output == OutputKind.Library ? string.Empty : test ? "let x = pick(1)\n" : "first()\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
-        Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c));
-        if (test)
-        {
-            c.Tests.Discover(c); // As Project does after acceptance.
-        }
+        Assert.True(c.Check(), MinimalEmissionTest.Describe(c)); // A test build's check discovers its tests (Compilation.Check).
 
         var set = Assert.IsType<CheckedSet>(c.Instances);
         using (var writer = new StringWriter())
@@ -328,13 +325,11 @@ public sealed class CompilationEntryTest
         return c;
     }
 
-    // Accepted, reported and generated, as a Library build runs them.
+    // Checked and generated as a Library build runs them; Check is not a site, so each site is reached from the test's thread.
     private static void AcceptsAndGenerates(Compilation c)
     {
-        Assert.True(Analyze(c, OutputKind.Library), MinimalEmissionTest.Describe(c));
-        c.Binding.ReportDiagnostics();
-        c.ReportAnalysis();
-        Assert.True(c.Accepts && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        c.Project.ProjectFile.OutputKind = OutputKind.Library;
+        Assert.True(c.Check() && c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
     private static bool Analyze(Compilation c, OutputKind output)

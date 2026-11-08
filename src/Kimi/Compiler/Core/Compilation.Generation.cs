@@ -12,12 +12,12 @@
 // A broken contract checked without a subject throws (a closed table without a row, a missing fact, a framework operation's contract); it
 // ends generation unrecorded here, and the command renders it as the Emission result's fault, CheckFaulted_Kd (DIAGNOSTICS rule 9;
 // DECISIONS R5-M169), as the front end's.
-// Gate (PD12; DECISIONS R5-M185): the acceptance check decided (Accepts, SPEC 23.2.2, which Project's check reads too); every MIR row of
+// Gate (PD12; DECISIONS R5-M185): the acceptance check decided (Accepts, SPEC 23.2.2, which Check reads too); every MIR row of
 // Error severity fails Analysis, and check publishes it (Compilation.Publication.cs), so the refusal adds none, and, like every request,
 // clears the partition first.
 // Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
 // closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
-// catalog Project discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
+// catalog Check discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
 // override whose slot Applies refutes and a constructor whose Type has no layout (InstanceCollector.Generates, checked only, R4-M28,
 // R5-M149), each a declaration's own body (no Closure's or body-declared function's, which their makers reach, R5-M153); a root without
 // an item or with an undecided slot is a broken contract, as is a test build whose catalog was not discovered for the version generated

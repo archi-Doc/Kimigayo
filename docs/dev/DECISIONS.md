@@ -11614,6 +11614,7 @@ structure is recorded here by the unit that first implements it.
     owner's own merge); a Diagnostics tie-break or a per-record condition for synthesized siblings (it would show identical
     records);
     moving synthesized sites in the location rule (no published fact names an expansion's source node).
+  - Superseded in part by R9-M1 (2026-11-08, R9-F5): `Compilation.Check` reads `Accepts` for the check and `Project` reads `Check`'s verdict; the gate is unchanged.
 - **R5-M69 `ObjectRuntime`** (2026-10-19; plan P3b, PD2, PLAN10 §5.8; promoted under R5-M14) A permanent Backend component that owns
   the object runtime text every generator writes (IMPL 21.1.3, SHARED_OBJECT_RUNTIME): `WriteRuntime`, the payload-independent
   runtime once per module that uses objects (the dynamic Type test through a descriptor's base map, the descriptor's free entry,
@@ -11979,6 +11980,7 @@ structure is recorded here by the unit that first implements it.
     but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced
     by the
     next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site.
+  - Superseded in part by R9-M1 (2026-11-08, R9-F5): the catalog is the one `Compilation.Check` discovers after acceptance, not `Project`; the reason holds: the entry reads it and never discovers again (no second discovery per generation).
 - **R5-M78 The first program's forms brought forward: `Ref`, the Keep and Elide drops, the string glue and gate step 2's stand-in**
   (2026-10-19; plan C0c; owner, 2026-10-19: 「C0b2 の次の作業順を (a) 前倒しする」, choosing (a) "bring C2b's unprojected-local `Ref` and C4a's
   string Keep/Elide Drop forward with a stand-in for gate step 2, a temporary structure removed by C4a" over (b) "keep the package
@@ -15948,3 +15950,22 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **`llvm.memcpy`** is declared bare (`LlvmModuleText.MemoryDeclarations`): `transferBytes` brings the declaration into modules that `ReferenceEmissionTest`'s `Assert.DoesNotContain("noalias", ir)` reads whole, and LLVM restores the intrinsic's own attributes.
   - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` is still admitted by the validator until then.
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
+- **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
+  review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
+  the test catalog after acceptance and owns it).
+  - Rule: `Compilation.Check()` (`Core/Compilation.Pipeline.cs`, the owner of the phases after Binding) is the one phase sequence of a
+    check once its inputs are established: final Binding, Binding's records, the startup check (a test build's `CheckTestStartup`,
+    else `CheckStartup` of `Project.ProjectFile.OutputKind`), the startup records, `Analyze`, `ReportAnalysis`, then the verdict
+    `Accepts`, and for an accepted test build `Tests.Discover`, the catalog generation reads. Each phase runs whatever an earlier one
+    found; nothing inside observes cancellation.
+  - Owners: `Project` keeps the input stages (configuration, lock and dependency validation, reads, AddSources, name checks), the
+    check context's compilation, the front-end and Emission result finalization and the native build; it calls `Check` and reads its
+    verdict. `Check` reads `Accepts` and discovers; `Project` does neither.
+  - Threads: `Check` is not an R4-M178 site; Bind, BuildMir, ReportAnalysis and `TestCatalog.Discover` hop themselves, the rest runs on
+    the caller's thread. A hop in `Check` would be a new site and a thread-placement change, a unit of its own.
+  - Kept apart (different contracts): tests that run phase subsets without publication, `src/Benchmark`'s timed stages, the tests that
+    publish a compilation whose unpublished state they read first (`CompilationTestHelper.PublishedErrors`,
+    `RequireRecoveryDiagnosticTest.Publish`), and `CompilationEntryTest`'s four tests that read unpublished state through its local `Analyze`.
+  - Rejected: a phase-row table that `Check`, the subsets and the timed stages iterate (it would need a mode per consumer, and the
+    product has one sequence); leaving the sequence in `Project` with tests calling `Project.Check(context)` (tests need projects and
+    contexts, and the catalog generation reads would stay owned outside Core); a compiler-thread hop of `Check`'s own (above).
