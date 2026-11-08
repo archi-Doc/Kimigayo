@@ -74,7 +74,7 @@ public sealed partial class Binding
                 return this.Fail(unary, BindingFailure.TypeMismatch);
             }
 
-            if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus, this.compilation.PointerWidth))
+            if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus))
             {
                 return this.Fail(unary, BindingFailure.InvalidLiteral);
             }
@@ -357,7 +357,7 @@ public sealed partial class Binding
         if (left.IsNumeric)
         {
             // A valid wide division remains an implementation boundary, independently of operator applicability.
-            return ScalarTypes.Width(left, this.compilation.PointerWidth) == 128 && operation is KotoKind.Slash or KotoKind.Percent
+            return ScalarTypes.Width(left) == 128 && operation is KotoKind.Slash or KotoKind.Percent
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 

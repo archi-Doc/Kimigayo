@@ -158,4 +158,22 @@ public class LiteralExpressionTest
             "before\n",
             1,
             "Hello.kimi:2:9: abort KIMI_E_INT_CONVERSION: Integer conversion out of range\n");
+
+    // SPEC 12.3, 13.5.4 (O-79 (a)): literals fit isize and usize at the profile's width in every Compilation, with or without a target.
+    [Theory]
+    [InlineData("func p() -> isize => 65536", true)]
+    [InlineData("func p() -> isize => 9223372036854775807", true)]
+    [InlineData("func p() -> isize => -9223372036854775808", true)]
+    [InlineData("func p() -> usize => 18446744073709551615", true)]
+    [InlineData("func p() -> Wrapping<isize> => 65536", true)]
+    [InlineData("func p() -> isize => 300@wrap<isize>", true)]
+    [InlineData("func p() -> isize => 65536.5@isize", true)]
+    [InlineData("func p() -> isize => 9223372036854775808", false)]
+    [InlineData("func p() -> usize => -1", false)]
+    [InlineData("func p() -> isize => 1e30@isize", false)]
+    public void PointerSizedLiteralsUseTheProfileWidthInEveryTargetMode(string source, bool valid)
+    {
+        string[] expected = valid ? [] : [nameof(DiagnosticCode.InvalidNumericLiteral_Kd)];
+        Assert.Equal(expected, CompilationTestHelper.BindInEveryTargetMode(source));
+    }
 }

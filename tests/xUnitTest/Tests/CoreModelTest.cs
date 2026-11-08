@@ -42,11 +42,26 @@ public class CoreModelTest
 
         Assert.True(compilation.Prepare(target));
         Assert.Equal(expectedOsVariable, compilation.TargetTriple.OsFamily);
-        Assert.Equal(expectedPointerWidth, compilation.PointerWidth);
+        Assert.Equal(expectedPointerWidth, compilation.IrTarget.PointerWidth);
         Assert.True(compilation.Variables.TryGetValue(expectedOsVariable, out var osValue));
         Assert.True(osValue.Bool);
         Assert.True(compilation.Variables.TryGetValue("pointerWidth", out var pointerWidth));
         Assert.Equal(expectedPointerWidth, pointerWidth.I64);
+    }
+
+    // SPEC 22 (O-79 (a)): the IR target and the pointerWidth Condition are the target's; isize and usize keep the profile's width.
+    [Theory]
+    [InlineData(WindowsProfile.Target, 64)]
+    [InlineData("i686-pc-windows-msvc", 32)]
+    [InlineData("avr-unknown-unknown", 16)]
+    public void PointerSizedIntegersKeepTheProfileWidth(string target, long width)
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.Equal(64, ScalarTypes.Width(BoundType.ISize));
+        Assert.True(compilation.Prepare(target));
+        Assert.Equal(width, compilation.IrTarget.PointerWidth);
+        Assert.Equal(width, compilation.Variables["pointerWidth"].I64);
+        Assert.Equal(64, ScalarTypes.Width(BoundType.USize));
     }
 
     // An unknown architecture, and one without an LLVM backend (LLVM's pointer width 32 or 64), has no IR target (DECISIONS R5-M174).
