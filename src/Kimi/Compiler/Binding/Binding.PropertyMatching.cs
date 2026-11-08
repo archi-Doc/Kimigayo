@@ -48,7 +48,7 @@ public sealed partial class Binding
 
     private ConstraintProof MatchPropertyOperation(BoundConformancePath conformance, BoundAccessor requirement, BoundAccessor implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (!implementation.IsPresent || !AccessCovers(implementation.Property.Symbol, conformance.Type, conformance.Contract, implementation.Access))
+        if (!implementation.IsPresent || !this.AccessCovers(implementation.Property.Symbol, conformance.Type, conformance.Contract, implementation.Access))
         {
             return ConstraintProof.Refuted;
         }

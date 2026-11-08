@@ -535,27 +535,10 @@ public partial class Project
             context.Compilation = compilation; // SPEC 23.2.2, step 3: every input is established; the front end runs from here on.
         }
 
-        compilation.Bind();
-        compilation.Binding.ReportDiagnostics();
-        if (compilation.IsTestBuild)
+        var accepted = compilation.Check(); // The compilation's phase sequence, from Binding to acceptance and a test build's discovery.
+        if (accepted)
         {
-            compilation.Binding.CheckTestStartup();
-        }
-        else
-        {
-            compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
-        }
-
-        compilation.Binding.ReportStartupDiagnostics();
-        compilation.Analyze();
-        compilation.ReportAnalysis();
-
-        // SPEC 23.2.2: acceptance reads the error state of every front-end partition, never the displayed list.
-        var accepted = compilation.Accepts;
-        if (accepted && prepared is not null)
-        {
-            compilation.Tests.Discover(compilation);
-            prepared(compilation);
+            prepared?.Invoke(compilation);
         }
 
         return accepted;

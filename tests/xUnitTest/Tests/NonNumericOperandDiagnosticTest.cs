@@ -22,7 +22,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     public void StringPlusIsRejectedAtBindingWithTheInterpolatedLiteral()
     {
         const string Source = Strings + "let joined = first + second";
-        var c = Analyze(Source);
+        var c = MinimalEmissionTest.Check(Source);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
@@ -60,7 +60,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("var v = 'a'\n--v", "char", "--")]
     public void EveryNonNumericPrimitiveNamesItsTypeAndOperator(string source, string type, string op)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal($"{type} has no {op}", error.Label);
         Assert.Equal(type == "string" ? Note : null, error.Note);
@@ -81,7 +81,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(items: uniq/Array<bool>) -> ()\n    for item in items\n        item++\n", "ExclusiveBindingAssignment_Kd", "NonNumericOperand_Kd")]
     public void AFailedDestinationKeepsItsRoute(string source, string destination, string route)
     {
-        var c = Analyze(source + "public func main() => ()");
+        var c = MinimalEmissionTest.Check(source + "public func main() => ()");
         Assert.Equal(new[] { destination, route }.Order(), Errors(c).Select(static x => x.Code).Order());
     }
 
@@ -92,7 +92,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(items: uniq/Array<i32>, n: i32) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd")]
     public void AHoldingRouteAddsNothing(string source, string destination)
     {
-        var c = Analyze(source + "public func main() => ()");
+        var c = MinimalEmissionTest.Check(source + "public func main() => ()");
         Assert.Equal(destination, Assert.Single(Errors(c)).Code);
     }
 
@@ -106,7 +106,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("var a = (1, 2)\na += (3, 4)", "a += (3, 4)", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
     public void AnOperandWithoutTheOperatorIsALanguageError(string source, string at, string code)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal((code, at), (error.Code, error.Text));
     }
 
@@ -118,7 +118,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("var log = \"start\"\nlet tail = \"!\"\nlog += tail", "log += tail")]
     public void CompoundUpdatesAreReportedAtTheUpdate(string source, string text)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal("string has no +=", error.Label);
         Assert.Equal(text, error.Text);
@@ -131,7 +131,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func join(a: uniq/string, b: ref/string) -> string => a + b\npublic func main() => ()", "uniq/string")]
     public void StringReferencesAreJudgedThroughTheirLayers(string source, string type)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal($"{type} has no +", error.Label);
     }
@@ -153,7 +153,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
                 return {{expression}}
             public func main() => ()
             """;
-        var error = Assert.Single(Analyze(source).Diagnostics.Finalize(rejected: true).Diagnostics);
+        var error = Assert.Single(MinimalEmissionTest.Check(source).Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal(expression, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal($"{shown} has no +", error.Label);
@@ -174,7 +174,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("var flag = true\nloop\n    defer => first + second\n    if flag => exit\n    continue", "first + second")]
     public void IndependentStringProhibitionsKeepTheirOperationLocations(string source, string texts)
     {
-        var errors = Errors(Analyze(Strings + source));
+        var errors = Errors(MinimalEmissionTest.Check(Strings + source));
         Assert.Equal(texts.Split('|').Order(), errors.Select(static x => x.Text).Order());
         Assert.All(errors, x => Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), x.Code));
     }
@@ -184,7 +184,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("let v = \"a\" + 1")]
     public void AStringCannotSupplyAnExpectedTypeToANumericLiteral(string source)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal("string has no +", error.Label);
         Assert.Equal(Note, error.Note);
@@ -197,7 +197,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(p: ref/raw/i32, n: isize) => n + p\npublic func main() => ()", "expected isize, found ref/raw/i32")]
     public void AKnownNumericOperandKeepsTheFailedFit(string source, string label)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal(label, error.Label);
     }
@@ -206,7 +206,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     public void ARightStringProhibitionDoesNotRequireTheMissingLeftType()
     {
         const string Source = "let result = missing + \"value\"";
-        var errors = Errors(Analyze(Source));
+        var errors = Errors(MinimalEmissionTest.Check(Source));
         Assert.Equal(2, errors.Length);
         Assert.Single(errors, x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
         var prohibition = Assert.Single(errors, x => x.Code == nameof(DiagnosticCode.NonNumericOperand_Kd));
@@ -260,7 +260,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     public void CliAndLspCarryTheLabel()
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = Analyze(Strings + "let joined = first + second", path);
+        var c = MinimalEmissionTest.Check(Strings + "let joined = first + second", path);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
@@ -284,13 +284,4 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
 
     private static TestDiagnostic[] Errors(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error)];
-
-    private static Compilation Analyze(string source, string path = "Hello.kimi")
-    {
-        var c = MinimalEmissionTest.Analyze(source, path);
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.ReportAnalysis();
-        return c;
-    }
 }

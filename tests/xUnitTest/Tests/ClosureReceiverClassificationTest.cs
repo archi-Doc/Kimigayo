@@ -118,6 +118,49 @@ public class ClosureReceiverClassificationTest
     public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
         => AssertCallReceiver(Places + body + "        return 0\n    let v = f()\n", exclusive);
 
+    // SPEC 7.7.3, 5.2.1 condition 3, 5.3, 5.4 (DECISIONS R4-M134; PLAN G251 (1); the owner's O-76 (c) (i)): an access that needs write
+    // capability through a raw pointer read from the environment, through a raw Place it reaches included, or a pointer derived from one
+    // (a displacement, a raw pointer conversion), a write, a Take or an in-place destruction, makes the call Exclusive; a read leaves it
+    // Shared. Labels from SPEC: each `true` row's `let` call is invalid, its `var` twin valid.
+    [Theory]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => consume((*p)@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => _ = (*p)@move\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p + 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p - 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => ((p + 1) - 1)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => (p@raw/i32)[0] = 5\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => (*pp + 0)[0] = Probe.init(2)\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => ((*pp)@raw/i32)[0] = 5\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => consume((*(*pp))@move)\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p + 0, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.initialize(p@raw/i32, 5)\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*pp + 0, Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () => unsafe => Raw.initialize(*(pp + 0), Probe.init(2))\n    f()\n", true)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (*p).v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () -> i32\n        unsafe => return (p + 0)[0].v\n    let v = f()\n", false)]
+    [InlineData(RawPointerProbe + "    let f = func [pp] () -> i32\n        unsafe => return (*pp)[0].v\n    let v = f()\n", false)]
+    [InlineData(RawProbe + "    let f = func [p] () => unsafe => Raw.release(p)\n    f()\n", false)]
+    public void AWriteCapabilityAccessThroughAnEnvironmentPointerIsAnExclusiveCall(string source, bool exclusive)
+        => AssertCallReceiver(source, exclusive);
+
+    // SPEC 5.2, 7.7.3, 22.6 (DECISIONS R7-Y2; AGENTS: a valid form no common rule covers stays Unsupported_Kd): a foreign import's operation
+    // contract is prose, so a call passing it a pointer the environment reaches leaves the receiver undecided: the located Unsupported_Kd
+    // at the call, in a `var` Closure too.
+    [Fact]
+    public void AForeignImportPassedAnEnvironmentPointerIsUnsupported()
+    {
+        const string Source = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\n" +
+            "public func main() -> ()\n    let p = Raw.allocate<i64>(1)\n    var f = func [p] () -> i32\n        unsafe => return Native.query(p + 0)\n    let v = f()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "Native.query(p + 0)"), (error.Code, error.Span is { } span ? Source.Substring(span.Start, span.Length) : string.Empty));
+    }
+
+    private const string RawDeclarations = "struct Probe\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc consume(x: Probe) => ()\n";
+    private const string RawProbe = RawDeclarations + "public func main() -> ()\n    let p = Raw.allocate<Probe>(1)\n";
+    private const string RawPointerProbe = RawDeclarations + "public func main() -> ()\n    let pp = Raw.allocate<raw/Probe>(1)\n";
+
     // SPEC 8.14, 13.5.6, 7.7.3: a case adaptation of a capture that borrows it exclusively in an admitted case makes the call Exclusive,
     // the strongest requirement over the cases; one whose borrowing cases are all shared stays Shared.
     [Theory]
@@ -496,6 +539,30 @@ public class ClosureReceiverClassificationTest
             ["Owner Owner value", "Ref Uniq value", "Ref Uniq value"],
             closures.Select(x => $"{x.CaseFreeReceiver} {x.Receiver} {string.Join(",", x.Captures.Where(y => y.BareReborrows).Select(y => y.Environment.Name))}"));
         Assert.All(closures, x => Assert.True(x.Classified));
+    }
+
+    // R7-Y2a (review 1's N1): ClosureEffects records a consumer's takes once per Classify and selection, so its work grows linearly in one
+    // consumer's capture uses, a literal's elements or a call's arguments (valid programs: reads of a Copy capture, SPEC 7.7.3 Shared), not
+    // as every use times every child.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ClassificationWorkGrowsLinearlyInAConsumersCaptureUses(bool literal)
+    {
+        var work = new[] { 200, 400, 800 }.Select(n => Work(literal, n)).ToArray();
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+
+        static long Work(bool literal, int count)
+        {
+            var uses = string.Join(", ", Enumerable.Repeat("c", count));
+            var source = literal
+                ? "func g() -> isize\n    let c: i32 = 1\n    let f = func [c] () -> isize\n        let xs: Array<i32> = [" + uses + "]\n        return xs.length\n    return f()\n"
+                : "func many(" + string.Join(", ", Enumerable.Range(0, count).Select(static i => $"a{i}: i32")) + ") -> i32 => 0\nfunc g() -> i32\n" +
+                    "    let c: i32 = 1\n    let f = func [c] () -> i32 => many(" + uses + ")\n    return f()\n";
+            var c = MinimalEmissionTest.Analyze(source + "()\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureTakeWork;
+        }
     }
 
     // The records of a checked source: each one's code and the text at its span.

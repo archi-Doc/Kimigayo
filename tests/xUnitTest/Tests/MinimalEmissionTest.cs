@@ -302,6 +302,18 @@ public class MinimalEmissionTest
         return c;
     }
 
+    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published.
+    internal static Compilation Check(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.OutputKind = output;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(path, source));
+        c.Check();
+        Assert.Equal(0, c.Binding.IdlessFactSites);
+        return c;
+    }
+
     // The evidence of a verdict through the published pipeline (SPEC 23.2.2): the program analyzed for `output`, then reported and generated
     // as a build runs them, has the verdict `accepted`. An accepted program has no analysis problem and is generated, with a generated body
     // for each function it declares other than a Contract's requirement and for its top-level statements (null), of which it has at least
@@ -310,9 +322,7 @@ public class MinimalEmissionTest
     // (not an explicit `main`). A rejected program is not generated. The result is the declaration names of the generated bodies.
     internal static string?[] GeneratedBodies(string source, OutputKind output, bool accepted)
     {
-        var c = Analyze(source, output: output);
-        c.Binding.ReportDiagnostics();
-        c.ReportAnalysis();
+        var c = Check(source, output: output);
         var generated = c.Generate(TextWriter.Null);
         Assert.True(c.Accepts == accepted && generated == accepted && (!accepted || c.Problems.Count == 0), Describe(c));
         if (!generated)
