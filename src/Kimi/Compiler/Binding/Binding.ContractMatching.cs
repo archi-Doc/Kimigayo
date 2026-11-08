@@ -240,7 +240,7 @@ public sealed partial class Binding
                             }
                         }
 
-                        ancestorProofs[i] = this.VerifyConformance(this.conformancePaths[(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract)], prerequisites);
+                        ancestorProofs[i] = this.VerifyConformance(this.impls.Path(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract), prerequisites);
                         proof = CombineProof(proof, ancestorProofs[i], true);
                     }
                 }
@@ -303,7 +303,7 @@ public sealed partial class Binding
                 var requirement = identity.Symbol;
                 if (!ReferenceEquals(identity.Contract, conformance.Contract))
                 {
-                    var ancestor = this.conformancePaths[(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract)];
+                    var ancestor = this.impls.Path(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract);
                     if (!CopyRequirementWitness(ancestor, conformance, identity))
                     {
                         proof = CombineProof(proof, ConstraintProof.Unknown, true);

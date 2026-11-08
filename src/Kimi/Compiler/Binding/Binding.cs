@@ -64,7 +64,7 @@ public sealed partial class Binding
     internal IReadOnlyList<LibraryImport> LibraryImports => this.libraryImports;
 
     /// <summary>Gets the facts this Binding publishes to readers outside Binding.</summary>
-    internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.nodes, this.symbols, this.conformancesByType);
+    internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.nodes, this.symbols, this.impls);
 
     /// <summary>Gets the Type context: interned Types and substitutions.</summary>
     internal TyCtxt Types => this.types;
