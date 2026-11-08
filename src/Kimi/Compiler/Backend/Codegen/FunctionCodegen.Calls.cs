@@ -263,7 +263,7 @@ internal sealed partial class FunctionCodegen
 
         if (row.DictionaryKernel)
         {
-            this.DictionaryKernel(call, row.Writer, subst!);
+            this.DictionaryKernel(call, subst!);
             return;
         }
 

@@ -93,17 +93,9 @@ internal enum LegacyWriter : byte
     /// which calls the item's declared callee, append (DECISIONS R5-M124).</summary>
     Place,
 
-    // The Dictionary storage kernels (SPEC 22.2; DECISIONS R5-M124), each P2a's kernel over its call's entry layout with its own number
-    // (FunctionCodegen.Storage's DictionaryKernel); they stay contiguous, so LegacyRow.DictionaryKernel names them by range.
-
-    /// <summary>dictionaryStorage: the {address, entry stride} Tuple through the DictionaryLayout kernel.</summary>
+    /// <summary>dictionaryStorage: the {address, entry stride} Tuple through P2a's DictionaryLayout kernel over its call's entry layout
+    /// (SPEC 22.2; DECISIONS R5-M124; FunctionCodegen.Storage's DictionaryKernel); keyAt and valueAt are bodies (R8-K1b).</summary>
     DictionaryLayout,
-
-    /// <summary>keyAt: a slot's key address through the EntryAddress kernel, with the key's offset.</summary>
-    KeyAt,
-
-    /// <summary>valueAt: a slot's value address through the EntryAddress kernel, with the value's offset.</summary>
-    ValueAt,
 }
 
 /// <summary>The legacy row of a compiler function of the Body disposition (X39): its writer and a routine row's runtime routine.</summary>
@@ -124,7 +116,7 @@ internal readonly record struct LegacyRow(LegacyWriter Writer, FunctionAbi? Rout
     internal bool Fixed => this.Writer is LegacyWriter.Routine or LegacyWriter.Formatting;
 
     /// <summary>Gets a value indicating whether the row is a Dictionary storage kernel (DECISIONS R5-M124): the one place that names them.</summary>
-    internal bool DictionaryKernel => this.Writer is >= LegacyWriter.DictionaryLayout and <= LegacyWriter.ValueAt;
+    internal bool DictionaryKernel => this.Writer == LegacyWriter.DictionaryLayout;
 
     /// <summary>Gets the row's layout need (LayoutNeeds; DECISIONS R5-M149): a whole-value update's and a Dictionary kernel's call reads
     /// its Type arguments' layouts (T's size; K's and V's entry layout); a row in its function's instance reads them through its LegacyRow
@@ -197,8 +189,6 @@ internal static partial class LegacyRuntimeHelpers
         // SPEC 4.9.6, 22.2 (DECISIONS R5-M124): the Dictionary storage kinds, placeEntry in its function's instance, the others inline kernels.
         CompilerFunctionKind.StoragePlaceDictionaryEntry => new(LegacyWriter.Place),
         CompilerFunctionKind.StorageDictionaryLayout => new(LegacyWriter.DictionaryLayout),
-        CompilerFunctionKind.StorageKeyAt => new(LegacyWriter.KeyAt),
-        CompilerFunctionKind.StorageValueAt => new(LegacyWriter.ValueAt),
 
         // SPEC 22.7, 22.9, 22.10.1 (DECISIONS R5-M128): the Text, buffer, window and writer kinds and WriteLineUtf8, their formatting routines
         // (P1d's rows, one text); a Body-disposition kind without a row is a fault.

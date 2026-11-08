@@ -64,9 +64,10 @@ public ref partial struct TokenReader
     public int Position { get; private set; }
 
     /// <summary>
-    /// Gets the current attribute chain.
+    /// Gets the attributes of the pending item prefix (SPEC F.6.1 AttributePrefix), last first: the declaration parser takes them with
+    /// its prefix (<see cref="TakeContext"/>) and attaches them; an item that takes none reports them.
     /// </summary>
-    public AttributeKoto? AttributeKoto { get; private set; }
+    public AttributeKoto? AttributeKoto { get; internal set; }
 
     /// <summary>
     /// Gets the modifiers associated with the current declaration.
@@ -341,33 +342,6 @@ public ref partial struct TokenReader
         this.PendingExclusion = context.PendingExclusion;
         this.PendingExclusionStart = context.PendingExclusionStart;
         this.DocumentationExcludedStart = context.DocumentationExcludedStart;
-    }
-
-    /// <summary>
-    /// Adds an attribute to the current attribute chain.
-    /// </summary>
-    /// <param name="attributeKoto">The attribute to add.</param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushAttribute(AttributeKoto attributeKoto)
-    {
-        if (this.AttributeKoto is not null)
-        {
-            attributeKoto.AttributeChain = this.AttributeKoto;
-        }
-
-        this.AttributeKoto = attributeKoto;
-    }
-
-    /// <summary>
-    /// Removes and returns the current attribute chain.
-    /// </summary>
-    /// <returns>The current attribute chain, or <see langword="null"/> if none exists.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public AttributeKoto? PopAttribute()
-    {
-        var attributeKoto = this.AttributeKoto;
-        this.AttributeKoto = default;
-        return attributeKoto;
     }
 
     /// <summary>
@@ -704,7 +678,7 @@ public ref partial struct TokenReader
     /// <summary>
     /// Reports attributes at the current position, where the grammar takes none (SPEC 6.7): an attribute precedes a
     /// declaration, so one between the parts of a header, before a Type or in an expression is misplaced. Each is reported
-    /// once over its whole extent and kept for the next node, so the source still round-trips through the tree.
+    /// once over its whole extent and attaches to nothing.
     /// </summary>
     /// <param name="next">The token the grammar expects after the attributes, or <see cref="TokenKind.Invalid"/>. Where it is
     /// <c>(</c>, an attribute leaves the last parenthesized list to the grammar (<see cref="Parser.ParseAttributeKoto"/>).</param>
@@ -714,10 +688,9 @@ public ref partial struct TokenReader
         var found = false;
         while (this.currentToken.Kind == TokenKind.Sharp)
         {
-            if (Parser.ParseAttributeKoto(ref this, next == TokenKind.OpenParenthesis) is { } attribute)
+            if (Parser.ParseAttributeKoto(ref this, null, next == TokenKind.OpenParenthesis) is { } attribute)
             {
-                // The kept attribute is this Error's recovery: Binding lets it mark nothing and checks the node it lands on alone.
-                this.CodeContext.RecordRecovery(attribute, this.Unexpected(SyntaxForm.Attribute, attribute.Span));
+                this.Unexpected(SyntaxForm.Attribute, attribute.Span);
             }
 
             found = true;

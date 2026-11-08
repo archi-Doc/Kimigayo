@@ -116,7 +116,8 @@ blocking findings above stand:
   the commit, never argued and never blocking.
 - The commit names DECISIONS Q13 for each expectation it changes under rule W. Q13 never moves an expectation of acceptance or of an
   independent record.
-- A form found outside the unit's rows that is none of 1-3 becomes an open issue, and a pre-existing defect stays one.
+- A form found outside the unit's rows that is none of 1-3 becomes an open issue, and a pre-existing defect stays one (one row per
+  cause, "Open issues" below).
 - A heuristic that a second form breaks is not refined.
   - Where the program is rejected anyway, its record is reported.
   - Where the program may be valid, a located `Unsupported_Kd` marks the analysis limit. On a program the base accepts, that is
@@ -171,6 +172,18 @@ The report names the SPEC sections, the evidence (for a unit that does not conve
 one level higher; for a stop, its record and the split plan) and the options (a representation, a whitelist, a redesign, a hold or
 another) with a recommendation. The Coordinator keeps the questions in the board's owner outbox and records them in PLAN.
 Independent units continue.
+
+## Open issues
+
+PLAN's open issues hold one row per cause (DECISIONS Q17).
+
+- **Intake.** A finding outside a unit's rows joins the row of its cause; only a new cause opens a row, numbered by the Coordinator at
+  the document request. A row names its owning area and, where one is planned, the unit that removes it. Optional items and candidates
+  are not open issues: they stay in the unit's commit or design notes.
+- **Closing.** Each area session keeps one implementer lane on its area's open issues, in this order: wrong code or unsound
+  acceptance, `InternalInvariant_Kd`, a valid program rejected, then the rest. Per milestone an area closes at least as many rows as it
+  opens; the Coordinator reports the counts with the milestone's area sizes.
+- **Size.** PLAN stays within its 400 lines: the Coordinator merges rows of one cause and removes a row when its landing closes it.
 
 ## Completion and landing
 

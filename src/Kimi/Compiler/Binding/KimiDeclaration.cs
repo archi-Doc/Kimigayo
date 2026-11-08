@@ -104,8 +104,6 @@ public enum KimiDeclarationId : byte
     DictionaryRefRemainder,
     DictionaryUniqRemainder,
     DictionaryOwnedRemainder,
-    StorageKeyAt,
-    StorageValueAt,
     InlineStorage,
     Position,
     PositionRange,

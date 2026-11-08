@@ -54,10 +54,13 @@ public static partial class Parser
         }
 
         // A specialization header redeclares no modifier (SPEC 8.13.2). The parser reports each one it reads (SpecializationHeader
-        // below, StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again.
+        // below, StaticModifier, OpenModifier), so the specialization publishes none and no declaration check judges one again. A
+        // constructor's attributes are its header Error's alone (SPEC 6.7): the report below names them, and they attach to nothing.
+        var header = specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } :
+            constructor ? context with { AttributeKoto = null } : context;
         var functionKoto = new FunctionKoto(
             ref reader,
-            specialization ? context with { ModifierKind = ModifierKind.NoModifier, DispatchModifierSpan = default } : context,
+            header,
             SourceSpan.FromBounds(methodToken.Span.Start, end),
             methodName,
             genericArguments,
@@ -93,14 +96,8 @@ public static partial class Parser
             if (genericArguments is not null || returnType is not null ||
                 context.AttributeKoto is not null || context.ModifierKind.Judged() != context.ModifierKind.ExtractAccessibilityModifiers())
             {
-                // The attributes it reports are kept as its recovery, so they mark nothing and are not resolved (SPEC 6.7).
-                if (functionKoto.Unexpected(SyntaxForm.ConstructorHeader) is { } decorated)
-                {
-                    for (var attribute = context.AttributeKoto; attribute is not null; attribute = attribute.AttributeChain)
-                    {
-                        reader.CodeContext.RecordRecovery(attribute, decorated);
-                    }
-                }
+                // The attributes it reports attach to nothing (SPEC 6.7): the constructor is built without them.
+                functionKoto.Unexpected(SyntaxForm.ConstructorHeader);
             }
         }
 
@@ -221,13 +218,13 @@ public static partial class Parser
         {
             // Attributes precede a parameter's Name, and the one boundary precedes the named section; either may follow the other.
             var start = reader.Position;
-            var attributed = false;
+            AttributeKoto? attribute = null;
             reader.SkipSeparators();
             while (true)
             {
                 if (reader.CurrentTokenKind == TokenKind.Sharp)
                 {
-                    attributed |= ParseAttributeKoto(ref reader) is not null;
+                    attribute = ParseAttributeKoto(ref reader, attribute);
                     reader.SkipSeparators();
                     continue;
                 }
@@ -268,18 +265,16 @@ public static partial class Parser
 
             if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
             {
-                if (attributed)
+                if (attribute is not null)
                 {
                     // Attributes before the closer precede no parameter: its Name was expected there, and they attach to nothing,
                     // neither to the result Type nor to the body.
                     reader.Expect(SyntaxForm.Name);
-                    _ = reader.PopAttribute();
                 }
 
                 break;
             }
 
-            var attribute = reader.PopAttribute();
             if (!reader.CanRead)
             {
                 break;
@@ -403,7 +398,7 @@ public static partial class Parser
 
         // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.13.2); the parser keeps them. A
         // misplaced attribute already reported before the list is kept here for the tree, not written on the parameter.
-        if (anonymous && (internalName != externalName || defaultValue is not null || HasWrittenAttribute(attribute)))
+        if (anonymous && (internalName != externalName || defaultValue is not null || attribute is not null))
         {
             reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameSpan);
         }
