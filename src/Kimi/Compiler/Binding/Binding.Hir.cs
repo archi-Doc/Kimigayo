@@ -62,10 +62,6 @@ public sealed partial class Binding
         private bool exclusive;
         private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
 
-        // By SyntaxId: whether a take of a node needs exclusive capability of it, recorded by RowUses.Claim from each take's row, its
-        // consumer's (FixAdjust) and its container's discard (DiscardRow), and read by ChildAdjust's claimed and ExclusiveUse.
-        private bool[] claims = [];
-
         // Binding's structural completion with its Never evidence, one per body.
         private StructuralCompletion? completion;
         private SyntaxTable? table;
@@ -84,6 +80,7 @@ public sealed partial class Binding
             var op = this.OpOf(node, position);
             var parts = this.Parts(node, op, position);
             var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(binding.KindOp(node));
+            var claimed = this.uses.Claimed(node); // The takes' claim, which the rows of a kept or an Error node replace.
             if (parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
                 this.uses.FixAdjust(node, new(HirAcquire.None, HirAdaptation.None), default); // A kept operand of an Error (Keeps), used in place.
@@ -123,8 +120,8 @@ public sealed partial class Binding
                 HirTables.PlanFor(node, discardedType is not null).DiscardedType = discardedType;
             }
 
-            // Every take of the node has recorded its claim (RowUses.Claim): its consumer's, then its container's discard row (DECISIONS BU-8).
-            this.exclusive = this.ExclusiveUse(node, parent, parentOp, exclusive);
+            // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).
+            this.exclusive = claimed || this.ExclusiveUse(node, parent, parentOp, exclusive);
             Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
@@ -164,15 +161,15 @@ public sealed partial class Binding
                 Array.Clear(hir.Places!);
             }
 
-            if (this.claims.Length < hir.States.Length)
+            // A plan row's Adjust is a take of this publish, as the column's is, so a claim (Claimed) reads no earlier pass's row.
+            for (var i = 1; i <= hir.PlanCount; i++)
             {
-                this.claims = new bool[hir.States.Length];
+                hir.Plans[i].Adjust = default;
             }
 
-            Array.Clear(this.claims, 0, hir.States.Length);
             (hir.Defaults ??= []).Clear();
             (hir.Broken ??= []).Clear();
-            (this.table, this.uses) = (table, new(binding, table, this.claims));
+            (this.table, this.uses) = (table, new(binding, table));
             this.completion?.Clear();
             (this.parent, this.position, this.exclusive, this.unresolvedOperation) = (null, HirPosition.None, false, false);
             this.Visit(root);
@@ -203,8 +200,8 @@ public sealed partial class Binding
         }
 
         // SPEC 14.2.2, 14.2.4 (DECISIONS R4-M145, BU-98): a discarded Place's plan row. A Place in Discard Context is acquired by bare
-        // acquisition, its row's Adjust (Discarded), a take whose claim it records as a consumer's (RowUses.Claim; PLAN G426), so a user
-        // index whose discarded element is Reborrowed selects indexUniq; the Place a container or an explicit discard takes (Discards, outside
+        // acquisition, its row's Adjust (Discarded), a take that claims as a consumer's does (Claimed; PLAN G426), so a user index whose
+        // discarded element is Reborrowed selects indexUniq; the Place a container or an explicit discard takes (Discards, outside
         // any group) holds the value its acquisition supplies, its row's DiscardedType (SuppliedType), which no consumer states. No
         // consumer takes such a Place but the group around it (Grouped's IsGroup) or the explicit discard, so only a Place with no Adjust,
         // a group's operand or a discard's operand is asked for its context, the builder's reach, not every Place. Returns the discarded
@@ -217,10 +214,6 @@ public sealed partial class Binding
             {
                 var discarded = binding.Discarded(node);
                 HirTables.PlanFor(node, discarded != default).Adjust = discarded;
-                if (this.uses.Owns(node))
-                {
-                    this.uses.Claim(node, discarded);
-                }
             }
 
             return !grouped && (unset || node.Parent is DiscardKoto) && Discards(node) ? binding.SuppliedType(node) : null;
