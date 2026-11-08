@@ -156,8 +156,6 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryRefRemainder, "DictionaryRefRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.DictionaryUniqRemainder, "DictionaryUniqRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.DictionaryOwnedRemainder, "DictionaryOwnedRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageKeyAt, "keyAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageKeyAt),
-        new(KimiDeclarationId.StorageValueAt, "valueAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageValueAt),
         // SPEC 22.2: the fixed-array overloads of the contiguous borrowing remainders.
         // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
         new(KimiDeclarationId.InlineStorage, "InlineStorage", KimiLibraryContainer.Storage),

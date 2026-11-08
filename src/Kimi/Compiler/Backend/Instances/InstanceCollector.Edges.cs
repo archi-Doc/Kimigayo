@@ -56,7 +56,7 @@ internal sealed partial class InstanceCollector
             var (at, runtime) = this.sites[i];
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
-                ? this.Edge(program, item, body, block.Terminator)
+                ? this.Edge(program, item, body, at.Block, block.Terminator)
                 : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
             if (target >= 0)
             {
@@ -121,13 +121,13 @@ internal sealed partial class InstanceCollector
     // creation's payload descriptor, a DestroyValues' glue) and a dropped value's glue, none for a part in a receiver's own storage (never
     // past a Deref) without a layout (Received: no use; its body is checked only); an intrinsic's Type arguments uses where its row's
     // need says so (K 4.8, IntrinsicRow.Need). The admitted item, or -1 for a callee without a body or row or a refused edge.
-    private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
+    private int Edge(MirProgram program, int item, MirBody body, int block, in MirTerminator call)
     {
         var callee = call.Callee;
         var subject = this.Subject(item, body, call.Source);
         if (call.Kind == MirTerminatorKind.Drop)
         {
-            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed ||
+            return this.In(item, subject, body.TypeOf(call.Place)!) is not { } closed || Elided(program, body, block, this.Set.Items[item].View) ||
                 (Received(body, call.Place) && this.layout.Of(closed).Outcome != Layout.Outcome.Ok) ? -1 : this.GlueOf(item, subject, closed);
         }
 

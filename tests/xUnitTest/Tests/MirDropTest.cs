@@ -141,17 +141,20 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     // Plan 5.6.1: the Type rule is per view: a pair-generic value is destroyed in its owner case and owns nothing in a reference case, so
     // its Drop has a group per view class, a part moved out of it included (GenericCleanupCaseTest's select). A default copy keeps the Drops
     // its instance Type may need (an abstract U's, judged by their state; none of i32), the call's result before its slots (SPEC 3.6,
-    // DECISIONS R4-M129).
+    // DECISIONS R4-M129). A Drop only the checks reach, after the return, is Elide where nothing of it is initialized (PLAN G641).
     [Fact]
     public void TheTypeRuleIsPerView()
     {
         Assert.Equal(["drop _1 -> bb1 [keep in v0; elide in v1]"], Lines("func hold<s/T>(value: s/T) -> ()\n    s is owner or ref\n    ()\n", "hold"));
         const string Select = "struct Payload\n    drop => ()\ngroup Helpers\n    public func select<s/T>(pair: (s/T, s/T)) -> s/T\n" +
             "        s is ref or obj\n        return pair.0@move\n";
-        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]"], Lines(Select, "select"));
+        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]", "drop _2 -> bb9 [elide]"], Lines(Select, "select"));
         const string Pick = "func pick<T>(a: T, b: T = a) -> T\n    T is Copy\n    return b\nfunc generic<U>(a: U) -> U\n    U is Copy\n    return pick(a)\n" +
             "func concrete() -> i32 => pick(1)\n";
-        Assert.Equal(["drop _1 -> bb6 [keep]", "drop _2 -> bb8 [elide]", "drop _4 -> bb9 [elide]", "drop _3 -> bb10 [elide]"], Lines(Pick, "generic"));
+        Assert.Equal(
+            ["drop _1 -> bb6 [keep]", "drop _2 -> bb8 [elide]", "drop _4 -> bb9 [elide]", "drop _3 -> bb10 [elide]", "drop _2 -> bb13 [elide]",
+                "drop _4 -> bb14 [elide]", "drop _3 -> bb15 [elide]"],
+            Lines(Pick, "generic"));
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 

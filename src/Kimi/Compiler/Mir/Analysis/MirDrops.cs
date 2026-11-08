@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns drop elaboration (A2; SPEC 16.2, 16.3.2, 15.1.3; DECISIONS R4-M6, R4-M6a) of one body per Semantics case view.
-// Input: the state MirInit's checks replay holds before each Drop the runtime edges reach (the lanes MaybeUninit, MaybeInit and MaybePartial
+// Input: the state MirInit's checks replay holds before each Drop (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
 // no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
 // for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
@@ -17,7 +17,9 @@
 // Invariant: a body the table marks has an Error problem in MirReport (R6-check IC, MirAnalysisTest): the one its index names, of its code
 // at its subject, or for -1 its template's of that code and subject (an inline copy's, R4-M69) or MirReport's InternalInvariant_Kd (a merge
 // naming another requirement); generation's gate reads the mark.
-// Must not rewrite MIR, judge a Drop only check edges reach (SPEC 14.10.3), read syntax, or apply a derived-problem rule (MirReport's).
+// A Drop only check edges reach (SPEC 14.10.3) is judged Elide where nothing of its Place is initialized on its assumed paths (it destroys
+// nothing; the instance collector reads it), else not at all.
+// Must not rewrite MIR, judge a check-only Drop otherwise, read syntax, or apply a derived-problem rule (MirReport's).
 
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.
 
@@ -60,7 +62,8 @@ internal readonly record struct MirFlagPoint(MirLocation At, int First, int Coun
 /// <see cref="MirProgram.Bodies"/>): the body's verdict rows, ordered by block, so a Drop's groups are contiguous, in view order; its flag
 /// points, ordered by block, each view's in location order; its number of flags; the views it judged, those A1 and A2 completed (all
 /// of the body's, none past A1's arena limit, R4-M15a); and its first A1 or A2 problem (R4-M102). A body not analyzed has none, and a Drop
-/// only the checks reach has no row. R5 code generation, A4, A5 and the dump read it.</summary>
+/// only the checks reach has one Elide row where nothing of its Place is initialized on any assumed path, else none, never another verdict
+/// (A4 relies on it). R5 code generation, A4, A5, the instance collector and the dump read it.</summary>
 internal sealed class MirDropTable
 {
     private readonly List<End> ends = []; // Each closed body's ends, judged views and first problem.
@@ -107,8 +110,8 @@ internal sealed class MirDropTable
     /// <param name="body">The body's ordinal.</param>
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="view">The view.</param>
-    /// <returns>The index of the group's first row in <see cref="RowsOf"/>, or -1 when the Drop has no row: only the checks reach it, or the
-    /// body was not analyzed.</returns>
+    /// <returns>The index of the group's first row in <see cref="RowsOf"/>, or -1 when the Drop has no row: only the checks reach it and
+    /// may destroy something, or the body was not analyzed.</returns>
     internal int Group(int body, int block, long view)
     {
         var rows = this.RowsOf(body);
@@ -129,6 +132,15 @@ internal sealed class MirDropTable
 
         return -1;
     }
+
+    /// <summary>Gets whether a Drop destroys nothing under a view: its group is Elide (SPEC 16.2.1, 14.10.3), the one statement A5 and the
+    /// instance collector read.</summary>
+    /// <param name="body">The body's ordinal.</param>
+    /// <param name="block">The block whose terminator is the Drop.</param>
+    /// <param name="view">The view.</param>
+    /// <returns>Whether it destroys nothing; false for a Drop without a row.</returns>
+    internal bool Elides(int body, int block, long view)
+        => this.Group(body, block, view) is >= 0 and var group && this.RowsOf(body)[group].Verdict == MirDropVerdict.Elide;
 
     /// <summary>Closes the next body: its rows and points are the ones added since the last body.</summary>
     /// <param name="flags">Its number of flags.</param>
@@ -153,7 +165,8 @@ internal sealed class MirDropTable
 }
 
 /// <summary>Drop elaboration (A2, SPEC 16.2, 16.3.2; DECISIONS R4-M6a): <see cref="Begin"/> starts a body, MirInit's checks replay records
-/// each runtime Drop's state tree (<see cref="Record"/>) and each state event (<see cref="Event"/>), <see cref="Judge"/> applies a view's
+/// each runtime Drop's state tree and a check-only Drop's Elide node (<see cref="Record"/>) and each runtime state event
+/// (<see cref="Event"/>), <see cref="Judge"/> applies a view's
 /// Types to the trees, and <see cref="End"/> numbers the flags and writes the points.</summary>
 /// <param name="moves">The move paths, built for the body.</param>
 /// <param name="cases">The Semantics case views, the judged view selected.</param>
@@ -192,12 +205,24 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         Array.Clear(this.flagged, 0, moves.Paths.Length);
     }
 
-    /// <summary>Records the state tree of a Drop the runtime edges reach, from the state before it.</summary>
+    /// <summary>Records the state tree of a Drop the runtime edges reach, from the state before it; of a Drop only the checks reach, one
+    /// Elide node where nothing of its Place is initialized on any assumed path (SPEC 14.10.3, 16.2.1: it destroys nothing), else none.</summary>
     /// <param name="state">The state.</param>
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="path">The dropped Place's path, or -1 when it has none: a static, or a Place through a reference or an index.</param>
-    internal void Record(ulong[] state, int block, int path)
+    /// <param name="runtime">Whether the runtime edges reach the Drop.</param>
+    internal void Record(ulong[] state, int block, int path, bool runtime)
     {
+        if (!runtime)
+        {
+            if (path >= 0 && Verdict(state, path, moves.Paths[path].End) == MirDropVerdict.Elide)
+            {
+                this.trees.Add(new(block, path, MirDropVerdict.Elide, -1, 0));
+            }
+
+            return;
+        }
+
         if (path < 0)
         {
             this.trees.Add(new(block, -1, MirDropVerdict.Keep, -1, 0));

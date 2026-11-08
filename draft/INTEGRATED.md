@@ -1320,6 +1320,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 37 (2026-11-08, plan §14; the Middle's D-127): row F2. Nothing frozen.
 - Revision 38 (2026-11-08, plan §14; the owner's O-68, verbatim 「O-68はeでお願いいたす」; the Back's D-133): rows RQ11, K1 and §6's representation-struct row. Nothing frozen.
 - Revision 39 (2026-11-08, plan §14; the Front's D-144): row N3b. Nothing frozen.
+- Revision 41 (2026-11-08, plan §14; the owner's O-85 (a); the Middle's D-150): row F3. Nothing frozen.
+- Revision 42 (2026-11-09, plan §14; the Front's D-152): rows V2, D2 and C2. Nothing frozen.
+- Revision 43 (2026-11-09, plan §14; the owner's O-80 (b), O-82 and O-89 (a); the Front's D-148): row C8. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
