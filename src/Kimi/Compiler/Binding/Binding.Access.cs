@@ -216,9 +216,9 @@ public sealed partial class Binding
             var owner = scope.Owner;
             if (owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional && ReferenceEquals(clause.Parent, conditional.Operands[1]))
             {
-                for (var p = 0; p < this.activeConformancePaths.Count; p++)
+                for (var p = 0; p < this.impls.Paths.Count; p++)
                 {
-                    var path = this.activeConformancePaths[p];
+                    var path = this.impls.Paths[p];
                     if (ReferenceEquals(path.Premises, clause.Parent) &&
                         !this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
                     {
@@ -249,9 +249,9 @@ public sealed partial class Binding
             if (clause.IsAssociatedConstraint && owner is not ContractKoto && this.AssociatedIdentity(clause.Left.BoundType) is { } associated)
             {
                 var type = scope.ConformancePath?.Type ?? owner.BoundSymbol;
-                for (var p = 0; p < this.activeConformancePaths.Count; p++)
+                for (var p = 0; p < this.impls.Paths.Count; p++)
                 {
-                    var path = this.activeConformancePaths[p];
+                    var path = this.impls.Paths[p];
                     if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.SeenRequirements.Contains(associated) ||
                         (scope.ConformancePath is { } declaringPath && !ReferenceEquals(path.RootPath, declaringPath.RootPath)))
                     {

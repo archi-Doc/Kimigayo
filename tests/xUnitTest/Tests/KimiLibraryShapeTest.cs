@@ -76,8 +76,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.WriterWrite, "public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>\nT is Utf8Format"),
         (KimiDeclarationId.WriterStatus, "public func status(self: ref/Self) -> Result<(), BufferFull>"),
         (KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)"),
-        (KimiDeclarationId.StorageKeyAt, "internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K"),
-        (KimiDeclarationId.StorageValueAt, "internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V"),
         (KimiDeclarationId.StorageDictionaryLayout, "internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/Dictionary<K, V> during value, isize)\nK is Equatable"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
         (KimiDeclarationId.StoragePlaceDictionaryEntry, "internal unsafe func placeEntry<K, V>(handle: raw/Dictionary<K, V>, key: K, value: V)\nK is Equatable"),
@@ -129,7 +127,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(189, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(187, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {

@@ -673,15 +673,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
     // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
-    // evaluations. N is 256/512/1024 so that the program's own bodies, not the library's, fill the pooled arrays, whose doubling makes the
-    // allocation of smaller programs step (16/32/64: +336, then +9,504).
+    // evaluations. The pooled arrays double, so the cold allocation steps where the program and the library together fill them; each
+    // interval must span the same number of those doublings, or the ratio measures where a step falls instead of the growth. N is
+    // 512/1024/2048, the smallest doubling sizes at which each interval spans one doubling, so the two differences stand 2:1 (119,552 and
+    // 238,912 bytes for the chain, R8-K1b-1's base and head alike). At 256 the library's own bodies decide whether a doubling falls in the
+    // first interval: R8-K1b-1's two more moved it from 256-512 to before 256 (+21,704 bytes at 256, 3.13:1; 16/32/64 stepped the same way:
+    // +336, then +9,504). A larger library may need the next sizes; the two rows take about 7 s.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("    public func step{0}() => H.{1}()\n")]
     [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
     public void SummariesScaleLinearly(string member)
     {
-        var (sizes, evaluations) = (new[] { 256, 512, 1024 }, new long[3]);
+        var (sizes, evaluations) = (new[] { 512, 1024, 2048 }, new long[3]);
         var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
         var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
         {

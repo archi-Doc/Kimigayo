@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 
 /// <summary>The facts one Binding publishes to Hover, the LSP and tests (docs/dev/COMPILER_ARCHITECTURE.md). Readers outside
 /// Binding ask these members instead of Koto semantic slots or Binding state, so the slots can move without changing them.</summary>
-internal sealed class SemanticQuery(Compilation compilation, Binding binding, List<Koto> nodes, Dictionary<object, BindingSymbol> declarations, Dictionary<BindingSymbol, List<BoundConformance>> conformances)
+internal sealed class SemanticQuery(Compilation compilation, Binding binding, List<Koto> nodes, Dictionary<object, BindingSymbol> declarations, ImplTable impls)
 {
     internal Compilation Compilation => compilation;
 
@@ -62,7 +62,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
     // A recovery node stands for its syntax error, never for a semantic result.
     internal bool IsRecovery(Koto node) => Binding.IsRecovery(node, out _);
 
-    internal IReadOnlyList<BoundConformance>? Conformances(BindingSymbol type) => conformances.GetValueOrDefault(type);
+    internal IReadOnlyList<BoundConformance>? Conformances(BindingSymbol type) => impls.OfType(type);
 
     internal BindingScope ConstraintScope(Koto node) => binding.ConstraintScope(node);
 
