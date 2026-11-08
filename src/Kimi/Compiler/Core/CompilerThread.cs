@@ -4,7 +4,9 @@
 // site's work on a pooled compiler thread while its caller waits, and makes every compiler thread (Create: the pool's,
 // AllocationMeasurement's, the tests'). Input: a state, a static work and the caller's ExecutionContext. Output: the work's result,
 // or its exception rethrown on the caller with its original stack. Invariants: a site on a compiler thread runs inline; a warm hop
-// allocates nothing; the pool grows to the peak number of concurrent callers and never shrinks, and sequential hops reuse one
+// allocates nothing, whether its waits end in their spin or really block, so every wait state exists from its construction (a
+// SemaphoreSlim, the pool's monitor; ManualResetEventSlim and Lock create theirs at the first wait that blocks, G580); the pool
+// grows to the peak number of concurrent callers and never shrinks, and sequential hops reuse one
 // worker; workers are background threads started without a context, and a job runs under its caller's captured context, else
 // under the worker's own start context, so nothing a job sets stays on its worker; a job's references are cleared before its worker
 // is pooled; across the hop, the caller's `when` filters run after the work's `finally` blocks (inline, before them), and no filter
@@ -23,8 +25,7 @@ internal static class CompilerThread
     /// <summary>S, the stack reserve of a compiler thread.</summary>
     internal const int StackSize = 64 << 20;
 
-    private static readonly Lock Gate = new();
-
+    // The pool, also its own monitor.
     private static readonly Stack<Worker> Idle = new();
 
     [ThreadStatic]
@@ -65,7 +66,7 @@ internal static class CompilerThread
         var job = Job<TState, TResult>.Current;
         job.Post(state, work);
         Worker? worker;
-        lock (Gate)
+        lock (Idle)
         {
             Idle.TryPop(out worker);
         }
@@ -76,18 +77,14 @@ internal static class CompilerThread
 
     private abstract class Job
     {
-        private readonly ManualResetEventSlim done = new();
+        private readonly SemaphoreSlim done = new(0);
 
         // Runs the work on the worker under the caller's context, else the worker's start context, and clears the job's references.
         internal abstract void Execute(ExecutionContext start);
 
-        internal void Signal() => this.done.Set();
+        internal void Signal() => this.done.Release();
 
-        protected void Wait()
-        {
-            this.done.Wait();
-            this.done.Reset();
-        }
+        protected void Wait() => this.done.Wait();
     }
 
     // One job per caller thread and instantiation, reused by every hop of that thread.
@@ -151,7 +148,7 @@ internal static class CompilerThread
     // hop finds it in the pool.
     private sealed class Worker
     {
-        private readonly ManualResetEventSlim posted = new();
+        private readonly SemaphoreSlim posted = new(0);
         private Job? job;
 
         internal Worker() => Create(this.Loop);
@@ -159,7 +156,7 @@ internal static class CompilerThread
         internal void Start(Job job)
         {
             this.job = job;
-            this.posted.Set();
+            this.posted.Release();
         }
 
         private void Loop()
@@ -168,11 +165,10 @@ internal static class CompilerThread
             while (true)
             {
                 this.posted.Wait();
-                this.posted.Reset();
                 var job = this.job!;
                 this.job = null;
                 job.Execute(start);
-                lock (Gate)
+                lock (Idle)
                 {
                     Idle.Push(this);
                 }

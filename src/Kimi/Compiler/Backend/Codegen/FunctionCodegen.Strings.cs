@@ -11,17 +11,20 @@ namespace Kimi.Compiler.Backend;
 // the record its value reaches through its ref and uniq layers), its row's routine on them (LegacyRuntimeHelpers' StringEqual for == and
 // !=, StringCompare for the orderings: the one text, which the module holds once), the routine's i32 compared
 // with 0 by the column's entry (SPEC 13.4.1), the bool widened into the Place. Nothing is checked, located or destroyed: a comparison
-// acquires nothing and never fails. A string Place is never an operand (MIR inspects strings through shared borrows), a string has no
-// other operator (SPEC 13.3.2), and no valid program reaches a pair layer in an operand (Binding rejects the built-in comparison through a
-// pair target, UnprovenConstraint_Kd; MIR is built per body, so an abstract target is a requirement call): each is a broken contract.
+// acquires nothing and never fails. A string Place is never an operand (MIR inspects strings through shared borrows) and a string has no
+// other operator (SPEC 13.3.2): each is a broken contract. A comparison whose left operand's Type below its ref and uniq layers is a
+// qualifying pair layer (MirBuilder's Witnessed) reaches the column in a generic body, and its instance's Type below the layer is string
+// (InstanceType).
 // C8f's comparison shims read a string leaf's record through Record. TerminalAddress, the walk to an operand's terminal Place, serves every
-// comparison operand (FunctionCodegen.Arithmetic's Compute; DECISIONS R5-M143).
+// comparison operand (FunctionCodegen.Arithmetic's Compute; DECISIONS R5-M143). Since the witness table's String row runs string
+// comparisons as library bodies (MirBuilder's Compared, the collector's comparison items), only a comparison of a pair-layered left operand
+// reaches the string column; R8-S1e gives it the witness and deletes the column, with the routines.
 internal sealed partial class FunctionCodegen
 {
     // SPEC 3.4.3, 13.4: where an operand of safe value-reference layers denotes its terminal Place, given the operand's value: the referent of
     // its outer ref or uniq layer through the pointer each further one stores (the place writer's Deref rule); its Terminal. Without layers
     // (References 0) the operand's own value, which is no address for a scalar: Compute reads it as the value, Bytes refuses it. Null after
-    // a record: a pair layer, which no valid program leaves on an operand (above).
+    // a record: a pair layer the instance's Type still has, a broken contract, since the instance substitutes the layer's Semantics.
     private Value? TerminalAddress(in MirOperand operand, Value value, in SourceInfo source, out Terminal terminal)
     {
         terminal = Terminal.Of(this.InstanceType(operand));
@@ -65,8 +68,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // A string operand's bytes: a constant's (TextBytes), or the record at its terminal Place (TerminalAddress, the one walk every comparison
-    // operand takes). False after a broken contract's record: the operand's (Operand), or a string Place or a pair layer, which no valid
-    // program makes an operand.
+    // operand takes). False after a broken contract's record: the operand's (Operand), a string Place, or a pair layer left in the instance's
+    // Type (TerminalAddress).
     private bool Bytes(in MirOperand operand, in SourceInfo source, out StringBytes bytes)
     {
         bytes = default;

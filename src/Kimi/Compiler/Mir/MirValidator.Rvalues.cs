@@ -42,6 +42,10 @@ internal sealed partial class MirValidator
             {
                 this.Report(MirViolation.Operation); // G154: the collector finds a function item's edge only at a Use (K 4.8).
             }
+            else if (operand.Kind == MirOperandKind.Const && body.Consts[operand.Arg].IsRecord && !this.calling)
+            {
+                this.Report(MirViolation.Operation); // ConstantRecords: a constant record is only a Call's input.
+            }
             else if (operand.Kind == MirOperandKind.PairAcquire && this.IsValid(operand.Place) && !body.Binds(
                 operand.Arg,
                 PairBinderOf(body.TypeOf(operand.Place))))

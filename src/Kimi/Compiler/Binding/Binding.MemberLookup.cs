@@ -7,9 +7,12 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
-    private readonly HashSet<BindingSymbol> memberLookupVisiting = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
+    private int memberWalks;
+
+    /// <summary>Gets the layers LookupTypeMember searched in the latest pass, read by the scaling tests.</summary>
+    internal int MemberWalkWork => this.memberWalks;
 
     // SPEC 9.1: a generic parameter belongs to its declaration's own scope and is no member of the Type.
     private static bool IsGenericParameter(BindingSymbol symbol)
@@ -327,15 +330,22 @@ public sealed partial class Binding
                 ? new(fixedMember, null, path) : new(null, type, path); // Group functions substitute no declaring Type.
         }
 
-        if (type.Symbol is not { } symbol || !this.scopes.TryGetValue(symbol.Declaration, out var scope))
+        if (type.Symbol is not { } start || !this.scopes.ContainsKey(start.Declaration))
         {
             return default;
         }
 
+        // SPEC 6.2.2: one clause per struct, so the layers are a chain of declarations (Binding.BaseLayers); the Type of each is its
+        // clause's, substituted. A layer that names no struct ends the walk: a clause SPEC 6.2.2 rejects has no layers above it.
         BindingSymbol? hidden = null;
-        if ((typeRole ? scope.Types : scope.Values).TryGetValue(name, out var member))
+        var walk = new BaseWalk(start);
+        var layer = type;
+        while (true)
         {
-            for (var candidate = member; candidate is not null; candidate = candidate.Next)
+            this.memberWalks++;
+            var symbol = layer.Symbol!;
+            var scope = this.scopes[symbol.Declaration];
+            for (var candidate = (typeRole ? scope.Types : scope.Values).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
                 if (IsGenericParameter(candidate))
                 {
@@ -344,43 +354,48 @@ public sealed partial class Binding
 
                 if (this.Accessible(candidate, use, receiverType: receiver))
                 {
-                    return new(candidate, type, path);
+                    return new(candidate, layer, path);
                 }
 
                 // Inaccessible declarations are diagnostic evidence, never a layer that stops lookup (SPEC 9.4).
                 hidden ??= candidate;
             }
-        }
 
-        if (symbol.Declaration is not StructKoto structure)
-        {
-            return new(null, type, path, Hidden: hidden);
-        }
-
-        if (structure.BaseClause is not { } syntax)
-        {
-            return new(null, null, null, Hidden: hidden);
-        }
-
-        if (!this.memberLookupVisiting.Add(symbol))
-        {
-            return new(null, type, path, true);
-        }
-
-        try
-        {
-            var baseType = syntax.BoundType ?? this.BindType(syntax, scope);
-            if (baseType is null || this.PartType(baseType, type) is not { } substituted)
+            if (symbol.Declaration is not StructKoto structure)
             {
-                return new(null, type, path, Pending: true);
+                return ReferenceEquals(layer, type) ? new(null, type, path, Hidden: hidden) : new(null, null, null, Hidden: hidden);
             }
 
-            var candidate = this.LookupTypeMember(substituted, name, use, receiver, this.MemberPath(path, syntax, substituted), typeRole);
-            return candidate.Member is null && !candidate.Ambiguous && !candidate.Pending ? new(null, null, null, Hidden: hidden ?? candidate.Hidden) : candidate;
-        }
-        finally
-        {
-            this.memberLookupVisiting.Remove(symbol);
+            if (structure.BaseClause is not { } syntax)
+            {
+                return new(null, null, null, Hidden: hidden);
+            }
+
+            // A clause not ready is not bound here; the walk reaching a clause under binding is the cycle BindType reports (SPEC 9.5).
+            var next = this.DirectBase(structure);
+            var baseType = syntax.BoundType ?? (next is not null ? this.knownBases?.GetValueOrDefault(structure) ?? this.BindType(syntax, scope) : this.resolvingTypes.Contains(syntax) ? this.BindType(syntax, scope) : null);
+            if (baseType is null || this.PartType(baseType, layer) is not { } substituted)
+            {
+                if (syntax.BindingState != BindingState.Unvisited)
+                {
+                    this.Consulted(syntax); // A clause not read yet has no failure to rest on.
+                }
+
+                return new(null, layer, path, Pending: true);
+            }
+
+            if (next?.Declaration is not StructKoto)
+            {
+                return new(null, null, null, Hidden: hidden);
+            }
+
+            if (walk.Repeats(next!))
+            {
+                return new(null, layer, path, true);
+            }
+
+            path = this.MemberPath(path, syntax, substituted);
+            layer = substituted;
         }
     }
 

@@ -16,6 +16,37 @@ namespace XunitTest;
 /// HirFormsTest.Errors.cs. Each program also satisfies the corpus contract (HirColumnsTest).</summary>
 public sealed partial class HirFormsTest
 {
+    // The Types of the takes a later take overwrites (AnOverwrittenTakeClaimsNothing).
+    private const string OverwrittenTakes = """
+            struct One<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public var uniqCalls: i32 = 0
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    self.uniqCalls += 1
+                    return self.first@uniq
+            struct Holder<T>
+                public var items: T
+                public init(items: T) => self.items = items@move
+            struct Vec2
+                Self is Addable<Vec2>
+                associate Addable<Vec2>.Output is Vec2
+                public var x: i32 = 0
+                public init() => ()
+                public func added(self: ref/Self, right: ref/Vec2) -> Vec2 => Vec2.init()
+
+            """;
+
     // The programs AnAcceptedProgramLeavesNoDiscardRowUnsetOrFailed sweeps: every SPEC example variant without an expected record that the MIR
     // accepts too (Binding records none), the library and the milestone programs.
     public static TheoryData<string> AcceptedPrograms
@@ -867,40 +898,14 @@ public sealed partial class HirFormsTest
         Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
     }
 
-    // SPEC 4.7.1 (DECISIONS BU-8, R4-M142): a user index's selection as ExpansionPlan gives it, which equal IR does not show where index and
-    // indexUniq have equal bodies. Every take claims, also one a later take overwrites: the bare take of a for's Subject below a part (a
-    // stored uniq over ref, a pair of ref or uniq) before the shared entry call, and of a compound assignment's right side before its
-    // operator's `right: ref/Vec2`.
+    // SPEC 4.7.1, 13.7.2, 14.6.2, 15.1.6 (R7-Y1c, superseding BU-8's and R4-M142's accumulation): a user index's selection as ExpansionPlan
+    // gives it, which equal IR does not show where index and indexUniq have equal bodies. A take a later take replaces is no use of the
+    // element: a for's Subject is read by its shared entry call (a stored uniq over ref, a pair of ref or uniq, the weakest mode) and a
+    // compound assignment's right side as its operator's `right: ref/Vec2` requires, so each selects index.
     [Fact]
-    public void AnOverwrittenTakeSelectsByItsClaim()
+    public void AnOverwrittenTakeClaimsNothing()
     {
-        const string Source = """
-            struct One<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
-            struct Holder<T>
-                public var items: T
-                public init(items: T) => self.items = items@move
-            struct Vec2
-                Self is Addable<Vec2>
-                associate Addable<Vec2>.Output is Vec2
-                public var x: i32 = 0
-                public init() => ()
-                public func added(self: ref/Self, right: ref/Vec2) -> Vec2 => Vec2.init()
+        const string Source = OverwrittenTakes + """
             func stored(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32
                 var total: i32 = 0
                 for x in v[0].0
@@ -931,7 +936,45 @@ public sealed partial class HirFormsTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         var selections = Reachable(c.Kotonoha).Where(static x => x is IndexKoto && ExpansionPlan.Of(x)?.Second is not null).Select(static x => ExpansionPlan.Of(x)!.Value.Second!.Target.Name);
-        Assert.Equal(Enumerable.Repeat("indexUniq", 5), selections);
+        Assert.Equal(Enumerable.Repeat("index", 5), selections);
+    }
+
+    // The acceptance the selection moves (SPEC 15.6.2): a shared view stays live across a read, which an exclusive indexUniq rejected (the
+    // first four), and a `let` Closure whose body only reads the element makes a Shared call (SPEC 7.7.3, 15.1.5, 15.1.6), where indexUniq
+    // needed the environment exclusively (the fifth; base gave InternalInvariant_Kd); and its invalid twins stay rejected: a read below a
+    // live exclusive Reborrow, a write through a shared Subject's item, and an Exclusive call on a `let` Closure (the last).
+    [Theory]
+    [InlineData(true, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let view = v@ref\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    return total + view[0].1\n")]
+    [InlineData(true, "func f<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T) -> i32\n    s is ref or uniq\n    let view = v@ref\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    return total + view[0].1\n")]
+    [InlineData(true, "func f(v: uniq/One<uniq/Vec2 during a>) -> i32\n    let view = v@ref\n    var total = Vec2.init()\n    total += v[0]\n    return total.x + view[0].x\n")]
+    [InlineData(true, "func f(v: uniq/One<Holder<uniq/Vec2 during a>>) -> i32\n    let view = v@ref\n    var total = Vec2.init()\n    total += v[0].items\n    return total.x + view[0].items.x\n")]
+    [InlineData(true, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let g = func [v] () -> i32\n        var total: i32 = 0\n        for x in v[0].0\n            total += x\n        return total\n    return g()\n")]
+    [InlineData(false, "func hit(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> () => ()\nfunc f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let e = v@follow@uniq\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    hit(e)\n    return total\n")]
+    [InlineData(false, "func hit(v: uniq/One<uniq/Vec2 during a>) -> () => ()\nfunc f(v: uniq/One<uniq/Vec2 during a>) -> i32\n    let e = v@follow@uniq\n    var total = Vec2.init()\n    total += v[0]\n    hit(e)\n    return total.x\n")]
+    [InlineData(false, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>)\n    for x in v[0].0\n        x@follow = 1\n")]
+    [InlineData(false, "func f<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T)\n    s is ref or uniq\n    for x in v[0].0\n        x@follow = 1\n")]
+    [InlineData(false, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let g = func [v] () -> i32\n        var total: i32 = 0\n        for x in v[0].0\n            total += x\n        v[0].1 = 2\n        return total\n    return g()\n")]
+    public void AnOverwrittenTakeLeavesAReadAccepted(bool accepted, string program)
+    {
+        var c = MinimalEmissionTest.Analyze(OverwrittenTakes + program + "()\n");
+        Assert.True(accepted == c.Accepts, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 8.14, 13.5.6, 4.7.1, 15.6.2 (DECISIONS R7-Y2; BU-8's open item: the selection is per node): a case adaptation of a user index's
+    // element that borrows it exclusively in an admitted case needs exclusive capability (Binding.UseOf), so it selects indexUniq, where
+    // base selected index and MIR found an exclusive borrow of index's shared result (InternalInvariant_Kd); its invalid twin, a shared
+    // view of the owner live across, is that case's activation conflict.
+    [Theory]
+    [InlineData("    var a = One<Vec2>.init(Vec2.init())\n    let c = a[0]@s/Vec2\n    return 0\n", null)]
+    [InlineData("    var a = One<Vec2>.init(Vec2.init())\n    let view = a@ref\n    let c = a[0]@s/Vec2\n    return view[0].x\n", nameof(DiagnosticCode.CallActivationConflict_Kd))]
+    public void ACaseAdaptationOfAUserIndexsElementSelectsByItsExclusiveCase(string body, string? code)
+    {
+        var source = OverwrittenTakes + "func h<s/T>(marker: s/T) -> i32\n    s is ref or uniq\n" + body + "()\n";
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var selection = Reachable(c.Kotonoha).Single(static x => x is IndexKoto { Parent: ConversionKoto } && ExpansionPlan.Of(x)?.Second is not null);
+        Assert.Equal("indexUniq", ExpansionPlan.Of(selection)!.Value.Second!.Target.Name);
     }
 
     // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that
@@ -957,6 +1000,7 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         Assert.Equal((HirOp.Name, HirPlaceKind.Value), (HirTables.Op(statement), HirTables.PlaceOf(statement).Kind));
         Assert.Null(HirTables.PlanOf(statement).DiscardedType);
+        Assert.Equal(default, HirTables.PlanOf(statement).Adjust); // A publish clears it, so no earlier pass's take claims the node (Binding.Claimed).
     }
 
     // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset or failed.

@@ -19,7 +19,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void FloatRemainderIsRejectedAtBindingWithItsTypeAndOperator()
     {
         const string Source = "var x = 1.0\nx %= 2.0";
-        var c = Analyze(Source);
+        var c = MinimalEmissionTest.Check(Source);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
@@ -59,7 +59,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f() -> f64\n    return 1.0\n    1.0 & 2.0\npublic func main() => ()", "f64", "&", "1.0 & 2.0")]
     public void EveryIntegerOnlyOperatorOnAFloatNamesItsTypeAndOperator(string source, string type, string op, string text)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
         Assert.Equal($"The operator {op} requires integer operands, but this operand has Type {type}", error.Message);
         Assert.Equal($"operator {op} requires an integer operand", error.Label);
@@ -76,7 +76,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("let x: u64 = 1\nlet c = \"a\"\nlet v = x >> c", "string", ">>", "c")]
     public void AShiftCountWithoutAnIntegerTypeIsReportedAtTheCount(string source, string type, string op, string text)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.InvalidShiftCount_Kd), error.Code);
         Assert.Equal($"The operator {op} requires an integer count, but this count has Type {type}", error.Message);
         Assert.Equal($"{type} is not an integer Type", error.Label);
@@ -89,7 +89,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(x: Wrapping<u8>, w: Wrapping<u16>) -> Wrapping<u8> => x >> w\npublic func main() => ()", "Wrapping<u16>")]
     public void AWrappingCountIsNeverAShiftCount(string source, string type)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.InvalidShiftCount_Kd), error.Code);
         Assert.Equal($"{type} is not an integer Type", error.Label);
         Assert.Equal("w", error.Text);
@@ -100,7 +100,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [Fact]
     public void TheShiftedOperandIsJudgedBeforeTheCount()
     {
-        var error = Assert.Single(Errors(Analyze("let x = 1.0\nlet v = x << 1.0")));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check("let x = 1.0\nlet v = x << 1.0")));
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
         Assert.Equal("x << 1.0", error.Text);
     }
@@ -112,7 +112,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("let n: i32 = 2\nlet v = 1.5 % n", "expected i32, found floating-point literal")]
     public void AnIntegerOperandWithAFloatKeepsTheMismatch(string source, string label)
     {
-        var error = Assert.Single(Errors(Analyze(source)));
+        var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal(label, error.Label);
     }
@@ -152,7 +152,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void ARefutedIntegerRequirementPublishesItsActualQuery()
     {
         const string Source = "func bits<T>(value: T)\n    T is not PrimitiveInteger\n    return value & 2\npublic func main() => ()";
-        var compilation = Analyze(Source);
+        var compilation = MinimalEmissionTest.Check(Source);
         var error = Assert.Single(compilation.Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
         Assert.Equal(DiagnosticCategory.Language, error.Category);
@@ -221,7 +221,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("_ = 1 % p\n    let b: bool = 3", "OperatorNotDefined_Kd@1 % p|TypeMismatch_Kd@3")]
     public void ALiteralLeftRouteRecordStaysAtEachOperation(string body, string records)
     {
-        var errors = Errors(Analyze($"func f(p: ref/raw/i32)\n    {body}\npublic func main() => ()"));
+        var errors = Errors(MinimalEmissionTest.Check($"func f(p: ref/raw/i32)\n    {body}\npublic func main() => ()"));
         Assert.Equal(records.Split('|').Order(), errors.Select(static x => $"{x.Code}@{x.Text}").Order());
     }
 
@@ -260,7 +260,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void CliAndLspCarryTheLabels()
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = Analyze("func bits(x: f64) -> f64 => x & x\nfunc f(n: i32, w: Wrapping<i32>) -> i32 => n << w\npublic func main() => ()", path);
+        var c = MinimalEmissionTest.Check("func bits(x: f64) -> f64 => x & x\nfunc f(n: i32, w: Wrapping<i32>) -> i32 => n << w\npublic func main() => ()", path);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal([nameof(DiagnosticCode.NonIntegerOperand_Kd), nameof(DiagnosticCode.InvalidShiftCount_Kd)], result.Diagnostics.Select(static x => x.Code));
@@ -297,7 +297,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         var condition = refuted ? $"\n    {type} is not PrimitiveInteger" : string.Empty;
         var source = $"func bits<{type}>(value: {type}){condition}\n    return value & 2\npublic func main() => ()";
         var path = Path.GetFullPath("operator.kimi");
-        var compilation = Analyze(source, path);
+        var compilation = MinimalEmissionTest.Check(source, path);
         compilation.Diagnostics.AddInput(compilation.Diagnostics.FindDocument(path)!, compilation.Kotonoha);
         var result = compilation.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
@@ -645,7 +645,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     public void ApplicabilityFailuresRetainFactsBeforeCounterpartFitting(
         string source, string code, string type, string op, string at, string? contract)
     {
-        var compilation = Analyze(source);
+        var compilation = MinimalEmissionTest.Check(source);
         var error = Assert.Single(Errors(compilation));
         Assert.Equal(code, error.Code);
         Assert.Equal(at, error.Text);
@@ -669,13 +669,4 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
 
     private static TestDiagnostic[] Errors(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error)];
-
-    private static Compilation Analyze(string source, string path = "Hello.kimi")
-    {
-        var c = MinimalEmissionTest.Analyze(source, path);
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.ReportAnalysis();
-        return c;
-    }
 }

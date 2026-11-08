@@ -75,6 +75,12 @@ internal sealed partial class MirBuilder
     // SPEC 13.2, 13.3.1: a built-in binary operator on the operands pushed since start, its check Proven where IMPL 21.3.3 omits it.
     private void Binary(MirPlace destination, BinaryKoto node, MirBinaryOp op, int start, BoundType type)
     {
+        if (this.Witnessed(op, start) is { } comparison)
+        {
+            this.Compared(destination, comparison, op, start, node);
+            return;
+        }
+
         var proven = this.Proven(op, type, this.arguments[^1]);
         this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
     }

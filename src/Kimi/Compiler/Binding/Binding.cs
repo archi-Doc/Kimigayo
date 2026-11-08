@@ -122,10 +122,15 @@ public sealed partial class Binding
             this.Result = default;
             this.compilation.Diagnostics.InvalidateSemantics();
             this.compilation.InvalidateMir();
-            this.ResetPass(mode);
-            this.IndexSources();
-            this.IndexLibrary();
-            this.BindDeclarations(mode);
+            this.StartRuns(mode);
+            do
+            {
+                this.ResetPass(mode);
+                this.IndexSources();
+                this.IndexLibrary();
+            }
+            while (!this.BindDeclarations(mode));
+
             this.BindBodies();
             this.ValidateBoundDeclarations(mode);
             this.Result = this.Check(mode);
@@ -134,6 +139,7 @@ public sealed partial class Binding
                 this.WalkLints();
             }
 
+            this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             return this.Result;
         }
         finally
@@ -162,13 +168,14 @@ public sealed partial class Binding
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
         // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and the Type context's view memos.
         this.associatedOrigins.Clear();
+        this.knownBases?.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
         this.types.ResetViews();
     }
 
-    // Declarations, Constraints, Contracts, headers, storage and signatures, before any body is bound.
-    private void BindDeclarations(BindingMode mode)
+    // Declarations, Constraints, Contracts, headers, storage and signatures, before any body is bound. False: run them again (VerifyEarlyReads).
+    private bool BindDeclarations(BindingMode mode)
     {
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
@@ -180,6 +187,8 @@ public sealed partial class Binding
         this.PrepareAliases();
         this.PrepareContracts();
         this.BindConstraints();
+        this.clausesBindable = true;
+        this.PublishInheritedOptOuts();
         this.RegisterInheritedConformances(complete: true);
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
@@ -196,6 +205,11 @@ public sealed partial class Binding
         this.ValidateVirtualDeclarations();
         this.ValidateLayoutFragments();
         this.ValidateBaseDeclarations();
+        if (this.VerifyEarlyReads())
+        {
+            return false;
+        }
+
         this.PrepareStorage();
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
@@ -214,6 +228,8 @@ public sealed partial class Binding
         {
             this.CaptureOmittedBases();
         }
+
+        return true;
     }
 
     // Source bodies, then the library bodies outside the compiler-intrinsic declarations.

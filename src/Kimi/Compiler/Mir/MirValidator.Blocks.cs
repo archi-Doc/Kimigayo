@@ -294,7 +294,9 @@ internal sealed partial class MirValidator
                 return false;
             }
 
+            this.calling = terminator.Kind == MirTerminatorKind.Call;
             MirUses.ForEach(body, location, ref this);
+            this.calling = false;
             return valid;
         }
     }

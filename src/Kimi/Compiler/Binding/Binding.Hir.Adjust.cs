@@ -2,26 +2,29 @@
 
 // The Adjust column's rule (SPEC 3.5, 10.2, 13.4, 13.5, 15.1.5), a lasting component that the HIR publisher reads.
 // - Responsibility: how a consumer acquires or uses each of its children (AdjustChildren; a match's Subject and its Pattern bindings in
-//   Binding.Hir.Patterns), how a child's own facts complete its use (ChildAdjust, BareOf, IsPlace), and how a Place in Discard Context
-//   is acquired (Discarded).
+//   Binding.Hir.Patterns), how a child's own facts complete its use (ChildAdjust, BareOf, IsPlace), how a Place in Discard Context
+//   is acquired (Discarded), and what a use of a Place needs of it (UseOf over the rows' takes, Take), which the HIR publisher's claim and
+//   ClosureEffects read.
 // - Inputs: a consumer and its evaluated Op (OpOf), Binding's facts for the consumer (its call plans, receiver operations, conversion,
 //   match plan, enum construction) and for the child (its recorded adaptation, erasure, bare acquisition); and two facts of the record's
 //   walk: the capability the consumer's own use needs (AdjustChildren's `exclusive`), which only a user index's selection reads (SPEC
-//   4.7.1; DECISIONS BU-8), and a child's claim (ChildAdjust's `claimed`): whether an earlier use of the child by the same consumer needed
-//   exclusive capability of it, by the Adjust that use gave (its operation's target, which the row states, HirAdjust.Exclusive, an
-//   exclusive borrow, or a Reborrow or pair-case acquisition of a child whose Type needs it): the rule's Claims, which a record applies
-//   and accumulates per publish (the publisher's claims). It decides whether Binding's recorded in-place shared read of a selection
-//   yields (SPEC 4.7.1, 7.3). This use's operation's target decides as such a claim does: a part below a stored reference passed as a
-//   `uniq/Self` receiver is a Reborrow (HirFormsTest.APartBelowAStoredReferenceIsAPlace). Every record takes an operation's use by
-//   ChildAdjust(child, in operation). A use in place forms no reference and states no mode: its consumer's use decides its capability.
+//   4.7.1; DECISIONS BU-8), and a child's claim (ChildAdjust's `claimed`): whether a use of the child that stands needed exclusive
+//   capability of it, by the Adjust that use gave (its operation's target, which the row states, HirAdjust.Exclusive, an exclusive
+//   borrow, or a Reborrow or pair-case acquisition of a child whose Type needs it): the rule's Claimed, over the two rows every record
+//   keeps (DECISIONS R7-M8; a `$tryWrite` storage's plan row has no defined value and no path below it, PLAN G103 (ii)). A take a later
+//   take replaces with no plan row is no use: the operation that replaced it states what the use needs (SPEC 13.7.2,
+//   15.1.6: a for's Subject before its entry call, a compound assignment's right side before its operator). The claim decides whether
+//   Binding's recorded in-place shared read of a selection yields (SPEC 4.7.1, 7.3). This use's operation's target decides as such a
+//   claim does: a part below a stored reference passed as a `uniq/Self` receiver is a Reborrow
+//   (HirFormsTest.APartBelowAStoredReferenceIsAPlace). Every record takes an operation's use by ChildAdjust(child, in operation). A use
+//   in place forms no reference and states no mode: its consumer's use decides its capability.
 // - Outputs: each child's use, to an IHirUses; the HIR publisher writes them as the Adjust column and the plan rows, a discarded
 //   Place's as its plan row's (PlanRow.Adjust); ClosureEffects finds one capture use's (Binding.ClosureReceivers).
 // - Invariants: a consumer's uses come in evaluation order, its calls' inputs last and in CallPlan.Of's order; the rule reads no other
 //   walk state.
 // - Prohibitions: the rule writes nothing; no record keeps a second copy of a use's Adjust.
-// The publisher's record of the uses (RowUses) writes the rows and the claims (DECISIONS R4-M142). Every take of a node records its claim
-// through the one Claims(child, adjust) before ExclusiveUse reads it: its consumer's (FixAdjust) and its container's discard (the
-// publisher's DiscardRow) share one member, RowUses.Claim (PLAN G426).
+// The publisher's record of the uses (RowUses) writes the rows (DECISIONS R4-M142). A take's claim is read from the rows alone, before
+// ExclusiveUse's read of the node: its consumer's (the column), an earlier call's or its container's discard (the plan row; PLAN G426).
 
 using Kimi.Compiler.Parsing;
 
@@ -29,6 +32,17 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // What a use of a Place needs of it, by strength (SPEC 4.7.1, 7.7.3, 8.14): read capability; exclusive capability only in the admitted
+    // cases where its acquisition Reborrows; exclusive capability; or its value, moved out. A Binding representation (UseOf), no column
+    // (the owner's O-40 (a)).
+    private enum PlaceUse : byte
+    {
+        Shared,
+        ByCase,
+        Exclusive,
+        Consuming,
+    }
+
     // How a consumer uses an operand (SPEC 3.5, 13.5.5, 13.4): an acquisition by value, a use in place (a borrow, a follow, a runtime test,
     // a projection's receiver), or an inspection (a built-in operator's operand, through a shared Loan where it is not Copy).
     private enum UseKind : byte
@@ -39,7 +53,7 @@ public sealed partial class Binding
     }
 
     // The record of the uses the Adjust column's rule gives (AdjustChildren): the HIR publisher's (RowUses), which writes each, and
-    // ClosureEffects' finder (ConsumedTakes), which keeps one child's.
+    // ClosureEffects' record (TakeRecord), which keeps every child's once per consumer and selection.
     private interface IHirUses
     {
         // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal; -1 after the last.
@@ -70,6 +84,9 @@ public sealed partial class Binding
     // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): the Adjust of a call input that a later call of its consumer replaces by another (a compound
     // update's getter before its setter), which the builder still builds as the input's plan-row Adjust; none at the first call.
     private static HirAdjust EarlierAdjust(int call, HirAdjust earlier, HirAdjust later) => call > 0 && earlier != later ? earlier : default;
+
+    // The operand a parent projects, updates, groups or borrows.
+    private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
 
     // Whether a user index's use selects indexUniq (SPEC 4.7.1): the use needs exclusive capability and indexUniq is bound.
     private bool SelectsUniq(Koto index, bool exclusive) => exclusive && this.IndexerCall(index, exclusive: true) is not null;
@@ -264,8 +281,8 @@ public sealed partial class Binding
     }
 
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, as at a value position, and
-    // discarded; no operation of its container takes it, so no claim completes it, while its own Adjust claims as a fixed one does (Claims,
-    // which the publisher's discard row records).
+    // discarded; no operation of its container takes it, so no claim completes it, while its own Adjust, the publisher's discard row, claims
+    // as a fixed one does (Claimed).
     private HirAdjust Discarded(Koto place) => this.ChildAdjust(place, HirAdaptation.None, UseKind.Acquisition, claimed: false);
 
     // Binding's bare acquisition of a Place (BareAcquire) as it is: a Move there is the explicit Move a Place whose Copy is unproven needs
@@ -286,25 +303,53 @@ public sealed partial class Binding
     private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
         IsStatic(KotoHelper.UnwrapParentheses(child).BoundSymbol);
 
-    // The claim a take makes on its child (SPEC 10.2, 4.7.2, 8.14): its operation's target or an exclusive borrow (HirAdjust.Exclusive), the
-    // Reborrow of a child whose Type needs exclusive capability, or a pair-case acquisition that Reborrows in some case (BareReborrows, the
-    // owner case's target included).
-    private bool Claims(Koto child, HirAdjust adjust) => adjust.Exclusive ||
-        (adjust.Acquire == HirAcquire.Reborrow && this.Exclusive(child.BoundType)) ||
-        (adjust.Acquire == HirAcquire.ByCase && child.BoundType is { } type && this.BareReborrows(type, child));
+    // What a take needs of its child (SPEC 10.2, 4.7.2, 8.14): a pair-case acquisition that Reborrows in some case (BareReborrows, the owner
+    // case's target included), ByCase, tested first, so that a pair target's exclusive mode stays by case; its operation's target or an
+    // exclusive borrow (HirAdjust.Exclusive) or the Reborrow of a child whose Type needs exclusive capability, Exclusive; a Move,
+    // Consuming; any other, Shared.
+    private PlaceUse Take(Koto child, HirAdjust adjust) =>
+        adjust.Acquire == HirAcquire.ByCase && child.BoundType is { } type && this.BareReborrows(type, child) ? PlaceUse.ByCase
+        : adjust.Exclusive || (adjust.Acquire == HirAcquire.Reborrow && this.Exclusive(child.BoundType)) ? PlaceUse.Exclusive
+        : adjust.Acquire == HirAcquire.Move ? PlaceUse.Consuming : PlaceUse.Shared;
+
+    // Whether a child's takes so far claim it: its last row (the column's) or the row beside it (PlanRow.Adjust: an earlier call's, or its
+    // container's discard), the two rows every record of the uses keeps (DECISIONS R7-M8); a `$tryWrite` storage's plan row has no defined
+    // value and no path below it (PLAN G103 (ii)).
+    private bool Claimed(Koto child, HirAdjust last, HirAdjust earlier) =>
+        this.Take(child, last) is PlaceUse.ByCase or PlaceUse.Exclusive || this.Take(child, earlier) is PlaceUse.ByCase or PlaceUse.Exclusive;
+
+    // The one rule of what a use of a Place needs of it (SPEC 4.7.1, 7.7.3, 8.14, 13.5.6, 15.1.5, 15.1.6): the strongest of its takes that
+    // stand (the two rows, Take) and its parent's own operation on it, which no row states: an explicit adaptation that borrows it
+    // exclusively in some admitted case (BorrowsExclusively: an exclusive borrow, an object view upcast, a case adaptation), an assignment
+    // or update target, or an Exclusive-mode `for` or `match` Subject. The HIR publisher reads it for indexUniq (ExclusiveUse), ClosureEffects
+    // for a Closure's receiver (DECISIONS R7-Y2); neither decides a use's need itself.
+    private PlaceUse UseOf(Koto child, HirAdjust last, HirAdjust earlier, Koto? parent, HirOp parentOp)
+    {
+        var own = parent switch
+        {
+            ConversionKoto conversion => ReferenceEquals(conversion.Left, child) && this.BorrowsExclusively(conversion),
+            ForKoto loop => ReferenceEquals(loop.Iterable, child) && loop.Mode == SubjectMode.Exclusive,
+            MatchKoto match => ReferenceEquals(match.Expression, child) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
+            _ => parentOp is HirOp.Assign or HirOp.CompoundAssign && ReferenceEquals(Operand(parent), child),
+        };
+
+        // An own operation never moves its operand (an assignment target, a borrow's operand and a Subject are not moved), so Consuming
+        // and an own exclusive operation never meet.
+        var use = (PlaceUse)Math.Max((byte)this.Take(child, last), (byte)this.Take(child, earlier));
+        return own && use < PlaceUse.Exclusive ? PlaceUse.Exclusive : use;
+    }
 
     // The publisher's record of the uses of one module's nodes (a call shared across modules names nodes of another), a struct, so that
     // AdjustChildren is specialized for it and calls it directly (the S1 publish A/B: the publisher passed as itself, a class, made every
     // use an interface call and a warm publish about 2% slower).
-    private struct RowUses(Binding binding, SyntaxTable table, bool[] claims) : IHirUses
+    private struct RowUses(Binding binding, SyntaxTable table) : IHirUses
     {
         // The call of the node whose inputs AdjustChildren gives, by its CallPlan.Of ordinal; -1 outside its calls (FixAdjust).
         private int callOrdinal = -1;
 
         public void Call(int ordinal) => this.callOrdinal = ordinal;
 
-        // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it; the
-        // row it gives records the claim (FixAdjust).
+        // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it.
         public readonly void Use(Koto? child, in BoundArgumentOperation operation)
         {
             if (child is not null)
@@ -313,7 +358,7 @@ public sealed partial class Binding
             }
         }
 
-        // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its consumer claimed.
+        // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its takes claimed.
         public readonly void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
         {
             if (child is not null)
@@ -322,9 +367,8 @@ public sealed partial class Binding
             }
         }
 
-        // Only the nodes of the module being published. The Adjust's claim on the child (Claims) is recorded. At a call input the earlier
-        // call's Adjust (EarlierAdjust) is the input's plan-row Adjust, the column keeping the later; at any other call input the row states
-        // none, which also clears a row of an earlier pass.
+        // Only the nodes of the module being published. At a call input the earlier call's Adjust (EarlierAdjust) is the input's plan-row
+        // Adjust, the column keeping the later; at any other call input the row states none.
         public readonly void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
         {
             if (this.Owns(child))
@@ -337,7 +381,6 @@ public sealed partial class Binding
                 }
 
                 column = adjust;
-                this.Claim(child, adjust);
                 if (place.Kind != HirPlaceKind.Unset)
                 {
                     table.Hir.Places![child.SyntaxId] = place;
@@ -345,12 +388,13 @@ public sealed partial class Binding
             }
         }
 
-        // The one record of a take's claim on an owned node (Claims): an Adjust its consumer fixed (FixAdjust) or its container's discard
-        // row (DiscardRow), each recorded before ExclusiveUse reads the node's claims.
-        internal readonly void Claim(Koto node, HirAdjust adjust) => claims[node.SyntaxId] |= binding.Claims(node, adjust);
+        // Whether a node's takes claim it (Claimed), of the rows this record wrote.
+        internal readonly bool Claimed(Koto node) => this.Owns(node) && binding.Claimed(node, HirTables.AdjustOf(node), HirTables.PlanOf(node).Adjust);
 
-        // Whether the takes recorded so far claim a node.
-        internal readonly bool Claimed(Koto node) => this.Owns(node) && claims[node.SyntaxId];
+        // What a node's use needs (Binding.UseOf), of the rows this record wrote and its parent's operation.
+        internal readonly PlaceUse UseOf(Koto node, Koto? parent, HirOp parentOp) => this.Owns(node)
+            ? binding.UseOf(node, HirTables.AdjustOf(node), HirTables.PlanOf(node).Adjust, parent, parentOp)
+            : binding.UseOf(node, default, default, parent, parentOp);
 
         // Whether a node is of the module being published.
         internal readonly bool Owns(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId < table.Hir.Adjusts!.Length;
@@ -377,13 +421,13 @@ public sealed partial class Binding
         }
 
         // Whether a node's use needs write or exclusive capability, which selects a user index's indexUniq (SPEC 4.7.1; DECISIONS BU-8): the
-        // capability its takes need, which FixAdjust and the discard row recorded (Claimed), or it is updated or exclusively borrowed, or
-        // an exclusive use (the parent's) reaches it as the receiver of a Field or an element, as a group's operand or as the reference,
-        // handle or pair layer a follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw
-        // Place, whose capability its path does not decide (SPEC 5.2).
+        // one place-use rule over the rows its takes wrote (UseOf, in some admitted case or in every one), or an exclusive use (the
+        // parent's) reaches it as the receiver of a Field or an element, as a group's operand or as the reference, handle or pair layer a
+        // follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw Place, whose capability
+        // its path does not decide (SPEC 5.2).
         private bool ExclusiveUse(Koto node, Koto? parent, HirOp parentOp, bool exclusive)
-            => this.uses.Claimed(node) || (parentOp == HirOp.Borrow && binding.Exclusive(parent!.BoundType)) ||
-            ((parentOp is HirOp.Assign or HirOp.CompoundAssign || (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref ||
-                parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(parent!))) && ReferenceEquals(Operand(parent), node));
+            => this.uses.UseOf(node, parent, parentOp) is PlaceUse.ByCase or PlaceUse.Exclusive ||
+            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(parent!) &&
+                ReferenceEquals(Operand(parent), node));
     }
 }

@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // - Responsibility: whether one Origin can outlive another at a site under the class of a view (Outlives): the pairs a call's retention
 //   leaves to the call's solved Origins, two Origins of its Type arguments that the callee's premises do not relate. A pair holds when
 //   it is satisfiable for every value of the body's Fixed Origins: a declared Origin is universally quantified (SPEC 8.15.1, 8.13.2),
-//   a local inference region the body's own solution, which may be any region its bounds admit.
+//   a local inference region the body's own solution, which may be any region its bounds admit; an enclosing body's region, Fixed here,
+//   reads as its solved value (UniversalRelations.Outlives).
 // - Inputs: the class's edges (ClassEdges: its active rows by MeetNode's rule, each a relation the body's problems check, and its
 //   containment edges); the C1-F4 view's atoms (TyCtxt.OriginAtom) and the body's fixed-fixed oracle (TyCtxt.UniversalRelations, the
 //   layer's for the layer's part) under the class's borrow binders.

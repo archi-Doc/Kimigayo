@@ -204,42 +204,43 @@ fn code @122
       StorageLive(_4) @129 s1
       StorageLive(_5) @129 s1
       _5 = &(*_3): ref/string @129 s1
-      _4 = Eq(move _5, const "ok") proven @129 s1
-      switch copy _4 [1: bb3, otherwise: bb2] @129 s1
+      _4 = equals(move _5, const record "ok") -> bb3 @129 s1
   bb1:
       StorageDead(_5) @129 s1
       StorageDead(_4) @129 s1
       StorageDead(_3) @128 s1
-      goto bb11 check bb12 @126 s1
+      goto bb12 check bb13 @126 s1
   bb2:
-      switch const true [1: bb5, otherwise: bb4] @131 s1
+      switch const true [1: bb6, otherwise: bb5] @131 s1
   bb3:
+      switch copy _4 [1: bb4, otherwise: bb2] @129 s1
+  bb4:
     * _2 = const 0_i32 @130 s2
       goto bb1 @130 s1
-  bb4:
-      unreachable @127 s1
   bb5:
+      unreachable @127 s1
+  bb6:
     * _2 = const 1_i32 @132 s3
       goto bb1 @132 s1
-  bb6:
-      return @122
   bb7:
-      _0 = move _6 @122
-      goto bb6 @122
+      return @122
   bb8:
-      drop _1 -> bb9 [keep] @123
-  bb9:
+      _0 = move _6 @122
       goto bb7 @122
+  bb9:
+      drop _1 -> bb10 [keep] @123
   bb10:
-      StorageDead(_2) @127 s1
       goto bb8 @122
   bb11:
-      _6 = move _2 @126 s1
-      goto bb10 @126 s1
-  bb12:
       StorageDead(_2) @127 s1
-      drop _1 -> bb13 @123
+      goto bb9 @122
+  bb12:
+      _6 = move _2 @126 s1
+      goto bb11 @126 s1
   bb13:
+      StorageDead(_2) @127 s1
+      drop _1 -> bb14 @123
+  bb14:
       unreachable @125
 fn accepts @133
   _0: bool return @136
@@ -279,7 +280,7 @@ fn guarded @138
   bb1:
       StorageDead(_9) @157 s1
       StorageDead(_4) @146 s1
-      drop _3 -> bb40 @143 s1
+      drop _3 -> bb41 @143 s1
   bb2:
       StorageLive(_9) @157 s1
       _9 = discriminant(_3) @157 s1
@@ -334,14 +335,13 @@ fn guarded @138
       StorageDead(_7) @150 s3
       unreachable check bb1 @155 s1
   bb19:
-      switch const true [1: bb37, otherwise: bb36] @172 s1
+      switch const true [1: bb38, otherwise: bb37] @172 s1
   bb20:
       StorageLive(_10) @163 s4
       StorageLive(_11) @161 s4
       _11 = &(_3 as case 0).0: ref/string @161 s4
       StorageLive(_12) @164 s4
-      _12 = Eq(copy _11, const "a") proven @164 s4
-      switch copy _12 [0: bb23, otherwise: bb24] @164 s4
+      _12 = equals(copy _11, const record "a") -> bb23 @164 s4
   bb21:
       StorageDead(_10) @163 s4
       goto bb19 @163 s4
@@ -349,61 +349,63 @@ fn guarded @138
       StorageDead(_10) @163 s4
       StorageLive(_13) @161 s5
       _13 = move (_3 as case 0).0 [clear f0] @161 s5
-    * goto bb33 check bb34 @170 s5
+    * goto bb34 check bb35 @170 s5
   bb23:
-      goto bb29 check bb30 @168 s4
+      switch copy _12 [0: bb24, otherwise: bb25] @164 s4
   bb24:
-      _10 = copy _12 @163 s4
-      goto bb25 @163 s4
+      goto bb30 check bb31 @168 s4
   bb25:
+      _10 = copy _12 @163 s4
+      goto bb26 @163 s4
+  bb26:
       StorageDead(_12) @164 s4
       EndBorrow(_11) @161 s4
       StorageDead(_11) @161 s4
       FakeRead(_3) @163 s4
       switch copy _10 [0: bb21, otherwise: bb22] @163 s4
-  bb26:
+  bb27:
       StorageDead(_9) @157 s1
       goto bb12 @138
-  bb27:
-      StorageDead(_10) @163 s4
-      goto bb26 @138
   bb28:
+      StorageDead(_10) @163 s4
+      goto bb27 @138
+  bb29:
       StorageDead(_12) @164 s4
       EndBorrow(_11) @161 s4
       StorageDead(_11) @161 s4
-      goto bb27 @138
-  bb29:
-      _8 = const 2_i32 @168 s4
-      goto bb28 @168 s4
+      goto bb28 @138
   bb30:
-      unreachable check bb25 @167 s4
+      _8 = const 2_i32 @168 s4
+      goto bb29 @168 s4
   bb31:
-      drop _13 -> bb32 [keep] @161 s5
+      unreachable check bb26 @167 s4
   bb32:
-      StorageDead(_13) @161 s5
-      goto bb26 @138
+      drop _13 -> bb33 [keep] @161 s5
   bb33:
-      _8 = const 3_i32 @170 s5
-      goto bb31 @170 s5
+      StorageDead(_13) @161 s5
+      goto bb27 @138
   bb34:
-      drop _13 -> bb35 @161 s5
+      _8 = const 3_i32 @170 s5
+      goto bb32 @170 s5
   bb35:
+      drop _13 -> bb36 @161 s5
+  bb36:
       StorageDead(_13) @161 s5
       unreachable check bb1 @170 s1
-  bb36:
-      unreachable @142 s1
   bb37:
-    * goto bb38 check bb39 @173 s6
+      unreachable @142 s1
   bb38:
-      _8 = const 0_i32 @173 s6
-      goto bb26 @173 s6
+    * goto bb39 check bb40 @173 s6
   bb39:
-      unreachable check bb1 @173 s1
+      _8 = const 0_i32 @173 s6
+      goto bb27 @173 s6
   bb40:
+      unreachable check bb1 @173 s1
+  bb41:
       StorageDead(_3) @143 s1
       StorageDead(_2) @142 s1
-      drop _1 -> bb41 @139
-  bb41:
+      drop _1 -> bb42 @139
+  bb42:
       unreachable @141
 fn half @175
   _0: Option<i32> return @177
@@ -596,7 +598,7 @@ fn guardCleanup @251
       _0 = const () @252 s1
       return @252
   bb2:
-      switch const true [1: bb10, otherwise: bb9] @266 s1
+      switch const true [1: bb11, otherwise: bb10] @266 s1
   bb3:
       StorageDead(_3) @256 s2
       goto bb2 @256 s2
@@ -607,38 +609,39 @@ fn guardCleanup @251
     * _7 = const "selected" @265 s3
       StorageLive(_8) @265 s3
       _8 = &_7: ref/string @265 s3
-      _6 = writeLine(move _8) -> bb7 @261 s3
+      _6 = writeLine(move _8) -> bb8 @261 s3
   bb5:
       StorageLive(_5) @257 s2
       _5 = &_4: ref/string @257 s2
-      _3 = Eq(move _5, const "a") proven @256 s2
-      StorageDead(_5) @257 s2
-      drop _4 -> bb6 [keep] @257 s2
+      _3 = equals(move _5, const record "a") -> bb6 @256 s2
   bb6:
+      StorageDead(_5) @257 s2
+      drop _4 -> bb7 [keep] @257 s2
+  bb7:
       StorageDead(_4) @257 s2
       FakeRead(_2) @256 s2
       switch copy _3 [0: bb3, otherwise: bb4] @256 s2
-  bb7:
-      StorageDead(_8) @265 s3
-      drop _7 -> bb8 [keep] @265 s3
   bb8:
+      StorageDead(_8) @265 s3
+      drop _7 -> bb9 [keep] @265 s3
+  bb9:
       StorageDead(_7) @265 s3
       StorageDead(_6) @261 s3
       _1 = const () @261 s3
       goto bb1 @261 s1
-  bb9:
-      unreachable @253 s1
   bb10:
+      unreachable @253 s1
+  bb11:
       StorageLive(_9) @267 s4
       StorageLive(_10) @271 s4
     * _10 = const "fallback" @271 s4
       StorageLive(_11) @271 s4
       _11 = &_10: ref/string @271 s4
-      _9 = writeLine(move _11) -> bb11 @267 s4
-  bb11:
-      StorageDead(_11) @271 s4
-      drop _10 -> bb12 [keep] @271 s4
+      _9 = writeLine(move _11) -> bb12 @267 s4
   bb12:
+      StorageDead(_11) @271 s4
+      drop _10 -> bb13 [keep] @271 s4
+  bb13:
       StorageDead(_10) @271 s4
       StorageDead(_9) @267 s4
       _1 = const () @267 s4
@@ -1796,32 +1799,33 @@ fn subjectTemporaries @650
   bb1:
       StorageLive(_5) @657 s1
       _5 = &_4: ref/string @657 s1
-      _3 = Eq(move _5, const "expected") proven @656 s1
+      _3 = equals(move _5, const record "expected") -> bb2 @656 s1
+  bb2:
       StorageLive(_6) @660 s1
       _6 = Eq(copy _3, const true) proven @660 s1
-      switch copy _6 [1: bb4, otherwise: bb3] @660 s1
-  bb2:
+      switch copy _6 [1: bb5, otherwise: bb4] @660 s1
+  bb3:
       StorageDead(_7) @662 s1
       StorageDead(_6) @660 s1
       StorageDead(_5) @657 s1
-      drop _4 -> bb7 [keep] @657 s1
-  bb3:
+      drop _4 -> bb8 [keep] @657 s1
+  bb4:
       StorageLive(_7) @662 s1
       _7 = Eq(copy _3, const false) proven @662 s1
-      switch copy _7 [1: bb6, otherwise: bb5] @662 s1
-  bb4:
-    * _2 = const 1_i32 @661 s2
-      goto bb2 @661 s1
+      switch copy _7 [1: bb7, otherwise: bb6] @662 s1
   bb5:
-      unreachable @655 s1
+    * _2 = const 1_i32 @661 s2
+      goto bb3 @661 s1
   bb6:
-    * _2 = const 0_i32 @663 s3
-      goto bb2 @663 s1
+      unreachable @655 s1
   bb7:
+    * _2 = const 0_i32 @663 s3
+      goto bb3 @663 s1
+  bb8:
       StorageDead(_4) @657 s1
       StorageDead(_3) @656 s1
-      _1 = consumeNumbers(const 2_i32, move _2) -> bb8 @652 s1
-  bb8:
+      _1 = consumeNumbers(const 2_i32, move _2) -> bb9 @652 s1
+  bb9:
       StorageDead(_2) @655 s1
       StorageDead(_1) @652 s1
       _0 = const () @651 s1
