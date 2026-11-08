@@ -238,6 +238,7 @@ public enum DiagnosticCode
     ExpansionLimit_Kd,
     OwnershipDepthLimit_Kd,
     NestingLimit_Kd,
+    TypeHeightLimit_Kd,
 
     Count, // Last sentinel
 }

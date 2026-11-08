@@ -201,7 +201,7 @@ public sealed partial class Binding
 
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
         var parent = this.BeginConsultation(node);
-        var type = this.BindAndAdaptNode(node, scope, expected);
+        var type = this.HeightChecked(node, this.BindAndAdaptNode(node, scope, expected));
         this.EndConsultation(node, parent);
         this.Consulted(node);
         return type;

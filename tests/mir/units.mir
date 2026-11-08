@@ -116,7 +116,7 @@ fn effects @4
       _18 = &_17: ref/string @18 s4
       _16 = writeLine(move _18) -> bb22 @14 s4
   bb21:
-      drop _2 -> bb24 @6
+      drop _2 -> bb24 [elide] @6
   bb22:
       StorageDead(_18) @18 s4
       drop _17 -> bb23 @18 s4

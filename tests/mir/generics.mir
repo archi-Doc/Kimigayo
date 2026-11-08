@@ -26,6 +26,7 @@ fn largest @4
   _18: isize temp @108 s1
   _19: T temp @37 s1
   _20: T temp (Result) @4
+  _21: T temp @37 s1
   s1: lexical in s0 @18
   s2: lexical in s1 @22
   s3: lexical in s2 @25
@@ -137,7 +138,8 @@ fn largest @4
       _20 = move _19 @36 s1
       goto bb22 @36 s1
   bb25:
-      drop _19 -> bb26 @37 s1
+      _21 = move _19 @36 s1
+      drop _19 -> bb26 [elide] @37 s1
   bb26:
       StorageDead(_19) @37 s1
       drop _3 -> bb27 @19 s1
@@ -177,6 +179,7 @@ fn unwrapTry @61
   _6: isize temp @113
   _7: Option<T> temp @115 s2
   _8: Option<T> temp (Result) @61
+  _9: Option<T> temp @115 s2
   s1: lexical in s0 @74
   s2: lexical in s0 @113
   bb0:
@@ -236,7 +239,8 @@ fn unwrapTry @61
       _8 = move _7 @89 s2
       goto bb14 @89 s2
   bb17:
-      drop _7 -> bb18 @115 s2
+      _9 = move _7 @89 s2
+      drop _7 -> bb18 [elide] @115 s2
   bb18:
       StorageDead(_7) @115 s2
       unreachable check bb1 @89

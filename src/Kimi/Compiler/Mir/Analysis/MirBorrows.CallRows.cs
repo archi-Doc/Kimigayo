@@ -27,8 +27,8 @@ namespace Kimi.Compiler.Mir;
 // - G136 (R4-M148): a Value call whose declared signature's inputs are not its operands is a broken contract: Plan maps no record of it and
 //   the checks record InternalInvariant_Kd at the call (MirBorrows.Locations).
 // - G338 (SPEC 5.2.1 Retained dependencies, 5.7's table): Cover, the inputs whose storage a raw parameter's own stated layer addresses,
-//   Binding's reading of its members (TyCtxt.LayerMembers). A `null` held in a local stays the argument's first step, E: dev's false
-//   error (PLAN G338), since a set cannot say a value is null.
+//   Binding's reading of its members (TyCtxt.LayerMembers), a direct callee's or a Function Item's declaration (PLAN G584). A `null` held
+//   in a local stays the argument's first step, E: dev's false error (PLAN G338), since a set cannot say a value is null.
 // - P9 (SPEC 7.2.3, R4-M93): a default template's call keeps each input's Content in its untied result: its inputs are the prologue's
 //   shared borrows of the slots, and each input's Content, its slot's value, reaches the result; no store (the omitting call's own
 //   records apply the default's raw stores, SPEC 7.2.3, 5.2.1 Retained dependencies; R4-M116 PQ-5).
@@ -117,13 +117,17 @@ internal sealed partial class MirBorrows
     // G338 (SPEC 5.2.1 "storage a pointer addresses `during o` is covered by the Loans of `o`", 5.7's table): into `covering`, the operand
     // positions of the borrows a raw parameter's own stated layer belongs to among the call's inputs (TyCtxt.LayerMembers), whose holders
     // the store through that layer writes (Referents, Writes) beside its argument's. None unless each member is an exclusive input's outer
-    // borrow: a slot keeper's or a shared member's storage has no first step here, so W stays its argument's. None for a Value callee,
-    // which has no declaration to read. A keeper only the declaring Type holds is no input of the call.
-    private void Cover(in MirCallee callee, int output, int count)
+    // borrow: a slot keeper's or a shared member's storage has no first step here, so W stays its argument's. A Value callee's declaration
+    // is that of the Function Item it calls (TyCtxt.CalledItem), under its Item substitution (TyCtxt.SubstOfItem; SPEC 7.7.4, 15.6.4
+    // "for direct and indirect calls alike"; PLAN G584). None for another Value callee: a Closure's or an erased value's written Origin
+    // names an enclosing one, whose storage the call's inputs need not cover. A keeper only the declaring Type holds is no input of the call.
+    private void Cover(in MirTerminator call, int output, int count)
     {
         this.covering.Clear();
-        if (callee.Kind == MirCalleeKind.Value || callee.Symbol is not { } symbol ||
-            TyCtxt.Signature(symbol, null, output, out _) is not { Semantics: SemanticsKind.Raw })
+        var item = call.Callee.Kind == MirCalleeKind.Value && this.TypeOf(call.Operand) is { } callee ? types.CalledItem(callee) : null;
+        var (symbol, subst) = call.Callee.Kind != MirCalleeKind.Value ? (call.Callee.Symbol, call.Callee.Subst)
+            : item is not null && types.SubstOfItem(item) is { } bound ? (item.Symbol, bound) : default;
+        if (symbol is null || TyCtxt.Signature(symbol, null, output, out _) is not { Semantics: SemanticsKind.Raw })
         {
             return;
         }
@@ -132,7 +136,7 @@ internal sealed partial class MirBorrows
         for (var slot = 0; slot < count; slot++)
         {
             var declared = TyCtxt.Signature(symbol, null, slot, out _);
-            if ((declared is null || callee.Subst is not { } subst ? declared : types.ReadableInstance(declared, subst)) is not { } input)
+            if ((declared is null || subst is null ? declared : types.ReadableInstance(declared, subst)) is not { } input)
             {
                 return;
             }

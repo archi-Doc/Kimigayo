@@ -469,7 +469,7 @@ fn statements @98
   bb26:
       StorageDead(_17) @141 s1
       StorageDead(_3) @103 s1
-      drop _2 -> bb27 @100
+      drop _2 -> bb27 [elide] @100
   bb27:
       unreachable @102
 fn spin @142
