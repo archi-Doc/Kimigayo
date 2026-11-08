@@ -10370,6 +10370,23 @@ resumed by R4-M86 (2026-10-20).
   - Cost: RP8 (pinned A/B/A') decides the default-versus-reference comparer cost on these tables; bound cold at most +3,968 B on its
     rows, warm 0.
   - Open: PLAN G387 stays open. U0 gives it the pair key, but no scaling row shows a form that reaches the pair table and fails before.
+- **BU-133 One encoding of an Integer constant: its Type's N-bit sign-extended payload, decided by Binding** (2026-11-08; PLAN
+  G620, the Middle's design C-149, F's design review with B1 and B2 accepted; U1, the Front's part). Binding's `Folded` column held two
+  encodings of an unsigned constant whose top bit is set. A number literal (`Binding.Hir.Fold`) and the builder's Literal Pattern
+  (`MirBuilder.Match.LiteralTest`, from magnitude and sign) gave the plain value (u8 255 as 255). A folded conversion gave the
+  sign-extended payload (`(-1)@wrap<u8>` as -1), which `ScalarTypes.Normalize` documents as canonical. So one value had two constants.
+  - The one canonical form of an Integer constant is its Type's value in N-bit sign-extended form (`ScalarTypes.Normalize`, the bits of
+    `ScalarTypes.TryLiteral`). Binding decides it: `Fold` encodes a literal, `CompleteFolded` a folded conversion, and
+    `TryPatternLiteral` a Literal Pattern, whose `PatternLiteral.Bits` replaces `Magnitude` and `Negative`. The MIR builder copies
+    `PatternLiteral.Bits` and builds no constant from magnitude and sign.
+  - A literal its Type does not hold keeps its value modulo 2^N. That is the operand of a folded wrap conversion, or the number under a
+    direct literal's sign. It is never evaluated, but `HirColumnsTest` requires a value on every evaluated Literal row. A generic
+    literal (0 through 127, SPEC 8.7.4) is its own value in every instance, so a Type whose instance decides its width keeps the value.
+  - Visible effect: none for users (acceptance, records, Hover and diagnostic text, IR). `Folded` and the MIR dumps change for unsigned
+    constants at or above 2^(N-1): u8 200 prints `-56_u8`.
+  - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
+    have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
+  - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
