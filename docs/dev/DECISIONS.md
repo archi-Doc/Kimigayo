@@ -10448,6 +10448,18 @@ resumed by R4-M86 (2026-10-20).
     independent reviews each found a new gap against the code: every enumeration is a second copy of the measure).
 - **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
   R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
+- **BU-137 The object-form rule reads a concrete target's opt-out once it is published (PLAN G600)** (2026-11-09; Major; design
+  review 1 ACCEPT, implementation review ACCEPT) SPEC 8.7.3.
+  - SPEC 8.7.3's object-form rule reads a concrete target's opt-out through one function, `Binding.RenouncedObjectTarget` (its record
+    `NotObjectPayload_Kd` at the form). The opt-outs are published late: an own one by `RegisterConformances` after BindConstraints'
+    pass 0, an inherited one by the final `PublishInheritedOptOuts`. So an object form over a concrete Type that BindType forms while
+    `!clausesBindable` is noted (`earlyObjectForms`), and `VerifyEarlyObjectForms` judges it once more by the same read after that
+    publication. On dev such a form was accepted (`nt3`, `nt39`, `nt39n`), unsound; now p1, p2, p3, p5, p6 and p13 are rejected.
+  - A temporary early read of the opt-out, a different contract from BaseLayers' early reads (it re-judges a validity rule; it does
+    not re-probe a path). It is removed at R7-D2 d3, with them and the second `PublishInheritedOptOuts`, when a declaration's opt-out
+    is read by demand (COMPILER_ARCHITECTURE's temporary structures).
+  - Rejected: a check at conformance clauses alone (it misses function and struct Constraints); the opt-out as a declaration query
+    now (it needs R7-D2 d3's demand binding of the opt-out clause).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the

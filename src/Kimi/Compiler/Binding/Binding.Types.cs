@@ -248,9 +248,14 @@ public sealed partial class Binding
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }
-                        else if (inner.Symbol?.ObjectPayloadOptOut is { } renounced)
+                        else if (this.RenouncedObjectTarget(syntax, inner))
                         {
-                            return this.FailObjectPayload(syntax, renounced);
+                            return null;
+                        }
+                        else if (!this.clausesBindable)
+                        {
+                            // A Constraint's Type is formed before the opt-outs are published: judged again once they are (VerifyEarlyObjectForms).
+                            (this.earlyObjectForms ??= []).Add((syntax, inner));
                         }
                     }
 
