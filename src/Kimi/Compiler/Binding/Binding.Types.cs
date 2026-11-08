@@ -140,7 +140,7 @@ public sealed partial class Binding
         {
             var owner = OriginOwner(syntax);
             var originDeclaration = owner is not null and not (FunctionKoto or PropertyAccessorKoto) ? this.BeginOriginDeclaration(owner, scope) : null;
-            var type = this.BindTypeStructure(syntax, scope, context);
+            var type = this.HeightChecked(syntax, this.BindTypeStructure(syntax, scope, context));
             if (IsRecovery(syntax, out _))
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
@@ -166,6 +166,12 @@ public sealed partial class Binding
 
             var annotated = syntax as TypeSemanticsKoto;
             type = this.CompleteOrigins(type, annotated, syntax, scope, context);
+            if (type is { Height: > TypeHeightLimit })
+            {
+                RestPendingOn(originDeclaration, syntax);
+                return this.HeightChecked(syntax, type);
+            }
+
             Complete(syntax, type);
             this.CompleteOriginDeclaration(originDeclaration);
             return syntax.BoundType;

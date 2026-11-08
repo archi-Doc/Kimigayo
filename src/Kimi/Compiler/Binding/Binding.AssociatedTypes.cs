@@ -469,7 +469,12 @@ public sealed partial class Binding
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
                 var associated = shape.AssociatedTypes[j];
-                if (this.ResolveAssociated(path, associated, out _) is { } result && !this.PendingAssociatedType(result))
+                // The conformance is the site of a Type its associated binding would form past the height limit (Binding.TypeHeight.cs).
+                var site = this.heightSite;
+                this.heightSite = path.Declaration;
+                var resolved = this.ResolveAssociated(path, associated, out _);
+                this.heightSite = site;
+                if (resolved is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[associated] = result;
                 }

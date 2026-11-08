@@ -107,6 +107,10 @@ public sealed partial class Binding
         {
             this.ReportCaseLimit(issue.Node, requirement);
         }
+        else if (issue.Failure == BindingFailure.TypeHeightLimit)
+        {
+            issue.Node.Report(requirement, issue.Code, (long)TypeHeightLimit);
+        }
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
             this.ReportQualification(issue.Node, requirement);

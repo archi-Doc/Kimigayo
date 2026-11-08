@@ -188,7 +188,10 @@ public sealed partial class Binding
         ReadOnlySpan<BoundOrigin> origins = default,
         PerCallImages images = default,
         Koto? originBinder = null)
-        => this.SubstitutePart(type, binder, arguments, lengths, originBinder ?? binder, origins, images, this.substitutedParts.Begin(this.storageVersion));
+    {
+        var result = this.SubstitutePart(type, binder, arguments, lengths, originBinder ?? binder, origins, images, this.substitutedParts.Begin(this.storageVersion));
+        return result is { Height: > TypeHeightLimit } ? this.RefuseHeight() : result; // IMPL A.4: no Type higher than the limit is formed.
+    }
 
     // An Origin of a declaration-terms Type under a substitution, each atom mapped once: its SlotImage under the Origin binder's images, else
     // a pair's `o` through its Type argument (PairOuterImage); a meet is rebuilt from its operands' images only when one of them changes.
