@@ -123,8 +123,6 @@ public sealed partial class Binding
                 this.CompleteDependent(consumer, call);
             }
         }
-
-        calls.Clear(); // The pass's synthesized calls are settled; the next pass binds its own.
     }
 
     // The pass summary: each node's state, counted once the failures are decided, and each failed node's issue, or its derived issue.

@@ -104,6 +104,7 @@ public sealed partial class Binding
     // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
     private void ResetSyntheticCalls()
     {
+        this.synthesizedCalls?.Clear(); // Each pass records its own (BindSynthesizedCall).
         foreach (var call in this.propertyCalls.Values)
         {
             this.ResetSynthetic(call);
