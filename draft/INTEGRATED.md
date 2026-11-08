@@ -1317,6 +1317,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 34 (2026-11-08, plan §14; the Front's D-113): row N3 split into N3a, N3b, N3c. Nothing frozen.
 - Revision 35 (2026-11-08, plan §14; the Middle's D-117): row F5. Nothing frozen.
 - Revision 36 (2026-11-08, plan §14; the Middle's D-119): row F1, naming review 1's Q2 (the Body<Item> entries have no loops). Nothing frozen.
+- Revision 37 (2026-11-08, plan §14; the Middle's D-127): row F2. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
