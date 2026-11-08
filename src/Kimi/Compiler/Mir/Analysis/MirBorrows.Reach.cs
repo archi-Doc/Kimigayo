@@ -270,8 +270,8 @@ internal sealed partial class MirBorrows
     // W's first step (A3 E14) into the targets, each holder once, at a new W walk: the holders S's direct Loans not shared and addresses
     // name, and E where S carries Φ_E or no direct Loan at all, a shared one counting (SPEC 15.6.4 item 1: never a holder that only a
     // shared Loan names; DECISIONS R4-M177). A referent store's whole reach (MirBorrows.Calls). Through a stated layer with covering inputs
-    // (PLAN G338), also each one's first step. An empty set is no `null`: it says that no source A5 tracks gave the value, and A5 tracks no
-    // scalar written through a raw pointer, so E stays (only Keep's `null` literal has no first step of its own).
+    // (PLAN G338), also each one's first step. A set with no direct Loan reaches E, the empty set included: only Keep, at a covered store,
+    // reads the empty set as null (PLAN G598); elsewhere it stays dev's E, the owner's exception O-60 (DECISIONS R4-M183).
     private void Referents(int set)
     {
         this.BeginWalk();

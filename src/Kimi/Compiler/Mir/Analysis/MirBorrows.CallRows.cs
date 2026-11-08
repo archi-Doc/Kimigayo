@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Mir;
 // retention whose Writes the Call stores through (planned), its slots' operand positions (slotPositions) and the outputs the call writes only
 // where their receiver refers to (its referent stores, CallRetention.ReferentStores, by position); Retaining, the CallRetention of a
 // callee's contract; Broken, a Value call whose declared signature does not number its operands; Cover, a raw parameter's covering inputs
-// by position (covering); NullLiteral, whether an operand is the `null` literal; and PD13's view hold (held, R4-M148),
+// by position (covering); and PD13's view hold (held, R4-M148),
 // which MirBorrows.Reports applies.
 // - A callee's contract: its records, slots to positions (Position: a Closure callee's input 0, its call receiver, at the callee operand,
 //   position call.Count, where TyCtxt.HasReceiverInput says the contract has it; every other slot as MirCallee.Position maps it), and an
@@ -27,8 +27,9 @@ namespace Kimi.Compiler.Mir;
 // - G136 (R4-M148): a Value call whose declared signature's inputs are not its operands is a broken contract: Plan maps no record of it and
 //   the checks record InternalInvariant_Kd at the call (MirBorrows.Locations).
 // - G338 (SPEC 5.2.1 Retained dependencies, 5.7's table): Cover, the inputs whose storage a raw parameter's own stated layer addresses,
-//   Binding's reading of its members (TyCtxt.LayerMembers), a direct callee's or a Function Item's declaration (PLAN G584). A `null` held
-//   in a local stays the argument's first step, E: dev's false error (PLAN G338), since a set cannot say a value is null.
+//   Binding's reading of its members (TyCtxt.LayerMembers), a direct callee's or a Function Item's declaration (PLAN G584). Only an
+//   argument A5 proves null (its value the empty set; PLAN G598, MirBorrows.Calls' Keep) drops its own first step, E; a null it cannot
+//   prove at the store stays dev's false error under the owner's exception O-60 (DECISIONS R4-M183).
 // - P9 (SPEC 7.2.3, R4-M93): a default template's call keeps each input's Content in its untied result: its inputs are the prologue's
 //   shared borrows of the slots, and each input's Content, its slot's value, reaches the result; no store (the omitting call's own
 //   records apply the default's raw stores, SPEC 7.2.3, 5.2.1 Retained dependencies; R4-M116 PQ-5).
@@ -157,11 +158,6 @@ internal sealed partial class MirBorrows
             this.covering.Clear();
         }
     }
-
-    // Whether an operand is a raw-typed Integer constant, what the `null` literal lowers to at a call: a pointer value no write can change.
-    // Read from the operand, never from a set: an empty set says that no source A5 tracks gave the value (PLAN G338).
-    private bool NullLiteral(in MirOperand operand)
-        => operand.Kind == MirOperandKind.Const && this.body.Consts[operand.Arg] is { Kind: MirConstKind.Integer, Type.Semantics: SemanticsKind.Raw };
 
     // G136 (R4-M148): whether a Value call's declared signature numbers inputs other than its operands, a broken contract.
     private bool Broken(in MirTerminator call)

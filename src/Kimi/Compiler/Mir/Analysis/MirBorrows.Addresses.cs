@@ -206,7 +206,7 @@ internal sealed partial class MirBorrows
         this.loanStepCount += steps.Length;
         if (direct && root >= 0)
         {
-            this.named[root] = true;
+            this.named[root] |= NamedHolder | ExposedHolder;
         }
 
         if (owner >= 0)

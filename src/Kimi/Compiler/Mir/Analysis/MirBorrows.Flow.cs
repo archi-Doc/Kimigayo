@@ -7,7 +7,9 @@ namespace Kimi.Compiler.Mir;
 // its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, a Call's are MirBorrows.Calls' and a Drop's
 // MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
 // (MirBorrows.States, DECISIONS R4-M160). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued
-// into a guard candidate H (E7).
+// into a guard candidate H (E7); and Φ_N where it may change an exposed holder's bytes (PLAN G598): a store through a reference or
+// pointer, or a call's W, writes only exposed holders and E, and a store into an exposed holder's own Place carries it too, since a
+// pointer the body formed may change the holder at any later point without a store A5 reads (a callee's scalar store, a pun).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -76,7 +78,7 @@ internal sealed partial class MirBorrows
             {
                 Cleared => 0,
                 Replaced => State(value, 0),
-                JoinedThrough => State(Placed(state[slot]), this.sets.Union(Shared(state[slot]), value)),
+                JoinedThrough => State(Placed(state[slot]), this.sets.Union(Shared(state[slot]), this.sets.Union(value, this.unformedSet))),
                 _ => State(this.sets.Union(Placed(state[slot]), value), Shared(state[slot])),
             };
         }
@@ -98,7 +100,8 @@ internal sealed partial class MirBorrows
     }
 
     // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k Derefs every holder refs^k names joined (P10; past a
-    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined.
+    // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined; Φ_N into an exposed holder (Commit adds
+    // it to every store through a reference).
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
         var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
@@ -115,6 +118,7 @@ internal sealed partial class MirBorrows
             if (slot >= 0)
             {
                 var (arrived, issued) = (this.Arrive(slot, receiving, whole, 0, value), this.Arrive(slot, receiving, whole, 0, own));
+                arrived = place.Root >= 0 && this.Exposed(place.Root) ? this.sets.Union(arrived, this.unformedSet) : arrived;
                 this.AddSlot(slot, arrived, issued, whole ? Replaced : Joined, issue);
             }
 

@@ -7,12 +7,15 @@ namespace Kimi.Compiler.Mir;
 // anchor's, which no access reaches, R4-M156), in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer
 // (D5, R4-M98): a Loan, a guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or
 // a write rooted at a default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots, the mutable
-// statics its Loans are on, and each static's A4 Field number; and whether the view has a raw Ref, whose address MirBorrows.Addresses
-// forms.
+// statics its Loans are on, and each static's A4 Field number; whether the view has a raw Ref, whose address MirBorrows.Addresses
+// forms; and by local, whether a direct Loan or address names it (a flow holder) and whether it is an exposed holder (Exposed).
 internal sealed partial class MirBorrows
 {
+    private const byte NamedHolder = 1; // named: a direct Loan or address names the local, so it is a flow holder (MirBorrows.Holders).
+    private const byte ExposedHolder = 2; // named: an exposed holder (Exposed).
+
     private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
-    private bool[] named = []; // By local: whether a direct Loan names it, so it is a flow holder.
+    private byte[] named = []; // By local: NamedHolder and ExposedHolder.
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
     private Loan[] loans = [];
@@ -30,6 +33,11 @@ internal sealed partial class MirBorrows
         => statement is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Use, Op: not 0 } use } && cases.Reborrows(this.body.Operands[use.Start])
             ? (MirRefKind)use.Op : MirRefKind.Raw;
 
+    // Whether a local is an exposed holder (PLAN G598; SPEC 5.2, 5.5): a non-shared direct Loan or address of the body names it, or an
+    // Opaque site touched it, so a pointer the body formed may write its bytes at any later point, also where A5 reads no store (a
+    // callee's scalar store, a pun); no other pointer reaches a local. A shared Loan gives no write authority (SPEC 5.2.1 condition 3).
+    private bool Exposed(int local) => (this.named[local] & ExposedHolder) != 0;
+
     // The Loans of the view (A3 4's issued, E3): a non-raw Ref of a Place that passes no shared borrow Deref and a PairAcquire the view makes a
     // Reborrow, of its Place's referent in its marker's mode (A3 E13 (4)), by location; each named by its whole Place, then ordered by group.
     private void Loans()
@@ -43,6 +51,14 @@ internal sealed partial class MirBorrows
         Array.Fill(this.loanAt, -1, 0, locations);
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
+        foreach (var root in this.body.OpaqueRoots)
+        {
+            if (root >= 0)
+            {
+                this.named[root] |= ExposedHolder; // The replaced form may have written it (R4-M70).
+            }
+        }
+
         MirDataflow.Grow(ref this.fields, this.body.Statics.Length);
         for (var i = 0; i < this.body.Statics.Length; i++)
         {
@@ -142,7 +158,7 @@ internal sealed partial class MirBorrows
         this.borrowed[key] = true;
         if (root >= 0)
         {
-            this.named[root] = true;
+            this.named[root] |= (byte)(mode == MirRefKind.Shared ? NamedHolder : NamedHolder | ExposedHolder);
         }
 
         return this.loanCount++;
