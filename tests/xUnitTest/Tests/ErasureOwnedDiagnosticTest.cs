@@ -214,8 +214,8 @@ public class ErasureOwnedDiagnosticTest
         c.Bind();
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "g");
         var recorded = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "use");
-        var paths = (System.Collections.IDictionary)typeof(Binding).GetField("conformancePaths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        var held = paths.Values.Cast<BoundConformancePath>().Single(static x => x.Type.Name == "W");
+        var impls = (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var held = impls.Paths.Single(static x => x.Type.Name == "W");
         Assert.Equal((BindingState.Invalid, BindingState.Resolved), (c.Semantics.StateOf(((ICheckCause)held).Use), c.Semantics.StateOf(recorded)));
         typeof(Binding).GetMethod("AddPendingPrerequisite", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [use, recorded]);
         typeof(Binding).GetMethod("FailDerived", BindingFlags.Instance | BindingFlags.NonPublic, [typeof(Koto), typeof(ICheckCause)])!.Invoke(c.Binding, [use, held]);
