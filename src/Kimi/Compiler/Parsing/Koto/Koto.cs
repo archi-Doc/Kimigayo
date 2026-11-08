@@ -414,17 +414,13 @@ public abstract partial class Koto
 
     #endregion
 
-    /// <summary>Initializes a new instance of the <see cref="Koto"/> class and takes the pending attribute chain from the reader.</summary>
+    /// <summary>Initializes a new instance of the <see cref="Koto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The node span.</param>
     public Koto(ref TokenReader reader, SourceSpan range)
     {
         this.codeContext = reader.CodeContext;
         this.Span = range;
-        if (reader.AttributeKoto is not null)
-        {
-            this.SetAttributeChain(reader.PopAttribute());
-        }
     }
 
     internal Koto(CodeContext codeContext, SourceSpan range)

@@ -17,12 +17,13 @@ internal enum DictionaryHelperKind : byte
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct DictionaryEntryLayout(long KeyOffset, long ValueOffset, long Stride)
 {
-    /// <summary>Gets the layout of an entry (IMPL 21.1.3, implementation-defined), the rule the remaining Dictionary kernels and placeEntry's
-    /// helper read (PD2): its two links first, then the key at the first offset from 16 aligned for it, the value after the key aligned for
-    /// it, and the stride the value's end aligned for the entry, whose alignment is at least the links' 8. Until K1b removes it, it is the
-    /// second statement of the slot rule beside the library's DictionaryStorage.slotStride (R8-K1a), with which it must agree on one buffer:
-    /// on placeEntry's path the Place helper hands this stride to append, which passes it on to reserve, grow and appendSlot, while the
-    /// library bodies reserveEntries, shrinkEntries, removeEntry and clearEntries pass slotStride's.</summary>
+    /// <summary>Gets the layout of an entry (IMPL 21.1.3, implementation-defined), read only by dictionaryStorage's stride kernel and
+    /// placeEntry's Place helper (PD2): its two links first, then the key at the first offset from 16 aligned for it, the value after the key
+    /// aligned for it, and the stride the value's end aligned for the entry, whose alignment is at least the links' 8. Until K1b-2 removes
+    /// it, it is the second statement of the slot rule beside the library's DictionaryStorage.slotStride, keyAt and valueAt (R8-K1a,
+    /// R8-K1b-1; DECISIONS R8-M8's staged copy), one rule under their premises, with which it must agree on one buffer: the Place helper
+    /// hands this stride to append, which passes it on to reserve, grow and appendSlot, and writes the key and value at these offsets,
+    /// while the library bodies pass slotStride's stride and read and write through keyAt's and valueAt's offsets.</summary>
     /// <param name="key">The key's layout.</param>
     /// <param name="value">The value's layout.</param>
     /// <returns>The entry layout.</returns>

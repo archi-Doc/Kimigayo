@@ -101,8 +101,6 @@ public enum CompilerFunctionKind : byte
     BuiltinEquals,
     BuiltinCompare,
     BuiltinArithmetic,
-    StorageKeyAt,
-    StorageValueAt,
     StorageDictionaryLayout,
     StorageMissingDictionaryKey,
     StorageArgumentOutOfRange,
@@ -201,7 +199,6 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
             CompilerFunctionKind.HeapBufferBytes or CompilerFunctionKind.HeapBufferText or CompilerFunctionKind.HeapBufferValidate or CompilerFunctionKind.HeapBufferClear or
             CompilerFunctionKind.HeapBufferReserve or CompilerFunctionKind.HeapBufferIntoString or CompilerFunctionKind.WindowPush or CompilerFunctionKind.WindowAppend or
             CompilerFunctionKind.WindowLimit or CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.WriterStatus or
-            CompilerFunctionKind.StorageKeyAt or CompilerFunctionKind.StorageValueAt or
             CompilerFunctionKind.StorageDictionaryLayout or CompilerFunctionKind.StoragePlaceDictionaryEntry => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
