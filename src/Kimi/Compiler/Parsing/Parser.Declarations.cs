@@ -101,9 +101,7 @@ Exit:
             return value;
         }
 
-        var directive = new NoInitKoto(ref reader, value.Span);
-        directive.SetAttributeChain(value.AttributeChain);
-        return directive;
+        return new NoInitKoto(ref reader, value.Span);
     }
 
     /// <summary>Parses a local binding declaration after its keyword (SPEC 6.6).</summary>
@@ -156,9 +154,10 @@ Exit:
             typeKoto = new ErrorKoto(ref reader, typeKoto!.Span) { Cause = reader.Expect(SyntaxForm.Initializer) };
         }
 
-        reader.RestoreContext(variableContext);
+        reader.RestoreContext(variableContext with { AttributeKoto = null });
 
         var fieldKoto = new FieldKoto(ref reader, token, nameKoto, typeKoto, initializerKoto);
+        fieldKoto.SetAttributeChain(variableContext.AttributeKoto);
         reader.Document(fieldKoto, SourceSpan.FromBounds(token.Span.Start, nameKoto.Span.End), variableContext.AttributeKoto);
 
         ParseAttachedOriginBlock(ref reader, fieldKoto);
