@@ -8712,6 +8712,7 @@ resumed by R4-M86 (2026-10-20).
   - Open: N3, ProjectionSpecification publishing an inherited binding's source path with the base subject, so the walk loses its
     inherited arm (PLAN G328; the source and its base are computed inside the path-level ResolveAssociated, not with the receiver);
     a pair target's projection is also reported UnprovenConstraint_Kd at its Field on dev (PLAN G327, SPEC 8.8.1).
+  - Superseded in part by BU-128 (R7-V5b-1, the owner's O-70 (a)): "a cycle of binding nodes alone is its conformance's error" no longer holds; a binding-only inline cycle is judged at the binding, and `Binding.InlineLayouts.cs`' "no record for a binding node" is withdrawn.
 
 - **BU-67 BU-52's interim class and S2's forms are correct errors under SPEC 15.6's whole-holder text** (2026-10-30; the owner's answer
   on G264 S1, verbatim 「(B)」; supersedes BU-52's interim class in part and R5-M129 in part) SPEC 15.6 (Holders: storage the body does
@@ -9751,6 +9752,7 @@ resumed by R4-M86 (2026-10-20).
   - Removes `RootTypeName`, `SelectTypeCandidate`, `StopInheritedLookup`, `LookupImportedType` and `Lookup`'s Type branch. `ResolveRootPath` keeps a member step of its own until the `::` unit.
   - Behavior-preserving. b, c, d, e and f are separate designs; G488 and BU-117 stay open.
   - Rejected: N0's patch (stages publish); snapshot and undo; a `publish` flag; a per-use memo (a Koto-keyed table); recursion on the left instead of the stack (O(depth²)); SPEC's names on the rows (they are not its contracts).
+  - Amended by BU-131: R7-N1b renames `TypeLookupRole` to `LookupRole` and adds the row `Value`, SPEC 9.2's Value role and the only Value-namespace row; the Type rows stay today's filters. The value lookup resolves through the same `ResolveName` and `PublishPath` (BU-131).
 
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
@@ -10257,6 +10259,30 @@ resumed by R4-M86 (2026-10-20).
     error on a valid form; it should become a located `Unsupported_Kd` (AGENTS Diagnostics) in the unit that lifts or marks the limit.
     (5) `RegionChain` also counts a pending atom (`HasLocalRegion`): at a clause's gate it forms a row where dev judged the relation; the
     review's `z14`, `z14i` are right on the head, no other program found.
+- **BU-128 A binding-only inline cycle is judged at the binding** (2026-11-08; R7-V5b-1, PLAN G588; the owner's O-70 (a), verbatim
+  「すべてa」) SPEC 6.2, 8.2.3, 8.5.1, 8.5.5, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
+  conformance's error (SPEC 8.3.3)") and the prohibition "no record for a binding node" in `Binding.InlineLayouts.cs`: O-54 (a) makes a
+  binding's Type no formation obligation of its conformance, so the conformance stops being the cycle's judge (with S3, R7-C2 (b)).
+  - Rule: every completed associated binding of a non-inherited conformance path is a root of the inline walk, after the declarations; a node is invalid iff it lies on a cycle of the edges, a declaration and a binding alike. A Type reaches a binding through a projection that denotes it, with any Type arguments (8.2.3). A binding reports `InvalidInlineLayout_Kd` at its specification in the conformance (8.5.1): its own clause whose conjunction yields its identity atom (r2, k2: not a constraining clause before it; k4: `is Box<S> and Copy` is one; k5, k5v: of two bound references only the one on the cycle; of two agreeing clauses the first, the conditional block's before the members, `SpecificationPart`'s order), or, decomposition included, the specification it is decomposed from; otherwise, however the binding is determined (inferred, 8.5.5, or by a Contract identity Constraint, review 2's `Item is Option<A>`), at the conformance clause: `SpecificationPart(path, identity) ?? path.RootPath.Declaration`. An inherited binding is its source's node and reports at the source's site (r3). Limit (R4-M115, STATUS "Types and Contracts": Type identity follows the old non-decomposing rule): a binding that decomposition determines (r9d, SPEC 8.5.1's `Number` form) reports `AssociatedTypeInferenceFailed_Kd` first and gets no layout record; when that limit goes, the site must follow the specification it is decomposed from, which `SpecificationPart` (a clause of the identity itself) does not find. PLAN names this obligation for the unit that removes the limit (G630).
+  - One owner of the site (review B6): the record is at `SpecificationPart(path, identity)`, the one answer to "which clause specifies
+    this identity", which also feeds `InferenceHole` and `VerifyConformance`'s missing-binding branch. Its test of a fixing clause is
+    now `AssociatedIdentityType`, the predicate `AssociatedFormation` uses: per SPEC 8.5.1 a conjunction yielding a Type-identity atom
+    specifies (its example `is i32 and Copy // Specifies i32`); the old kind list called such an `And` no specification. Of the nine
+    `ConstraintKind`s only that case changes. Implementation review 2's nine SPEC-labelled twins (`review-evidence-v5b\mk_rev5b1-2.sh`:
+    8.5.1's examples A `i32 and Copy` and B `i32 or i64`; p1b, a conjunction with nothing to infer from; p5, the atom on the right;
+    p3 and p9, a wrong implementation, also in a conditional block; p7, two atoms `i32 and i64`; p8, SPEC's `Pack` example; p10, an
+    unresolved name) give the same records on 884c31bff, a237c87c7 and b8080e332. An `And` specification was never an inference hole
+    (`Collect` adds its atom as a candidate). Deleted: the unit's own copy (`BindingSite`, `Specifies`, `YieldsIdentity`).
+  - Node key: the conformance path and the associated identity, which `ProjectionSpecification` now publishes with its outcome; two
+    bindings with one Type stay two nodes (r7: only the one that reaches itself reports). A binding's Origin arguments never change
+    what it stores inline.
+  - Mixed cycles: a declaration and a binding on one cycle both report (s2b). A binding that only reaches a cycle does not (z1's
+    `A is Box<S>`). l3i's binding reaches itself by 6.2 (W's Field is written `S.(C).Item`), but its walk reads W's failed summary,
+    whose record stands: its own record is suppressed by rule W (DECISIONS Q13), not by the representation.
+  - `AdtDef.InlineCycle` stays declaration-level, Layout its only reader; a conformance resting on its failed binding names no Type
+    after the failed Binding, which Layout rejects without a record. No instance-level fact.
+  - Rejected: reporting at the struct whose instance is infinite (valid for other arguments, x7); reporting only components without a
+    declaration (a mode); keying by the binding's Type (r7 reports both bindings); a new instance-level fact for Layout.
 - **BU-129 R7-E1d A clause's resting failure yields to its owner's own** (2026-11-08; plan §5.1 E1, `ruling-r2.md` §3; D-2; SPEC 15.3.3,
   23.1.2; DIAGNOSTICS rule 4). `FailOriginClause` writes `InvalidOrigin` into the owner of a failed Origin clause with an edge to the
   clause, a value that rests on another node. `Fail` lets the owner's own later failure take that slot and removes the clause's edge, so the
@@ -10295,6 +10321,26 @@ resumed by R4-M86 (2026-10-20).
     proof (`:246`: `isize << 40` becomes proven) move too. Evidence: the Front's `F\Lit\mir-dumps\` and the Middle's C-142 R11-R14.
   - Amends R5-M174: "what the phases share is `PointerWidth`" now means `ScalarTypes.SizeWidth`. `IrTarget` keeps the target's width
     for the Condition, and its 0 for no IR target.
+- **BU-131 A value name resolves through ResolveName: the role names the namespace** (2026-11-08; R7-N1b; Major; design
+  review 1 ACCEPT) SPEC 9.2, 9.5, 9.5.1.
+  - Rule: `ResolveName(name, scope, use, role, arity)` is the one stage walk of both namespaces; the role names the namespace
+    (`LookupRole.Value`). `ValueStage` and `ResolveImportedValue` return `Selected`, `QualificationStop` or `Ambiguous` and write
+    nothing on the use; the merged import goes on the Head, a gathered group on `ImportGroup` steps; `PublishPath` writes them.
+    `QualificationFact.Type` is `Role != Value`; `bool type` is gone from `InheritedStop`, `InheritedDeclaration`,
+    `RecordQualificationStop` and the fact. Exception, shared with BU-122's Type path: a default alias's ambiguous segment is reported
+    by `SelectQualifier` during the evaluation (part e folds that walk).
+  - Records: an opened value's environment is compared only with the value lookup's own sources, never with the Type path's import of
+    the same node. `N.m()` and `N.k()` with a Type `N` from `alias Box<i32>` and a value `N` from `alias Other<i64>` (b10 valid by
+    SPEC 9.6, b11 invalid) move from `AmbiguousBinding_Kd` to the located `Unsupported_Kd` at `N` under **BU-117 (the owner's O-32
+    (a))**, the record that entry fixes for a qualifier of both namespaces, valid and invalid alike; not rule W.
+  - Two opened environments for one value name (`t25`) stay `AmbiguousBinding_Kd`: an implementation limit (one `AliasImport` per use),
+    not SPEC's rule; PLAN issue below.
+  - The value `Lookup` takes no early-read note (BaseLayers): its uses do not all spell the name (`Closures.cs:347` keys by the
+    function node), so N2d's note, re-evaluated by `ProbePath(syntax)`, does not fit them; PLAN issue below.
+  - Removes the value `Lookup`'s walk and `LookupImportedValue`.
+  - Rejected: a second pure value walk (two copies of SPEC 9.5's stages); a namespace parameter beside the role; reading the Type
+    path's import in the evaluation (BU-122's contract) or merging it at publication; part a's cut 2 (it reads table existence, a
+    publication's state, and a late Head must precede the `ImportGroup` steps); `Stop` out of the result before part d.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -13194,6 +13240,7 @@ structure is recorded here by the unit that first implements it.
     uncollected); a placeEntry clause in AdmitRow (Designated serves every row); `InstanceCollector(…, KimiLibrary)` (the held
     `Compilation.Pipeline.cs`); catalog rows or `KimiDeclarationId`s for initialize (R5-M28); the MIR builder calling initialize or append
     (a second literal form); new IntrinsicIds (PD21); Kimigayo bodies now (R8); re-pointing the old lowering to the map (D5).
+  - Superseded in part by R8-M8 (2026-11-08, R8-K1a): the `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows; the Dictionary remainders are Kimigayo bodies in `Storage.kimi`.
 - **R5-M125 The owner confirms C8e's two departures** (owner, 2026-10-25, after C8e's design; verbatim 「C8e の逸脱 2 件（Dictionary カーネルの
   corpus O2 A/B を C8e・C8f・C9c のうち最も遅いものへ移し、C8e は一時カーネルで参考測定すること、Dictionary のグルーの対象を要素グルーではなく Drop 行が宣言する clearEntries とすること）を承認します。」) The
   departures R5-M124 records are confirmed: (i) plan row C8e's Dictionary kernel O2 moves to the later of C8e, C8f and C9c, since the
@@ -15979,6 +16026,18 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **`llvm.memcpy`** is declared bare (`LlvmModuleText.MemoryDeclarations`): `transferBytes` brings the declaration into modules that `ReferenceEmissionTest`'s `Assert.DoesNotContain("noalias", ir)` reads whole, and LLVM restores the intrinsic's own attributes.
   - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` is still admitted by the validator until then.
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
+- **R8-M8 The Dictionary remainders are bodies; the slot stride is stated once, by the owner's (e)** (Back, 2026-11-08; R8-K1a; Major; design reviews 1-2 ACCEPT at revision 2; the owner's O-68 (e), verbatim 「O-68はeでお願いいたす」; on R8-M2 and R8-M6; supersedes in part R5-M124) SPEC 5.2.1, 8.15.3; IMPL 21.1.1, 21.1.3.
+  - **Owner.** `borrowStorage`, `borrowStorageUniq` and `ownStorage` over a Dictionary are Kimigayo bodies in `Storage.kimi` over `DictionaryStorage.Handle` (IMPL 21.1.3): the shared views read `buffer`, `head` and `length` through the path they are given (R8-A1d's rule) and take `Loan<...>.init()` (R8-M6); the owning remainder holds the consumed Dictionary's Handle whole (R8-A1d's (a′), SPEC 5.2.1's third limit).
+  - **The views' move.** No remainder stores the stride, so a view formed with no entry read lays out nothing of K or V: views over a K or V whose layout fails become accepted (SPEC 8.15.3; the class and its members are named in the commit). An invalid program loses only its formation record (R8-M2 as extended by R8-A1d's B2), and a resource-rejected one's record moves from the formation to the first read.
+  - **The slot rule is (e)** (the owner, O-68): no `Slot<K, V>` record. The slot is the Links' 16 bytes, the key at 16, the value at `Align(16 + stride(K), alignment(V))`, and the stride `DictionaryStorage.slotStride<K, V>()` = `Align(16 + stride(K) + stride(V), max(8, alignment(K), alignment(V)))`. These are dev's offsets and stride byte for byte. K1a states the stride and K1b the offsets.
+  - **Why per-Type facts.** They are over each Type's own facts, with `alignmentOf<T>()` = `stride<(u8, [0 of T])>()`, and no aggregate of K and V is laid out. `Layout` decides Oversized before limits (R5-M52) and the slot is implementation storage, so a K or V over a generation limit keeps its Resource record.
+  - **Premises.** Alignments are powers of two at most 16; sizes are multiples of alignment; an aggregate's alignment is its parts' largest. These are this implementation's placement (IMPL 21.1.1 says "at least").
+  - **Depth margin.** `alignmentOf` adds two placement levels, so the margin against Binding's storage-nesting bound (PD30) and `Layout.MaximumHeight` (64) is one level. A change of either bound must re-run `AValueNestKeepsTheStorageBoundsRecords`.
+  - **Staged copy.** Every library body that addresses a slot reads `slotStride`; `DictionaryEntryLayout.Of` stays the second statement for `dictionaryStorage`, `keyAt`, `valueAt` and `placeEntry`'s helper until K1b (PLAN G640).
+  - **Owning iteration does not move:** a by-value `Dictionary<Bad, V>` is already rejected at its parameter and moves (pre-existing, valid under SPEC 8.15.3; PLAN G641). Its storage-height bound stays dev's (62 accepted, 63 rejected).
+  - **Supersedes** R5-M124's `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows.
+  - **Counts:** `CompilerFunctionKind` 62 → 59, `KimiDeclarationId` 196 → 193, catalog 192 → 189, `StorageKernelKind` 4 → 2, `LegacyWriter` 11 → 9.
+  - **Rejected:** a `Slot<K, V>` or `(K, V)` stride (B1), an alignment intrinsic (expressible once the Front's rule holds), C layout (SPEC 6.7.1).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
