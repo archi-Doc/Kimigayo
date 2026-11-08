@@ -16,7 +16,7 @@ public sealed partial class Binding
     // activeRequirementContract and normalizingAssociated's set fixed, so each distinct part is rewritten once per query. The set changes
     // only by a push after a part's components are rewritten, popped before that part returns, and what runs under the push enters
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
-    private readonly TypeMemo<(BoundType Image, ResolutionHops? Hops)> contractParts = new();
+    private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops)> contractParts = new();
 
     // The hop chains, one per path, step and inner chain: kept for the Binding's lifetime, as the paths they name (conformancePaths), so
     // a warm pass allocates none.

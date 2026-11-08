@@ -23,7 +23,7 @@ public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
     // (DECISIONS BU-55) and the clause fact it hands on (G354 (2); none in the declaration walk).
-    private readonly TypeMemo<(ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause)> formedParts = new();
+    private readonly TypeMemo<BoundType, (ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause)> formedParts = new();
 
     // The walks the SignatureVerdict row ran in this pass.
     private int signatureWalks;

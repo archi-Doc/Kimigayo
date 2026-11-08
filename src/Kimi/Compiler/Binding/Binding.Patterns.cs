@@ -559,12 +559,12 @@ public sealed partial class Binding
         var negative = syntax.Akind == KotoKind.PrefixMinus;
         if ((negative ? ((UnaryKoto)syntax).Operand : syntax) is NumberLiteralKoto number)
         {
-            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !ScalarTypes.TryLiteral(type, magnitude, negative, out _))
+            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !ScalarTypes.TryLiteral(type, magnitude, negative, out var bits))
             {
                 return false;
             }
 
-            literal = new(PatternLiteralKind.Integer, magnitude, negative && magnitude != 0);
+            literal = new(PatternLiteralKind.Integer, bits);
             Complete(number, type);
             return true;
         }
@@ -572,10 +572,10 @@ public sealed partial class Binding
         switch (syntax)
         {
             case BoolLiteralKoto boolean when ReferenceEquals(type, BoundType.Boolean):
-                literal = new(PatternLiteralKind.Boolean, boolean.Value ? (UInt128)1 : 0);
+                literal = new(PatternLiteralKind.Boolean, boolean.Value ? 1 : 0);
                 return true;
             case CharLiteralKoto { Value: { } scalar } when ReferenceEquals(type, BoundType.Char):
-                literal = new(PatternLiteralKind.Character, (UInt128)scalar.Value);
+                literal = new(PatternLiteralKind.Character, scalar.Value);
                 return true;
             case StringLiteralKoto text when ReferenceEquals(type, BoundType.String):
                 literal = new(PatternLiteralKind.String, Text: text.Literal);
@@ -720,8 +720,8 @@ public sealed partial class Binding
             }
             else if (root.Literal.Kind == PatternLiteralKind.Boolean)
             {
-                hasTrue |= root.Literal.Magnitude != 0;
-                hasFalse |= root.Literal.Magnitude == 0;
+                hasTrue |= root.Literal.Bits != 0;
+                hasFalse |= root.Literal.Bits == 0;
             }
         }
 

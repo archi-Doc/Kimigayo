@@ -305,7 +305,7 @@ public sealed partial class Binding
             return true;
         }
 
-        (this.erasureOutcomes ??= new(ErasureKey.Instance))[(actual, expected)] = new(part, fits, receiver, owned);
+        (this.erasureOutcomes ??= new())[(actual, expected)] = new(part, fits, receiver, owned);
         if (part == ErasurePart.Condition)
         {
             this.RecordCondition(node, failure, signature!, expected);
