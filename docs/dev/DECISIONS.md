@@ -10270,6 +10270,31 @@ resumed by R4-M86 (2026-10-20).
   Rejected: a new slot value (every reader answers anew, review 1's B2); a resting problem with a `RestsOn` fact (stays resting after a
   same-value failure, review 2's R3); rule 4 as written, the later failure as a further problem (unmigrated families record no problem and
   their facts explain the slot's failure only).
+- **BU-130 One width of `isize` and `usize`, the profile's, and one literal-fit rule** (2026-11-08; board C-134, the owner's O-79 (a), verbatim 「O-79 aでお願いいたす」;
+  design `F\Lit\design.md` revision 1, design review 2 ACCEPT). Validity read a target fact. `Compilation.PointerWidth` was
+  `IrTarget`'s width: 0 without a target, 32 or 16 on i686 or AVR. Each reader decided what 0 meant (a literal length failed, an
+  expression literal fitted 8 bits, wrap took `isize` as generic, length arithmetic shifted by -1, MIR treated `isize` as a Type
+  parameter), and a narrower target gave Language errors for valid programs.
+  - `ScalarTypes.SizeWidth` is the width of `isize` and `usize` that Binding and the MIR builder read in every Compilation, with or
+    without a target. It is the profile's, derived once from `IrTarget`'s row for `WindowsProfile.Target`. The target's own width
+    remains only in the `pointerWidth` Condition (SPEC 19.2) and in `Prepare`'s no-IR-target check. Deleted: `Compilation.PointerWidth`,
+    `ScalarTypes.Width`'s optional `pointerWidth` (a second 64) and `TryLiteral`'s, and the 32/64 range branches (`SubstituteLength`,
+    `CheckLiteralPosition`, `ValidLength`).
+  - `ScalarTypes.TryLiteral` is the one literal-fit predicate: lengths (including `BindLength`'s final range), expression literals,
+    Literal Patterns and truncated literals. `Binding.Expressions.FitsIntegerMagnitude` and its 8-bit fallback are deleted.
+  - The narrower profile's located `Unsupported_Kd` is that profile's arrival condition and is not built now. Today no code exists for
+    another target on either path: a project's artifact production stops at `Project.cs:377-379`, and the API path emits with the
+    profile's triple (`LlvmModuleText.cs:125`).
+  - Rejected: the target's width, or the profile's only without a target (validity stays target-dependent, O-79 (a)); an 8-bit or
+    0-as-64 rule inside `TryLiteral` (the other readers keep 0); preparing a target in `CreateForTest`; a second profile constant;
+    keeping the parameter and passing the profile's width at about 20 calls.
+  - MIR moves, in no-target and narrower-target compilations only (windows-x64 MIR is unchanged; the tests/mir goldens are equal). The
+    MIR builder reads 64 through `Width` (`Operators.cs` `:275`) and `Position`'s `extreme` (`Selections.cs` `:99`). As a result, a
+    position whose Type lies within isize converts proven without a bound test (`Within`, `Selections.cs` `:94`); dev's 2^127-magnitude test constants go.
+    The integer-conversion proof (`Within`, `Operators.cs` `:211`: `i64@isize` and `isize@i64` become proven) and the shift-count
+    proof (`:246`: `isize << 40` becomes proven) move too. Evidence: the Front's `F\Lit\mir-dumps\` and the Middle's C-142 R11-R14.
+  - Amends R5-M174: "what the phases share is `PointerWidth`" now means `ScalarTypes.SizeWidth`. `IrTarget` keeps the target's width
+    for the Condition, and its 0 for no IR target.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -14993,6 +15018,7 @@ structure is recorded here by the unit that first implements it.
     SHAVE, RenderScript32/64) has no IR target; that fact is now `IrTarget.Create`'s pointer width 0 (it was 32 or 64 for them),
     `IrTarget.Invalid`'s representation and `Compilation.Prepare`'s one check. Each width is an explicit row per architecture; an
     unclassified architecture is 0, so rejected. Every architecture and environment keeps its acceptance and `Compilation.PointerWidth`.
+  - Amended by BU-130: what the phases share is `ScalarTypes.SizeWidth`, the profile's width of `isize` and `usize`; `IrTarget` keeps the target's width for the `pointerWidth` Condition and its 0 for no IR target.
 - **R5-M175 One owner of a source's logical name: `Kotonoha.Base` and `Kotonoha.LogicalName` (PLAN LN, G289 (3), G346)** (2026-11-01, the
   owner's 「両レーンで GO！」) IMPL 20.1 names a source by its project-relative path with `/` separators. Five copies disagreed on the base (the
   root's or the source's own project), the separators, a project without a directory and a path outside the base; the cause one level

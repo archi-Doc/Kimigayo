@@ -26,7 +26,7 @@ An **integer Type** is an integer Core under `owner` Semantics, a **wrapping int
 | `i32`, `u32`, `f32` | 32 bits |
 | `i64`, `u64`, `f64` | 64 bits |
 | `i128`, `u128` | 128 bits |
-| `isize`, `usize` | The target's pointer size |
+| `isize`, `usize` | The profile's pointer size, 64 bits ([§22](22-core-execution-and-foreign-functions.md)) |
 
 The only valid `bool` bit patterns are `0x00` (`false`) and `0x01` (`true`); reading any other as `bool` is undefined behavior ([§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places)).
 

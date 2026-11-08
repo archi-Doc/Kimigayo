@@ -21,7 +21,7 @@ struct Node
 
 ## 4.2. Length expressions
 
-A length is a nonnegative compile-time integer representable in the target's `isize`; a generic length stays symbolic until instantiation (grammar: `ArrayLength`, `LengthExpression`, [§F.5](appendices/F-syntax-summary.md#f5-types)).
+A length is a nonnegative compile-time integer representable in the profile's `isize`; a generic length stays symbolic until instantiation (grammar: `ArrayLength`, `LengthExpression`, [§F.5](appendices/F-syntax-summary.md#f5-types)).
 
 A length expression admits integer literals, length parameters, Constant-readable Bindings, grouping, unary `+` and `-`, and binary `+`, `-`, `*`, `/` and `%`. A **Constant-readable Binding** is an integer `let` local, or a static stored Property with an accessible standard `get`, whose initializer uses only these forms, recursively. Parameters, `var`, instance Fields, custom or computed accessors, calls and cyclic initializers are excluded. In a dependent length it is replaced by its initializer (Normalization, [§4.4.2](#442-formation-obligations-and-normalization)).
 
