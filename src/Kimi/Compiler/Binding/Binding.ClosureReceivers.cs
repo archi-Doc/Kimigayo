@@ -130,9 +130,9 @@ public sealed partial class Binding
                 }
 
                 var need = this.UsesExclusively(node);
-                if (need.Exclusive)
+                if (need.Use is PlaceUse.ByCase or PlaceUse.Exclusive)
                 {
-                    if (need.ByCase)
+                    if (need.Use == PlaceUse.ByCase)
                     {
                         this.plan.Storage[at] = this.plan.Storage[at] with { BareReborrows = true };
                     }
@@ -160,7 +160,7 @@ public sealed partial class Binding
                     this.plan.CaseFreeReceiver = SemanticsKind.Owner;
                 }
 
-                if (need.ByValue is null)
+                if (!need.Listed)
                 {
                     this.Unlisted.Add((node, at)); // No consumer takes this use, so no rule decides whether it Reborrows by case.
                 }
@@ -195,34 +195,33 @@ public sealed partial class Binding
             _ => false,
         };
 
-        // SPEC 7.7.2, 7.7.3: a nested Closure's entries of this binding's captures: moving an outer environment value is Consuming;
-        // Reborrowing it or borrowing its slot exclusively needs exclusive access to the outer environment, in the cases where it Reborrows
-        // for a bare entry.
+        // SPEC 7.7.2, 7.7.3: a nested Closure's entries of this binding's captures, each taken as the one place-use rule's Take takes its
+        // acquisition (BoundCapture.Adjust) at the nested Closure: moving an outer environment value is Consuming; Reborrowing it or
+        // borrowing its slot exclusively needs exclusive access to the outer environment, in the cases where it Reborrows for a bare entry.
         private void VisitEntries(FunctionKoto nested, BoundClosure child)
         {
             // Indexed over the storage list: enumerating the read-only interface boxes its enumerator on every pass.
             for (var i = 0; i < child.Storage.Count; i++)
             {
                 var capture = child.Storage[i];
-                var acquisition = capture.Environment.CaptureAcquisition;
                 if (this.CaptureOf(capture.Source) is not (>= 0 and var outer))
                 {
                     continue;
                 }
 
-                if (acquisition == CaptureAcquisition.Move)
+                var use = binding.Take(capture.Source.Type, nested, capture.Adjust);
+                if (use == PlaceUse.Consuming)
                 {
                     this.plan.CaseFreeReceiver = SemanticsKind.Owner;
                     continue;
                 }
 
-                if (acquisition is not (CaptureAcquisition.Reborrow or CaptureAcquisition.ExclusiveSlotBorrow) &&
-                    !(acquisition == CaptureAcquisition.Bare && capture.Source.Type is { } captured && binding.BareReborrows(captured, nested)))
+                if (use == PlaceUse.Shared)
                 {
                     continue;
                 }
 
-                if (acquisition == CaptureAcquisition.Bare)
+                if (use == PlaceUse.ByCase)
                 {
                     this.plan.Storage[outer] = this.plan.Storage[outer] with { BareReborrows = true };
                 }
@@ -243,19 +242,19 @@ public sealed partial class Binding
         // referent, `*p` as `p[0]`, SPEC 5.2) exclusively. Such a body uses its environment, or what it reaches, exclusively, so the call is
         // Exclusive, by case only where that use is an acquisition of the capture itself by value that Reborrows in some admitted cases,
         // which the capture's case Type tells. Such a Reborrow of a Place reached through the capture takes that Place's cases, which
-        // the capture's do not tell, so it counts in every case: the strongest receiver (PLAN G13). The need's ByValue is the capture's
-        // own (NeedsExclusively).
+        // the capture's do not tell, so it counts in every case: the strongest receiver (PLAN G13). Whether a rule decides the need by
+        // case (Listed) is the capture's own (NeedsExclusively).
         private Need UsesExclusively(Koto capture)
         {
-            bool? byValue = false;
+            var listed = true;
             var raw = false;
             for (var place = capture; ; place = place.Parent!)
             {
                 var need = this.NeedsExclusively(place, raw);
-                byValue = ReferenceEquals(place, capture) ? need.ByValue : byValue;
-                if (need.Exclusive)
+                listed = ReferenceEquals(place, capture) ? need.Listed : listed;
+                if (need.Use is PlaceUse.ByCase or PlaceUse.Exclusive)
                 {
-                    return new(true, need.ByCase && ReferenceEquals(KotoHelper.UnwrapParentheses(place), capture), byValue);
+                    return new(need.Use == PlaceUse.ByCase && ReferenceEquals(KotoHelper.UnwrapParentheses(place), capture) ? PlaceUse.ByCase : PlaceUse.Exclusive, listed);
                 }
 
                 // SPEC 7.7.3: past a raw pointer's pointee the environment's write authority is what an access needs. A pointer derived
@@ -265,7 +264,7 @@ public sealed partial class Binding
                 raw |= step == PathStep.RawFollow && ReferenceEquals(next, place);
                 if (!(IsGroup(place.Parent) || ReferenceEquals(next, place) || DerivesPointer(place)))
                 {
-                    return new(false, false, byValue);
+                    return new(PlaceUse.Shared, listed);
                 }
             }
         }
@@ -278,12 +277,12 @@ public sealed partial class Binding
             var use = this.UseOf(place);
             if (use == PlaceUse.Exclusive || (raw && use == PlaceUse.Consuming) || this.ContractWritesThrough(place))
             {
-                return new(true, false, false);
+                return new(PlaceUse.Exclusive, true);
             }
 
             // SPEC 3.5, 8.14: a Place acquired by value without an operator (ConsumedByValue) is acquired as each case's Type is.
             var byValue = place.BoundType is { } bare && binding.BareReborrows(bare, place) ? this.ConsumedByValue(place) : false;
-            return new(byValue == true, byValue == true, byValue);
+            return new(byValue == true ? PlaceUse.ByCase : PlaceUse.Shared, byValue is not null);
         }
 
         // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): whether a pointer reached from a capture is passed to a call whose operation contract
@@ -423,10 +422,10 @@ public sealed partial class Binding
             return -1;
         }
 
-        // What a use of a Place needs of the environment (SPEC 7.7.3, 8.14): exclusive access, or only in the admitted cases where its
-        // acquisition by value Reborrows (ByCase); and whether the Place is acquired by value (ByValue, ConsumedByValue: null where no
-        // consumer takes it, false where its Type Reborrows in no case or its operation needs it exclusively in every case).
-        private readonly record struct Need(bool Exclusive, bool ByCase, bool? ByValue);
+        // What a use of a Place needs of the environment (SPEC 7.7.3, 8.14): exclusive access (Exclusive), or only in the admitted cases
+        // where its acquisition by value Reborrows (ByCase), or neither (Shared); and whether a rule decides its acquisition by case (Listed:
+        // not where no consumer takes it, ConsumedByValue).
+        private readonly record struct Need(PlaceUse Use, bool Listed);
 
         // One child's takes by its consumer, as the Adjust rule gives them and the HIR publisher writes them: the last, the column's, and
         // the earlier call's that a later one replaces by another (EarlierAdjust, the plan row's).
