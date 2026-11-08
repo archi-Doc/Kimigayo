@@ -12,7 +12,7 @@ public sealed partial class Binding
     private readonly List<PropertyKoto> storedFields = new();
     private readonly List<BoundEnumCase?> storedCases = new();
     private readonly List<BoundType> enumPayloadTypes = new();
-    private readonly TypeMemo<BoundType?> completedParts = new(); // CompleteProjections' results.
+    private readonly TypeMemo<BoundType, BoundType?> completedParts = new(); // CompleteProjections' results.
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
