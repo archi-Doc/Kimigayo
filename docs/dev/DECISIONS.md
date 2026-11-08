@@ -10259,14 +10259,10 @@ resumed by R4-M86 (2026-10-20).
     (5) `RegionChain` also counts a pending atom (`HasLocalRegion`): at a clause's gate it forms a row where dev judged the relation; the
     review's `z14`, `z14i` are right on the head, no other program found.
 - **BU-128 A binding-only inline cycle is judged at the binding** (2026-11-08; R7-V5b-1, PLAN G588; the owner's O-70 (a), verbatim
-  「すべてa」) SPEC 6.2, 8.5.1, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
+  「すべてa」) SPEC 6.2, 8.2.3, 8.5.1, 8.5.5, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
   conformance's error (SPEC 8.3.3)") and the prohibition "no record for a binding node" in `Binding.InlineLayouts.cs`: O-54 (a) makes a
   binding's Type no formation obligation of its conformance, so the conformance stops being the cycle's judge (with S3, R7-C2 (b)).
-  - Rule: every completed associated binding of a non-inherited conformance path is a root of the inline walk, after the
-    declarations; a node is invalid iff it lies on a cycle of the edges, a declaration and a binding alike. A binding reports
-    `InvalidInlineLayout_Kd` at its specification, the clause whose conjunction yields its identity atom (8.5.1; r2, k2: not a
-    constraining clause before it; k4: `is Box<S> and Copy` is one; k5, k5v: of two bound references only the one on the cycle),
-    else at the conformance clause (inferred).
+  - Rule: every completed associated binding of a non-inherited conformance path is a root of the inline walk, after the declarations; a node is invalid iff it lies on a cycle of the edges, a declaration and a binding alike. A Type reaches a binding through a projection that denotes it, with any Type arguments (8.2.3). A binding reports `InvalidInlineLayout_Kd` at the specification that determines it (8.5.1): its own clause whose conjunction yields its identity atom (r2, k2: not a constraining clause before it; k4: `is Box<S> and Copy` is one; k5, k5v: of two bound references only the one on the cycle; of two agreeing clauses the first, the conditional block's before the members, `SpecificationPart`'s order), or, decomposition included, the specification it is decomposed from; else, when inference determines it (8.5.5), at the conformance clause. Limit (R4-M115, STATUS "Types and Contracts": Type identity follows the old non-decomposing rule): a binding that decomposition determines (r9d, SPEC 8.5.1's `Number` form) reports `AssociatedTypeInferenceFailed_Kd` first and gets no layout record; when that limit goes, the site must follow the specification it is decomposed from, which `SpecificationPart` (a clause of the identity itself) does not find.
   - One owner of the site (review B6): the record is at `SpecificationPart(path, identity)`, the one answer to "which clause specifies
     this identity", which also feeds `InferenceHole` and `VerifyConformance`'s missing-binding branch. Its test of a fixing clause is
     now `AssociatedIdentityType`, the predicate `AssociatedFormation` uses: per SPEC 8.5.1 a conjunction yielding a Type-identity atom
