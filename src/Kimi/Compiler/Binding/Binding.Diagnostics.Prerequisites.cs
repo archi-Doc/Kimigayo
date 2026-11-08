@@ -100,7 +100,12 @@ public sealed partial class Binding
 
         if (node.BindingFailure != BindingFailure.None)
         {
-            return null;
+            if (this.FailedOriginClause(node) is null)
+            {
+                return null;
+            }
+
+            this.partPrerequisites.Remove(node); // The resting InvalidOrigin of the node's own clause yields, with its edge (SlotTaken).
         }
 
         if (unresolved)
@@ -115,6 +120,11 @@ public sealed partial class Binding
         node.BindingFailure = failure;
         return null;
     }
+
+    // DIAGNOSTICS rule 4, SPEC 23.1.2: the node's slot holds a failure a later one leaves, its first, but for the resting InvalidOrigin of
+    // its own failed Origin clause (FailedOriginClause), which a later failure of the node takes with the clause's edge (D-2). A writer that
+    // keeps facts only for the slot's failure reads this, as Fail does.
+    private bool SlotTaken(Koto node) => node.BindingFailure != BindingFailure.None && this.FailedOriginClause(node) is null;
 
     // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.
     private void MarkUnresolved(Koto node)
