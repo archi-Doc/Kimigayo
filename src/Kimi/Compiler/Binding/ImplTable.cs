@@ -54,7 +54,8 @@ internal sealed class ImplTable
     /// <param name="declaration">The declaring clause.</param>
     /// <param name="root">The clause's root Contract.</param>
     /// <returns>The path.</returns>
-    internal BoundConformancePath Path(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root) => this.paths[(type, contract, declaration, root)];
+    internal BoundConformancePath Path(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root)
+        => this.paths[(type, contract, declaration, root)];
 
     /// <summary>Gets a path, registered in this pass or not, or null if never named.</summary>
     /// <param name="type">The conforming Type declaration.</param>
@@ -62,7 +63,8 @@ internal sealed class ImplTable
     /// <param name="declaration">The declaring clause.</param>
     /// <param name="root">The clause's root Contract.</param>
     /// <returns>The path.</returns>
-    internal BoundConformancePath? TryPath(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root) => this.paths.GetValueOrDefault((type, contract, declaration, root));
+    internal BoundConformancePath? TryPath(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root)
+        => this.paths.GetValueOrDefault((type, contract, declaration, root));
 
     /// <summary>Registers a path in this pass: on its first registration it joins Paths and its identity's paths.</summary>
     /// <param name="type">The conforming Type declaration.</param>
@@ -72,7 +74,8 @@ internal sealed class ImplTable
     /// <param name="scope">The scope the path's premises extend.</param>
     /// <param name="premises">A conditional block's premises, or null.</param>
     /// <returns>The path.</returns>
-    internal BoundConformancePath Register(BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
+    internal BoundConformancePath Register(
+        BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
         var result = this.Named(type, contract, use, root);
         if (!result.Active)
