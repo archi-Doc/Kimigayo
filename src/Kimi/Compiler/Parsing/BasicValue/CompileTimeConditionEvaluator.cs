@@ -40,18 +40,10 @@ internal static class CompileTimeConditionEvaluator
             // (DIAGNOSTICS.md §4.3).
             foreach (var part in node.ChildNodes)
             {
-                if (part is not AttributeKoto)
-                {
-                    _ = TryEvaluateValue(compilation, part, out _);
-                }
+                _ = TryEvaluateValue(compilation, part, out _);
             }
 
             return false;
-        }
-
-        if (Parser.HasWrittenAttribute(node.AttributeChain))
-        {
-            return Invalid(node);
         }
 
         switch (node)

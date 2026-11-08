@@ -682,8 +682,9 @@ public class ParserRegressionTest
         var builder = default(IndentedStringBuilder);
         try
         {
+            // The misplaced attribute attaches to nothing (owner decision O-85 (a), DIAGNOSTICS.md §4.4), so the rest round-trips.
             restored.RootKoto.UnparseAll(ref builder);
-            Assert.Contains(Source, builder.ToString(), StringComparison.Ordinal);
+            Assert.Contains(Source.Replace("#Attribute(2) ", string.Empty, StringComparison.Ordinal), builder.ToString(), StringComparison.Ordinal);
         }
         finally
         {
@@ -703,11 +704,7 @@ public class ParserRegressionTest
 
             var text = Assert.IsType<StringLiteralKoto>(invocation.Arguments[1]);
             Assert.Equal("One", text.Literal);
-            var attribute = Assert.IsType<AttributeKoto>(text.AttributeChain);
-            Assert.Equal("Attribute", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
-            Assert.Single(attribute.Arguments);
-            Assert.IsType<NumberLiteralKoto>(attribute.Arguments[0]);
-            Assert.Same(text, attribute.Parent);
+            Assert.Null(text.AttributeChain);
         }
     }
 

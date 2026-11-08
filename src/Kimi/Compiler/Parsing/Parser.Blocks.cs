@@ -359,7 +359,7 @@ public static partial class Parser
             // Only a named function among executable items takes attributes (SPEC 6.7, F.10); a misplaced one attaches to nothing,
             // so the item it precedes is checked on its own.
             reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
-            reader.PopAttribute();
+            reader.AttributeKoto = null;
         }
 
         if (reader.CurrentTokenKind == TokenKind.Underscore && reader.PeekKind(1) == TokenKind.Equals)
