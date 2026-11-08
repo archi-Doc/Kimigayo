@@ -15958,6 +15958,29 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:**
     - a Copy-callee clause beside Visit (a second rule);
     - a bind-time failed row for the bare rule's Move (shared across Binding, H1 and MIR, for records on programs already rejected).
+- **R7-M13 Pointers derived through a Closure body's locals** (2026-11-08; R7-Y2c, PLAN G251 (1)'s `rv-c-rawcopyptr`; Major; design review 2 ACCEPT, C-147; the owner's O-76 (b) (i), (c) (i) and O-83 (a), verbatim 「O-83 (a)で決定」) SPEC 5.2.1 condition 3, 5.3, 7.7.3.
+  - **Definitions.** ClosureEffects records each pointer-typed body local's definitions: an initializer, or an assigned value. A compound displacement keeps the local's provenance (SPEC 5.3). Each definition is recorded by the root that `Below`'s steps descend to.
+  - **What each local holds.** `Holds` is Own, Environment, or both. It is computed as one least fixpoint, bounded by the locals.
+  - **Roots.**
+    - A call's result is its own root (O-76 (b) (i)).
+    - A pointer read through a raw Place that the environment reaches is the environment's (O-76 (c) (i)).
+  - **A use of a local whose every definition derives from an environment pointer** starts UsesExclusively past its own Place.
+    - An assignment of the local is no environment use.
+    - Before a raw step, only an operation contract's write through the local counts.
+  - **The named limit (O-83 (a)).** A write-capability access through a local whose definitions hold both an environment pointer and a pointer of its own is a located `Unsupported_Kd` at the write's use of the local. It goes through `Undecided`, the one channel for uses whose need no fact decides, shared with the foreign-import call.
+    - An Own initializer counts as a definition. So a local initialized from its own allocation and then always overwritten from an environment pointer is Undecided too.
+    - Removal condition: Binding publishes its reaching-definitions fact for Closure pointer locals (PLAN G628, a Front unit).
+  - **One walk step.** `Below` is the walk's one step in both directions, the climb and `RootOf`'s descent. It replaces `DerivesPointer` and UsesExclusively's three-clause step test.
+  - **Cost.** One pass per local. A reverse-ordered assignment chain is quadratic in the worst case, and the scaling row bounds it. A worklist over the definitions by root, about +15 lines and linear, is the named alternative.
+  - **Moves.**
+    - Invalid programs now rejected with `InvalidAssignment_Kd` at the call: `rv-c-rawcopyptr` and its forms (copy, displacement, conversion, `*pp`, the contract write, `q += 1`, Take).
+    - Mixed-definition writes become `Unsupported_Kd`. This includes 9 valid forms that the base accepts, which is O-83 (a)'s named limit. The generated gate has 96 instances over 8 shapes.
+  - **Rejected:**
+    - a flow-insensitive Exclusive (a conservative Language error on a valid program, which also leaks into every Receiver reader);
+    - a bind-time reaching-definitions fact for one classifier. It is deferred to G628 instead.
+  - **Open:**
+    - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
+    - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
