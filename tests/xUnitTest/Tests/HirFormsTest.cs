@@ -940,16 +940,20 @@ public sealed partial class HirFormsTest
     }
 
     // The acceptance the selection moves (SPEC 15.6.2): a shared view stays live across a read, which an exclusive indexUniq rejected (the
-    // first four); and its invalid twins stay rejected: a read below a live exclusive Reborrow, and a write through a shared Subject's item.
+    // first four), and a `let` Closure whose body only reads the element makes a Shared call (SPEC 7.7.3, 15.1.5, 15.1.6), where indexUniq
+    // needed the environment exclusively (the fifth; base gave InternalInvariant_Kd); and its invalid twins stay rejected: a read below a
+    // live exclusive Reborrow, a write through a shared Subject's item, and an Exclusive call on a `let` Closure (the last).
     [Theory]
     [InlineData(true, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let view = v@ref\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    return total + view[0].1\n")]
     [InlineData(true, "func f<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T) -> i32\n    s is ref or uniq\n    let view = v@ref\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    return total + view[0].1\n")]
     [InlineData(true, "func f(v: uniq/One<uniq/Vec2 during a>) -> i32\n    let view = v@ref\n    var total = Vec2.init()\n    total += v[0]\n    return total.x + view[0].x\n")]
     [InlineData(true, "func f(v: uniq/One<Holder<uniq/Vec2 during a>>) -> i32\n    let view = v@ref\n    var total = Vec2.init()\n    total += v[0].items\n    return total.x + view[0].items.x\n")]
+    [InlineData(true, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let g = func [v] () -> i32\n        var total: i32 = 0\n        for x in v[0].0\n            total += x\n        return total\n    return g()\n")]
     [InlineData(false, "func hit(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> () => ()\nfunc f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let e = v@follow@uniq\n    var total: i32 = 0\n    for x in v[0].0\n        total += x\n    hit(e)\n    return total\n")]
     [InlineData(false, "func hit(v: uniq/One<uniq/Vec2 during a>) -> () => ()\nfunc f(v: uniq/One<uniq/Vec2 during a>) -> i32\n    let e = v@follow@uniq\n    var total = Vec2.init()\n    total += v[0]\n    hit(e)\n    return total.x\n")]
     [InlineData(false, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>)\n    for x in v[0].0\n        x@follow = 1\n")]
     [InlineData(false, "func f<s/T>(v: uniq/One<(s/Array<i32> during a, i32)>, marker: s/T)\n    s is ref or uniq\n    for x in v[0].0\n        x@follow = 1\n")]
+    [InlineData(false, "func f(v: uniq/One<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    let g = func [v] () -> i32\n        var total: i32 = 0\n        for x in v[0].0\n            total += x\n        v[0].1 = 2\n        return total\n    return g()\n")]
     public void AnOverwrittenTakeLeavesAReadAccepted(bool accepted, string program)
     {
         var c = MinimalEmissionTest.Analyze(OverwrittenTakes + program + "()\n");

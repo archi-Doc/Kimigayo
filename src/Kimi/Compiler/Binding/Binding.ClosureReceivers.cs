@@ -357,7 +357,7 @@ public sealed partial class Binding
 
         // One child's takes by its consumer, as the Adjust rule gives them and the HIR publisher writes them: the last, the column's, and
         // the earlier call's that a later one replaces by another (EarlierAdjust, the plan row's), each completed by the claim of those
-        // two rows so far (Claimed, R4-M142's `claimed`).
+        // two rows so far (Claimed, DECISIONS R7-M8).
         private struct ConsumedTakes(Binding binding, Koto child) : IHirUses
         {
             private HirAdjust last;

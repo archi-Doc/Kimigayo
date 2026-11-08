@@ -10,7 +10,8 @@
 //   4.7.1; DECISIONS BU-8), and a child's claim (ChildAdjust's `claimed`): whether a use of the child that stands needed exclusive
 //   capability of it, by the Adjust that use gave (its operation's target, which the row states, HirAdjust.Exclusive, an exclusive
 //   borrow, or a Reborrow or pair-case acquisition of a child whose Type needs it): the rule's Claimed, over the two rows every record
-//   keeps. A take a later take replaces with no plan row is no use: the operation that replaced it states what the use needs (SPEC 13.7.2,
+//   keeps (DECISIONS R7-M8; a `$tryWrite` storage's plan row has no defined value and no path below it, PLAN G103 (ii)). A take a later
+//   take replaces with no plan row is no use: the operation that replaced it states what the use needs (SPEC 13.7.2,
 //   15.1.6: a for's Subject before its entry call, a compound assignment's right side before its operator). The claim decides whether
 //   Binding's recorded in-place shared read of a selection yields (SPEC 4.7.1, 7.3). This use's operation's target decides as such a
 //   claim does: a part below a stored reference passed as a `uniq/Self` receiver is a Reborrow
@@ -295,7 +296,8 @@ public sealed partial class Binding
         (adjust.Acquire == HirAcquire.ByCase && child.BoundType is { } type && this.BareReborrows(type, child));
 
     // Whether a child's takes so far claim it: its last row (the column's) or the row beside it (PlanRow.Adjust: an earlier call's, or its
-    // container's discard), the two rows every record of the uses keeps (DECISIONS BU-8).
+    // container's discard), the two rows every record of the uses keeps (DECISIONS R7-M8); a `$tryWrite` storage's plan row has no defined
+    // value and no path below it (PLAN G103 (ii)).
     private bool Claimed(Koto child, HirAdjust last, HirAdjust earlier) => this.Claims(child, last) || this.Claims(child, earlier);
 
     // The publisher's record of the uses of one module's nodes (a call shared across modules names nodes of another), a struct, so that
