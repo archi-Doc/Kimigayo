@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // parameters open, reaches the same declaration again, with any Type arguments, through by-value positions: Fields, the base, Case
 // payloads, Tuple and fixed-array elements, and the parts a declaration stores inline of its arguments, a projection's included as SPEC
 // 8.6.1 completes it. A borrow, raw pointer, object handle or sequence is an indirection. An associated binding whose storage reaches
-// itself the same way is invalid at the binding, used or not (SPEC 6.2, the owner's O-70 (a); DECISIONS BU-127).
+// itself the same way is invalid at the binding, used or not (SPEC 6.2, the owner's O-70 (a); DECISIONS BU-128).
 // - Inputs: the prepared storage (AdtDef.Types, after PrepareStorage), the conformance paths and their completed bindings,
 //   ProjectionSpecification's outcome (a binding with its Subject, conformance path and identity), the premise proof of a node's scope,
 //   and Binding.IsRecursive (SPEC 8.3.3).

@@ -346,7 +346,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData(BindingsNameEachOthersConformance, "3*InvalidConstraint_Kd 1*UnprovenConstraint_Kd")]
     public void ABindingNamingItsConformanceKeepsItsRecordsUntilS3(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-127): a binding-only inline cycle is invalid at the binding, a Language record, never a
+    // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-128): a binding-only inline cycle is invalid at the binding, a Language record, never a
     // Resource one, used or not. These rows assert their records: each fails if S3 (VerifyConformance's formation of a binding, R7-C2 (b))
     // goes without that judge, which leaves them clean or Resource records.
     [Theory]

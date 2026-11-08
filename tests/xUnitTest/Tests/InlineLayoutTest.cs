@@ -14,6 +14,7 @@ public class InlineLayoutTest
 {
     private const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n";
     private const string BindingCycle = "contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct S\n    Self is C\n";
+    private const string BorrowSlot = "contract C\n    associate Item\nstruct Box<T> {s}\n    T is C\n";
 
     [Theory]
     [InlineData("struct Node\n    let value: i32\n    let next: Node\n", "Node")]
@@ -82,7 +83,7 @@ public class InlineLayoutTest
         }
     }
 
-    // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-127): an associated binding whose storage reaches itself is invalid at the binding,
+    // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-128): an associated binding whose storage reaches itself is invalid at the binding,
     // used or not: its specification (the clause whose conjunction yields its identity), else the conformance clause where it is inferred;
     // a Language record, never a Resource one. A declaration on the cycle reports too; a binding that only reaches the cycle does not. A
     // borrow, raw pointer, object handle or sequence is an indirection. VerifyConformance still forms each binding (S3, R7-C2 (b)), so the
@@ -107,6 +108,9 @@ public class InlineLayoutTest
     [InlineData(BindingCycle + "    associate C.Item is Array<Box<S>>\n", "Library", "")]
     [InlineData(BindingCycle + "    associate C.Item is Option<rc/Box<S>>\n", "Library", "")]
     [InlineData(BindingCycle + "    associate C.Item is raw/Box<S>\n", "Library", "")]
+    [InlineData(BindingCycle + "    associate C.Item is ref/Box<S> during static\n", "Library", "")]
+    [InlineData(BorrowSlot + "    let next: ref/T.(C).Item during s\nstruct S\n    Self is C\n    associate C.Item is Box<S> during static\n", "Library", "")]
+    [InlineData(BorrowSlot + "    let next: T.(C).Item\n    let r: ref/i32 during s\nstruct S\n    Self is C\n    associate C.Item is Box<S> during static\n", "Library", "C.Item is Box<S> during static")]
     public void ABindingOnItsOwnInlineCycleIsReportedAtTheBinding(string source, string outputKind, string sites)
     {
         var check = DiagnosticCorpus.Check(source, outputKind);

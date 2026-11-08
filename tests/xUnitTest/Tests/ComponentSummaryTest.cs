@@ -190,7 +190,7 @@ public class ComponentSummaryTest
 
     // SPEC 8.3.3 (DECISIONS BU-22): a conformance binding that uses itself at a deeper instance grows a proof without end, at the use
     // (the growth guard) and in a summary's walk (Error resting on the stored Type); the binding, which stores itself inline, has its own
-    // record (SPEC 6.2, DECISIONS BU-127), and Binding ends. A deeper instance of a declaration reached through another conformance is no
+    // record (SPEC 6.2, DECISIONS BU-128), and Binding ends. A deeper instance of a declaration reached through another conformance is no
     // such growth and stays exact.
     [Theory]
     [InlineData("n1", "func inspect(a: PH<W<i32>>)\n    need(a@move)", "PH<W<(X, X)>>", "Unknown")]

@@ -156,7 +156,7 @@ public class ErasureOwnedDiagnosticTest
         Assert.Empty(Records("struct S\n    let x: i32\n\n" + uses + "\n" + Main + "    return\n"));
     }
 
-    // SPEC 6.2, 8.3.3, 23.1.2 (DECISIONS BU-76, BU-127): a stored Type whose conformance binding stores itself at a deeper instance fails with
+    // SPEC 6.2, 8.3.3, 23.1.2 (DECISIONS BU-76, BU-128): a stored Type whose conformance binding stores itself at a deeper instance fails with
     // the binding's InvalidInlineLayout_Kd, and a capture of its holder rests on it with no record; a terminating binding converts.
     [Theory]
     [InlineData("PH<W<(X, X)>>", "InvalidInlineLayout_Kd Has2.Out is PH<W<(X, X)>> | InvalidConstraint_Kd PH<W<(X, X)>> | InvalidConstraint_Kd let p: PH<W<i32>> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
