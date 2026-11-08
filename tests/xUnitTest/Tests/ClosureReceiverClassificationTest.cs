@@ -420,7 +420,9 @@ public class ClosureReceiverClassificationTest
     [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        match c\n            true => value\n            false => missing\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        let o: Option<s/T> = .Some(value)\n        _ = o\n", "TransferRequired_Kd o; InvalidAssignment_Kd h", "TransferRequired_Kd o")]
-    [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"", "UnprovenConstraint_Kd \"\\(value)\"")]
+    // DECISIONS: G572 U2a (Q13, SPEC 23.1.2): t's Type string holds with the write's obligation pending, so `_ = t`, a bare acquisition, is
+    // judged on its own.
+    [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"; TransferRequired_Kd t", "UnprovenConstraint_Kd \"\\(value)\"; TransferRequired_Kd t")]
     [InlineData("        let b = Box(value)\n        _ = b\n", "UnresolvedBinding_Kd Box", "UnresolvedBinding_Kd Box")]
     [InlineData("        let k = value@copy\n        _ = k\n", "NonCopyOperand_Kd value@copy", "NonCopyOperand_Kd value@copy")]
     [InlineData("        let a: [2 of i32] = [1, 2]\n        let k = a[value]\n        _ = k\n", "TypeMismatch_Kd value", "TypeMismatch_Kd value")]

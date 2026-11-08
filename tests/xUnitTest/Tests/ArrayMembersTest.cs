@@ -186,7 +186,7 @@ public class ArrayMembersTest
     // The public constructor's premise and labels decide applicability and every report names it, never its implementation.
     [Theory]
     [InlineData("let a = Array<string>.init(repeating: \"x\", count: 2)", "NoApplicableOverload_Kd")]
-    [InlineData("func make<U>(x: U) -> Array<U>\n    return Array<U>.init(repeating: x, count: 2)\nlet a = make(1)", "UnprovenConstraint_Kd")]
+    [InlineData("func make<U>(x: U) -> Array<U>\n    return Array<U>.init(repeating: x, count: 2)\nlet a = make(1)", "TransferRequired_Kd")] // DECISIONS: G572 U2a (Q13): the bare Place's Copy proof, Unknown at step 5, is judged by its acquisition
     [InlineData("let a = Array<i32>.init(1, 2)", "NoApplicableOverload_Kd")]
     public void RepeatingConstructionReportsThePublicDeclaration(string source, string code)
     {

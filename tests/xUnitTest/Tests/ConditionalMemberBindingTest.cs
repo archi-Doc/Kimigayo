@@ -249,13 +249,14 @@ public class ConditionalMemberBindingTest
         }
     }
 
-    // SPEC 8.3.3: an Unknown premise defers the selection only when it can affect it. The plain f(self), still strictly best with the
-    // Unknown candidate ranked as applicable, is selected; a better or tying Unknown candidate keeps the call unproven.
+    // SPEC 10.1 (DECISIONS: G572 U2a): an unproven candidate is compared as though applicable. The plain f(self), strictly best, is
+    // selected; a strictly best Unknown candidate is selected and its obligation fails (UnprovenConstraint_Kd); with no strictly best
+    // candidate the call is ambiguous (the u8 row; Q13: it was UnprovenConstraint_Kd by the deferral).
     [Theory]
     [InlineData("public func f(self: ref/Self) -> i32 => 1\n    public func f(self: ref/Self, x: i32 = 0) -> i32\n        T is Equatable\n        return 2", true)]
     [InlineData("public func f(self: ref/Self) -> i32\n        T is Equatable\n        return 2\n    public func f(self: ref/Self, x: i32 = 0) -> i32 => 1", false)]
-    [InlineData("public func f(self: ref/Self, x: i32 = 0) -> i32 => 1\n    public func f(self: ref/Self, x: u8 = 0) -> i32\n        T is Equatable\n        return 2", false)]
-    public void AnUnknownPremiseDefersOnlyASelectionItCanAffect(string members, bool selected)
+    [InlineData("public func f(self: ref/Self, x: i32 = 0) -> i32 => 1\n    public func f(self: ref/Self, x: u8 = 0) -> i32\n        T is Equatable\n        return 2", false, DiagnosticCode.AmbiguousBinding_Kd)]
+    public void AnUnknownPremiseDefersOnlyASelectionItCanAffect(string members, bool selected, DiagnosticCode code = DiagnosticCode.UnprovenConstraint_Kd)
     {
         var c = Parse("struct S<T>\n    public var v: i32 = 0\n    " + members + "\nfunc g<U>(s: ref/S<U>) -> i32 => s.f()");
         Assert.True(c.Bind().IsComplete == selected, Describe(c));
@@ -267,7 +268,7 @@ public class ConditionalMemberBindingTest
         else
         {
             Assert.Null(call.CallOf());
-            Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+            Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == code);
         }
     }
 
