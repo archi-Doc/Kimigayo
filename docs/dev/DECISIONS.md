@@ -369,6 +369,22 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     fixture; identical inputs give the identical outcome, and the daily re-execution bounds machine drift the keys do not see.
   - Rejected: selecting native families by changed files (a Binding change reaches generated code without touching Backend files);
     reusing by `.ll` hash alone (the oracle files, toolchain and runner change outcomes too); no re-execution period (drift).
+- **Q17 Open issues: one row per cause and a closing lane in each area** (2026-11-08, owner; [WORKFLOW](WORKFLOW.md) "Open issues";
+  the Coordinator's proposal).
+  - The owner (verbatim): 「PLANのOpen issuesは、1，2，3の対策で進めてください。」, to the Coordinator's three measures.
+  - Reason: from the R7 restart (dev bfc2e1836, 07:41) to 21:00, PLAN's open issues grew from 217 rows to 300 (87 added, 4 removed),
+    and PLAN reached 415 lines, past its 400-line limit. About 60% of the new rows were pre-existing defects that reviews, generated
+    gates and adversarial twins found. Units record such findings (AGENTS), but every session's lanes ran plan units only, so a row
+    closed only when a plan unit happened to cover it.
+  - Rule 1 (the Coordinator, once now and at each landing): rows of one cause merge into one row; a row a planned unit removes names that
+    unit; finished, optional and candidate rows go.
+  - Rule 2 (intake): a new finding joins the row of its cause, and only a new cause opens a row. Optional items and candidates are not
+    open issues: they stay in the unit's commit or design notes. The Coordinator applies this at each document request.
+  - Rule 3 (closing): each area session keeps one implementer lane on its area's open issues, in this order: wrong code or unsound
+    acceptance, `InternalInvariant_Kd`, a valid program rejected, then the rest. Per milestone an area closes at least as many rows as
+    it opens.
+  - Rejected: recording without a closing lane (the growth above); a cap that drops findings (a pre-existing defect dropped from PLAN is
+    lost); one cleanup stage at R7's exit (the rows outgrow PLAN's limit first).
 
 ## Code rules (2026-10-12)
 
