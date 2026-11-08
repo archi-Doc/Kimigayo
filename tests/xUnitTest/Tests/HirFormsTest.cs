@@ -960,6 +960,23 @@ public sealed partial class HirFormsTest
         Assert.True(accepted == c.Accepts, MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 8.14, 13.5.6, 4.7.1, 15.6.2 (DECISIONS R7-Y2; BU-8's open item: the selection is per node): a case adaptation of a user index's
+    // element that borrows it exclusively in an admitted case needs exclusive capability (Binding.UseOf), so it selects indexUniq, where
+    // base selected index and MIR found an exclusive borrow of index's shared result (InternalInvariant_Kd); its invalid twin, a shared
+    // view of the owner live across, is that case's activation conflict.
+    [Theory]
+    [InlineData("    var a = One<Vec2>.init(Vec2.init())\n    let c = a[0]@s/Vec2\n    return 0\n", null)]
+    [InlineData("    var a = One<Vec2>.init(Vec2.init())\n    let view = a@ref\n    let c = a[0]@s/Vec2\n    return view[0].x\n", nameof(DiagnosticCode.CallActivationConflict_Kd))]
+    public void ACaseAdaptationOfAUserIndexsElementSelectsByItsExclusiveCase(string body, string? code)
+    {
+        var source = OverwrittenTakes + "func h<s/T>(marker: s/T) -> i32\n    s is ref or uniq\n" + body + "()\n";
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var selection = Reachable(c.Kotonoha).Single(static x => x is IndexKoto { Parent: ConversionKoto } && ExpansionPlan.Of(x)?.Second is not null);
+        Assert.Equal("indexUniq", ExpansionPlan.Of(selection)!.Value.Second!.Target.Name);
+    }
+
     // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that
     // turns a discarded Place into a value (`let x = 2` replaced, so the statement `x` names the function `x`) leaves no earlier pass's
     // Type in its row, which MirBuilder.Held would hold the value at.
