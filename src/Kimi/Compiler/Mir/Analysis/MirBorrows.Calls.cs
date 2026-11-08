@@ -97,7 +97,7 @@ internal sealed partial class MirBorrows
 
         foreach (var written in this.planned is null ? default : this.planned.Writes)
         {
-            this.Cover(callee, written.Output, this.planned!.Result.Kinds.Length);
+            this.Cover(call, written.Output, this.planned!.Result.Kinds.Length);
             this.Keep(state, call, written, checks);
         }
 
