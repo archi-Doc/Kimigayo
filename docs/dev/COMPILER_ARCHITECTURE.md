@@ -265,7 +265,7 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
   - R8's: `Binding.LibraryWitnessGroup.EffectsLimit`, `Witnesses`' `false` for a generic group function, which A4 reads as its Limit, with `Binding.LeafTarget` its second reader until R7-P5 (R7-P5,
     when `Witnesses` answers a witness's instance with its Types; DECISIONS R8-M4); `DictionaryEntryLayout.Of`, the second statement of
     the Dictionary slot beside `DictionaryStorage.slotStride<K, V>()`, read by `FunctionCodegen.Storage`'s `DictionaryKernel` and
-    `placeEntry`'s Place helper (R8-K1b; DECISIONS R8-M8);
+    `placeEntry`'s Place helper (R8-K1b-2; DECISIONS R8-M8);
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
     `Binding.ClearIdentityPremise` (R7: G170's identity query at C3, R7 plan C2/C3; DECISIONS BU-72; the owner, 2026-11-06,
     「一括承認します。」).
