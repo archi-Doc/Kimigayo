@@ -18,6 +18,15 @@ public class OriginRecoveryTest(ITestOutputHelper output)
     private const string PairG = "func g(x: ref/i32 during a, y: ref/i32 during b) -> i32\n    origin ";
     private const string ZeroBody = "\n    return 0";
 
+    // An owner whose clause fails before its own later failure (AnOwnersOwnFailureTakesTheSlotOfItsClausesRestingFailure).
+    private const string Receiver = "struct S\n    public func f(self: i32, x: ref/i32 during a, y: ref/i32 during b) -> i32\n        origin a ";
+    private const string D = "func d(self: ref/Self, x: ref/i32 during a, y: ref/i32 during b) -> i32\n";
+    private const string Conformance = "contract D\n    " + D + "contract E: D\n    func e(self: ref/Self) -> i32\nstruct S\n    Self is E\n    public " + D;
+    private const string Unsafe = "        return 0\n    public unsafe func e(self: ref/Self) -> i32\n        return 0";
+    private const string Outer = "struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move";
+    private const string Alias = "alias H => Outer<i32>.Helpers\n    origin source ";
+    private const string Twin = "alias H2 => Outer<bool>.Helpers\n    origin source = static\n";
+
     [Theory]
     [InlineData("View<i32>{}", "OriginBindingSetName_Kd")]
     [InlineData("View<i32>{static}", "OriginBindingSetName_Kd")]
@@ -115,6 +124,33 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         var errors = c.Diagnostics.Finalize(rejected: true).Diagnostics;
         output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span + " " + x.Message)));
         Assert.Equal([.. codes.Split(' ', StringSplitOptions.RemoveEmptyEntries), "TypeMismatch_Kd"], errors.Select(static x => x.Code));
+    }
+
+    // SPEC 23.1.2, 15.3.3 (R7-E1d, DIAGNOSTICS rule 4): a failed clause fails no other part of its owner, so the resting InvalidOrigin it
+    // writes into the owner yields, with the clause's edge, to the owner's own later failure, which each twin without the clause reports: a
+    // receiver (direct, so the recovery clause's edge is gone), the first of two (receiver, then shapes), an alias target's incomplete
+    // contract (SPEC 9.7.2: the same value, InvalidOrigin) once or twice, under a clause that fails by its operand. A conformance Use is no
+    // owner of the clause and keeps its record.
+    [Theory]
+    [InlineData(Receiver + "= b\n        return 0", "InvalidTypeFormation_Kd OriginRelationOperator_Kd")]
+    [InlineData(Receiver + "== b\n        return 0", "InvalidTypeFormation_Kd")]
+    [InlineData(
+        Receiver + "= b\n        return 0\n    public func f(self: uniq/Self, x: i32) -> i32\n        return 0",
+        "InvalidTypeFormation_Kd OriginRelationOperator_Kd ParameterShapeMismatch_Kd")]
+    [InlineData(Alias + "= static\n" + Outer, "InvalidOriginBinding_Kd MissingOriginBinding_Kd OriginRelationOperator_Kd")]
+    [InlineData(
+        Alias + "= static\n" + Twin + Outer,
+        "InvalidOriginBinding_Kd InvalidOriginBinding_Kd MissingOriginBinding_Kd MissingOriginBinding_Kd OriginRelationOperator_Kd OriginRelationOperator_Kd")]
+    [InlineData(Alias + "== static\n" + Outer, "InvalidOriginBinding_Kd MissingOriginBinding_Kd")]
+    [InlineData(Conformance + "        origin a = b\n" + Unsafe, "IncompatibleContractImplementation_Kd OriginRelationOperator_Kd")]
+    [InlineData(Conformance + Unsafe, "IncompatibleContractImplementation_Kd")]
+    public void AnOwnersOwnFailureTakesTheSlotOfItsClausesRestingFailure(string source, string codes)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        c.Binding.ReportDiagnostics();
+        var errors = c.Diagnostics.Finalize(rejected: true).Diagnostics;
+        output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span + " " + x.Message)));
+        Assert.Equal(codes.Split(' '), errors.Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
     [Fact]

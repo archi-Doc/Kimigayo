@@ -15,10 +15,11 @@ namespace Kimi.Compiler;
 // - Inputs: the declaration CompleteOriginDeclaration completes and its clauses' bound operands; the part that failed before completion
 //   (path c); a pending slot's atom; an Unbound atom; the use and the record of an Origin fit that failed.
 // - Outputs: the clause's InvalidOrigin failure or its dependence on the unavailable operand, and, unless the owner already failed, the
-//   owner's InvalidOrigin failure resting on that clause; a contract made unavailable (its bound clauses kept in `RejectedRelations`,
-//   `Relations` cleared, State 3) with each pending use a dependent of the failed clause, or a local's completion going on with the
-//   named slots left Unbound; the part an Unbound atom rests on; the failed clause a failed fit rests on, or none when it is independent;
-//   the clause an owner failed only by (FailedOriginClause), on which a check reading that owner's unavailable contract rests.
+//   owner's InvalidOrigin failure resting on that clause, which the owner's own later failure replaces (Fail); a contract made
+//   unavailable (its bound clauses kept in `RejectedRelations`, `Relations` cleared, State 3) with each pending use a dependent of the
+//   failed clause, or a local's completion going on with the named slots left Unbound; the part an Unbound atom rests on; the failed
+//   clause a failed fit rests on, or none when it is independent; the clause an owner failed only by (FailedOriginClause), on which a
+//   check reading that owner's unavailable contract rests.
 // - Invariants: `Failure` and `PendingFailure` hold the first failed clause or part, and these and `FailedClauses` are reset each pass;
 //   RestPendingOn changes no State, so a later bind in State 1 keeps the same pending atom; a failed contract supplies no equality,
 //   outlives edge or elision evidence and is no premise except the dependence queries' (RejectedRelations, BU-62, BU-69), which only
@@ -67,7 +68,9 @@ public sealed partial class Binding
         declaration.Failure ??= clause;
     }
 
-    // The failed clause an owner's InvalidOrigin failure rests on (FailOriginClause), or null: such an owner failed only by that clause.
+    // The failed clause an owner's InvalidOrigin failure rests on (FailOriginClause), or null: such an owner failed only by that clause. It
+    // tells whose failure the slot holds, not whether the contract failed: after the owner's own later failure took the slot with the edge
+    // (Fail, SlotTaken), it is null while the contract stays unavailable, as when that failure comes first.
     private Koto? FailedOriginClause(Koto owner)
         => owner.BindingFailure == BindingFailure.InvalidOrigin && this.originDeclarations.TryGetValue(owner, out var declaration) &&
             declaration.Failure is { } clause && this.partPrerequisites.TryGetValue(owner, out var cause) && ReferenceEquals(cause, clause) ? clause : null;

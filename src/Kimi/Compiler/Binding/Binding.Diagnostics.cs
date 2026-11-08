@@ -487,7 +487,7 @@ public sealed partial class Binding
     // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        if (node.BindingFailure == BindingFailure.None)
+        if (!this.SlotTaken(node))
         {
             (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
         }

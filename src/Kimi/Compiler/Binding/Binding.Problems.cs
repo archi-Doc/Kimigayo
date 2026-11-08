@@ -151,7 +151,7 @@ public sealed partial class Binding
     // first failure, as a Fail does.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
-        if (node.BindingFailure != BindingFailure.None)
+        if (this.SlotTaken(node))
         {
             return this.Fail(node, BindingFailure.TypeMismatch);
         }
@@ -174,7 +174,7 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "Records only at a node without a failure, for snapshot 0, until E2's located batch.")]
     private void FailUnsupportedAt(Koto node, SourceSpan part, bool unresolved = false)
     {
-        if (node.BindingFailure != BindingFailure.None)
+        if (this.SlotTaken(node))
         {
             this.Fail(node, BindingFailure.Unsupported, unresolved);
             return;
