@@ -572,16 +572,18 @@ public sealed partial class Binding
         {
             var conformance = this.activeConformancePaths[i];
             this.failedCause = null;
+            var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.VerifyConformance(conformance);
+            if (final && conformance.InheritedFrom is null && !(conformance.Unsupported && mode == BindingMode.Final))
+            {
+                this.RequireConstraintInFrame(conformance.Use, proof, mode, frame);
+                continue;
+            }
+
+            this.DropConsultation(frame);
             if (final && conformance.InheritedFrom is null)
             {
-                if (conformance.Unsupported && mode == BindingMode.Final)
-                {
-                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.7, 23.1.1: the limit's one location
-                    continue;
-                }
-
-                this.RequireConstraint(conformance.Use, proof, mode);
+                this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.7, 23.1.1: the limit's one location
             }
         }
 
@@ -614,7 +616,8 @@ public sealed partial class Binding
             {
                 var use = this.projectionUses[i];
                 this.failedCause = null;
-                this.RequireConstraint(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode);
+                var frame = this.BeginConsultation(use.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
+                this.RequireConstraintInFrame(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode, frame);
             }
         }
     }

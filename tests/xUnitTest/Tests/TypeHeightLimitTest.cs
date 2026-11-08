@@ -18,6 +18,10 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
 
     private const string IndependentMismatch = "func q() -> ()\n    let z: i32 = true\n    return\n";
 
+    // A requirement over the associated Type, and W, whose associated Type is D13<i32>.Item (= H); W's members follow.
+    private const string Pair = "contract HasPair\n    associate Item\n    func take(self: ref/Self, x: (Self.Item, i32))\n" +
+        "struct W\n    Self is HasPair\n    associate HasPair.Item is D13<i32>.Item\n";
+
     public static TheoryData<int> Chains => [15, 16, 17];
 
     // SPEC 23.1.2, 8.3.3 (Limits): every check that reads an associated Type the limit refused rests on its conformance's record, so a
@@ -99,6 +103,30 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         Assert.Equal([nameof(DiagnosticCode.TypeHeightLimit_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], over.Select(static x => x.Code));
         AssertHeightRecord(over[0], source, "(x@move, 1)");
         Assert.True(over[1].Span.Start > source.IndexOf("func q", StringComparison.Ordinal));
+    }
+
+    // SPEC 8.3.3 (Limits): a conformance whose member's written Type passes the limit rests on that member's record, whether the proof
+    // would end Unproven or Invalid; the requirement takes (Self.Item, i32), height 8,193 over D13 (review 2's `req-13`, `req-13-self`).
+    [Theory]
+    [InlineData("(D13<i32>.Item, i32)")]
+    [InlineData("(Self.Item, i32)")]
+    public void AConformanceWhoseMemberPassesTheLimitGivesOnlyHeightRecords(string parameter)
+    {
+        var records = this.Compile(Doubling(13) + Pair + $"    public func take(self: ref/Self, x: {parameter}) => ()\n" + Main).Records;
+        Assert.NotEmpty(records);
+        Assert.All(records, AssertHeightCode);
+    }
+
+    // SPEC 23.1.2: an independent Language failure beside a member past the limit is reported beside the height record.
+    [Fact]
+    public void AnIndependentFailureBesideAMemberPastTheLimitIsKept()
+    {
+        var source = Doubling(13) + Pair + "    public func take(self: ref/Self, x: (D13<i32>.Item, i32)) => ()\n    public func bad(self) -> i32 => true\n" + Main;
+        var records = this.Compile(source).Records;
+        var mismatch = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.TypeHeightLimit_Kd));
+        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), mismatch.Code);
+        Assert.True(mismatch.Span.Start > source.IndexOf("func bad", StringComparison.Ordinal));
+        Assert.Contains(records, static x => x.Code == nameof(DiagnosticCode.TypeHeightLimit_Kd));
     }
 
     // D0's Item is (T, i32); each D_i's is D_{i-1}<D_{i-1}<T>.Item>.Item, so D_n<i32>.Item has height 2^n.

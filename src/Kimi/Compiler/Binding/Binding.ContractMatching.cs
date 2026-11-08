@@ -103,13 +103,13 @@ public sealed partial class Binding
             this.InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
-            if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
+            if (conformance.Invalid && (this.partPrerequisites.ContainsKey(conformance.Use) || this.prerequisites.ContainsKey(conformance.Use)))
             {
-                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification.
+                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification or its proof's evidence.
             }
-            else if (this.ResourceFailed(conformance.RootPath.Use))
+            else if (conformance.RootPath.Use.BindingFailure != BindingFailure.None)
             {
-                this.failedCause ??= conformance.RootPath; // SPEC 8.3.3 (Limits): a use rests on a conformance a reached limit refused.
+                this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
             }
 
             return ConstraintProof.Error;

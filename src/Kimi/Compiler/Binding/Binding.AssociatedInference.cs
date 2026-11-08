@@ -690,6 +690,11 @@ public sealed partial class Binding
 
             this.BindHeader(candidate);
             var match = this.MatchesRequirement(requirement, implementation, self, path.Scope, selection);
+            if (match is null && IncompleteSignature(implementation) is { } incomplete)
+            {
+                this.Consulted(incomplete); // SPEC 23.1.2: a pending match read the implementation's incomplete signature (IsDerived).
+            }
+
             pending |= match is null;
             if (match == true)
             {

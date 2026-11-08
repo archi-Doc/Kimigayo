@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 // - Responsibility: the one check, OverHeight (BoundType.Height, BU-71, against TypeHeightLimit), read where a Type's height grows by
 //   more than a written layer: a substitution query's result (SubstituteType), an expression node's Type (BindNode) and a written
 //   Type's (BindType); the refusal's one record, TypeHeightLimit_Kd, at Binding's current site; and the one reader rule: a reader of
-//   an associated Type the limit refused is refused at its own site (ResolveAssociated). A Constraint whose proof rests on the record
-//   derives from it, as from every Resource record (Binding.Diagnostics.Report.cs, DerivesConstraint).
+//   an associated Type the limit refused is refused at its own site (ResolveAssociated). Any check whose evidence read a refused node
+//   derives its outcome from the record, as from every Resource record (Binding.Diagnostics.Prerequisites.cs, RestsOnRecoveryOrLimit).
 // - Inputs: a formed Type and the consultation node: BindNode's node, BindType's syntax, or the conformance that
 //   PrepareAssociatedBindings resolves (its consultation frame).
 // - Outputs: the site's failure (BindingFailure.TypeHeightLimit, its first failure only); a refused node publishes no Type, so a node
@@ -64,7 +64,7 @@ public sealed partial class Binding
 
     // SPEC 23.1.2, 8.3.3 (Limits): a conformance whose associated Type the limit refused gives its readers no binding (ResolveAssociated,
     // the one reader). A reader at a site would form that Type too, so it is refused there and publishes no Type; a reader without one
-    // (a validation pass) rests: its proof's failure derives from the conformance's Resource record (DerivesConstraint).
+    // rests on it.
     private bool RefusedConformance(BoundConformancePath path)
     {
         if (path.Declaration.BindingFailure != BindingFailure.TypeHeightLimit && path.RootPath.Declaration.BindingFailure != BindingFailure.TypeHeightLimit)
