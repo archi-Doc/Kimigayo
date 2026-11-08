@@ -5183,7 +5183,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - The erasure's row. `ErasesToFunction` decides once, in SPEC 7.7.4's order, which part failed (Receiver, Shape, Owned,
     Condition) and publishes it with today's `SignatureFits`, the closure's receiver and an Owned Error's cause, held and not rested
     (`HoldCause`: an erasure records nothing). The row is keyed by the converted and expected Types by identity (`erasureOutcomes`,
-    `ErasureKey`), because a join records from Types; it replaces the node-keyed `erasureSignatures`, which a join's record could not
+    `ErasureKey`; since BU-132, the key's own equality: `ErasureKey` is deleted), because a join records from Types; it replaces the node-keyed `erasureSignatures`, which a join's record could not
     find. One Owned proof (`ProveErasedOwned`, the channel cleared before it) replaces two; a Condition part's record is
     `RecordCondition`'s.
   - Limit: the last erasure of a pair in the pass wins. Within one body nothing changes (Owned's premises are the body's declared
@@ -5344,7 +5344,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     met again beside the same substituted and argument parts, so each pattern part is visited at most once per distinct (substituted
     part, argument part) beside which it is met consecutively: the pattern-identical forms are linear (an Evidence input whose argument
     Type is its instantiated parameter, TypeDagScalingTest's `ref` row), while argument parts that diverge and alternate beside a
-    shared pattern part can still cost 2^n, as before U1e (an open issue).
+    shared pattern part can still cost 2^n, as before U1e (an open issue). Superseded in part by BU-132: `wellFormedParts` and
+    `storedParts` key the (pattern, argument) pair and keep the substituted part as the value; the open issue stays PLAN G387.
   - U4 (C4; cx2, cx5): a Case construction is a call. Its F1 is the call's rule over its payloads (`ContributionAt`, which
     `Contribute` and `ContributePayloads` share); a slot its expected Type fixes, which a bare qualifier takes, is one the expected
     result solved. Where the expected Type leaves its Origins open, the call's solve fixes them (`SolveConstructionOrigins`:
@@ -6490,7 +6491,8 @@ resumed by R4-M86 (2026-10-20).
   per path, 2^N on `L{i} { a: L{i-1}, b: L{i-1} }`, a Tuple instantiation chain (`f_i<T>` calling `f_{i+1}<(T, T)>`) or inferred shared
   Tuples (`let a{i} = (a{i-1}, a{i-1})`). Rule: every walk answers a function of the part and of its query's fixed inputs, so each
   distinct part is decided once per query: by an exact whole-subtree summary where one decides it (no visit), else by a per-query
-  answer table. Component: `TypeMemo<T>` (`Binding.TypeMemo.cs`, its contract at the file's head), the answers of one walk by part
+  answer table. Component: `TypeMemo<T>` (superseded in part by BU-132: `TypeMemo<TKey, T>` keys an entry by the part or the pair (part, beside),
+  compared by the key's own equality) (`Binding.TypeMemo.cs`, its contract at the file's head), the answers of one walk by part
   within one query: `Begin` stamps a query (no other query of the table has its stamp, so an entry of another query, pass or edit is
   stale and never read; a nested entry call only evicts the outer query's entries), the table drops its Types when a new pass begins a
   query and keeps its capacity (a warm pass allocates nothing). Its users: `SubstituteType` (an outermost call is a query, its binder,
@@ -10341,6 +10343,33 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a second pure value walk (two copies of SPEC 9.5's stages); a namespace parameter beside the role; reading the Type
     path's import in the evaluation (BU-122's contract) or merging it at publication; part a's cut 2 (it reads table existence, a
     publication's state, and a late Head must precede the `ImportGroup` steps); `Stop` out of the result before part d.
+- **BU-132 `TypeMemo<TKey, T>`: a per-query table keys an entry by what its walk's visit depends on, the part or the pair (part, beside),
+  compared by the key's own equality** (2026-11-08; R7-C8 U0, Major, behavior-preserving; design review 2 ACCEPT; supersedes in part
+  BU-19 and R4-M164 U1e; amends R4-M161) SPEC 3.8.
+  - Reason that no longer holds. BU-19's component keyed "the answers of one walk by part", assuming every walk answers a function of
+    the part alone under its query's fixed inputs. The well-formedness visit (R4-M164 U1e) depends on the argument part beside the
+    pattern part, so it kept the argument as a last-met value, and one value per part forgets every argument but the last: arguments
+    that alternate beside a shared pattern part revisit it (PLAN G387). Later C8 units' walks (`Match`, `Infer`, `Fits`) have the same
+    shape.
+  - Rule. `TypeMemo<TKey, T>` (`Binding.TypeMemo.cs`, its contract at the file's head): the key is a type parameter compared by its own
+    equality, and no comparer is named (a Type's equality is identity, `BoundType.Equals` being `ReferenceEquals`, BU-19's "identity
+    is equality"; a tuple's composes its items', as dev's other Type-pair tables already use). The 11 single-part tables key
+    `BoundType`; `wellFormedParts` and `storedParts` key `(BoundType Pattern, BoundType? Argument)` and keep, as the value, the
+    substituted part last met with the pair (`FirstMet` keeps its `Result` compare). `Begin`'s stamp and pass rule is unchanged.
+  - Behavior preserved. A single-part table keeps the same equivalence and hash. In `FirstMet` each skip prunes a revisit of a
+    (pattern, argument, substituted) triple whose first visit completed in the query (Types are DAGs), which by BU-55's and U1e's
+    contract adds nothing: `Bound`, `Unbound` and `Require` deduplicate where they add or downstream (`AddPendingRelation` by
+    `JudgePendingRelations`, `callRelationScratch` by `PublishCallRelations`, `BoundInitializerOrigin` by `Meet`'s idempotence), and
+    `Prove`, `Instance` and `Detect` end the query on a false. Diagnostic snapshot 0, semantic HIR/MIR snapshot and `compare-fixtures`
+    identical.
+  - Rejected: one key shape `(Part, Beside)` for every table (measured +16 to +20 KB cold a compilation for single-part tables, with no
+    use); a second class beside `TypeMemo` (a second copy of the stamp rule); a pair table inside `FirstMet` (a side table for one
+    walk); a named pair comparer (a copy of the tuple's own equality). Left as on dev (F's ruling R1): `summaries`, `inlineRecursive`
+    and `instances` keep `ReferenceEqualityComparer`; a later unit may move them under its own measurement.
+  - Deleted: `ErasureKey`.
+  - Cost: RP8 (pinned A/B/A') decides the default-versus-reference comparer cost on these tables; bound cold at most +3,968 B on its
+    rows, warm 0.
+  - Open: PLAN G387 stays open. U0 gives it the pair key, but no scaling row shows a form that reaches the pair table and fails before.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -16045,6 +16074,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **`llvm.memcpy`** is declared bare (`LlvmModuleText.MemoryDeclarations`): `transferBytes` brings the declaration into modules that `ReferenceEmissionTest`'s `Assert.DoesNotContain("noalias", ir)` reads whole, and LLVM restores the intrinsic's own attributes.
   - **Staged removal:** the string column, `Routine`, `Leaf`'s string branch and the routines are unreachable from here and go at R8-S1e. A string `BinaryOp` is still admitted by the validator until then.
   - **A4** reads the string witness's body inside a composite as it does for a bare string.
+  - Amended by R8-M9 (the owner's O-84 (a)): the staged removal moves to R8-S1e-b, after the Front's one-owner unit (C-151); R8-S1e-a closes the pair-layered left operand's route.
 - **R8-M8 The Dictionary remainders are bodies; the slot stride is stated once, by the owner's (e)** (Back, 2026-11-08; R8-K1a; Major; design reviews 1-2 ACCEPT at revision 2; the owner's O-68 (e), verbatim 「O-68はeでお願いいたす」; on R8-M2 and R8-M6; supersedes in part R5-M124) SPEC 5.2.1, 8.15.3; IMPL 21.1.1, 21.1.3.
   - **Owner.** `borrowStorage`, `borrowStorageUniq` and `ownStorage` over a Dictionary are Kimigayo bodies in `Storage.kimi` over `DictionaryStorage.Handle` (IMPL 21.1.3): the shared views read `buffer`, `head` and `length` through the path they are given (R8-A1d's rule) and take `Loan<...>.init()` (R8-M6); the owning remainder holds the consumed Dictionary's Handle whole (R8-A1d's (a′), SPEC 5.2.1's third limit).
   - **The views' move.** No remainder stores the stride, so a view formed with no entry read lays out nothing of K or V: views over a K or V whose layout fails become accepted (SPEC 8.15.3; the class and its members are named in the commit). An invalid program loses only its formation record (R8-M2 as extended by R8-A1d's B2), and a resource-rejected one's record moves from the formation to the first read.
@@ -16057,6 +16087,12 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Supersedes** R5-M124's `DictionaryBorrow` and `DictionaryOwn` writer and kernel rows.
   - **Counts:** `CompilerFunctionKind` 62 → 59, `KimiDeclarationId` 196 → 193, catalog 192 → 189, `StorageKernelKind` 4 → 2, `LegacyWriter` 11 → 9.
   - **Rejected:** a `Slot<K, V>` or `(K, V)` stride (B1), an alignment intrinsic (expressible once the Front's rule holds), C layout (SPEC 6.7.1).
+- **R8-M9 A comparison operand's terminal is Binding's one statement, published for MIR; a pair-layered left string operand calls its witness** (Back, 2026-11-08; R8-S1e-a; Major; the owner's O-84 (a), verbatim 「a」; on R8-M7).
+  - **One statement.** `Binding.OperandTerminal` (was `ArithmeticTerminal`, internal) is the Type a built-in operator's operand or a selection's receiver denotes below its ref, uniq and qualifying pair layers, in the operand's scope (`ComparisonThroughPairs` with `FollowablePair`, then `ComparisonReferent`). Its four former inline compositions read it (`Binding.Elements` twice, `Binding.Indexers`, `CompleteComparison`). `ComparisonThroughPairs` reads `ConstraintScope` only at a pair layer (`scope ??=`; no mode, flag or parameter).
+  - **Published.** `TyCtxt.OperandTerminal(Koto, BoundType)` publishes it for MIR; `MirBuilder.Witnessed` reads it for an operator's operand (the right one's after a Never left) and a Literal Pattern's position (an identity there).
+  - **Moves: IR only.** A comparison whose left operand has a qualifying pair layer (`value == "x"`, `value: s/string` under `s is ref or uniq`) calls `StringWitness.equals`/`compare` instead of the routines; a Never left with a pair-layered right string operand (n1) collects the witness instance in its dead block; at exactly 8 nested qualifying pair layers over `ref/()` (t8/f8) the Unit operand is inspected through a shared borrow. No acceptance or record moves.
+  - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard.
+  - **Rejected:** premising in the builder after the terminal (C-139 review 2's B2: a premise adding a layer escapes); a MIR-side composition of the terminal (two owners; the Front's C-138 N5).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
