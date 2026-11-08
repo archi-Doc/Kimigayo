@@ -6,7 +6,7 @@
 // each inside an inline default copy with the copy's call as its Inlined fact, and the arena limit through MirDataflow.StorageLimit; to
 // A2 (MirDrops) the code, subject (in the location's scope) and MirReport.Add's index of each problem it records (R4-M102, R4-M132), the
 // paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
-// before each Drop the runtime edges reach and each state event there.
+// before each Drop, with whether the runtime edges reach it, and each state event the runtime edges reach.
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree
 // but its Never parts and what a temp it takes whole left uninitialized on the path (MirMoveData's NeverParts and Carries, SPEC 14.10.3),
@@ -178,16 +178,17 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // A use of a Place under the view. A whole use of the return local delivers it, which only the runtime edges can (SPEC 14.10.3). A
         // PairLayer a case-dependent access takes is the Place itself in the owner case and a Deref in a reference case (SPEC 13.5.5),
         // so the outermost such reference ends the path; through a Deref or an Index only the prefix's path is used, and a Move there has
-        // no Move Path (SPEC 15.1.3, 15.1.5). A2 judges a Drop the runtime edges reach from the state before it, by its path (-1: none).
+        // no Move Path (SPEC 15.1.3, 15.1.5). A2 judges a Drop from the state before it, by its path (-1: none), and whether the runtime
+        // edges reach it.
         public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var used = (access & MirAccess.CaseDependent) != 0 ? this.Layer(place) : place;
             var how = MirMoveData.NoPath;
             var path = place.IsStatic ? -1 : moves.Find(used, out how);
             how = used == place ? how : MirMoveData.NoPath;
-            if ((access & MirAccess.DropUse) != 0 && this.Checks && this.runtime)
+            if ((access & MirAccess.DropUse) != 0 && this.Checks)
             {
-                drops.Record(state, this.at.Block, how == MirMoveData.Direct ? path : -1);
+                drops.Record(state, this.at.Block, how == MirMoveData.Direct ? path : -1, this.runtime);
             }
 
             if (place.IsStatic || (place == new MirPlace(0) && (access & MirAccess.Defines) == 0 && !this.runtime))

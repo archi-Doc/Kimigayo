@@ -369,7 +369,9 @@ fn returnEnum @239
   _4: bool temp @252 s1
   _5: Option<string> temp @255 s2
   _6: Option<string> temp (Result) @239
-  _7: Option<string> temp @265 s1
+  _7: Option<string> temp @255 s2
+  _8: Option<string> temp @265 s1
+  _9: Option<string> temp @265 s1
   s1: lexical in s0 @245
   s2: lexical in s1 @253
   s3: lexical in s1 @262
@@ -409,28 +411,30 @@ fn returnEnum @239
       _6 = move _5 @254 s2
       goto bb7 @254 s2
   bb10:
-      drop _5 -> bb11 @255 s2
+      _7 = move _5 @254 s2
+      drop _5 -> bb11 [elide] @255 s2
   bb11:
       StorageDead(_5) @255 s2
       unreachable check bb1 @253 s1
   bb12:
       StorageDead(_3) @251 s1
       StorageDead(_2) @246 s1
-      StorageLive(_7) @265 s1
-    * _7 = Adt case 1(): Option<string> @265 s1
+      StorageLive(_8) @265 s1
+    * _8 = Adt case 1(): Option<string> @265 s1
       goto bb15 check bb16 @264 s1
   bb13:
-      drop _7 -> bb14 [elide] @265 s1
+      drop _8 -> bb14 [elide] @265 s1
   bb14:
-      StorageDead(_7) @265 s1
+      StorageDead(_8) @265 s1
       goto bb5 @239
   bb15:
-      _6 = move _7 @264 s1
+      _6 = move _8 @264 s1
       goto bb13 @264 s1
   bb16:
-      drop _7 -> bb17 @265 s1
+      _9 = move _8 @264 s1
+      drop _8 -> bb17 [elide] @265 s1
   bb17:
-      StorageDead(_7) @265 s1
+      StorageDead(_8) @265 s1
       unreachable @245
 fn loopAbandon @270
   _0: () return @270

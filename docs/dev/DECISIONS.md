@@ -906,6 +906,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   drops, but the SPEC 15.1.3 rule undecided or false errors from joined bits); replaying or re-solving per view; storing Types in
   the record; rows on MirBody; flags per Drop; a separate event walk; removing the builder's copy-time rule; a new diagnostic
   code. Not temporary.
+  - Superseded in part by R8-M10 (OI-1a): a Drop only check edges reach now has one Elide row where nothing of its Place is initialized, and check-only code is judged by that row alone.
 - **R4-M6b** (2026-10-12; U5b, NEW-F9; refines R4-M6a's input) A destructor's `self` is no owner (SPEC 16.3.1). The
   builder registers its end cleanup as the layer's field cleanup (SPEC 16.3.2) through `Cleanup.Fields` (`FieldCleanup`): after the
   body's Scope Exit, on the normal end and in every return's drop tree, a Drop of each own Field whose Type may need drop, last to
@@ -5715,6 +5716,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Task per hop (a 1.5 MB pool stack and an allocation per hop).
   - O-24: the owner (R4's dialog, 2026-11-06), verbatim 「O-24 は、bでお願いいたす」: the transfer is a named exception of 'Catch
     boundaries'.
+  - S superseded by BU-135 (128 MB, the owner's O-82 (b), R7-C8 U-D2).
 - **R4-M179 A binding's Error Copy proof leaves its match buildable (PLAN G471, G485)** (2026-11-06; R4, design D12: outside
   R4-M88's owner reservation, since Binding resolved the match; class Major) SPEC 14.8.4, 15.1.6, 23.1.2. Supersedes BU-110's "and
   its plan Invalid" and `AcquireBinding`'s Coverage write.
@@ -10425,6 +10427,43 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
     have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
   - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
+- **BU-134 Binding bounds a Type's height at H = 8,192 where it is formed: `TypeHeightLimit_Kd`**
+  (2026-11-08; R7-C8 U-D2; Major, design `F\C8\design-ud.md` "U-D2", implementation review 1 REVISE B1-B2 and its fix round; the
+  owner's O-71 (a), O-80 (b) 「b 落とします」, O-82 「O-82 b」, verbatim) IMPL A.4, 21.3.2; SPEC 8.3.3 (Limits), 23.1.1, 23.1.2.
+  - Rule (`Binding.TypeHeight.cs`): one predicate, `OverHeight` (`BoundType.Height`, BU-71, against 8,192), read where a Type's height
+    grows by more than a written layer: a substitution query's result (`SubstituteType`), an expression node's Type (`BindNode`) and a
+    written Type's (`BindType`). A Type over H is one Resource record `TypeHeightLimit_Kd` (`limit:Number`) at the consultation node:
+    `BindNode`'s node, `BindType`'s syntax, or the conformance whose associated Type `PrepareAssociatedBindings` resolves (a
+    consultation frame on it). A refusal outside every frame is a broken contract: `InternalInvariant_Kd` at the project, never silent.
+  - Dependents (SPEC 23.1.2, 8.3.3 Limits; the owner's O-86 (a)): a refused node publishes no Type and its readers rest on it; the
+    one reader of a conformance's associated Type (`ResolveAssociated`) refuses at its own site when the limit refused that
+    conformance. The rule at the proof's evidence has one place, `RestsOnRecoveryOrLimit` (read by `IsDerived` only): a check
+    whose evidence read, directly or through failures resting on it, a recovery node or a node a Resource record refused derives
+    every outcome (Unproven, Invalid or any other) from that record and adds none; a refusal at its own site keeps its own record
+    (a use past a refused associated Type is its own formation). The evidence: a validation pass proves at a use inside the use's
+    consultation frame (`ValidateConformances`, `ValidateDeclarationProjectionInputs`, the projection uses), and
+    `RequireConstraintInFrame` makes the proof's reads of other nodes the prerequisites of its outcome only when the outcome is the
+    use's record; a record the use's own check owns (the conformance's verdict, or an earlier failure) drops the frame, so it never
+    derives from it (G473's `conformance-recovered-*` rows keep their independent record). `RequireConstraint` consults the
+    proof's named cause; `VerifyConformance` names the failed root it read, never a record's category. A node keeps its first
+    failure.
+  - Margin: Binding's walks recurse at most H + L (BU-112's L). Dev's deepest measured walk frame (the substitution walk: 2,752 B a level
+    in Release, 3,632 B in Debug) times 3.5 x (H + L) is 117 MB, inside S = 128 MB. Not covered: the diagnostics adapter's Type text on a
+    host's own thread (open issue below).
+  - Rejected: a check before a walk from `part.Height + Subst.Height` (over-approximates); a typed outcome through `SubstituteType`'s
+    callers; an exception to the site (Binding's paired state is not exception-safe); a sentinel Type; a stack probe (acceptance would
+    depend on the build configuration, IMPL A.5); smaller frames by a query struct (U-D1: +3-5% Bind, located 2026-11-08, dropped by
+    O-82 (b)); a height-only site field (review 1 B2: one consultation mechanism instead).
+  - Programs newly recorded (valid, Resource records only): a Type higher than 8,192: `D_n<T>.Item` (height 2^n) with a layer at n = 13
+    and from n = 14 on; the chains `dbl-15`, `dbl-16`, `dbl-17` with a use and without one (`dblnouse-15`, `-16`); the invalid twins
+    `dblbad-14` to `-16` keep their independent record; review 2's `req-13` and `req-13-self` (a conformance member past H: only
+    height records) and their twin with an independent mismatch (both reported); `let` chains of more than 8,192 statements. No
+    test, library or milestone program (whole suite on the prototype and the Session).
+  - IMPL A.4 states the limit only (the owner's O-89 (a), verbatim 「O89 aで決定します」); the measure is `BoundType.Height` (BU-71),
+    the depth of the compiler's internal term for the Type, `BoundType`. Rejected: an enumeration of the counted parts in IMPL (three
+    independent reviews each found a new gap against the code: every enumeration is a second copy of the measure).
+- **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
+  R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -11710,6 +11749,7 @@ structure is recorded here by the unit that first implements it.
       array's also its length and stride, a destructor's its instance). It needs a new variable-length key (MonoKey's fields are
       fixed) and an Open row's level (`FunctionCodegen.Drops`) reading the dropped value's Type instead of its glue item's
       representative, which the move-path steps follow; a speculative mechanism (AGENTS "Short").
+  - Superseded in part by R8-M10 (OI-1a): the clause "A2's verdicts do not narrow the checked set"; a check-only Drop with an Elide row asks no drop glue.
 - **R5-M62 `VTableDef` and `TyCtxt.Applies`, a struct family's dispatch shape** (2026-10-19; plan F4; under R5-M18 form 1 and
   R5-M61) A permanent declaration table (`Binding/VTableDef.cs`, R2b-D3's deferred view) kept on the struct's `AdtDef` (`VTable`),
   and a view beside `TyCtxt.Witness` (`TyCtxt.Dispatch.cs`). `PrepareVirtualOverrides` fills the table at its end, once slot
@@ -16223,6 +16263,24 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves: IR only.** A comparison whose left operand has a qualifying pair layer (`value == "x"`, `value: s/string` under `s is ref or uniq`) calls `StringWitness.equals`/`compare` instead of the routines; a Never left with a pair-layered right string operand (n1) collects the witness instance in its dead block; at exactly 8 nested qualifying pair layers over `ref/()` (t8/f8) the Unit operand is inspected through a shared borrow. No acceptance or record moves.
   - **Kept until R8-S1e-b:** a comparison under an identity premise (`T is string`) stays a `BinaryOp` served by the operator table's string column, as on dev: the compared Type has no single owner yet (the Middle's C-139 B1 and B2, one cause; the owner's O-84 (a)); `StringIdentityPremises` is the native guard. R8-OT ends this for the compared Type: a comparison under an identity premise calls the witness too (`StringIdentityPremises`' idp, idr, idr1, first); the string column itself goes at R8-S1e-b.
   - **Rejected:** premising after the walk (S1e's 2/3 fix, C-139 B1; a premise adding a layer escapes it, C-139 B2); a MIR-side composition of the terminal (two owners; the Front's C-138 N5); (R8-OT) a builder-local one-layer `ReferenceTo` (C-152 B1, B2); projecting through a premise-only layer in `MirBody.ProjectedType` (every analysis classifies a `Deref` by the Place's own Type); Binding publishing the premised layer path (MIR Types keep the parameter, so agreement under premises is MIR's representation fact).
+- **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
+  YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
+  checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
+  - **Rule.** A check-only Drop has one Elide row where nothing of its Place is initialized on any assumed path, else none, never
+    another verdict (A4 relies on it: such a row elaborates nothing, no flag, no codegen, no destructor). `MirDropTable.Elides` is the
+    one statement of "this Drop destroys nothing in a view", which A5 (`Dropping`) and the instance collector read; the collector
+    requests no DropGlue for such a Drop, and keeps every glue of a body whose verdicts are inexact (`Incomplete`).
+  - **A transfer's secured operand is delivered on its assumed path** (SPEC 14.10.3 "before any cleanup", 16.2.2): `MirBuilder.Transfer`
+    moves it on the check edge into a temp of its own that no cleanup destroys, never into the target's Destination (which would
+    initialize it on the continuation: false `ReassignedLet_Kd`). The temp is made only where `MirTypes.MayNeedDrop` holds,
+    `Created`'s condition, with this as its second call site.
+  - **Why the old clauses no longer hold.** R5-M60's kept parity with the old CollectionDrop path, which is gone; R4-M6a's kept A2 to
+    elaboration, and an Elide row elaborates nothing.
+  - **Moves.** Acceptance: a collection handle over an element whose layout fails, passed, moved or returned by value with nothing
+    destroyed (members and twins in the commit). Records (Q13): false records at the Drops of moved-out or never-initialized values.
+  - **Rejected:** the collector deriving "nothing initialized" itself (a second owner of A2's fact); a destruction laying out an element
+    only where its destruction runs (accepts `I_dDrop`, `I_aDrop`, against the planning session's ruling); a move into the Destination
+    on the check edge.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

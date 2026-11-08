@@ -108,7 +108,9 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
                     let next = Kimi.Intrinsics.makeObj(Expanding<Marker<T>>.init())
             let root = Expanding<i32>.init()
             """;
-        MinimalEmissionTest.AssertGenerationResourceLimit(Source, "Expanding<Marker<T>>.init()");
+        // The creation's temp is moved into the object, so its Drop destroys nothing and asks no glue: the one record is at the object's
+        // descriptor glue, the next request (PLAN G641).
+        MinimalEmissionTest.AssertGenerationResourceLimit(Source, "Kimi.Intrinsics.makeObj(Expanding<Marker<T>>.init())");
     }
 
     [Trait("Purpose", "Allocation")]

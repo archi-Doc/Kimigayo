@@ -9,12 +9,19 @@ namespace Kimi.Compiler.Backend;
 // R5-M121, R5-M124), the glue of what a call destroys in place, a DropGlue item's targets and a LegacyRow item's.
 internal sealed partial class InstanceCollector
 {
+    // SPEC 8.15.3, 14.10.3, 16.2.1 (DECISIONS R4-M6a): whether a Drop of a body destroys nothing in a view: A2 judged its group Elide (on
+    // the runtime paths, or on the assumed paths of a Drop only the checks reach), so its glue is no instance the body requires; a Drop
+    // only the checks reach that may destroy something has no group and keeps its glue (8.15.3: reachable or not), and so does every Drop
+    // of a body whose verdicts are inexact (MirDropTable.Incomplete).
+    private static bool Elided(MirProgram program, MirBody body, int block, byte view)
+        => program.Drops.Incomplete(body.Ordinal) is null && program.Drops.Elides(body.Ordinal, block, view);
+
     // K 4.5 rows 9 and 10: the DropGlue item of a Type an item's instance destroys (GlueOf). -1 for a Type TyCtxt cannot make there.
     private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed ? this.GlueOf(item, subject, closed) : -1;
 
     // The DropGlue item of a closed Type, keyed by what its function reads (GlueKey), for a Type whose destruction runs or releases something
-    // (MirTypes.MayNeedDrop), a call's in-place destruction's too (SPEC 15.7.1, 16.3.2; DECISIONS R5-M116: replace's published row); A2's
-    // verdicts do not narrow the checked set (codegen reads them). -1 for a Type with nothing to destroy or a refused edge.
+    // (MirTypes.MayNeedDrop), a call's in-place destruction's too (SPEC 15.7.1, 16.3.2; DECISIONS R5-M116: replace's published row); a Drop
+    // A2 elides requests none (Elided). -1 for a Type with nothing to destroy or a refused edge.
     private int GlueOf(int item, SourceRef subject, BoundType closed)
         => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, this.GlueKey(closed), closed, null) : -1;
 
