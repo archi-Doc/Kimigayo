@@ -156,8 +156,8 @@ public sealed partial class Binding
 
                 var own = DeclarationAccess(current);
                 if (own == ModifierKind.ProtectedAndInternal
-                    ? this.UnionIncluded(ModifierKind.Internal, current, access, level) || this.UnionIncluded(ModifierKind.Protected, current, access, level)
-                    : own != ModifierKind.Public && this.UnionIncluded(own, current, access, level))
+                    ? this.UnionIncluded(ModifierKind.Internal, current.Scope, access, level) || this.UnionIncluded(ModifierKind.Protected, current.Scope, access, level)
+                    : own != ModifierKind.Public && this.UnionIncluded(own, current.Scope, access, level))
                 {
                     return true;
                 }
@@ -167,13 +167,14 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 9.4.2: every atom of the union `own` gives at `current` is included in the union `access` gives at `level`. A level at the
-    // root is Kotonoha(K); Derived(S) is empty unless S is an open struct.
-    private bool UnionIncluded(ModifierKind own, BindingSymbol current, ModifierKind access, BindingSymbol level)
+    // SPEC 9.4.1, 9.4.2: every atom of the union `own` gives at scope `at` (a declaration's scope, or a use's read as private: a point of
+    // Body(its Container)) is included in the union `access` gives at `level`. A level at the root is Kotonoha(K); Derived(S) is empty
+    // unless S is an open struct.
+    private bool UnionIncluded(ModifierKind own, BindingScope at, ModifierKind access, BindingSymbol level)
     {
-        var owner = current.Scope.Owner;
+        var owner = at.Owner;
         var target = level.Scope.Owner;
-        var sameKotonoha = ReferenceEquals(current.Declaration.CodeContext.Kotonoha, level.Declaration.CodeContext.Kotonoha);
+        var sameKotonoha = ReferenceEquals(owner.CodeContext.Kotonoha, level.Declaration.CodeContext.Kotonoha);
         var kotonoha = target is DeclarationContainerKoto { IsRoot: true } || access is ModifierKind.Internal or ModifierKind.ProtectedOrInternal;
         var body = target is not DeclarationContainerKoto { IsRoot: true } && access is not ModifierKind.Internal;
         var derived = body && access is ModifierKind.Protected or ModifierKind.ProtectedOrInternal && target is StructKoto { Modifier: var open } && (open & ModifierKind.Open) != 0;
@@ -188,7 +189,7 @@ public sealed partial class Binding
         if (owner is not DeclarationContainerKoto { IsRoot: true } && own is not ModifierKind.Internal && !(kotonoha && sameKotonoha))
         {
             var included = false;
-            for (var scope = current.Scope; scope is not null && !included; scope = scope.Parent)
+            for (var scope = at; scope is not null && !included; scope = scope.Parent)
             {
                 included = (body && ReferenceEquals(scope.Owner, target)) || (derived && scope.Owner is StructKoto structure && this.DerivesFrom(structure.BoundSymbol, target.BoundSymbol!));
             }
@@ -538,49 +539,39 @@ public sealed partial class Binding
                 continue;
             }
 
-            var sameModule = ReferenceEquals(current.Declaration.CodeContext.Kotonoha, use.Owner.CodeContext.Kotonoha);
-            var lexical = false;
-            for (var scope = use; scope is not null && !lexical; scope = scope.Parent)
+            // SPEC 9.4.1: the use is a point of Body(its Container). SPEC 9.4.3: a protected instance member reached only through
+            // Derived(C) also needs a receiver deriving from the use's derived struct.
+            if (access == ModifierKind.ProtectedAndInternal
+                ? !this.UnionIncluded(ModifierKind.Private, use, ModifierKind.Internal, current) || !this.UnionIncluded(ModifierKind.Private, use, ModifierKind.Protected, current)
+                : !this.UnionIncluded(ModifierKind.Private, use, access, current))
             {
-                lexical = ReferenceEquals(scope, current.Scope);
+                return false;
             }
 
-            if (lexical || (current.Scope.Owner is DeclarationContainerKoto { IsRoot: true } && sameModule))
-            {
-                continue;
-            }
-
-            var protectedAccess = false;
-            if (access is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal && current.Scope.Owner is StructKoto owner)
-            {
-                for (var scope = use; scope is not null; scope = scope.Parent)
-                {
-                    if (scope.Owner is StructKoto derived && this.DerivesFrom(derived.BoundSymbol, owner.BoundSymbol!))
-                    {
-                        var instance = ReferenceEquals(current, symbol) && (symbol.ReceiverIndex >= 0 || symbol.Kind == BindingSymbolKind.Property);
-                        protectedAccess |= declarationOnly || !instance || (receiverType is not null && this.DerivesFrom(EffectiveCore(receiverType).Symbol, derived.BoundSymbol!));
-                        if (protectedAccess)
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            var allowed = access switch
-            {
-                ModifierKind.Internal => sameModule,
-                ModifierKind.Protected => protectedAccess,
-                ModifierKind.ProtectedAndInternal => sameModule && protectedAccess,
-                ModifierKind.ProtectedOrInternal => sameModule || protectedAccess,
-                _ => false,
-            };
-            if (!allowed)
+            if (access is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal && !declarationOnly &&
+                ReferenceEquals(current, symbol) && (symbol.ReceiverIndex >= 0 || symbol.Kind == BindingSymbolKind.Property) &&
+                !this.UnionIncluded(ModifierKind.Private, use, access == ModifierKind.ProtectedOrInternal ? ModifierKind.Internal : ModifierKind.Private, current) &&
+                !this.ReceiverDerives(use, current, receiverType))
             {
                 return false;
             }
         }
 
         return true;
+    }
+
+    // SPEC 9.4.3: a struct enclosing the use derives from the member's owner, and the receiver's Effective Core derives from it.
+    private bool ReceiverDerives(BindingScope use, BindingSymbol member, BoundType? receiverType)
+    {
+        for (var scope = use; scope is not null && receiverType is not null; scope = scope.Parent)
+        {
+            if (scope.Owner is StructKoto derived && this.DerivesFrom(derived.BoundSymbol, member.Scope.Owner.BoundSymbol!) &&
+                this.DerivesFrom(EffectiveCore(receiverType).Symbol, derived.BoundSymbol!))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

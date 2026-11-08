@@ -129,6 +129,18 @@ public class ApiAccessBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == code && source.AsSpan(0, x.Node.Span.Start).Count('\n') + 1 == line);
     }
 
+    // SPEC 9.4.1, 9.4.3 (R7-N3b): a use is a point of Body(its Container), and Derived(C) of a struct that is not open is empty, so C's
+    // protected member is inaccessible from D whatever D's clause names (b6; D: C is also rejected by SPEC 6.2.2). It was read as
+    // reached through D's failed clause before.
+    [Fact]
+    public void ASealedStructHasNoDerivedDomain()
+    {
+        const string source = "struct C\n    public func c(self) -> i32 => 1\n    protected func pc(self) -> i32 => 1\nstruct D: C\n    public init() => ()\n    func g(self) -> i32 => self.pc() + self.c()";
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == "InaccessibleBinding_Kd" && source.AsSpan(0, x.Node.Span.Start).Count('\n') == 5);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmApiAccessChecksAllocateNothing()
