@@ -143,15 +143,14 @@ internal sealed partial class MirBuilder
 
         var start = this.arguments.Count;
         this.arguments.Add(operand);
-        var magnitude = (Int128)literal.Magnitude;
         this.arguments.Add(
             MirOperand.Const(
             this.body.Const(
             literal.Kind switch
         {
             PatternLiteralKind.String => new(MirConstKind.String, BoundType.String, Value: literal.Text),
-            PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
-            _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
+            PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, literal.Bits),
+            _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Bits),
         })));
         if (this.Witnessed(MirBinaryOp.Eq, start) is { } comparison)
         {
