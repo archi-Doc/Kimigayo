@@ -9352,6 +9352,10 @@ resumed by R4-M86 (2026-10-20).
     question and keyed by the interned Type. It is a TyCtxt view (R5-M61), cleared in `ResetViews`. The Checker takes its body's facts
     once (`Copies`). `MirEffects`, `MirTypes.Destruction` and code generation read the same facts. `TyCtxt.Copy(definition, type)` is
     gone. No second cache. A warm validation still allocates nothing.
+  - Amended by BU-138 (G642, 2026-11-09). The Copy facts (`TyCtxt.CopyFacts.Copy`) answer "Copy in every Semantics case"
+    (`Binding.CopiesInEveryCase`). The answer is still Binding's, and MIR only reads it. Its five readers: the validator's Copy rule,
+    `MirEffects`, `MirTypes.Destruction`, `MirBorrows.Destructions` and `ModuleCodegen.Objects`. A Type that is Copy in every case
+    destroys nothing in any instance.
 - **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after the
   joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03 (PLAN G396))
   - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
@@ -10460,6 +10464,29 @@ resumed by R4-M86 (2026-10-20).
     is read by demand (COMPILER_ARCHITECTURE's temporary structures).
   - Rejected: a check at conformance clauses alone (it misses function and struct Constraints); the opt-out as a declaration query
     now (it needs R7-D2 d3's demand binding of the opt-out clause).
+- **BU-138 An acquisition's Copy evidence is per Semantics case: `Binding.CopiesInEveryCase`** (2026-11-09; PLAN G642, C-154,
+  D-137, the Middle's consent C-155 with L1-L3; design reviews 1 REVISE, 2 ACCEPT, implementation review ACCEPT; amends BU-88)
+  - Rule (SPEC 8.14, 8.15.2, 3.5, 6.3.4, 7.7.3, 15.1.6): an acquisition that needs Copy evidence has it when the complete Type in
+    every Semantics case of the pair binders in scope is proven Copy by 8.3; no case adds a premise.
+  - Owner: `Binding.PairCases.cs`, beside `CaseType`. The 8.3 proof decides first. Only when it is Unknown and the Type publishes
+    `ContainsPairLayer` is each case's Type proven. Where the cases exceed `PairBinder.CaseBound` (64 inclusive; 65 are not
+    analyzed), the 8.3 proof decides alone; that definition records `OwnershipCaseLimit_Kd` (`CheckCaseBound`). A warm query
+    allocates nothing.
+  - Binding readers (7): `BareAcquire` (a Type that is not itself a pair layer Copies; a pair layer keeps `BareAcquisition`'s per-case
+    plan); `AcquireValueCallee`'s Consuming row (its own `ProveCopy` row was deleted); `@copy`; the identity conversion; the explicit
+    adaptation's and the object view's bare-Place rows; `Patterns.AcquireBinding`; `CompleteTransfer`'s 6.3.4 part.
+  - MIR readers (5), through `TyCtxt.CopyFacts`: the validator's Copy rule (`MirValidator.Rvalues.cs`), A5's effects
+    (`MirEffects.Solve.cs`), drop observation (`MirTypes.Destruction.cs`), drop retention (`MirBorrows.Destructions.cs`) and the
+    object payload copy (`ModuleCodegen.Objects.cs`).
+  - Invariant: in every case, the per-case plan of a Type that is not itself a pair layer is the same, because no case Type of it is
+    a `uniq` reference. So the plan is `HirAcquire.Copy`, and no HIR or MIR form is added.
+  - Every other `ProveCopy` reader has another meaning and keeps the 8.3 proof: a fill's Constraint; a Property certificate; a
+    witness's StorageCopy; Refuted/Proven tests and lints; the inspection temporary's borrow; an Error branch; the public query.
+  - Acceptance moves: valid programs with such a Type are accepted. The R7-Y2b gate's four are among them, and so is an A5 move: a
+    Closure Copy in every case meets `effect confined` (`MirEffects.Solve`, the Middle's fail-first pair e1/e2).
+  - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
+    inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
+    rule); a validator exemption (MIR would then decide a Binding fact).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
