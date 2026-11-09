@@ -447,7 +447,7 @@ values[0..3][0] = 40  // Error: range subscripting forms a shared view.
 ```kimi
 var values: Array<i32> = [1, 2, 3]
 match values.tryGetPairUniq(first: 0, second: ^1)
-    .Some(let pair) => exchange(pair.0, pair.1)
+    .Some(let pair) => Kimi.Intrinsics.swap(pair.0, pair.1)
     .None => ()
 let i: isize = 0
 let a = values[i]@uniq
