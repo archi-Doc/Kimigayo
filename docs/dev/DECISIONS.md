@@ -3081,8 +3081,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     from decomposition; Refuted by contradiction; constructed Constraint subjects; G′'s decision procedure in SPEC.
 - **R4-M116 G160-4's design (B′) and SPEC 15.6.4's raw arguments and 5.2.1's own-step Warning** (superseded in part by BU-66: a raw
   input's own value at an abstract part and at a stated raw layer; superseded in part by R4-M154 (WK): R-B4's own-value rule (a raw
-  input's own value only where a layer can hold it) is rule 2's, for every input and for the borrows formed through it; 4b landed as
-  R4-M120, 4c as R4-M124; owner, 2026-10-23, choices verbatim: OQ-3 「(a) 借用と同じに保持 (推奨)」, OQ-1 「(a) 逆参照を挟まない祖先
+  input's own value only where a layer can hold it) is rule 2's, for every input and for the borrows formed through it; superseded in part by R4-M193
+  (G673): OQ-2's facts Anchor and Use; 4b landed as R4-M120, 4c as R4-M124; owner, 2026-10-23, choices verbatim: OQ-3 「(a) 借用と同じに保持 (推奨)」, OQ-1 「(a) 逆参照を挟まない祖先
   (推奨)」, OQ-2 「(a) OwnStepDeparture_Kd (推奨)」; R4-M95, R4-M105, BU-24 and the owner's two caps stay)
   - SPEC 15.6.4 (OQ-3): a raw pointer argument is retained as a borrowed one, its pointee as the referent; its own value (its Loans and
     the holders it addresses) only by a result or storage that can hold a value of its Type or by a result the call forms within its
@@ -3415,7 +3415,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Open: p7-round's F1, F2 and G1–G13 stay with 2c-D; `15.8.2-closure-dependencies` now classes the same R1 record (b), as Binding's
     record both paths publish (its old-path-only Refuted code is named in the note).
 - **R4-M124 G160-4's 4c: the own-step Warning `OwnStepDeparture_Kd`** (2026-10-25; with the owner's OQ-1 (a) and OQ-2 (a); the new
-  code and requirement are the closed-vocabulary entries OQ-2 approved)
+  code and requirement are the closed-vocabulary entries OQ-2 approved; superseded in part by R4-M193 (G673): the Record's Anchor and
+  witness facts)
   - Rule (`MirBorrows.OwnSteps`, SPEC 5.2.1 condition 3): at each location of the checks replay, after its activations, an access with
     path S departs an own-step entry (R4-M120) with owning path O on its root when S prefixes O step by step (`Meets`) and it is a Move
     (a raw Take included), a write or a destruction of any class (StorageDead, every Drop) with no borrow or raw Deref of O past S, or an
@@ -5993,6 +5994,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: `ScalarTypes.Signed` over the category (a forwarder without semantics); a signedness name table in `ScalarTypes` (a
     second copy of `Categorize`); reading `Underlying.IsUnsignedInteger` (another contract's fact). R5-M148's rejected (b) stands:
     the Scalar predicate stays in `ScalarTypes`; only the duplicate of a fact BoundType already held leaves it.
+- **R4-M193 G673: the own-step Warning carries no Loan fact** (2026-11-09; Middle, record content under Q13; implementation review
+  ACCEPT, N3 and N4 applied; supersedes in part R4-M116 OQ-2's fact list and R4-M124's Record facts; the owner's OQ-2 (a), the code
+  and requirement, stands) SPEC 5.2.1 condition 3, 5.4, 5.7.
+  - `OwnStepDeparture_Kd` carries only `Evaluated` (inside an inline default copy, at the outermost omitting call), in every form (a
+    holder's next use, a store, a holder's declaration, a Return, the drop tier, an inline copy): `MirBorrows.Reports.Departure(at)`
+    records the subject through `MirBorrows.Witnesses.Evaluated(at, count)`, the subject rule `Facts` ends with.
+  - Reason that no longer holds: OQ-2 gave the Warning the Loan problems' Anchor (the pointer's formation) and witness, which the
+    publisher words as a Loan's ('borrow that created the loan', '... the conflicting loan', R6-check H3-2); a pointer formed
+    through an own step creates no Loan (SPEC 5.4, 5.7 for a `during self` layer, 5.2.1 condition 3), so those facts were false
+    evidence (AGENTS Diagnostics). Same rule as `UnretainedRawStore_Kd` (R4-M190).
+  - Cost: the formation and the later use are no longer related locations; both lie in the Warning's body.
+  - Rejected: rewording Anchor, Use and Store for both (weakens the five Loan codes, the default rows and the Origin records; one
+    kind with two meanings); wording by code (a switch arm for one form); fact kinds of their own (`Formed`, `Carrier`: vocabulary
+    entries needing the owner; one owner question for both codes if a later unit needs the formation).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
