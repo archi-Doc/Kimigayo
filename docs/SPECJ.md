@@ -4,7 +4,7 @@
 
 翻訳元：`8ee50bf7e36708f32cf308145c5cb0debca005bd`（2026年10月23日確認）。表記は[SPECJ_TERMINOLOGY](SPECJ_TERMINOLOGY.md)に従う。本書は非規範的な翻訳であり、解釈が異なる場合は英語の定義を優先する。コード、識別子、文字列、文法、JSONは原文の綴りを保つ。
 
-部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。[§8.2.1](#s-8-2-1)の制約節の対象と付録Fの`ConstraintSubject`は、R7-N7（DECISIONS BU-119）に合わせた。
+部分更新：[§5.7](#s-5-7)・[§15.6.4](#s-15-6-4)・[§16.3.3](#s-16-3-3)の抽象部分の到達規則は、原文`f227e9cea`・`b8304ec1d`・`9cde68b72`・`cfa2d4300`・`d843a4a97`・`e6cd0f344`・`044a524fe`・`2a19d814c`（G264 (S) S0、DECISIONS R4-M170）に合わせた。[§8.2.1](#s-8-2-1)の制約節の対象と付録Fの`ConstraintSubject`は、R7-N7（DECISIONS BU-119）に合わせた。[§4.8.5](#s-4-8-5)の例は、原文`bcda98a35`に合わせた。
 
 ## 目次
 
@@ -1398,7 +1398,7 @@ Array&lt;E>と固定長配列は次を提供する。
 ```kimi
 var values: Array<i32> = [1, 2, 3]
 match values.tryGetPairUniq(first: 0, second: ^1)
-    .Some(let pair) => exchange(pair.0, pair.1)
+    .Some(let pair) => Kimi.Intrinsics.swap(pair.0, pair.1)
     .None => ()
 let i: isize = 0
 let a = values[i]@uniq

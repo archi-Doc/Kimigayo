@@ -33,9 +33,8 @@ internal static class TestDefinition
 
     internal static bool IsValidSyntax(FunctionKoto function)
     {
-        if (function.IsGenerated || function.IsAnonymous || function.IsConstructor || function.IsDestructor || function.IsRequirement || function.IsSpecialization ||
-            (function.Modifier & ModifierKind.Unsafe) != 0 || function.Name.Length == 0 || function.Parameters.Count != 0 ||
-            function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.Captures is { Length: > 0 } ||
+        if (function.IsGenerated || function.IsAnonymous || (function.Modifier & ModifierKind.Unsafe) != 0 || function.Name.Length == 0 ||
+            function.Parameters.Count != 0 || function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.Captures is { Length: > 0 } ||
             (function.Body is null && function.ExpressionBody is null) || function.FindAttribute(AttributeKind.LibraryImport) is not null ||
             function.ReturnType is not (null or TupleTypeKoto { ElementNodes.Count: 0 }))
         {

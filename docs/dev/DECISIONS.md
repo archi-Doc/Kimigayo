@@ -385,6 +385,17 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     it opens.
   - Rejected: recording without a closing lane (the growth above); a cap that drops findings (a pre-existing defect dropped from PLAN is
     lost); one cleanup stage at R7's exit (the rows outgrow PLAN's limit first).
+- **Q18 R7's work is spread over the three sessions** (2026-11-09, owner; [WORKFLOW](WORKFLOW.md) "Windows"; plan revision 50; the
+  Coordinator's proposal).
+  - The owner (verbatim): 「Adopt all three」, to the Coordinator's three measures.
+  - Reason: R7's remaining rows (phases C and D) sit on the Front's Binding files, so the Front's two implementer seats and its one
+    acceptance mover per window serialized R7 while R8 and R9 were nearly done (W-120 to W-123 each landed one Front unit).
+  - Rule 1 (lending): an R7 unit the Front designed and design-reviewed may be implemented by a Middle or Back implementer in Binding's
+    files; the Front keeps the files, reviews the implementation and gives its consent on a C row.
+  - Rule 2 (windows): a window may take two acceptance movers of one area when they share no file and each names its expected moves.
+  - Rule 3 (seats): the Front has three implementer seats; the Back drops to one once R8's W family no longer needs two (plan §3.3).
+  - Division (plan revision 50): the Front designs and reviews R7's cores (C2, C3, D2 d3, I2, P3); the Middle takes Y2-Y5, O1-O3 and P5
+    and implements Front-designed units; the Back takes P7 and T1 and lends implementers to Front-designed units after R8's W family.
 
 ## Code rules (2026-10-12)
 
@@ -10521,6 +10532,14 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: plain values everywhere (conversions and `Normalize` would need a second form, and the MIR validator's constant row would
     have two shapes); the builder normalizing (a consumer deciding what Binding publishes).
   - U2, the Middle's validator whitelist for Integer constants, lands with U1 in one window, after U1 or later.
+  - G658: a Type without a width is, for this encoding, an integer or wrapping integer Type whose instance decides it (a
+    proven-`PrimitiveInteger` parameter or projection, `Wrapping<T>` over one; SPEC 8.7.4): it keeps the 128-bit payload, the widest
+    instance's, and each instance's payload is its low N bits (`ScalarTypes.Normalize`'s width-0 row). A generic literal (0 through 127)
+    is the case whose payload is its value at every width. A direct integer literal wrapped to such a Type (SPEC 13.5.4, `value@wrap<U>`)
+    is folded to its exact value modulo 2^128, which the MIR builder states as a Proven Wrap Cast of that i128 constant (the Middle's
+    choice, C-177), so no widthless constant leaves 0..127. `Binding.Hir.Payload`, a second copy of the row, is deleted. The target of
+    `@wrap<U>` and `@bits<U>` substitutes the identity premises like `@Type`'s (BU-72's per-site substitution, PLAN G542's position), so
+    the fold's width is the published Type's.
 - **BU-134 Binding bounds a Type's height at H = 8,192 where it is formed: `TypeHeightLimit_Kd`**
   (2026-11-08; R7-C8 U-D2; Major, design `F\C8\design-ud.md` "U-D2", implementation review 1 REVISE B1-B2 and its fix round; the
   owner's O-71 (a), O-80 (b) 「b 落とします」, O-82 「O-82 b」, verbatim) IMPL A.4, 21.3.2; SPEC 8.3.3 (Limits), 23.1.1, 23.1.2.
@@ -10570,6 +10589,44 @@ resumed by R4-M86 (2026-10-20).
     is read by demand (COMPILER_ARCHITECTURE's temporary structures).
   - Rejected: a check at conformance clauses alone (it misses function and struct Constraints); the opt-out as a declaration query
     now (it needs R7-D2 d3's demand binding of the opt-out clause).
+- **BU-140 A requirement waits for the conformances by what its Types contain (PLAN G621)** (2026-11-08/09; Front, Binding and
+  Parsing; Major, an acceptance mover; design reviews 1 REVISE and 2 ACCEPT, revision 4 after the implementation stop, design review 3
+  REVISE, revision 5 under the owner's O-91 (a), verbatim 「すべて推奨の内容でお願いします」, design review 4 ACCEPT; implementation
+  review ACCEPT) SPEC 8.5, 8.6.1, 15.3.1, F.5.
+  - **The fact.** `Binding.DeferredConstraint` defers a clause when its subject or requirement names an associated projection anywhere:
+    a PathSuffix that names no declared Type (`TypeName(Any)`), read under the requirement's operators (a group, `not`, `and`, `or`)
+    and through every Type position the written Type publishes, never from the top node's shape.
+  - **A conformance declaration binds in pass 0.** `DeclaresConformance(clause)` (`Binding.Contracts.Registration`: `Self is C` in a
+    struct or enum, SPEC 8.6.1) is the one fact `RegisterConformances` registers by, and the deferral exempts it; every other clause
+    waits by content, a premise's Contract argument included (`T is Sink<(Cursor during y).Item>`). `FindMissingConformanceName`, the
+    invalid-conformance rule and `BindCopyDeclarations` read the same fact in place of their copies.
+  - **The positions (option B).** `Koto.TypeComponentCount` and `TypeComponent(i)` are the Type positions searched before binding,
+    each Type kind publishing its own once; they over-approximate what `BindTypeStructure` binds as Types (a GenericsKoto its head and
+    length arguments, a RootName its path, a PathSuffix its qualifier; no Origin argument). The superset test
+    (`RequirementTypeParsingTest.TypeComponentsPublishEveryBoundTypePosition`) holds the bound positions as a table.
+  - **Decided once per Bind run,** before any Constraint binds, and kept for every pass (dev recomputed it each pass, so a clause whose
+    answer flipped could bind in no pass). A lookup through a base clause not yet ready is an early read that `VerifyEarlyReads`
+    evaluates again, until R7-D2 d3.
+  - **A requirement rests on its failed component:** `BindRequirement` records its failure on the node a transparent wrapper wraps
+    (`UnwrapTransparentType`, the one unwrap); a component that already failed keeps its own record.
+  - **The limit (temporary until R7-D2 d3).** An unqualified projection over a declared Type in a conformance declaration
+    (`Self is Sink<(Cursor during w).Item>`, `Self is Sink<Src.Item>`; valid: SPEC 8.6.1, 8.1.2, 8.5.2, F.5, 15.3.1) has no pass:
+    `FindAssociated` takes an unqualified name's candidates from the conformance table, which fills only at registration. A qualified
+    projection resolves in its Contract and is accepted. `conformancesRegistered` and `earlyProjections` note such a read before
+    registration; `VerifyEarlyProjections`, right after registration, repeats it, and one that now resolves gets a located
+    `Unsupported_Kd` (k9, u1). Nothing binds twice; it goes with R7-N2d's and G600's temporaries at R7-D2 d3.
+  - **Removes** R9-F2's TEMPORARY `bareGroup` (`Parser.Types.cs`; R9-M2's sentence).
+  - **Moves.** Newly accepted valid requirements: `T.(Source).Item is Zbox<(Cursor during y).Item>`; the group, tuple, array and
+    Optional forms; a Container Constraint and a `when` condition; Function Type parameters and results;
+    `ref/(Cursor during y).Item during y`; `Outer<(Cursor during y).Item>.Inner`; a premise's Contract argument under a function, a
+    Container or a projection subject, and under `or`, `and` and `not` (review 3's k1, k3, k5, p2, t1, t2, t3, t7). Adversarial twins
+    stay rejected with dev's records; `ref/(Cursor during y).Item` stays rejected with MissingOriginBinding_Kd (SPEC 15.3.7) for a
+    false UnresolvedBinding_Kd. Q13 rule W, all on programs both builds reject: doc-0371's dependent InvalidEffectBound_Kd; t4 and t5;
+    `F is Callable<((Cursor during y).Item) -> ()>` (invalid by SPEC 8.10).
+  - **Rejected:** a switch over the Type kinds in Binding (a second copy of `BindTypeStructure`'s case list); binding in pass 0 and
+    deferring on "not ready" (try-then-fallback); deferring every PathSuffix without the name lookup; exempting by the requirement
+    atom's kind (revision 4's `ClassifyRequirement`); binding a conformance declaration again after registration; failing the
+    projection `Unsupported` as soon as it finds nothing before registration.
 - **BU-138 An acquisition's Copy evidence is per Semantics case: `Binding.CopiesInEveryCase`** (2026-11-09; PLAN G642, C-154,
   D-137, the Middle's consent C-155 with L1-L3; design reviews 1 REVISE, 2 ACCEPT, implementation review ACCEPT; amends BU-88)
   - Rule (SPEC 8.14, 8.15.2, 3.5, 6.3.4, 7.7.3, 15.1.6): an acquisition that needs Copy evidence has it when the complete Type in
@@ -10630,6 +10687,35 @@ resumed by R4-M86 (2026-10-20).
     precondition); the projection's declaring reference interned in the use's terms (the projection identity is G170's and G302's);
     library headers bound first (an order dependence R7-D2 g deletes); a pending outcome that abandons the source header. The Contract
     base form (`w1`) stays PLAN G578, for R7-D2 d's Contract-shape kind.
+
+- **BU-142 `Witnesses` answers each target at its instance; A4 enters what that instance selects; `EffectsLimit` goes (PLAN G589)**
+  (Front, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE and 2 ACCEPT at revision 1, implementation review
+  ACCEPT; the Middle's consent C-172; supersedes R8-M4's `EffectsLimit` bullet; amends R5-M68, R5-M22) SPEC 7.2.3, 8.11.2, 8.11.3,
+  8.13.3, 15.6.4, 22.1; IMPL 21.3.1.
+  - **Owner.** `Binding.Witnesses` gives A4 each target with the `Subst` it runs at: its declaring instance (binding nothing for a
+    compiler function), or a library witness at the Self's arguments (`TyCtxt.LibraryInstance`, also the view's Body's producer). A4's
+    `MirEffects.Require` enters each implementation that instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the
+    instance and a specialization at none, as A4's call, item and comparison-leaf entries do: every producer of a function with its
+    `Subst` answers the original, and the consumer that enters or generates it selects once. That selection is A4's per-key rule
+    (R4-M22) carried into `Require`; under the owner's O-109 (a) (SPEC 15.6.4: a callable's summary covers its whole closed
+    explicit-specialization set) PLAN G663, the Middle's A4 unit, supersedes it at every A4 entry, `Require`'s loop among them.
+  - **Moves.** A default's copy of a fixed array's enumeration (`iterate` on `[2 of i32]`, `[3 of i64]`, `[2 of Loud]`) or an integer's
+    position read (`tryResolve` on i32, u8, isize) under `confined` is accepted (was `Unsupported_Kd`). Records (Q13, on programs the base
+    rejects): `IncompatibleContractImplementation_Kd` added beside G664's `OwnershipDepthLimit_Kd` where a default's copy calls a
+    requirement whose witness has its own Type parameter and a specialization with an effect. Each such program is invalid by SPEC
+    15.6.4 (an implementation in the closed set has the effect), so the record is right whether or not the call's key selects that
+    specialization: at i32 (`f<i32>`, `MirEffectsTest.ADefaultsCopyEntersTheWitnessesSpecialization`) and at i64 (q1-default-i64) alike,
+    as for RV11, RV14, RV15, RV17 and SEL2 (the Middle's C-172 review, R1-F1; the owner's O-109 (a)).
+  - **The comparison view's Witness leaf** is the Body's instance without its Origins (R5-M68's `Synthesized(witness, declaring, [])`
+    dropped a library witness's Types); the same `Subst` for every current row.
+  - R5-M22's sentence as R8-M4 amended it, "Property, a library witness of a row with `EffectsLimit`, Refused and None give false", reads:
+    "Property, Refused and None give false".
+  - **Kept:** `Binding.LeafTarget` (the legacy composition's leaf) answers a library witness with no Types, right only for a row of no
+    parameter (String, the one Equatable or Comparable row): no comparison row with a parameter lands before A-12's read of the view, else
+    R7-P5, which removes it.
+  - **Rejected:** selecting inside `Witnesses` (the one producer answering a specialization; the agreement check would compare a selected
+    target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
+    Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -12036,6 +12122,8 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by BU-90 (2026-11-04, H5's B-del): `DictionaryComparison`, and `RequirementImplementation`'s CallPlan
     overload with `TryResolveFormattingCallback`, went at B-del instead of H11, since their readers went with the old walk.
     `ComparisonPlan(CallPlan)` keeps H11 for `ComparisonCompositionTest`.
+  - Amended by BU-142 (G589): the comparison view's Witness leaf is the Body's instance without its Origins, not `Synthesized(witness,
+    declaring, [])`.
 - **R5-M67 Requirement edges of the checked set** (2026-10-19; plan K6; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1;
   `MonoKind.Builtin`, `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11,
   `ExclusiveInheritedWitness` being KD10's and §4.7's OCC-X row; its Builtin key superseded by R5-M70) A Requirement call of an
@@ -16259,8 +16347,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open:**
     - pointers held in body-local aggregates, Pattern bindings and `for` slots, which stay accepted on base and head;
     - the generated gate's pre-existing t01-mutate-in-loop and t04-shared-path-for, both invalid and accepted on both sides.
-- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149; amended 2026-11-09 by G643-G644, PLAN G643-G645: design review and implementation review 1 ACCEPT, the Middle's reviewer).
-  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand, by MIR's published family `MirTypes.HoldsIntegerConstant`.
+- **R7-M14 An Integer constant's Type is a closed family** (2026-11-08; G620 U2, PLAN G620; Major; design review 1 REVISE, re-check ACCEPT, implementation review 1 ACCEPT, F, C-149; amended 2026-11-09 by G643-G644, PLAN G643-G645: design review and implementation review 1 ACCEPT, the Middle's reviewer, and G645 (the Back's review ACCEPT, C-171)).
+  - **Where.** `MirValidator` checks this in `Checker.Holds`, at each Const operand, by MIR's published family `MirTypes.HoldsIntegerConstant`, and code generation reads it in an instance (`FunctionCodegen.Constant`).
   - **The rule.** It accepts an Integer `MirConst` only in these cases:
     1. A Type with a width (`ScalarTypes.Width != 0`). The constant's value is the Type's N-bit payload, sign-extended: `ScalarTypes.Normalize(bits, width) == bits`. BU-133 makes Binding's `Fold` and `TryPatternLiteral` the only encoders.
     2. A widthless Type of the family `MirTypes.HoldsIntegerConstant`: a Type with the integer operators, concrete or generic (`MirTypes.IsArithmeticInteger`, SPEC 13.3.1's set and Binding's name for it: integer arithmetic, an abstract Type, or `Wrapping` over one, which stays constructed until substitution, SPEC 3.1.1, 8.7.4), `char`, or a raw pointer. Its value is ranged: `char` a Unicode scalar value (SPEC 3.1), a raw pointer only null, 0 (SPEC 5.1), and a Type whose instance decides it a generic literal, 0 through 127, a value of every instance (SPEC 8.7.4, BU-133). A literal Binding fits through an identity premise (`T is i32`: 200) has the complete Type, while MIR keeps the premised parameter (BU-72), so it holds by its width under case 1. The integer Cast rows (Integer, Wrap, Numeric, Bits, IntToPointer) read the same `MirTypes.IsArithmeticInteger`.
@@ -16271,9 +16359,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     - an allowlist of the validator's own, which would be a second rule;
     - a scope-exact parameter test in MIR, which would re-decide Binding's generic-literal rule;
     - (G643-G645) a static on the form, `MirConst.IntegerTyped` (MirForms must not decide what the validator checks, and the Cast rows read the same fact); the set without its Wrapping row, `HasIntegerArithmetic || IsAbstract` (would reject `Wrapping<T>`'s literals and `value@Wrapping<T>`, SPEC 8.7.4); the Backend reading the whole range on the instance (it would re-check validated values); the name `Integral` ("integer Type" excludes the wrapping integer Types, SPEC 3.1).
-  - **Open limits** (N5 and N6/F4 closed by G643-G644):
-    - **The generic row's 0..127** states today's builder output. PLAN G658 (`200@wrap<T>`, valid by SPEC 13.5.4, rejected by Binding) revisits it if its fix gives a generic constant ranged by the instance; its other option (a wider constant plus a Wrap cast) leaves the row unchanged.
-    - **The family's second copy** in `FunctionCodegen.Values` (the instance check) reads `MirTypes.HoldsIntegerConstant` once the Back reviews and consents (C-171); PLAN G645.
+  - G658 kept the row: a folded wrap to a Type whose instance decides its width is a Wrap Cast of its i128 payload (`MirBuilder.Convert`),
+    so the generic row stays 0..127. No open limit remains (N5, N6/F4 and the family's second copy closed by G643-G645; the generic row's
+    question by G658).
 - **R7-M16 `ImplTable`, the conformance declaration table** (2026-11-08; R7-V2a; plan §5.1 V2, §6; Major, behavior-preserving).
   Binding's conformance identities and paths have one store, `ImplTable` (`Binding/ImplTable.cs`, the field `impls`): one identity
   per Type and Contract, one path per Type, Contract, declaration and root Contract, the pass's paths and each Type's identities in
@@ -16372,6 +16460,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     read of the view, else R7, `ComparisonPlan`'s condition). Those valid programs are then accepted, a behavior change with its own tests.
   - R5-M22's sentence "Property, FixedArrayEntry, IntegerPosition, Refused and None give false" reads: "Property, a library witness of a row with
     `EffectsLimit`, Refused and None give false".
+  - Its `EffectsLimit` bullet and its R5-M22 sentence are superseded by BU-142 (G589): `EffectsLimit` is gone, and R5-M22's sentence reads
+    "Property, Refused and None give false".
 - **R8-M5 `clear`, `shrinkToFit`, the Array glue and `capacity` are Kimigayo bodies; `destroyValues<T>`** (2026-11-07; R8-A1c; plan RP18, RP20, RQ9; G126; on R8-M3)
   SPEC 4.9.1, 4.9.5, 4.9.6, 4.9.7, 4.9.8, 16.3.2.
   - Adopted: `Storage.destroyValues<T>` is `IntrinsicId.DestroyValues`' first producer: the values from the last, each by `T`'s glue, in the one
@@ -16646,10 +16736,37 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a phase-row table that `Check`, the subsets and the timed stages iterate (it would need a mode per consumer, and the
     product has one sequence); leaving the sequence in `Project` with tests calling `Project.Check(context)` (tests need projects and
     contexts, and the catalog generation reads would stay owned outside Core); a compiler-thread hop of `Check`'s own (above).
-- **R9-M2 One Type grammar entry** (2026-11-08; R9-F2; Major, behavior-preserving; plan §5.3 F2; the Front's review 2 ACCEPT, C-144) SPEC F.5, F.9.4. `Parser.ParseType(reader, TypeContext)` reads every Type; `TypeContext` is the closed list of SPEC F.5/F.9.4 positions (Type, Element, Argument, AnnotatedType, Qualifier, Target, SemanticsOperand, TargetOperand, RootPath, TargetRootPath) and alone decides what follows the head: a FunctionType only in Type, a GenericArgument's ArrayLength only in Argument, no PathSuffix in Qualifier, no Origin on a root path, no `?`/BorrowOrigin on an operand or root path, adjacency `<` and no OriginApplication/BorrowOrigin in the Target rows. A new Type position adds a row. Rejected: a [Flags] set of productions (bools under a name), a reader state for "inside a Target" (a side channel every delimiter would reset). ConstraintSubject and the requirement atom keep their Name-shaped readings (PLAN G489). Temporary: `bareGroup`, a complete Type's bare suffixed group, until PLAN G621 removes it (Binding reads whether a requirement's Type holds an associated projection anywhere). The failed-member-Name recovery's exception is preserved behavior, the Front's PLAN G626.
+- **R9-M2 One Type grammar entry** (2026-11-08; R9-F2; Major, behavior-preserving; plan §5.3 F2; the Front's review 2 ACCEPT, C-144) SPEC F.5, F.9.4. `Parser.ParseType(reader, TypeContext)` reads every Type; `TypeContext` is the closed list of SPEC F.5/F.9.4 positions (Type, Element, Argument, AnnotatedType, Qualifier, Target, SemanticsOperand, TargetOperand, RootPath, TargetRootPath) and alone decides what follows the head: a FunctionType only in Type, a GenericArgument's ArrayLength only in Argument, no PathSuffix in Qualifier, no Origin on a root path, no `?`/BorrowOrigin on an operand or root path, adjacency `<` and no OriginApplication/BorrowOrigin in the Target rows. A new Type position adds a row. Rejected: a [Flags] set of productions (bools under a name), a reader state for "inside a Target" (a side channel every delimiter would reset). ConstraintSubject and the requirement atom keep their Name-shaped readings (PLAN G489). Temporary: `bareGroup`, a complete Type's bare suffixed group, until PLAN G621 removes it (Binding reads whether a requirement's Type holds an associated projection anywhere); removed by BU-140 (G621). The failed-member-Name recovery's exception is preserved behavior, the Front's PLAN G626.
 - **R9-M3 An attribute attaches only to the declaration or parameter that takes it** (2026-11-08; R9-F3; Major; the owner's O-85 (a), verbatim 「(a) D1で進める」; design review 3 ACCEPT and the implementation review ACCEPT, F, C-146) SPEC 6.7, F.6.1.
   - **Rule.** An attribute attaches only to the declaration its item prefix precedes or the parameter it precedes. A misplaced, dangling, pending or constructor-header attribute is reported, its record unchanged, and kept in no node.
   - **Removes.** One reader slot had carried both an item prefix and misplaced recoveries, and every Koto built from the reader took what was pending; that slot's implicit hand-off, its shields, the attribute recoveries and Binding's misplaced branch are gone.
   - **Kept.** An attribute before a declaration whose kind rejects it stays its own: Binding still judges it, e.g. `InvalidLibraryImport_Kd` on a requirement.
   - **Rejected:** D2, keeping a misplaced attribute on the construct its reporting site parses next (C-146 reviews 1-2: an open family of sites deciding a landing, per-kind chain printing with `AttributeKoto.AttributeChain` meaning both 'attributes on this node' and 'the previous attribute', an independent record lost); (b), recovered spans outside the nodes; (c), holding the unit.
   - **Cost.** Erroneous attribute text no longer round-trips through the tree; its Error's span still locates it (DIAGNOSTICS §4.4).
+  - Superseded in part by R9-M4 (G557, 2026-11-09): the "Kept" bullet, and the Rule's clause that a constructor-header attribute
+    is reported "its record unchanged".
+- **R9-M4 An attribute before a declaration that takes none is the parser's alone** (2026-11-09; G557; Major; the owner's O-93 (a),
+  verbatim 「(a) 設計し直す」; the Front's design review 3 ACCEPT and implementation review ACCEPT; the Middle's C-167 ACCEPT on the parser
+  hunks) SPEC 6.7, 6.4.1, 8.13.2, 11.9, 16.3, 19.4, F.6.1, F.6.2.
+  - **Rule.** A declaration production that takes no `AttributePrefix` reports the pending attributes before it takes its context
+    (`Parser.ReportPendingAttributes`): each once, at its own span, as misplaced, also in excluded syntax (19.4), and none reaches a node.
+    Besides R9-M3's `associate`, effect, Origin relation, Constraint and enum Case, these are every Contract item (function and Property
+    requirements), `init`, a specialization, an override, `drop` and an alias, each where the parser recognizes it. A node of such a
+    declaration never holds an attribute, and Binding's readers trust that. Parameters are not yet covered: a requirement's,
+    specialization's or override's parameter still keeps its attributes (PLAN G557's parameter part).
+  - **Supersedes R9-M3's "Kept" bullet:** Binding's readers read the kept attribute as attached, so `#Test` before a requirement or an
+    override crashed Binding and other attributes gave duplicate or dependent records; listing the non-taking kinds for those readers
+    by hand (G557's revisions 0 and 1) missed kinds twice. **And R9-M3's Rule clause** "a constructor-header attribute is reported, its
+    record unchanged": an `init`'s attribute now has the same record as every other non-taking production's, `Attribute` at the
+    attribute instead of `ConstructorHeader` at `init` (one record form; the syntax corpus row `attribute-on-constructor` moved).
+  - **Removes.** The attribute operand of the requirement, Property requirement, `drop`, alias, `init` and specialization header
+    checks and `init`'s attribute-dropping context copy; Binding's override and specialization attribute tests, its enum Case attribute
+    check (`Binding.Storage`), and the four non-taker kind tests of the `#LibraryImport` shape and of the Test definition syntax.
+  - **Rejected:** a kind predicate read by the parser and Binding (a hand list beside the grammar); a production table read by the
+    prefix reader (a second classification of the next item); each header record kept with the attributes dropped (the override has
+    none, so two record forms would remain).
+  - **Cost.** Erroneous attribute text before such a declaration no longer round-trips through the tree; its record locates it
+    (DIAGNOSTICS §4.4). Records move only on invalid programs; five invalid programs dev accepted are rejected (an override's attribute
+    in excluded syntax, or before an override at the root or in a group).
+  - **A SPEC gap, reported (no SPEC change):** F.6.1's `Declaration := AttributePrefix? UnattributedDeclaration` admits a prefix where
+    6.7, 6.4.1 and 16.3 reject one; the implementation follows the body rules.

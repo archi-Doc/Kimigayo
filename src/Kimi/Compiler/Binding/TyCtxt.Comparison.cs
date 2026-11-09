@@ -5,8 +5,8 @@
 // (TyCtxt.Dispatch.cs).
 // Input: Equatable or Comparable, a Type and the mode (source operators, IEEE for floats, or the Contract's mapping, whose equals is
 // NaN-reflexive).
-// Output: a ComparisonNode tree: Composite over its parts, Builtin, Witness (a closed leaf, string's among them: Witness's Body under its
-// declaring instance, Synthesized), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every
+// Output: a ComparisonNode tree: Composite over its parts, Builtin, Witness (a closed leaf, string's among them: Witness's Body at its
+// instance without its Origins, a library witness's at the Self's arguments), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every
 // instance, Synthesized on a Self) or None (no answer, a broken contract for a closed accepted Self that its reader records as
 // InternalInvariant_Kd); null for a Limit (Witness's). One node per (contract, self, operators), discarded at an edit (ResetDispatch).
 // Invariants: a comparison of a closed Type has the legacy plan's leaves wherever that plan exists, which it does not for an inherited
@@ -94,7 +94,7 @@ internal sealed partial class TyCtxt
         {
             { Kind: RequirementTargetKind.Limit } => null,
             { Kind: RequirementTargetKind.Body, Target: { } witness, Subst: { } instance }
-                => new(self, kind, witness, this.Synthesized(witness, instance.Declaring, []), []),
+                => new(self, kind, witness, this.Intern(witness, null, instance.Declaring, instance.Types, instance.Lengths, [], []), []),
             _ => new(self, ComparisonKind.None, null, null, []),
         };
     }

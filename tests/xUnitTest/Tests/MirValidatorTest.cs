@@ -1295,6 +1295,25 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(expected.Select(static x => (x, Broken.Syntax)), Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // G658 (C-177): the builder's form of a folded wrap to an abstract integer Type, a Wrap Cast of an i128 constant (the payload holds by
+    // its width, outside 0 through 127 too) to T or Wrapping<T>, validates; the same payload as a constant of T is a Const finding (above).
+    [Theory]
+    [InlineData(0, 200)]
+    [InlineData(0, -1)]
+    [InlineData(3, 128)]
+    public void AWrapCastOfAnI128ConstantToAGenericIntegerHolds(int target, int bits)
+    {
+        var (c, types) = GenericIntegers();
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var (held, block) = (MirModelTest.Local(body, types[target]), body.AddBlock());
+        var payload = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.Primitives["i128"], bits)));
+        body.Push(block, MirStatement.Assign(held, MirRvalue.Cast(MirCastKind.Wrap, AddOperands(body, [payload]), types[target]) with { Proven = true }, Broken));
+        body.Terminate(block, MirTerminator.Return(At));
+        Assert.Empty(Validate(body, c.Types));
+    }
+
     // The Call positions of the same rule, by the facts A5 reads and not by the result's Type: `put` returns a scalar and keeps its input through
     // `h`, `pick` keeps it in its result, `pinned` and `bound` relate it to static, which no output states; a Value callee has no declaration to
     // read, a default template's call no contract, and RawSlice's result retains its backing beyond its declaration (MirDescriptors.Retained);
@@ -1942,8 +1961,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         return body;
     }
 
-    // A PrimitiveInteger T's compilation and the Types T, Option<T>, ref/T and Wrapping<T> of its parameters.
-    // Its parameters' Types (0-5), then Wrapping over Option<T>, a non-abstract Type with an abstract part (6), and raw/T (7).
+    // The compilation of a PrimitiveInteger T and a PrimitiveInteger projection U.(HasItem).Item, and eight Types: its parameters' T,
+    // Option<T>, ref/T, Wrapping<T>, U.(HasItem).Item and Wrapping<U.(HasItem).Item> (0-5), then Wrapping over Option<T>, a non-abstract
+    // Type with an abstract part (6), and raw/T (7).
     private static (Compilation Compilation, BoundType[] Types) GenericIntegers()
     {
         var c = MirBuildTest.Compile("contract HasItem\n    associate Item\n" +
