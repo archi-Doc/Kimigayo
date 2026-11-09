@@ -27,11 +27,15 @@ namespace Kimi.Compiler;
 // so the walk names every storage past the root; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit.
 // Must not: judge an Origin relation (the premise closure's), decide which source a position can hold (the fits'), or read the call's
 // arguments or solved Origins.
-// Also the parts an input holds at its own address by the walk's by-value criterion (OwnLayers, TyCtxt.OwnLayers: A5's covering reads them).
+// Also the parts the value at a Place's key holds at its own address by the walk's by-value criterion (OwnParts, read by OwnLayers in
+// Binding.Retention.PlaceKeys.cs; TyCtxt.OwnLayers: A5's covering and pun rule read them).
 
 /// <summary>A part a value holds at its own address (<see cref="Binding.OwnLayers"/>; SPEC 5.2.1, 5.7, 15.6.4): a raw layer
-/// (<see cref="Layer"/>) with the step Holdings gives it, or, Layer null, another part that reaches storage with its step.</summary>
-internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step);
+/// (<see cref="Layer"/>) with its step at the Place (Holdings' under its holding instance; a `during self` layer's, where the path
+/// dereferences, the step of the Origin reading it gives), or, Layer null, another part that reaches storage with its step;
+/// <see cref="Past"/> the key of the Place past the step (a raw layer's pointee, a borrow's referent, an abstract part itself; Type null
+/// where no Type states it).</summary>
+internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceKey Past);
 
 public sealed partial class Binding
 {
@@ -60,16 +64,6 @@ public sealed partial class Binding
     private readonly List<Hold> retentionHeld = new(); // HeldRun's runs, a stack: each caller reads its run and removes it.
     private readonly List<BoundType> retentionReads = new(); // Reads' runs, a stack.
     private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder)> ownSeen = new(); // OwnLayers' walked keys, reused.
-
-    // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598; contract in TyCtxt.Raw.cs): the parts a value of `input` holds
-    // at its own address, by ByValue from the input (no Written, no Holder) at any holder, each part as the body sees it (BodySees, as
-    // the storage walk's BodyRun): a raw layer met there with the step Holdings gives it, not gone past; any other part that reaches
-    // storage with no layer; nothing for a part with no entry or a Type argument. False at Binding's Limit, the storage walk's.
-    internal bool OwnLayers(BoundType input, List<OwnLayer> into)
-    {
-        this.ownSeen.Clear();
-        return this.OwnParts(input, null, null, into);
-    }
 
     // An abstract part a carrier stands for: a Type parameter that is no pair layer, or a pair's target (RetentionWalk's carriers).
     private static bool IsCarrier(BoundType type)
@@ -671,7 +665,7 @@ public sealed partial class Binding
     };
 
     // OwnLayers from a part (Type, Written, Holder), each key once per call; retentionHeld is read as a stack (each run removed).
-    private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, List<OwnLayer> into)
+    private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, in PlaceKey at, List<OwnLayer> into)
     {
         if (!this.ownSeen.Add((type, written, holder)))
         {
@@ -683,7 +677,8 @@ public sealed partial class Binding
         var raw = start < this.retentionHeld.Count && (this.retentionHeld[start].Flags & HoldFlags.Raw) != 0 && !TryPairLayer(type, out _, out _);
         if (raw && complete)
         {
-            into.Add(new(type, this.retentionHeld[start].Step));
+            var layer = this.retentionHeld[start];
+            into.Add(new(type, this.LayerStep(layer.Step, at), new(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at))));
         }
 
         for (var i = start; !raw && complete && i < this.retentionHeld.Count; i++)
@@ -691,11 +686,11 @@ public sealed partial class Binding
             var entry = this.retentionHeld[i];
             if (this.ByValue(type, entry) && entry.Part is { } part)
             {
-                complete = this.OwnParts(part, entry.Written, entry.Holder, into);
+                complete = this.OwnParts(part, entry.Written, entry.Holder, at, into);
             }
             else if (entry.Step != HoldStep.Loan || entry.Part is null)
             {
-                into.Add(new(null, entry.Step));
+                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, this.PastThrough(type, entry, at))));
             }
         }
 

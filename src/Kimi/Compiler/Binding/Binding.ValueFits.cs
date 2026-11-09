@@ -55,6 +55,12 @@ public sealed partial class Binding
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
 
+    // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal: the structural part alone, no Never
+    // root rule, so it is symmetric. It reads no premise; with no use scope the walk reads `use` only in InactiveOuterOrigin, which then
+    // reads an adaptation selector's own scope: a use scope only narrows what it admits, so its absence can only turn "same" into
+    // "different" (review N2). A reference-equal pair is Discharged by the walk itself.
+    internal bool SameStructure(BoundType a, BoundType b) => new RelationWalk(this, null, OriginPart.Everywhere).Fits(a, b);
+
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
 

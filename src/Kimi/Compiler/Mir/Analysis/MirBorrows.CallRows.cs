@@ -134,7 +134,7 @@ internal sealed partial class MirBorrows
         var item = call.Callee.Kind == MirCalleeKind.Value && this.TypeOf(call.Operand) is { } callee ? types.CalledItem(callee) : null;
         var (symbol, subst) = call.Callee.Kind != MirCalleeKind.Value ? (call.Callee.Symbol, call.Callee.Subst)
             : item is not null && types.SubstOfItem(item) is { } bound ? (item.Symbol, bound) : default;
-        if (symbol is null || this.CoverInput(symbol, subst, output) is not { } written || !types.OwnLayers(written, this.ownLayers))
+        if (symbol is null || this.CoverInput(symbol, subst, output) is not { } written || !types.OwnLayers(PlaceKey.Root(written), this.ownLayers))
         {
             return;
         }
@@ -156,7 +156,7 @@ internal sealed partial class MirBorrows
         }
 
         var complete = true;
-        foreach (var (layer, _) in this.ownLayers)
+        foreach (var (layer, _, _) in this.ownLayers)
         {
             complete &= types.LayerMembers(layer!, CollectionsMarshal.AsSpan(this.coverInputs), this.members) && this.members.Count > 0;
             foreach (var (input, referent, exclusive) in this.members)

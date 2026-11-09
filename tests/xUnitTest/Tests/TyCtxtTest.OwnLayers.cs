@@ -51,7 +51,7 @@ public sealed partial class TyCtxtTest
     {
         var (c, p) = OwnLayersForms();
         var into = new List<OwnLayer>();
-        Assert.True(c.Types.OwnLayers(p[parameter], into));
+        Assert.True(c.Types.OwnLayers(PlaceKey.Root(p[parameter]), into));
         Assert.Equal(expected, string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step}")));
     }
 
@@ -71,7 +71,7 @@ public sealed partial class TyCtxtTest
         foreach (var closure in closures)
         {
             into.Clear();
-            var complete = c.Types.OwnLayers(closure!, into);
+            var complete = c.Types.OwnLayers(PlaceKey.Root(closure!), into);
             answers.Add($"{complete}: {string.Join("; ", into.Select(x => $"{x.Step} {(x.Layer is null ? "-" : ReferenceEquals(x.Layer.RawOrigin, p.RawOrigin) ? "p's Origin" : x.Layer.RawOrigin?.Kind.ToString())}"))}");
         }
 
@@ -84,7 +84,7 @@ public sealed partial class TyCtxtTest
     {
         var c = MinimalEmissionTest.Analyze("struct N<X>\n    internal var next: raw/N<(X, X)>\nfunc probe(n: N<i32>) -> ()\n    return ()\npublic func main() => ()\n");
         var n = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
-        Assert.False(c.Types.OwnLayers(n, new List<OwnLayer>()));
+        Assert.False(c.Types.OwnLayers(PlaceKey.Root(n), new List<OwnLayer>()));
     }
 
     // The contract: a warm read allocates nothing.
@@ -96,7 +96,7 @@ public sealed partial class TyCtxtTest
         var (types, into, forms) = (c.Types, new List<OwnLayer>(16), p.Values.ToArray());
         foreach (var form in forms)
         {
-            _ = types.OwnLayers(form, into);
+            _ = types.OwnLayers(PlaceKey.Root(form), into);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -104,7 +104,7 @@ public sealed partial class TyCtxtTest
             foreach (var form in forms)
             {
                 into.Clear();
-                _ = types.OwnLayers(form, into);
+                _ = types.OwnLayers(PlaceKey.Root(form), into);
             }
         }));
     }
