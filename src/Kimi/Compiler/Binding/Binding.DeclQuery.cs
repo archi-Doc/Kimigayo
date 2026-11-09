@@ -26,8 +26,8 @@ namespace Kimi.Compiler;
 //   nothing (interim until R7-D2 d3). InheritedConformances (Binding.InheritedConformances, SPEC 8.6.2): output the struct's inherited
 //   paths in ImplTable, its answer whether it is Done; demanded by every by-type read of ImplTable once clauses are bindable. Re-entry:
 //   not Done, so the heir is abandoned; on a base cycle every member stays NotStarted for the pass, and the records are the base walk's
-//   and formation's, none here. Not ready: its clause, read by DirectBase, in progress (even failed by its own re-entry, a cycle: SPEC
-//   9.5) or not ready, or its base not Done.
+//   and formation's, none here. Not ready: a reading of its clause by DirectBase that moved the not-ready count (BaseLayers' answer:
+//   in progress or not ready), or its base not Done.
 // - Interims (removal stages): a Signature re-entry's CyclicBinding_Kd is recorded by the demanders that record it today
 //   (BindReference, BindVariableCore) until R7-D2 d2 moves it into the kind's rule with the Error state; BindHeader's guard reads the
 //   variable binding's Resolving and BindVariableCore's guard reads Signature's Running state until R7-D2 d4 makes the variable binding

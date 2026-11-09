@@ -8,12 +8,18 @@ namespace Kimi.Compiler;
 // - Responsibility: registering a struct's inherited paths, its base's under the base clause, once its base's are; the one by-type
 //   read of ImplTable (ConformancesOf, ConformanceOf); verifying an inherited path and its conformance scope.
 // - Inputs: the struct's base clause read through DirectBase, the base's paths in ImplTable. Outputs: the paths in ImplTable.
-// - Invariants: once clauses are bindable every by-type read demands the query first, so no reader sees a table this query has not
-//   filled; before, a read sees what pass 0's sweep registered. A clause in progress is never final here.
+// - Invariants: once clauses are bindable every by-type read demands the query first; a Done query has filled the table, and a read
+//   after an abandoned demand sees it without the struct's inherited paths, which no final reading has given yet. Before, a read sees
+//   what pass 0's sweep registered. Whether a reading of the clause is final is BaseLayers' answer (its not-ready count), never here.
 // - Prohibitions: no record (ValidateBaseDeclaration and the verifications' callers own them); no read of a query state.
 // - Removal: the accessors' clausesBindable condition and the pass-0 sweep go at R7-D2 d3 with R7-M9's temporaries.
 public sealed partial class Binding
 {
+    private int inheritedSteps;
+
+    /// <summary>Gets the clause readings the InheritedConformances query took in the latest pass, read by the scaling tests.</summary>
+    internal int InheritedConformanceWork => this.inheritedSteps;
+
     // SPEC 8.6.2: every struct's inherited paths, demanded in node order. Pass 0's demand (BindConstraints) registers the paths through
     // bases named by a struct; this one, once clauses are bindable, the rest.
     private void RegisterInheritedConformances()
@@ -50,8 +56,9 @@ public sealed partial class Binding
     }
 
     // DeclQueryKind.InheritedConformances (SPEC 8.6.2): a struct's inherited paths, its base's paths under the base clause, registered
-    // once its base's are. Not ready: a base clause that names no struct before clausesBindable, or a base whose own query is not Done;
-    // abandoned. Re-entry (a base cycle): the base reads as not Done. Done with none: no base clause, or one that names no Type.
+    // once its base's are. Not ready: a reading of the clause that moved BaseLayers' not-ready count, or a base whose own query is not
+    // Done; abandoned. Re-entry (a base cycle): the base reads as not Done. Done with none: no base clause, a final reading that names no
+    // struct, or a clause whose Type names none. Each reading of a clause counts in InheritedConformanceWork.
     private bool InheritedConformances(BindingSymbol type)
     {
         if (type.Declaration is not StructKoto declaration)
@@ -70,20 +77,22 @@ public sealed partial class Binding
             return true;
         }
 
-        // The clause is read by DirectBase, the one reading (R7-M9): a clause in progress or not ready reads as no struct and waits; once
-        // clauses are bindable, a bound or failed clause that names no struct is final. A clause in progress is not final even when a
-        // re-entry has failed it (SPEC 9.5: a clause whose evidence reaches its own struct through another base is a cycle), so no heir
-        // registers paths through it.
-        if (this.DirectBase(declaration)?.Declaration is not StructKoto || (!this.clausesBindable && this.knownBases?.ContainsKey(declaration) == true))
+        // The clause is read by DirectBase, the one reading (R7-M9). A read that moved its not-ready count (a clause in progress or not
+        // ready) stores nothing and is read again at the next demand, so no heir registers paths through a clause in progress; a read
+        // naming no struct without moving it is final.
+        this.inheritedSteps++;
+        var reads = this.notReadyReads;
+        var direct = this.DirectBase(declaration);
+        if (reads != this.notReadyReads)
         {
-            if (this.clausesBindable && (syntax.BoundType is not null || (syntax.BindingFailure != BindingFailure.None && !this.resolvingTypes.Contains(syntax))))
-            {
-                this.CompleteQuery(type, DeclQueryKind.InheritedConformances);
-                return true;
-            }
-
             this.AbandonQuery(type, DeclQueryKind.InheritedConformances);
             return false;
+        }
+
+        if (direct?.Declaration is not StructKoto)
+        {
+            this.CompleteQuery(type, DeclQueryKind.InheritedConformances);
+            return true;
         }
 
         var written = syntax.BoundType ?? this.BindType(syntax, this.scopes[declaration]);
