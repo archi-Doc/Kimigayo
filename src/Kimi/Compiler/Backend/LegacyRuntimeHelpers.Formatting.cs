@@ -251,30 +251,6 @@ internal static partial class LegacyRuntimeHelpers
         Add(CompilerFunctionKind.TextRelease, new("__kimi_text_release", "void", [reference, location, length]), Runtime);
         Add(CompilerFunctionKind.TextUtf8, Slotted("__kimi_text_utf8", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)]), Runtime);
         Add(CompilerFunctionKind.TextValidateUtf8, Slotted("__kimi_text_validate_utf8", [ret, owned]), Runtime);
-        foreach (var kind in new[] { CompilerFunctionKind.FixedBufferBytes, CompilerFunctionKind.HeapBufferBytes })
-        {
-            Add(kind, Slotted("__kimi_buffer_bytes", [ret, reference]), Runtime);
-        }
-
-        foreach (var kind in new[] { CompilerFunctionKind.FixedBufferText, CompilerFunctionKind.HeapBufferText })
-        {
-            Add(kind, Slotted("__kimi_buffer_text", [ret, reference]), Runtime);
-        }
-
-        foreach (var kind in new[] { CompilerFunctionKind.FixedBufferValidate, CompilerFunctionKind.HeapBufferValidate })
-        {
-            Add(kind, Slotted("__kimi_buffer_validate", [ret, reference]), Runtime);
-        }
-
-        foreach (var kind in new[] { CompilerFunctionKind.FixedBufferClear, CompilerFunctionKind.HeapBufferClear })
-        {
-            Add(kind, new("__kimi_buffer_clear", "void", [reference]), Runtime);
-        }
-
-        Add(CompilerFunctionKind.FixedBufferReserve, Slotted("__kimi_fixed_reserve", [ret, reference, amount, location, length]), Runtime);
-        Add(CompilerFunctionKind.HeapBufferReserve, Slotted("__kimi_heap_reserve", [ret, reference, amount, location, length]), Runtime);
-        Add(CompilerFunctionKind.FixedBufferIntoText, Slotted("__kimi_buffer_text", [ret, owned]), Runtime);
-        Add(CompilerFunctionKind.HeapBufferIntoString, Slotted("__kimi_buffer_into_string", [ret, owned, location, length]), Runtime);
         Add(CompilerFunctionKind.WindowPush, Slotted("__kimi_window_push", [ret, reference, new("i8", "byte", LogicalIndex: 1)]), Runtime);
         Add(CompilerFunctionKind.WindowAppend, Slotted("__kimi_window_append", [ret, reference, new("ptr", "bytes", AbiParameterKind.OwnedSlot, 1)]), Runtime);
         Add(CompilerFunctionKind.WindowLimit, Slotted("__kimi_window_limit", [ret, owned, amount, location, length]), Runtime);

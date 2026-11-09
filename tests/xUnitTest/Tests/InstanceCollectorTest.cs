@@ -636,26 +636,40 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, HeapBuffer's reserve through BufferWriter or
-    // a #LibraryImport function, is the BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a
-    // requirement call, and a requirement Item where it is formed and where it is called, whether or not the output calls the function
-    // (code generation runs a witness only as a body or shim item).
-    [Theory]
-    [InlineData("    match w.reserve(4)\n", "w.reserve(4)")]
-    [InlineData("    let reserve = W.reserve\n    match reserve(w, 4)\n", "W.reserve | reserve(w, 4)")]
-    [InlineData(null, "C.now()")]
-    public void ABodylessWitnessIsAGapAtTheCall(string? reserve, string sites)
+    // DECISIONS R5-M146 (X2, PD27; PLAN G157 (10)): a requirement whose witness has no MIR body, a #LibraryImport function, is the
+    // BodylessWitness gap, Unsupported_Kd at each site that requests its target (K 4.9, as OCC-X's): a requirement call, and a requirement
+    // Item where it is formed and where it is called, whether or not the output calls the function (code generation runs a witness only as a
+    // body or shim item).
+    [Fact]
+    public void ABodylessWitnessIsAGapAtTheCall()
     {
-        var source = reserve is null
-            ? "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
-                "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n"
-            : "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n" + reserve + "        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
-                "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n";
-        var c = MirBuildTest.Compile(source + "public func main() -> () => ()\n");
+        var c = MirBuildTest.Compile(
+            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+            "    public func now() -> u32\nfunc tick<C>() -> u32\n    C is Clock\n    return C.now()\nfunc use() -> u32 => tick<Win>()\n" +
+            "public func main() -> () => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
-        Assert.All(c.BuildMir().Records(MirRecordClass.Collection), static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
-        Assert.Equal(sites, string.Join(" | ", c.BuildMir().Records(MirRecordClass.Collection).Select(x => c.SyntaxOf(x.Subject).ToString())));
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "C.now()")], c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // SPEC 22.9.4 (R8-W1a, ending R5-M146's buffer half): FixedBuffer's and HeapBuffer's reserve are Kimigayo bodies, so a requirement call
+    // and a requirement Item of BufferWriter.reserve at either buffer admit that body as their target and record nothing.
+    [Theory]
+    [InlineData("Text.FixedBuffer", "    match w.reserve(4)\n")]
+    [InlineData("Text.FixedBuffer", "    let reserve = W.reserve\n    match reserve(w, 4)\n")]
+    [InlineData("Text.HeapBuffer", "    match w.reserve(4)\n")]
+    [InlineData("Text.HeapBuffer", "    let reserve = W.reserve\n    match reserve(w, 4)\n")]
+    public void AStandardBufferReserveIsABodyWitness(string buffer, string reserve)
+    {
+        var c = MirBuildTest.Compile(
+            "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n" + reserve + "        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
+            $"func use(buffer: uniq/{buffer}) -> i32 => room(buffer)\npublic func main() -> () => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var body = Assert.Single(set.Items.ToArray().Select(x => Label(program, x)), static x => x.StartsWith("library Fn reserve ", StringComparison.Ordinal));
+        Assert.Contains(buffer["Text.".Length..], body, StringComparison.Ordinal);
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M146, X2 review B1): the gap is the witness's own (TyCtxt.Bodyless: a compiler or foreign function), so an

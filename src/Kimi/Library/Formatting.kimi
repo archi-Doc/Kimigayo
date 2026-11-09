@@ -20,6 +20,16 @@ public struct WriteWindow {source}
     public let remaining: isize
     let loan: Loan<uniq/u8 during source>
 
+    /// A window of `remaining` bytes after the `start` committed bytes of the buffer at `state`. The caller's obligations,
+    /// which the signature cannot state: `state` addresses a `Text.FixedBuffer` or a `Text.HeapBuffer` in what `source`
+    /// covers, with write authority, whose capacity holds `start + remaining` bytes (SPEC 5.2.1, 22.9.4).
+    internal init(state: raw/u8 during source, start: isize, remaining: isize)
+        self.state = state
+        self.start = start
+        self.written = 0
+        self.remaining = remaining
+        self.loan = Loan<uniq/u8 during source>.init()
+
 public struct Utf8Writer {target}
     Self is not ObjectPayload
     let destination: raw/u8 during target
@@ -44,22 +54,166 @@ public group Text
         Self is not ObjectPayload
         let data: raw/u8 during source
         public let capacity: isize
-        public let length: isize
-        let validated: isize
+        public var length: isize
+            private set
+        var validated: isize
         let loan: Loan<uniq/u8 during source>
+
+        /// The committed bytes.
+        public func bytes(self: ref/Self) -> Slice<u8>
+            unsafe => return Raw.slice(self.data, self.length)
+
+        /// Validates the unvalidated suffix and views the committed bytes; records nothing (SPEC 22.9.3).
+        public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>
+            unsafe
+                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                return .Ok(Text.Utf8Slice.init(Raw.slice(self.data, self.length)))
+
+        /// Records the committed bytes as validated, only on complete success (SPEC 22.9.3).
+        public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>
+            unsafe
+                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+            self.validated = self.length
+            return .Ok(())
+
+        /// Sets both lengths to zero and keeps the capacity (SPEC 22.9.3).
+        public func clear(self: uniq/Self)
+            self.length = 0
+            self.validated = 0
+
+        /// A window over the unused capacity, `BufferFull` exactly when it is below `minimum` (SPEC 22.9.4).
+        ///
+        /// - abort: `minimum` is negative.
+        public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+            if minimum < 0 => Storage.argumentOutOfRange()
+            let remaining = self.capacity - self.length
+            if minimum > remaining => return .Err(BufferFull.init())
+            return .Ok(WriteWindow.init(self@follow@raw@raw/u8, self.length, remaining))
+
+        /// Validates the unvalidated suffix and views the committed bytes under the array's exclusive Loan (SPEC 22.9.3).
+        public func intoText(self: owner/Self) -> Result<Text.Utf8Slice during self.source, Text.InvalidUtf8>
+            unsafe
+                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                return .Ok(Text.Utf8Slice.init(Raw.slice(self.data, self.length)))
 
     public struct HeapBuffer
         Self is BufferWriter
-        let data: raw/u8 during self
-        public let capacity: isize
-        public let length: isize
-        let validated: isize
+        var data: raw/u8 during self
+        public var capacity: isize
+            private set
+        public var length: isize
+            private set
+        var validated: isize
         drop => Text.release(self.data)
+
+        /// The committed bytes.
+        public func bytes(self: ref/Self) -> Slice<u8>
+            unsafe => return Raw.slice(self.data, self.length)
+
+        /// Validates the unvalidated suffix and views the committed bytes; records nothing (SPEC 22.9.3).
+        public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>
+            unsafe
+                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+                return .Ok(Text.Utf8Slice.init(Raw.slice(self.data, self.length)))
+
+        /// Records the committed bytes as validated, only on complete success (SPEC 22.9.3).
+        public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>
+            unsafe
+                if not Text.validUtf8(self.data + self.validated, self.length - self.validated) => return .Err(Text.InvalidUtf8.init())
+            self.validated = self.length
+            return .Ok(())
+
+        /// Sets both lengths to zero and keeps the capacity (SPEC 22.9.3).
+        public func clear(self: uniq/Self)
+            self.length = 0
+            self.validated = 0
+
+        /// A window over at least `minimum` unused bytes; never `BufferFull` (SPEC 22.9.4). Growth reaches
+        /// `max(length + minimum, 2 * capacity)`, or `length + minimum` when the double exceeds the maximum object size, and
+        /// copies the committed bytes.
+        ///
+        /// - abort: `minimum` is negative, or `length + minimum` exceeds the maximum object size.
+        public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+            if minimum < 0 => Storage.argumentOutOfRange()
+            let length = self.length
+            let capacity = self.capacity
+            if minimum > capacity - length
+                let largest: isize = 9223372036854775807
+                if minimum > largest - length => Storage.allocationSizeExceeded()
+                var target = length + minimum
+                // `capacity <= largest / 2` bounds the product.
+                if capacity <= largest / 2
+                    if capacity * 2 > target => target = capacity * 2
+                let memory = Raw.allocate<u8>(target)
+                unsafe
+                    if length != 0 => Storage.transferBytes(memory, self.data, length)
+                    Raw.release(self.data)
+                    // A claim: the new allocation is storage the buffer owns, as its old one was (SPEC 5.7).
+                    self.data = memory@(raw/u8 during self)
+                self.capacity = target
+            return .Ok(WriteWindow.init(self@follow@raw@raw/u8, length, self.capacity - length))
+
+        /// Validates the unvalidated suffix and transfers the allocation to the string without copying; on failure it releases
+        /// the allocation (SPEC 22.9.3). An allocated empty buffer keeps its pointer and the Heap release kind.
+        public func intoString(self: owner/Self) -> Result<string, Text.InvalidUtf8>
+            // Held so that the compiler does not destroy the buffer whose allocation this call releases or transfers (SPEC 5.2.3).
+            var held = Storage.InlineStorage<Text.HeapBuffer>.init(self@move)
+            let data = held.value.data
+            let length = held.value.length
+            let validated = held.value.validated
+            unsafe
+                if not Text.validUtf8(data + validated, length - validated)
+                    Raw.release(data)
+                    return .Err(Text.InvalidUtf8.init())
+            var kind: u8 = 0
+            if data != null => kind = 1
+            var text = Storage.InlineStorage<Storage.StringRepr>.init(Storage.StringRepr.init(data, length, kind))
+            unsafe => return .Ok((*(text@raw@raw/string))@move)
 
     public struct Utf8Slice {source}
         Self is Copy
         let value: Slice<u8> during source
+
+        /// Views `value`, which the caller has validated as UTF-8 (SPEC 22.9.3).
+        internal init(value: Slice<u8> during source) => self.value = value
         public computed length: isize
             get() -> isize => self.value.length
         public func bytes(self: Self) -> Slice<u8> during self.source
             return self.value
+
+    /// Whether the `length` bytes at `data` are exactly UTF-8 encodings of Unicode scalar values (SPEC 22.9.3): a
+    /// truncated sequence, an overlong encoding, a surrogate or a value above U+10FFFF is not; NUL is ASCII. Bounds
+    /// precede each sequence.
+    ///
+    /// - safety: `length >= 0`, and the `length` bytes at `data` lie within its provenance and are readable.
+    internal unsafe func validUtf8(data: raw/u8, length: isize) -> bool
+        unsafe
+            var index: isize = 0
+            while index < length
+                let lead = *(data + index)
+                if lead < 128
+                    index += 1
+                else
+                    if lead < 194 or lead > 244 => return false
+                    var count: isize = 4
+                    var scalar = (lead & 7)@u32
+                    var minimum: u32 = 65536
+                    if lead < 224
+                        count = 2
+                        scalar = (lead & 31)@u32
+                        minimum = 128
+                    if lead >= 224 and lead < 240
+                        count = 3
+                        scalar = (lead & 15)@u32
+                        minimum = 2048
+                    if length - index < count => return false
+                    var cursor = index + 1
+                    index += count
+                    while cursor < index
+                        let byte = *(data + cursor)
+                        if (byte & 192) != 128 => return false
+                        scalar = (scalar << 6) | (byte & 63)@u32
+                        cursor += 1
+                    if scalar < minimum or scalar > 1114111 => return false
+                    if scalar >= 55296 and scalar < 57344 => return false
+            return true
