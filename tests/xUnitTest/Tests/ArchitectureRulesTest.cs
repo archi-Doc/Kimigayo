@@ -228,14 +228,6 @@ public class ArchitectureRulesTest
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
     }
 
-    // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
-    private static string? CalledName(ExpressionSyntax called) => called switch
-    {
-        MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
-        IdentifierNameSyntax name => name.Identifier.Text,
-        _ => null,
-    };
-
     // R9-F4 (the owner's O-98, O-99, O-100 and O-106, (a)): TokenHelper's spelling table is the one statement of an F.3 keyword, so no
     // other Lexing or Parsing literal starts with one, alone or after '#' (SPEC F.11 writes "#" "if" and "#" "switch" with the keyword
     // tokens). Roslyn reads every literal token, those in interpolation holes included: string, UTF-8 string, char, raw string and the
@@ -297,6 +289,14 @@ public class ArchitectureRulesTest
             _ => null,
         }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
+
+    // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
+    private static string? CalledName(ExpressionSyntax called) => called switch
+    {
+        MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
+        IdentifierNameSyntax name => name.Identifier.Text,
+        _ => null,
+    };
 
     // A directory that does not exist (deleted, or not yet created) has no files.
     private static IEnumerable<string> SourceFiles(string directory, string pattern)
