@@ -9,17 +9,12 @@ namespace Kimi.Compiler.Backend;
 // R8-M5), the glue of what a call destroys in place, of what a Drop's group destroys and a DropGlue item's targets.
 internal sealed partial class InstanceCollector
 {
-    // SPEC 8.15.3, 14.10.3, 16.2.1 (DECISIONS R4-M6a): whether a Drop of a body destroys nothing in a view: A2 judged its group Elide (on
-    // the runtime paths, or on the assumed paths of a Drop only the checks reach), so its glue is no instance the body requires; a Drop
-    // only the checks reach that may destroy something has no group and keeps its glue (8.15.3: reachable or not), and so does every Drop
-    // of a body whose verdicts are inexact (MirDropTable.Incomplete).
-    private static bool Elided(MirProgram program, MirBody body, int block, byte view)
-        => program.Drops.Incomplete(body.Ordinal) is null && program.Drops.Elides(body.Ordinal, block, view);
-
-    // SPEC 16.3.2, 8.15.3 (PLAN G641): a Drop's targets at its site (the template's: its location and runtime bit, which every target of
-    // the site carries): the target of each part its group's first row destroys, in its walk's order (DropGlue.Destroyed, the walk code
-    // generation writes the Drop by, FunctionCodegen.Drops; Destroys); a Drop without a group (one only the checks reach, or of a body
-    // whose verdicts are inexact) destroys its Type whole.
+    // SPEC 16.3.2, 8.15.3, 14.10.3 (PLAN G641; DECISIONS R4-M6a): a Drop's targets at its site (the template's: its location and runtime
+    // bit, which every target of the site carries): the target of each part its group's first row destroys, in its walk's order
+    // (DropGlue.Destroyed, the walk code generation writes the Drop by, FunctionCodegen.Drops; Destroys), on the runtime paths or the
+    // assumed paths of a Drop only the checks reach, so an Elide row, which destroys nothing, requests none; a Drop without a group (one only
+    // the checks reach whose Place has no Move Path, or of a body whose verdicts are inexact, MirDropTable.Incomplete) destroys its Type
+    // whole (8.15.3: reachable or not).
     private void DropTargets(MirProgram program, int item, SourceRef subject, MirBody body, in (MirLocation At, bool Runtime) site, BoundType closed)
     {
         var drops = program.Drops;
@@ -59,8 +54,8 @@ internal sealed partial class InstanceCollector
     private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed ? this.GlueOf(item, subject, closed) : -1;
 
     // The DropGlue item of a closed Type, keyed by what its function reads (GlueKey), for a Type whose destruction runs or releases something
-    // (MirTypes.MayNeedDrop), a call's in-place destruction's too (SPEC 15.7.1, 16.3.2; DECISIONS R5-M116: replace's published row); a Drop
-    // A2 elides requests none (Elided). -1 for a Type with nothing to destroy or a refused edge.
+    // (MirTypes.MayNeedDrop), a call's in-place destruction's too (SPEC 15.7.1, 16.3.2; DECISIONS R5-M116: replace's published row). -1 for
+    // a Type with nothing to destroy or a refused edge.
     private int GlueOf(int item, SourceRef subject, BoundType closed)
         => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, this.GlueKey(closed), closed, null) : -1;
 

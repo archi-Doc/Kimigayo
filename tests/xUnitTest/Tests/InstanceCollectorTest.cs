@@ -1702,11 +1702,12 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
     }
 
-    // PLAN G641 kind 4 (R3-U2a), SPEC 16.3.2: an Open Drop's site targets what its group destroys, in DropGlue.Destroyed's order, the walk
-    // code generation writes it by, not the dropped Type's whole glue: a struct's Fields from the last (an i32 none), an Open Field by its
-    // own rows (a Tuple's elements from the last, an Elide one whole until R3-U2b), a Flag Field whole; a fixed array's elements from the
-    // last, each run without a row through the element's glue, an Open element by its rows; an Open base by its rows after the Fields; an
-    // enum's Case payload elements by their Case's rows. No whole glue is requested.
+    // PLAN G641 kind 4 (R3-U2a, R3-U2b), SPEC 16.3.2, 8.15.3: an Open Drop's site targets what its group destroys, in DropGlue.Destroyed's
+    // order, the walk code generation writes it by, not the dropped Type's whole glue: a struct's Fields from the last (an i32 none), an
+    // Open Field by its own rows (a Tuple's elements from the last), a Flag Field whole; a fixed array's elements from the last, each run
+    // without a row through the element's glue, an Open element by its rows; an Open base by its rows after the Fields; an enum's Case
+    // payload elements by their Case's rows (no Elide one: each is moved on one arm only). An Elide row (the part moved out on every path
+    // in partly, elements and based) destroys nothing and requests no glue; no whole glue is requested.
     [Fact]
     public void AnOpenDropTargetsWhatItsGroupDestroysInWalkOrder()
     {
@@ -1721,9 +1722,9 @@ public sealed partial class InstanceCollectorTest
             "func cases(t: Two)\n    match t@move\n        .A(let r, _) => take(r@move)\n        .B(let s) => take(s@move)\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         string[] Glues(string label) => [.. Targets(program, set, label).Where(static x => x.StartsWith("DropGlue", StringComparison.Ordinal))];
-        Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue string"], Glues("Fn partly"));
-        Assert.Equal(["DropGlue (string, string)", "DropGlue string", "DropGlue string", "DropGlue (string, string)"], Glues("Fn elements"));
-        Assert.Equal(["DropGlue string", "DropGlue Array<i32>", "DropGlue string"], Glues("Fn based"));
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Glues("Fn partly"));
+        Assert.Equal(["DropGlue (string, string)", "DropGlue string", "DropGlue (string, string)"], Glues("Fn elements"));
+        Assert.Equal(["DropGlue string", "DropGlue Array<i32>"], Glues("Fn based"));
         Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue string"], Glues("Fn cases"));
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is "DropGlue Pair" or "DropGlue [3 of (string, string)]" or "DropGlue Two");
     }
