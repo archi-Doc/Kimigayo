@@ -8,8 +8,8 @@ namespace Kimi.Compiler.Mir;
 //   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
 //   testRecordValue's recorded value a Scalar by Records, an owning interpolation's step's constants by Constants); and its destination:
 //   a diverging Call's write bit for G131, no Never value written by a returning Call; a constant record only as an input of a Fn call
-//   that keeps nothing of it (ConstantRecords). Over a walked body, each FormatFinish's adapter over a FormatBuffer's buffer and its
-//   estimate operands that FormatBuffer's (Finishes).
+//   that keeps nothing of it (ConstantRecords); a Places Call's Fn callee and whole-Temp Moves (Placed; PLAN G442). Over a walked body,
+//   each FormatFinish's adapter over a FormatBuffer's buffer and its estimate operands that FormatBuffer's (Finishes).
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
 //   StaticSlot, Type, NeverWrite and Operation findings; a callee with a signature goes to MirValidator.Signatures and the Call's inputs
 //   to MirValidator.Inputs (G136).
@@ -243,6 +243,11 @@ internal sealed partial class MirValidator
                     break;
             }
 
+            if (call.Places && !this.Placed(call))
+            {
+                this.Report(MirViolation.Operation); // PLAN G442: a construction's insertion transfers whole temps into it.
+            }
+
             this.Inputs(call);
             this.ConstantRecords(call);
             if (call is { Target: < 0, Place: { Projection: 0, Root: >= 0 and var root } } && root < body.Locals.Length)
@@ -253,6 +258,27 @@ internal sealed partial class MirValidator
                 body.Locals[written] is { Kind: MirLocalKind.Temp } local && ReferenceEquals(local.Type, BoundType.Never))
             {
                 this.Report(MirViolation.NeverWrite); // A returning Call writes the Never value (R5-M38).
+            }
+
+            return true;
+        }
+
+        // A Places Call (PLAN G442; the owner's O-97 (a)): a construction's insertion, a Fn callee each of whose operands is a Move of a
+        // whole Temp that the call transfers into the construction.
+        private readonly bool Placed(in MirTerminator call)
+        {
+            if (call.Callee.Kind != MirCalleeKind.Fn)
+            {
+                return false;
+            }
+
+            foreach (ref readonly var operand in body.Operands.Slice(call.Start, call.Count))
+            {
+                if (operand.Kind != MirOperandKind.Move || Whole(operand.Place, body.Locals.Length) is not (>= 0 and var root) ||
+                    body.Locals[root].Kind != MirLocalKind.Temp)
+                {
+                    return false;
+                }
             }
 
             return true;

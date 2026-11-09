@@ -1073,6 +1073,25 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Contains((MirViolation.Operation, body.Source), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // SPEC 8.2.3, 13.4 (C-159, the Front's refuting form; G157 (29)): a Field whose Type is a projection bound in its struct's scope compares
+    // as the premises of the comparison's scope make it, string under H.Item is string, also as ref/string under a layer-adding premise and
+    // inside a Closure: each comparison is the witness's call, so every body validates and holds no equality BinaryOp. Binding.OperandTerminal
+    // premises by CallableContractType (OT2); before, it substituted identity premises only, and each comparison was a BinaryOp at ref/H.Item.
+    [Theory]
+    [InlineData("    H.Item is string\n    return p.v == q.v\n")]
+    [InlineData("    H.Item is ref/string during o\n    return p.v == q.v\n")]
+    [InlineData("    H.Item is string\n    let f = func [p, q] () => p.v == q.v\n    return f()\n")]
+    public void AProjectionFieldComparesItsPremisedString(string body)
+    {
+        var c = MirBuildTest.Compile("contract Holder\n    associate Item\nstruct P<H>\n    H is Holder\n    public let v: H.Item\n" +
+            "func same<H>(x: ref/string during o, p: ref/P<H>, q: ref/P<H>) -> bool\n    H is Holder\n" + body);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.DoesNotContain(x.Statements.ToArray(), static y =>
+            y.Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Eq or (byte)MirBinaryOp.Ne }));
+    }
+
     // G620: an Integer constant holds a value of its integer Type as its canonical N-bit payload, sign-extended for every Type (u8's 255
     // is -1), isize and usize at the profile's 64 bits, so every Int128 is a 128-bit payload. A payload one past either end is a Const
     // finding at its use, and so are an unsigned value's other encoding (255 for u8's 255) and dev's no-target bound test (2^127 in i32
@@ -1338,6 +1357,40 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+    }
+
+    // PLAN G442 (the owner's O-97 (a)): Places marks a Dictionary literal entry's placeEntry Call, the construction's insertion: a Fn callee
+    // each of whose operands is a Move of a whole Temp. The builder's is valid; a copied operand, an operand moving a Var, and the attribute
+    // on a Goto are Operation findings.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("copy")]
+    [InlineData("var")]
+    [InlineData("goto")]
+    public void APlacesCallMovesWholeTemps(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f(a: i32) -> Dictionary<i32, i32>\n    var v = a\n    v = 2\n    return [1: a, 2: v]\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var blocks = body.Blocks.ToArray();
+        var call = Array.FindIndex(blocks, static x => x.Terminator.Places);
+        Assert.True(call >= 0);
+        var value = blocks[call].Terminator.Start + 2;
+        switch (broken)
+        {
+            case "copy":
+                Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Kind = MirOperandKind.Copy };
+                break;
+            case "var":
+                var local = Array.FindIndex(body.Locals.ToArray(), static x => x.Kind == MirLocalKind.Var);
+                Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Place = new(local) };
+                break;
+            case "goto":
+                var other = Array.FindIndex(blocks, static x => x.Terminator.Kind == MirTerminatorKind.Goto);
+                body.Terminate(other, blocks[other].Terminator with { Places = true });
+                break;
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Operation], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
     // DECISIONS BU-48 (amended by G283, SPEC 16.3.1): MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver, and

@@ -12,7 +12,8 @@
 // Invariants: a comparison of a closed Type has the legacy plan's leaves wherever that plan exists, which it does not for an inherited
 // witness (ComparisonCompositionTest's twin).
 // OperandTerminal: a comparison operand's node and Type to the Type it compares, a read of Binding's decision in that node's scope
-// (Binding.OperandTerminal), the one Binding view the MIR builder's Witnessed asks before Comparison; it resolves nothing.
+// (Binding.OperandTerminal: the scope's premises by CallableContractType, then each qualifying pair layer, then the ref and uniq layers),
+// the one Binding view the MIR builder's Witnessed asks before Comparison; it resolves nothing.
 // Must not: create a bridge or a CallPlan, write a diagnostic, HIR or pass state, or prove on an erased value.
 
 using Kimi.Compiler.Parsing;
@@ -52,8 +53,8 @@ internal sealed partial class TyCtxt
     }
 
     // SPEC 8.2.3, 13.4, 13.5.5: the Type a comparison operand compares, Binding's decision for the operand (Binding.OperandTerminal): its Type
-    // as the identity premises of the operand's scope make it, below its ref and uniq layers and each pair layer that scope admits following,
-    // which the MIR builder asks Comparison at.
+    // as the premises of the operand's scope make it (CallableContractType), then below each pair layer that scope admits following, then
+    // below its ref and uniq layers, which the MIR builder asks Comparison at.
     internal BoundType OperandTerminal(Koto operand, BoundType type) => binding.OperandTerminal(operand, type);
 
     // Binding's composition rule over the leaves: a closed one runs what the Contract's requirement on it runs (Witness's Body), one with an
