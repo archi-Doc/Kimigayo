@@ -134,10 +134,11 @@ public struct Utf8Writer {target}
     internal func reserve(self: uniq/Self, amount: isize) -> Result<WriteWindow during target, BufferFull>
         if self.failed => return .Err(BufferFull.init())
         let largest: isize = 9223372036854775807
-        // The adapter keeps `0 <= pendingLength`, which bounds the difference; arithmetic on `amount` stays checked.
+        // The adapter keeps `0 <= pendingLength`, which bounds the difference; the guard `amount <= available` bounds the
+        // sum.
         let available = (largest@Wrapping<isize> - self.pendingLength@Wrapping<isize>)@isize
         if amount > available => Storage.allocationSizeExceeded()
-        var minimum = amount + self.pendingLength
+        var minimum = (amount@Wrapping<isize> + self.pendingLength@Wrapping<isize>)@isize
         unsafe
             if self.kind == 0
                 let fixed = self.destination@raw/(Text.FixedBuffer during target)
@@ -149,7 +150,9 @@ public struct Utf8Writer {target}
                 let unused = ((*heap).capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
                 let room = (largest@Wrapping<isize> - length@Wrapping<isize>)@isize
                 if minimum > unused and minimum <= room
-                    if self.hint <= room - minimum => minimum += self.hint
+                    // The guard `unused < minimum <= room` bounds the difference, and `hint <= spare` the sum.
+                    let spare = (room@Wrapping<isize> - minimum@Wrapping<isize>)@isize
+                    if self.hint <= spare => minimum = (minimum@Wrapping<isize> + self.hint@Wrapping<isize>)@isize
                 return self.settled(((*heap)@uniq).reserve(minimum))
         if self.kind == 2
             let reserved = Storage.erasedReserve(self, minimum)
@@ -265,13 +268,13 @@ public group Text
             if minimum < 0 => Storage.argumentOutOfRange()
             let length = self.length
             let capacity = self.capacity
-            // The buffer keeps `0 <= length <= capacity`, which bounds the differences; arithmetic on `minimum` stays
-            // checked.
+            // The buffer keeps `0 <= length <= capacity`, which bounds the differences, and the guards
+            // `0 <= minimum <= room` the sum.
             if minimum > (capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
                 let largest: isize = 9223372036854775807
                 let room = (largest@Wrapping<isize> - length@Wrapping<isize>)@isize
                 if minimum > room => Storage.allocationSizeExceeded()
-                var target = length + minimum
+                var target = (length@Wrapping<isize> + minimum@Wrapping<isize>)@isize
                 // `0 <= capacity <= largest / 2` bounds the product.
                 if capacity <= largest / 2
                     let doubled = (capacity@Wrapping<isize> * 2@Wrapping<isize>)@isize
@@ -324,7 +327,8 @@ public group Text
 
     /// Whether the `length` bytes at `data` are exactly UTF-8 encodings of Unicode scalar values (SPEC 22.9.3): a
     /// truncated sequence, an overlong encoding, a surrogate or a value above U+10FFFF is not; NUL is ASCII. A bound
-    /// precedes each read, and the index only steps by one under it, so no step can overflow.
+    /// precedes each read: the index steps by one only under `index < length`, and `rest` down only under `rest > 0`, so
+    /// no step can overflow.
     ///
     /// - safety: `length >= 0`, and the `length` bytes at `data` lie within its provenance and are readable.
     internal unsafe func validUtf8(data: raw/u8, length: isize) -> bool
@@ -332,7 +336,7 @@ public group Text
             var index: isize = 0
             while index < length
                 let lead = *(data + index)
-                index += 1
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
                 if lead >= 128
                     if lead < 194 or lead > 244 => return false
                     var rest: isize = 3
@@ -352,8 +356,8 @@ public group Text
                         let byte = *(data + index)
                         if (byte & 192) != 128 => return false
                         scalar = (scalar << 6) | (byte & 63)@u32
-                        index += 1
-                        rest -= 1
+                        index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                        rest = (rest@Wrapping<isize> - 1@Wrapping<isize>)@isize
                     if scalar < minimum or scalar > 1114111 => return false
                     if scalar >= 55296 and scalar < 57344 => return false
             return true

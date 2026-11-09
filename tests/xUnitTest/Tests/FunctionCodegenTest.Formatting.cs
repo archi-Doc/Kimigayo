@@ -195,6 +195,21 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("alloca", check.Operands[1].Opcode); // The Copy Slice's own slot, which the routine owns from the call on (R5-M89).
     }
 
+    // DECISIONS R8-M2 (RP8; T-81, T-88): the buffer and window bodies write arithmetic that an invariant or a dominating guard bounds in
+    // Wrapping<isize>, so no instance of them checks for overflow; checked steps there cost the O2 Buffers kernel twice. commitUtf8 and
+    // next compute only through end, which is here.
+    [Fact]
+    public void BufferAndWindowBodiesCheckNoBoundedArithmetic()
+    {
+        var c = Analyze(Buffers, OutputKind.Library);
+        foreach (var name in new[] { "push", "append", "limit", "commit", "advance", "end", "next", "reserve", "validSuffix", "validUtf8" })
+        {
+            var texts = ItemTexts(c, name);
+            Assert.NotEmpty(texts);
+            Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
+        }
+    }
+
     // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128): an erased Text.fixed Item's adapter measures its capacity from its entry's own input Type, the
     // target Function Type's, and calls the routine with its own parameters.
     [Fact]
