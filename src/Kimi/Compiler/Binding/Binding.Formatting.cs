@@ -64,14 +64,16 @@ public sealed partial class Binding
     }
 
     // SPEC 8.11.3, 22.1: what a legacy leaf calls and its declaring instance: a built-in Type's library witness, as the requirement-witness core
-    // selects it, the group's function with no declaring Type (Binding.LibraryWitnesses), whose row has no EffectsLimit, as Witnesses reads
-    // one; else the conformance's own witness, not an inherited one (DECISIONS R5-M68); null where none resolves.
+    // selects it, the group's function with no declaring Type and no Types (Binding.LibraryWitnesses), which is that witness's instance only
+    // for a row of no parameter: String, the one Equatable or Comparable row, so a comparison row with a parameter lands only after this
+    // composition goes (A-12's read of the view, else R7-P5); else the conformance's own witness, not an inherited one (DECISIONS R5-M68);
+    // null where none resolves.
     [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7).")]
     private (BindingSymbol Target, BoundType? Declaring)? LeafTarget(BindingSymbol site, BoundType self, BindingSymbol contract, string? name)
     {
         if (contract.Contract?.OwnRequirement() is { } requirement &&
             this.ResolveRequirementWitness(requirement, self, contract, this.ConstraintScope(site.Declaration)) is
-            { Kind: RequirementWitnessKind.LibraryWitness, Group.EffectsLimit: false, Target: { } member })
+            { Kind: RequirementWitnessKind.LibraryWitness, Target: { } member })
         {
             return (member, null);
         }
