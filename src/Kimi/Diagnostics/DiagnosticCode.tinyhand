@@ -745,6 +745,11 @@
     Evidence="case:Text"
     Label="the owning value may leave its holder here"
 
+  + Name="UnretainedRawStore_Kd"
+    Category="Language"
+    Message="This store puts a parameter's own value in raw storage reached from that parameter, where its contract does not retain it"
+    Evidence="case:Text"
+
   + Name="InternalInvariant_Kd"
     Category="Internal"
     Message="An internal compiler invariant was violated while analyzing this construct; no artifact is produced. Please report this input"
