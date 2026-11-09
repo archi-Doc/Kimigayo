@@ -13421,6 +13421,8 @@ structure is recorded here by the unit that first implements it.
     Needs column for replace's glue (a second statement of Binding's published row); the general rule "Destroys ≥ 0 → glue" (Array.clear's
     row stands for its elements, C8d's ElementGlue); a Kernel column (above); re-pointing the old lowering to the map now (D5, no consumer
     in C8b).
+  - Superseded in part by R8-M17 (R8-U1): `replace`, `exchange` and `swap` are Kimigayo bodies; the Updates paragraph, the update rows of
+    the legacy map (`LegacyWriter.Replace/Exchange/Swap`, `LegacyRow.Updates`) and `FunctionCodegen.Updates` are gone.
 - **R5-M117 The owner confirms C8b's departures** (owner, 2026-10-25, after C8b's design and before its behavior commit; verbatim
   「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two (R5-M115) and C8b's two) The two departures R5-M116
   records are confirmed: an inline Body-disposition row (the updates `replace`, `exchange` and `swap`, as R5-M45's storage kernels) has no
@@ -13428,6 +13430,7 @@ structure is recorded here by the unit that first implements it.
   in-place row (`KimiLibraryCatalog`, `TyCtxt.Published`), which the instance collector reads, rather than from a need the legacy row
   declares (against K package 4.5 row 2 and S2-S4 X4, R5-M18); and the fixed-array storage borrows (StorageBorrowFixedShared and
   StorageBorrowFixedExclusive) move from plan row C8d's storage-boundary kinds to C8b, so C8d keeps six.
+  - Superseded in part by R8-M17 (R8-U1): the first departure no longer applies, since no inline Body-disposition row remains.
 - **R5-M118 Strings in MIR code generation: the string column and string constants put whole (C8c)** (2026-10-25; under R5-M18 form 2
   (G:library-1), R5-M16, R5-M75, R5-M76, R5-M92 and R5-M116)
   - Form: every string comparison MIR builds is one form, a `BinaryOp` of `Eq` to `Ge` whose operands are a string constant (Type
@@ -16393,7 +16396,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     `FunctionCodegen.Stores.cs:Text` read the same words, and `RuntimeAbi` is process-wide and cannot read a compilation's placement.
     No Transitional tag and no removal stage. The guard is permanent, and each part holds one thing: `LayoutTest`'s `StringRepr` row and
     `RecordFieldsAreFixed` hold `StringRepr` against `RuntimeAbi.String`; `MinimalEmissionTest.cs:34` holds `%kimi.string`'s definition;
-    `FunctionCodegenTest.Strings.cs:164-167` and `.Updates.cs:115, 144` hold `Stores.cs:Text`; the templates' Field order
+    `FunctionCodegenTest.Strings.cs:164-167` holds `Stores.cs:Text` (R8-M17); the templates' Field order
     (`WindowsRuntime.ll.in:104, :264, :299`, `TestRuntime.ll`) has only native runs: `String*`, `Utf*` and `Abort*`.
   - Supersedes: the plan's §5.2 SP1 row for this fact (the rest of SP1 stays with its units), and §2.2's RQ11 "the punnable list of
     Appendix E gains the pairs", which names no existing list (it is SPEC 5.2's) and needs no pair once the Fields are ordinary Places.
@@ -16753,6 +16756,35 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** the collector deriving "nothing initialized" itself (a second owner of A2's fact); a destruction laying out an element
     only where its destruction runs (accepts `I_dDrop`, `I_aDrop`, against the planning session's ruling); a move into the Destination
     on the check edge.
+- **R8-M17 `replace`, `exchange` and `swap` are Kimigayo bodies** (Back, 2026-11-09; R8-U1; Major; design and SP3 reviews ACCEPT; the
+  Middle's RP17 consent C-174 YES; plan RP20, RQ9; on R8-M3; supersedes in part R5-M116 and R5-M117; amends R8-M1's guard list) SPEC 15.7
+  as R8-SP3 states it, 15.7.1, 22.5.1.
+  - **Owner.** Safe bodies in `Intrinsics.kimi` (the root `public group Intrinsics`, merged into the group `KimiLibrary` creates; the
+    other signatures in `IntrinsicOperations.kimi`): `replace` destroys the old value in place and places the new one (`Raw.initialize`);
+    `exchange` takes, places and returns the old value; `swap` holds the first, places the second, then the held one. Callers keep the
+    identity contract: the published rows, `Binding.Retention.Transfers`' keys and BU-42's `ReferentStores` (empty).
+  - **Temporary: `replace`'s destruction.** `replace` destroys through `Storage.destroyValues<T>(place@raw/u8, 1)`, because
+    `_ = (*p)@move` destroys a temporary copy today (PLAN G670). Removal: when G670 lands (the Middle's fix of `MirBuilder.Discard`), a
+    Back Minor unit moves `replace` to `_ = (*place)@move`, which then destroys the Place itself (SPEC 5.2.3) and is the library's one
+    form for destroying one value in place; `destroyValues` stays the form for a sequence of n values.
+  - **Rows.** `replace` takes `CallerLocation` (its glue receives the call's location, SPEC 22.5.1) and keeps `Row: Replace`. `exchange`
+    and `swap` gain `Row: None`. Only A4 read the old bodiless `Inputs` class, and it composes the empty row instead, the same summary;
+    the borrow readers (`Destroying`'s `Destroys`, `InPlaceTarget`'s `InPlace`) give the same answer for a `None` row as for no row, and
+    A5's transfers and referent stores are keyed by identity. The two bodies are now checked against the empty row
+    (`EachRowOperationsBodyStaysWithinItsRow`), a proof the `Inputs` class never had.
+  - **Deleted.** `FunctionCodegen.Updates`; `LegacyWriter.Replace/Exchange/Swap`; `LegacyRow.Updates`, `.Need`, `.Fixed`; `RowSlots`;
+    `WriteAdapter`'s update entry; `Legacy`'s update branch; `Routine(LegacyRow)`'s default arm; `InstanceCollector.Bodyless`' legacy
+    TypeArguments need and in-place glue branch.
+  - **Counts (RQ9).** `CompilerFunctionKind` 62 → 59 (RP20 by removal, no RP6 row, as R8-M2); `IntrinsicId`, `KimiDeclarationId` and
+    `[Transitional("R8")]` unchanged.
+  - **Supersedes** R5-M116's "Updates" paragraph and its update rows of the legacy map (R5-M116 rejected bodies only "now (R8's stage)"),
+    and R5-M117's first departure (an inline Body-disposition row has no `LegacyRow` item: no such row remains). **Amends R8-M1:** its
+    guard list loses `FunctionCodegenTest.Updates.cs:115, 144`; `Stores.cs:Text` stays held by `FunctionCodegenTest.Strings.cs:164-167`.
+  - **Rejected.** (B) intrinsic-table rows (hand-written IR, new `IntrinsicId`s); (C) a `Raw.take` function (a second form of
+    `(*p)@move`); (A2) no row for `exchange` and `swap` (A4 entering the bodies at each call).
+  - **RP8** (T-84): every O2 kernel compiles to the same code, the `Iterators` kernel's new `exchange` row (`Slots<T>`, Milestone 29's
+    shape) included; `replace` has equal O2 counts on every fixture, and O0 records a call per update and a copy slot for an in-memory
+    by-value `T`. Measurements are in the commit.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
