@@ -1,27 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
 // The static rows of Layout (IMPL 21.1.3; plan P7a): scalars, Unit, string, Never, borrows and raw pointers, object and function handles,
-// and until R8 the Slice, Array and Dictionary handle words, each one shared record, which placement (Layout.Placement.cs) reads for a
-// Type that is not placed and code generation reads through Row (DECISIONS R5-M148); and an enum's tag (Tag), which placement places.
+// each one shared record, which placement (Layout.Placement.cs) reads for a Type that is not placed and code generation reads through Row
+// (DECISIONS R5-M148); an enum's tag (Tag), which placement places; and IMPL 21.1.3's Handles table, a sequence handle's one component
+// (Component), whose placement is the handle's record (R8-R1b).
 internal sealed partial class Layout
 {
-    private const string Removal = "R8 declares the Slice, Array and Dictionary handles in the Kimigayo library, whose struct placement lays them out.";
-
-    // SPEC 4.7.3, 4.8.6, 4.9.5: the sequence handles, each its words and the word holding its length: a Slice is {buffer, length} and an
-    // Array handle {buffer, length, capacity}, their length Field 1; a Dictionary handle holds seven words, DictionaryStorage.Handle's
-    // {buffer, used, capacity, length, head, tail, free}, its live count Field 3 (DECISIONS R5-M124). The buffer word is a pointer, the others
-    // are isize.
-    [Transitional("R8", Reason = Removal)]
-    private static readonly Handle[] Handles =
-    [
-        new(BoundTypeKind.Slice, Words(2), 1), new(BoundTypeKind.Array, Words(3), 1), new(BoundTypeKind.Dictionary, Words(7), 3),
-    ];
-
     // IMPL 21.1.3: an object handle is one pointer-sized word; a common function value is 16 bytes, its code and environment words.
     private static readonly ValueLowering ObjectHandle = new(new("[8 x i8]", 8, 8, 8, ReadOnlyMemory<int>.Empty), "[8 x i8]", "ptr");
 
@@ -36,7 +24,7 @@ internal sealed partial class Layout
     /// <summary>Gets IMPL 21.1.3's static row of a Type, which code generation reads (and the old scalar-value gate until R6-gen). Of never
     /// asks it for an abstract Type (Layout.cs' Inputs; DECISIONS R5-M155); any other kind without a row lies outside Layout's input
     /// contract in every compilation, so the default arms stay a throw, the closed-kind fault.</summary>
-    /// <param name="type">A scalar, Unit, string, Never, borrow, raw pointer, handle or sequence Type.</param>
+    /// <param name="type">A scalar, Unit, string, Never, borrow, raw pointer, object handle or function Type.</param>
     /// <returns>The row's shared record; a Type without a row is an internal error.</returns>
     internal static ValueLowering Row(BoundType type) => type.Kind switch
     {
@@ -50,7 +38,6 @@ internal sealed partial class Layout
             _ => throw Outside(type),
         },
         BoundTypeKind.Function => FunctionHandle,
-        BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary => HandleOf(type).Words,
         _ => throw Outside(type),
     };
 
@@ -62,39 +49,26 @@ internal sealed partial class Layout
     internal static bool Indirect(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.Slice or BoundTypeKind.Array or
         BoundTypeKind.Dictionary || type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner };
 
-    /// <summary>Gets the Field of a sequence handle's record that holds its length (SPEC 4.7.3, IMPL 21.1.3): its handle row's length word.</summary>
-    /// <param name="sequence">A Slice, Array or Dictionary Type.</param>
-    /// <returns>The Field's index in the handle's record; a Type without a handle is an internal error.</returns>
-    internal static int LengthWord(BoundType sequence) => HandleOf(sequence).Length;
+    /// <summary>Gets IMPL 21.1.3's one component of a sequence handle, the Kimi Kotonoha's C-layout struct at the value's address: an
+    /// Array's <c>Storage.ArrayRepr</c>, a Slice's <c>Storage.SliceRepr</c>, a Dictionary's <c>DictionaryStorage.Handle</c>, the one
+    /// statement of the handle's words (a Len reads its <c>length</c>, SPEC 4.7.3). It is the declaration's own Type: its Fields are a raw
+    /// pointer and isize words, so no element Type is read (X34) and each handle kind has one record; a Field that read the parameter
+    /// would place it, Rejected, an internal fault (Walk), never a silent layout. A string's component, <c>Storage.StringRepr</c>, is not
+    /// returned: the string keeps its static row, O-43 (A)'s lasting pair with <c>RuntimeAbi.String</c> (DECISIONS R8-M1).</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>The component's own Type, or null for any other Type, a string included.</returns>
+    internal BoundType? Component(BoundType type) => Representation(type.Kind) is { } component ? this.types.SelfType(component) : null;
 
     private static InvalidOperationException Outside(BoundType type) => new("Layout has no row for the Type " + type.Name + ".");
 
-    // The handle row of a sequence Type.
-    private static Handle HandleOf(BoundType type)
+    // IMPL 21.1.3's Handles table: a sequence handle kind's component declaration, which Component and placement (Handle) read.
+    private static KimiDeclarationId? Representation(BoundTypeKind kind) => kind switch
     {
-        foreach (var handle in Handles)
-        {
-            if (handle.Kind == type.Kind)
-            {
-                return handle;
-            }
-        }
-
-        throw Outside(type);
-    }
-
-    // Pointer-aligned words at consecutive offsets, the first being the buffer pointer.
-    private static ValueLowering Words(int count)
-    {
-        var offsets = new int[count];
-        for (var i = 0; i < count; i++)
-        {
-            offsets[i] = i * 8;
-        }
-
-        var storage = "{ [0 x i64], [" + (count * 8).ToString(CultureInfo.InvariantCulture) + " x i8] }";
-        return new(new(storage, count * 8, 8, count * 8, offsets), storage, "ptr");
-    }
+        BoundTypeKind.Array => KimiDeclarationId.ArrayRepr,
+        BoundTypeKind.Slice => KimiDeclarationId.SliceRepr,
+        BoundTypeKind.Dictionary => KimiDeclarationId.DictionaryStorageHandle,
+        _ => null,
+    };
 
     private static Dictionary<BoundType, ValueLowering> CreatePrimitives()
     {
@@ -137,7 +111,4 @@ internal sealed partial class Layout
         static TypeLayout Scalar(string llvm, int size)
             => new(llvm, size, size, size, ReadOnlyMemory<int>.Empty);
     }
-
-    // A sequence handle's row: its Type kind, its words and the Field holding its length.
-    private readonly record struct Handle(BoundTypeKind Kind, ValueLowering Words, int Length);
 }

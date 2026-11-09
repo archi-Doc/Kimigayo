@@ -70,6 +70,7 @@
 // Fields, payloads and elements are no storage the operation writes). An operation of SPEC 4.6 to 4.9 writes the store at its
 // borrowed receiver only in the storage that receiver refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
+// Keeps: whether the result or a storage the call may write may hold an input (MirValidator.ConstantRecords).
 // Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,
 // .Storage.cs, .Sources.cs, .Rows.cs and .Transfers.cs (the computation).

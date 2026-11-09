@@ -163,23 +163,15 @@ internal sealed partial class FunctionCodegen
         output.Write(":\n");
     }
 
-    // SPEC 13.4, 13.4.1, 12.4.3: a Builtin leaf through the operator table's column of its Type. A string's: its row's routine on the
-    // records' bytes (equals' StringEqual compared with 0 by Eq's entry, compare's StringCompare i32 itself). Any other: its loaded values;
-    // equals' Eq, under the Contract's mapping (Mapping) or both values unequal to themselves (Ne), which only a NaN is, so all NaNs are
-    // one value; +0.0 == -0.0 by Eq; compare's Gt less Lt as an i32, an operator mode's unordered pair (a value unequal to itself) counted
-    // as greater (Operator: < and <= are false) or as less (Reversed: > and >= are false); zero-sized operands are Apply's (the row's
-    // Reflexive). Null after a record.
+    // SPEC 13.4, 13.4.1, 12.4.3: a Builtin leaf through the operator table's column of its Type (a string is a Witness leaf, never one), on
+    // its loaded values: equals' Eq, under the Contract's mapping (Mapping) or both values unequal to themselves (Ne), which only a NaN is,
+    // so all NaNs are one value; +0.0 == -0.0 by Eq; compare's Gt less Lt as an i32, an operator mode's unordered pair (a value unequal to
+    // itself) counted as greater (Operator: < and <= are false) or as less (Reversed: > and >= are false); zero-sized operands are Apply's
+    // (the row's Reflexive). Null after a record.
     private Value? Leaf(BoundType type, KimiDeclarationId? contract, ComparisonMode mode, Value left, Value right)
     {
         var column = Column(type);
         var equality = contract == KimiDeclarationId.Equatable;
-        if (column == StringColumn)
-        {
-            var row = Rows[(int)(equality ? MirBinaryOp.Eq : MirBinaryOp.Lt)];
-            var order = this.CompareBytes(row.Routine!, this.Record(left), this.Record(right));
-            return equality ? this.Compared(row.Entries[StringColumn].Operator!, "i32", order, "0") : order;
-        }
-
         if (this.Laid(type) is not { } lowering)
         {
             return null; // Recorded.

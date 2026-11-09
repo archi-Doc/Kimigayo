@@ -111,9 +111,10 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // A sequence's first element's address: a fixed array's own, an Array's or Slice's buffer word, a pointer (IMPL 21.1.3); an Index's and a
-    // Storage's one statement of it.
-    private Value Buffer(BoundType type, Value start) => type.Kind == BoundTypeKind.FixedArray ? start : this.LoadAt(start, RuntimeAbi.StringReference.Layout);
+    // A sequence's first element's address: a fixed array's own, its record unread (null), else an Array's or Slice's word `data` (IMPL
+    // 21.1.3); an Index's and a Storage's one statement of it.
+    private Value Buffer(BoundType type, ValueLowering? record, Value start)
+        => type.Kind == BoundTypeKind.FixedArray ? start : this.LoadWord(type, record!, start, "data");
 
     // An Index: the bounds check at the position local's location, then the element's address at its stride (its Element need, Needed); a
     // handle's record gives its length word, a fixed array's length is its Type's, so its record is not read. False after a record.
@@ -131,7 +132,7 @@ internal sealed partial class FunctionCodegen
 
         var isize = this.slots[position].Value;
         var index = this.Load(position);
-        var buffer = this.Buffer(type, start);
+        var buffer = this.Buffer(type, sequence, start);
         var length = this.Length(type, sequence, start);
 
         var id = this.next++;
@@ -166,11 +167,32 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // A sequence's length (SPEC 4.7.3) from its address: a fixed array's closed length, its record unread (null), else the length word of its
-    // handle record, which its handle row names (Layout.LengthWord: an Array's or Slice's Field 1, a Dictionary's live count; IMPL 21.1.3).
+    // A sequence's length (SPEC 4.7.3) from its address: a fixed array's closed length, its record unread (null), else its handle's word
+    // `length` (an Array's or Slice's length, a Dictionary's live count; DECISIONS R5-M124).
     private Value Length(BoundType sequence, ValueLowering? record, Value start)
-        => sequence.Kind == BoundTypeKind.FixedArray ? new('\0', sequence.Length)
-            : this.LoadAt(this.Offset(start, record!.Layout.FieldOffsets.Span[Layout.LengthWord(sequence)]), Layout.Row(BoundType.ISize).Layout);
+        => sequence.Kind == BoundTypeKind.FixedArray ? new('\0', sequence.Length) : this.LoadWord(sequence, record!, start, "length");
+
+    private Value LoadWord(BoundType handle, ValueLowering record, Value start, string name)
+    {
+        var (offset, layout) = this.Word(handle, record, name);
+        return this.LoadAt(this.Offset(start, offset), layout);
+    }
+
+    private void StoreWord(BoundType handle, ValueLowering record, Value start, string name, Value value)
+    {
+        var (offset, layout) = this.Word(handle, record, name);
+        this.StoreAt(this.Offset(start, offset), layout, value);
+    }
+
+    // A handle's word: its component's Field `name` (IMPL 21.1.3; Layout.Component), at that Field's offset in the handle's record, which
+    // is the component's placement, and of that Field's row; by the library record's Field name (AdtDef.IndexOf), code generation's one
+    // reader of a handle's words (LoadWord, StoreWord).
+    private (int Offset, TypeLayout Layout) Word(BoundType handle, ValueLowering record, string name)
+    {
+        var component = this.module.Layout.Component(handle)!;
+        var field = AdtDef.IndexOf(component, name);
+        return (record.Layout.FieldOffsets.Span[field], Layout.Row(AdtDef.FieldType(component, field)!).Layout);
+    }
 
     // An address a constant number of bytes past another: the same address for none.
     private Value Offset(Value start, long bytes) => bytes == 0 ? start : this.Offset(start, new Value('\0', bytes));
