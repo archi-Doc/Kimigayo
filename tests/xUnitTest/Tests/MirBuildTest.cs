@@ -144,6 +144,26 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Equal(expected, f.Consts.ToArray().Where(static x => x.Kind == MirConstKind.Integer && x.Type.Underlying.Name == "u8").Select(static x => x.Bits));
     }
 
+    // G658 (SPEC 13.5.4, DECISIONS R7-M14): a direct literal wrapped to a Type whose instance decides its width is a Proven Wrap Cast of
+    // its i128 payload, the exact value modulo 2^128, so no constant of the abstract Type leaves 0 through 127 (fail-before: rejected).
+    [Theory]
+    [InlineData("T", "200", 200)]
+    [InlineData("T", "-1", -1)]
+    [InlineData("Wrapping<T>", "340282366920938463463374607431768211455", -1)]
+    public void AGenericWrapIsACastOfItsI128Payload(string target, string literal, int bits)
+    {
+        var c = Compile($"func f<T>(x: T) -> {target}\n    T is PrimitiveInteger\n    return {literal}@wrap<{target}>\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var cast = Assert.Single(f.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Cast, Op: (byte)MirCastKind.Wrap } }).Rvalue;
+        var operand = f.Operands[cast.Start];
+        Assert.True(cast.Proven);
+        Assert.Equal(target, TyCtxt.Name(cast.Type!));
+        Assert.Equal(MirOperandKind.Const, operand.Kind);
+        Assert.Equal((MirConstKind.Integer, "i128", (Int128)bits), (f.Consts[operand.Arg].Kind, TyCtxt.Name(f.Consts[operand.Arg].Type), f.Consts[operand.Arg].Bits));
+    }
+
     // SPEC 16.2.2 (DECISIONS R5-M50, R4-M132): the temp a transfer delivers whole into _0 after the Scope Exit is the body's result in
     // transit (MirLocalRole.Result): a return leaving a scope with a cleanup has one, a body's tail value writes _0 and has none, a
     // constructor's return none (its target is a Unit temp), a default template whose tail construct a transfer leaves one, at the
