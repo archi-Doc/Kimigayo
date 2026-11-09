@@ -849,7 +849,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
   or third block walk beside `MirReach`.
 - **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69, its clause "a
-  compiler temporary is never a Place of the program" by R4-M188) Move paths and
+  compiler temporary is never a Place of the program" by R4-M188; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
+  Deref is untracked only into `TyCtxt.RawPart`'s parts, elsewhere it has no Move Path) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
   case; a case-dependent access through a PairLayer that the view makes a reference ends at its outermost such step, as at a
@@ -10924,6 +10925,26 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a separate Type-level dereference rule (review 2 B2); a closed step vocabulary (Select takes MIR's Arg); the nearest
     instance's key (review 1 B1); a path-span reader; a `LayerOrigin` reader; a raw Origin in the key (review 3 N14); an
     Origin-erased key; Binding computing the pun facts; a `CallRetention` or `MirDescriptors` column for the no-store bit.
+- **BU-146 A raw Place's parts: `TyCtxt.RawPart`** (2026-11-10; PLAN G672; Major, an acceptance mover; design review 2 ACCEPT,
+  implementation review ACCEPT; the Middle's consent C-194; supersedes R4-M21's untracked-Take clause) SPEC 3.4, 4.7.1, 5.2, 5.2.2,
+  15.1.5, 15.1.6.
+  - `TyCtxt.RawPart(container)` is the one rule of which parts of a raw Place are raw Places: an `owner` struct's, Tuple's or fixed
+    array's storage holds the part itself (a stored Field or base, an element, a fixed-array element at any position, from-end
+    included), and so does an `owner` enum's (no Take observes a payload Place, a Subject being borrowed, 15.1.6); an Array's,
+    view's, Dictionary's or user element and a part past a reference or handle are referents.
+  - Binding's `ElementAccess.IsRawPlace` (Take: `OffersTake`; an explicit discard's in-place destruction, R4-M194) and MIR's
+    `MirMoveData.Resolve` (A1's Raw access) read it per step; a Move below a raw Deref through another step has no Move Path
+    (`StaticMovePathRequired_Kd`, as a local Array's element), and a part past a reference stored in raw storage is Binding's
+    `ExclusivePathTake_Kd`. The borrow, address and place-ness sites read a separate fact, `ElementAccess.IsRawRooted` (a Place
+    rooted at a raw Place, SPEC 5.2.2's anchor with 4.7.1's receiver; it also passes a reference stored in raw storage and stops at
+    a from-end position).
+  - Why R4-M21's clause no longer holds: it took "below a raw Deref" for SPEC's raw Place; SPEC 4.7.1 and 15.1.5 make an Array's or
+    view's element a referent.
+  - Open (PLAN G672): `MirSteps.Walk` and `MirValidator.IsSharedPath` still derive the raw-Place rule themselves.
+  - Rejected: narrowing one fact for every site (destination-fitted borrows of an Array element lost 5.2.2's anchor); a Binding
+    complement arm refusing every other Take below a raw Deref (false Notes against BU-16 and G181 (1); from-end positions refused);
+    S2, MIR keeping its Raw class below every raw Deref and trusting Binding (A1 admits a Move there: fails open); a builder-carried
+    raw-Take flag on the Move (a new MIR form for a fact of the Place's Types); MIR's own narrowed rule (a second copy).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
