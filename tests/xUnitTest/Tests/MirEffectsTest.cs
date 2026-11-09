@@ -706,61 +706,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         }
     }
 
-    // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
-    // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
-    // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
-    // evaluations. The pooled arrays double, so the cold allocation steps where the program and the library together fill them; each
-    // interval must span the same number of those doublings, or the ratio measures where a step falls instead of the growth. N is
-    // 512/1024/2048, the smallest doubling sizes at which each interval spans one doubling, so the two differences stand 2:1 (119,552 and
-    // 238,912 bytes for the chain, R8-K1b-1's base and head alike). At 256 the library's own bodies decide whether a doubling falls in the
-    // first interval: R8-K1b-1's two more moved it from 256-512 to before 256 (+21,704 bytes at 256, 3.13:1; 16/32/64 stepped the same way:
-    // +336, then +9,504). A larger library may need the next sizes; the two rows take about 7 s.
-    [Trait("Purpose", "Allocation")]
-    [Theory]
-    [InlineData("    public func step{0}() => H.{1}()\n")]
-    [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
-    public void SummariesScaleLinearly(string member)
-    {
-        var (sizes, evaluations) = (new[] { 512, 1024, 2048 }, new long[3]);
-        var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
-        var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
-        {
-            var text = new StringBuilder(Sink + "group G\n    public let flag: bool = false\ngroup H\n");
-            for (var n = 0; n < sizes[i]; n++)
-            {
-                var next = n + 1 == sizes[i] ? "last" : $"step{n + 1}";
-                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, member, n, next, n == 0 ? sizes[i] - 1 : n - 1);
-            }
-
-            var source = text.Append("    public func last() => Console.writeLine(\"x\")\n")
-                .Append(Witness.Replace("    var loud: Loud = Loud.init()\n", string.Empty, StringComparison.Ordinal)).Append("        H.step0()\n        return .Ok(())\n").ToString();
-            var c = MirBuildTest.Compile(source);
-            var program = c.BuildMir();
-            Assert.Equal([Failed], Problems(c, program));
-            var (cases, report) = (new MirCases(c.Types), new MirReport());
-            var flow = new MirDataflow(new MirReach());
-            var effects = new MirEffects(c.Types, cases, flow);
-            analyses[i] = (effects, flow, cases, program, report);
-            return () => Analyze(effects, flow, cases, program, report);
-        });
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var (effects, flow, cases, program, report) = analyses[i];
-            evaluations[i] = effects.Evaluations;
-            Assert.Equal(0, AllocationMeasurement.Measure(() =>
-            {
-                program.Version++; // A new version of the same bodies, which Local starts.
-                report.Clear();
-                Analyze(effects, flow, cases, program, report);
-            }));
-            Assert.Equal(evaluations[i], effects.Evaluations);
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}, cold A4 allocation {string.Join(", ", allocated)}");
-        Assert.True(evaluations[2] - evaluations[1] <= 2 * (evaluations[1] - evaluations[0]), $"evaluations {string.Join(", ", evaluations)}");
-        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold A4 allocation {string.Join(", ", allocated)}");
-    }
-
     // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
     private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
     {
@@ -798,4 +743,63 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private static string[] Problems(Compilation c, MirReport report)
         => [.. report.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
             DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipDepthLimit_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
+        // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
+        // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
+        // evaluations. The pooled arrays double, so the cold allocation steps where the program and the library together fill them; each
+        // interval must span the same number of those doublings, or the ratio measures where a step falls instead of the growth. N is
+        // 512/1024/2048, the smallest doubling sizes at which each interval spans one doubling, so the two differences stand 2:1 (119,552 and
+        // 238,912 bytes for the chain, R8-K1b-1's base and head alike). At 256 the library's own bodies decide whether a doubling falls in the
+        // first interval: R8-K1b-1's two more moved it from 256-512 to before 256 (+21,704 bytes at 256, 3.13:1; 16/32/64 stepped the same way:
+        // +336, then +9,504). A larger library may need the next sizes; the two rows take about 7 s.
+        [Theory]
+        [InlineData("    public func step{0}() => H.{1}()\n")]
+        [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
+        public void SummariesScaleLinearly(string member)
+        {
+            var (sizes, evaluations) = (new[] { 512, 1024, 2048 }, new long[3]);
+            var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
+            var allocated = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var text = new StringBuilder(Sink + "group G\n    public let flag: bool = false\ngroup H\n");
+                for (var n = 0; n < sizes[i]; n++)
+                {
+                    var next = n + 1 == sizes[i] ? "last" : $"step{n + 1}";
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, member, n, next, n == 0 ? sizes[i] - 1 : n - 1);
+                }
+
+                var source = text.Append("    public func last() => Console.writeLine(\"x\")\n")
+                    .Append(Witness.Replace("    var loud: Loud = Loud.init()\n", string.Empty, StringComparison.Ordinal)).Append("        H.step0()\n        return .Ok(())\n").ToString();
+                var c = MirBuildTest.Compile(source);
+                var program = c.BuildMir();
+                Assert.Equal([Failed], Problems(c, program));
+                var (cases, report) = (new MirCases(c.Types), new MirReport());
+                var flow = new MirDataflow(new MirReach());
+                var effects = new MirEffects(c.Types, cases, flow);
+                analyses[i] = (effects, flow, cases, program, report);
+                return () => Analyze(effects, flow, cases, program, report);
+            });
+            for (var i = 0; i < sizes.Length; i++)
+            {
+                var (effects, flow, cases, program, report) = analyses[i];
+                evaluations[i] = effects.Evaluations;
+                Assert.Equal(0, AllocationMeasurement.Measure(() =>
+                {
+                    program.Version++; // A new version of the same bodies, which Local starts.
+                    report.Clear();
+                    Analyze(effects, flow, cases, program, report);
+                }));
+                Assert.Equal(evaluations[i], effects.Evaluations);
+            }
+
+            output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}, cold A4 allocation {string.Join(", ", allocated)}");
+            Assert.True(evaluations[2] - evaluations[1] <= 2 * (evaluations[1] - evaluations[0]), $"evaluations {string.Join(", ", evaluations)}");
+            Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold A4 allocation {string.Join(", ", allocated)}");
+        }
+    }
 }

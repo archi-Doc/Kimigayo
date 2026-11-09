@@ -16,14 +16,25 @@ public sealed partial class Binding
 {
     private readonly ImplTable impls = new();
 
+    // Projections over a declared struct or enum that found no associated Type before this pass's conformance declarations registered
+    // (VerifyEarlyProjections). Temporary (G621): removed when R7-D2 d3 reads conformance declarations by demand.
+    private readonly List<(MemberAccessKoto Use, BoundType Type, BindingScope Scope, string Name, BindingSymbol? Qualifier)> earlyProjections = new();
+
     // Object forms over a concrete Type formed before the opt-outs are published (VerifyEarlyObjectForms).
     private List<(Koto Use, BoundType Target)>? earlyObjectForms;
+
+    // Whether this pass's conformance declarations have registered (RegisterConformances, after BindConstraints' pass 0).
+    private bool conformancesRegistered;
+
+    // SPEC 8.6.1: `Self is C` in a Type declaration declares conformance; RegisterConformances registers exactly these clauses.
+    private static bool DeclaresConformance(IsKoto clause)
+        => clause.Parent is StructKoto or EnumKoto && IsSelfConstraint(clause);
 
     private void RegisterConformances()
     {
         for (var n = 0; n < this.nodes.Count; n++)
         {
-            if (this.nodes[n] is not DeclarationContainerKoto container || container is not (StructKoto or EnumKoto))
+            if (this.nodes[n] is not DeclarationContainerKoto container)
             {
                 continue;
             }
@@ -31,13 +42,15 @@ public sealed partial class Binding
             for (var i = 0; i < container.ConstraintNodes.Count; i++)
             {
                 var clause = container.ConstraintNodes[i];
-                if (IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint)
+                if (DeclaresConformance(clause) && clause.BoundConstraint is { } constraint)
                 {
                     Register(constraint, container.BoundSymbol!, clause, true);
                 }
             }
         }
 
+        this.conformancesRegistered = true;
+        this.VerifyEarlyProjections();
         this.PublishInheritedOptOuts();
 
         void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use, bool standalone)
@@ -72,6 +85,27 @@ public sealed partial class Binding
                 }
             }
         }
+    }
+
+    // SPEC 8.6.1, 8.5.2 (G621's limit): an unqualified projection over a declared Type that found no associated Type before the
+    // conformance declarations registered (its candidates come from the conformance table) and finds one now names an existing member;
+    // its conformance declaration bound before the table filled, which is an analysis limit: a located Unsupported_Kd that stays
+    // unresolved, so the clause and the Type rest on it, never a missing member. One that still finds none keeps its missing-Type
+    // record, which VerifyEarlyReads may read again. A qualified projection searches its Contract, so it finds an existing member before
+    // registration.
+    private void VerifyEarlyProjections()
+    {
+        foreach (var (use, type, scope, name, qualifier) in this.earlyProjections)
+        {
+            if (use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
+            {
+                use.BindingFailure = BindingFailure.None;
+                this.prerequisites.Remove(use);
+                this.Fail(use, BindingFailure.Unsupported, true);
+            }
+        }
+
+        this.earlyProjections.Clear();
     }
 
     // SPEC 8.7.3: derived structs inherit the opt-out. Nominal bases are read here, before headers bind, so that every later object

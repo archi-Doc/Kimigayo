@@ -78,22 +78,18 @@ public class AllocationMeasurementTest
     public void MeasureOnceDetectsAllocatingWork()
         => Assert.True(AllocationMeasurement.MeasureOnce(() => GC.KeepAlive(new byte[128])) >= 152);
 
-    // MeasureSeries makes a fresh state per index and one more of index 0, whose unmeasured run takes the process's one-time
-    // initialization: OneTime's 4 KB table falls in no measured run, so every index, the first included, reads only its
-    // run's byte[64 * size] (88 to 280 bytes). Without that run, index 0 would read the 4 KB.
-    [Trait("Purpose", "Allocation")]
+    // A cold series runs only in AllocationIsolationCollection (G650): this class runs beside other collections, so the series refuses
+    // before it makes any state.
     [Fact]
-    public void MeasureSeriesMeasuresNoOneTimeInitialization()
+    public void MeasureSeriesRefusesOutsideTheIsolatedCollection()
     {
-        var made = new List<int>();
-        var allocated = AllocationMeasurement.MeasureSeries(3, i =>
+        var made = 0;
+        Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.MeasureSeries(1, _ =>
         {
-            made.Add(i);
-            var size = 1 << i;
-            return () => GC.KeepAlive(OneTime.Run(size));
-        });
-        Assert.All(allocated.Select(static (x, i) => (x, i)), static x => Assert.InRange(x.x, 64 << x.i, 1024));
-        Assert.Equal([0, 0, 1, 2], made);
+            made++;
+            return static () => { };
+        }));
+        Assert.Equal(0, made);
     }
 
     // Allocating in exactly the warm-up operations measures nothing, and allocating in the first measured operation
@@ -270,6 +266,28 @@ public class AllocationMeasurementTest
     private static void Grow<T>()
         where T : struct
         => GC.KeepAlive(new T[64]);
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        // MeasureSeries makes a fresh state per index and one more of index 0, whose unmeasured run takes the process's one-time
+        // initialization: OneTime's 4 KB table falls in no measured run, so every index, the first included, reads only its
+        // run's byte[64 * size] (88 to 280 bytes). Without that run, index 0 would read the 4 KB.
+        [Fact]
+        public void MeasureSeriesMeasuresNoOneTimeInitialization()
+        {
+            var made = new List<int>();
+            var allocated = AllocationMeasurement.MeasureSeries(3, i =>
+            {
+                made.Add(i);
+                var size = 1 << i;
+                return () => GC.KeepAlive(OneTime.Run(size));
+            });
+            Assert.All(allocated.Select(static (x, i) => (x, i)), static x => Assert.InRange(x.x, 64 << x.i, 1024));
+            Assert.Equal([0, 0, 1, 2], made);
+        }
+    }
 
     private readonly struct PoolItem;
 
