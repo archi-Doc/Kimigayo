@@ -161,7 +161,8 @@ internal sealed partial class TyCtxt
     }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
-    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, so applying
+    // the substitution of the call omitting the default: each binding of the inner one in the outer instance (a length's interpolation-bound
+    // term over its value Types' instance, Binding.InstanceLength), so applying
     // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with the
     // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
     // keeps the composed substitution, its Types instantiated; null and Limit when the outer instance does not substitute an
@@ -190,7 +191,7 @@ internal sealed partial class TyCtxt
 
         for (var i = 0; i < lengths.Length; i++)
         {
-            lengths[i] = inner.Lengths[i] is { } length ? binding.SubstituteLength(length, outer.Binder, outer.Lengths) : null;
+            lengths[i] = inner.Lengths[i] is { } length ? binding.InstanceLength(length, outer) : null;
             if (lengths[i] is null && inner.Lengths[i] is not null && storage != Binding.StorageOutcome.Limit)
             {
                 (storage, part) = (Binding.StorageOutcome.Limit, null);

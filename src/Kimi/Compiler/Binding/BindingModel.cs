@@ -479,6 +479,13 @@ public sealed record BoundType
             parameter |= argument is { IsConstant: false };
         }
 
+        // R8-W2: a fixed array's interpolation-bound term over abstract value Types is an abstract part, open until its instance folds it.
+        if (lengthExpression is { HasAbstractPart: true })
+        {
+            parameter = true;
+            abstractPart = true;
+        }
+
         // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
         // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
         if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))

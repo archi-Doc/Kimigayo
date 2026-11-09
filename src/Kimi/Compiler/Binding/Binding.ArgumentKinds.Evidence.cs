@@ -416,7 +416,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            var length = array.FillLength is null ? this.Binding.InternLength(KotoKind.NumberLiteral, array.Elements.Count) : array.FillCount;
+            var length = array.FillLength is null ? this.Binding.InternLength(LengthOperation.Constant, array.Elements.Count) : array.FillCount;
             if (length is null || (this.Lengths[parameter.Slot] is { } previous && !ReferenceEquals(previous, length)))
             {
                 return false;

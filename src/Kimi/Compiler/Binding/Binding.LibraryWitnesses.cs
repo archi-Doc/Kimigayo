@@ -72,7 +72,7 @@ public sealed partial class Binding
 
         if (length >= 0)
         {
-            lengths[length] = self.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, self.Length);
+            lengths[length] = self.LengthExpression ?? this.InternLength(LengthOperation.Constant, self.Length);
         }
 
         return true;
