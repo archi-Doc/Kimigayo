@@ -8,12 +8,14 @@ namespace Kimi.Compiler;
 // - Responsibility: a candidate's Constraints and premises over its bindings, one conjunction in one order (StepFiveConjunction) over
 //   one value, CandidateBindings, the candidate's substitution; and the selected call's obligation (CheckCallTypeConstraints): that
 //   conjunction judged again in the Final loop, then the selected call's own Types.
-// - Inputs: the trial's solution (SlotSolution.Prove) or the selected call's plan (CallPlan's columns), and the scope whose premises
-//   apply.
+// - Inputs: the trial's solution (SlotSolution.Prove) with the Contract reference its candidate is tried under (the
+//   activeRequirementContract CallSelection sets), or the selected call's plan (CallPlan's columns, RequirementContract among them);
+//   the scope whose premises apply.
 // - Outputs: the proof, combined as P < U < L < R < E; the selected call's obligation keeps its verdict's facts (the Unknown fact, the
 //   clause) for its record (RequireClauses).
-// - Invariants: the trial and the plan supply the same value and judge one conjunction; InfersOwner holds only while a constructor's
-//   trial infers its owner's slots (10.8.1); the declared signature stays the trial's part until C2 (b) (PLAN G375).
+// - Invariants: the trial and the plan supply the same value and judge one conjunction, under the value's Contract reference (SPEC
+//   8.6.4), the enclosing one restored after it; InfersOwner holds only while a constructor's trial infers its owner's slots (10.8.1);
+//   the declared signature stays the trial's part until C2 (b) (PLAN G375).
 // - Prohibitions: no record and no failure is written here; no second copy of the conjunction (the Final check as its own copy, BU-136);
 //   CandidateBindings holds no verdict, and no judgment but step 5's conjunction reads it.
 public sealed partial class Binding
@@ -35,7 +37,16 @@ public sealed partial class Binding
         {
             // The declared signature stays the trial's part until R7-C2 (b) (PLAN G375): read here it would fault on library declarations.
             var bindings = new CandidateBindings(
-                function, target, call.TypeArguments, call.LengthArguments, call.ConformingType, call.DeclaringType, call.DeclaringType, default, false);
+                function,
+                target,
+                call.TypeArguments,
+                call.LengthArguments,
+                call.ConformingType,
+                call.DeclaringType,
+                call.DeclaringType,
+                call.RequirementContract,
+                default,
+                infersOwner: false);
             proof = this.StepFiveConjunction(bindings, scope, false, null);
         }
         else
@@ -86,44 +97,55 @@ public sealed partial class Binding
     // (C2 (b), PLAN G375). `incomplete` and `slotOwner` are the trial's: a waiting argument's open slots (10.5.1, 10.8).
     private ConstraintProof StepFiveConjunction(in CandidateBindings bindings, BindingScope scope, bool incomplete, Koto? slotOwner)
     {
-        var function = bindings.Function;
-        var open = !bindings.Unbound.IsEmpty;
-        var clauseOwner = bindings.InfersOwner ? null : bindings.DeclaringType; // A constructor inferring its owner's slots (10.8.1) has none yet.
-        var proof = this.CheckConstraints(
-            function.TypeConstraints,
-            function,
-            bindings.Slots,
-            scope,
-            bindings.Self,
-            clauseOwner,
-            bindings.Lengths,
-            incomplete: incomplete || open,
-            skipUnresolved: open,
-            slotOwner: slotOwner);
-        if (bindings.Owner is { } owner)
+        // SPEC 8.6.4: a requirement's clauses read the Contract's parameters at the reference the call goes through, as its signature does.
+        var enclosing = this.activeRequirementContract;
+        this.activeRequirementContract = bindings.Reference;
+        try
         {
-            proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
-        }
-        else if (bindings.InfersOwner && bindings.DeclaringType is not null && slotOwner is StructKoto openOwner)
-        {
-            // A constructor whose owner Type is not closed yet judges its owner's clauses over the slots inferred so far (10.8.1).
-            proof = CombineProof(
-                proof,
-                this.CheckConstraints(openOwner.ConstraintNodes, openOwner, bindings.Slots, scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
-                true);
-        }
+            var function = bindings.Function;
+            var open = !bindings.Unbound.IsEmpty;
+            var clauseOwner = bindings.InfersOwner ? null : bindings.DeclaringType; // A constructor inferring its owner's slots (10.8.1) has none yet.
+            var proof = this.CheckConstraints(
+                function.TypeConstraints,
+                function,
+                bindings.Slots,
+                scope,
+                bindings.Self,
+                clauseOwner,
+                bindings.Lengths,
+                incomplete: incomplete || open,
+                skipUnresolved: open,
+                slotOwner: slotOwner);
+            if (bindings.Owner is { } owner)
+            {
+                proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
+            }
+            else if (bindings.InfersOwner && bindings.DeclaringType is not null && slotOwner is StructKoto openOwner)
+            {
+                // A constructor whose owner Type is not closed yet judges its owner's clauses over the slots inferred so far (10.8.1).
+                proof = CombineProof(
+                    proof,
+                    this.CheckConstraints(
+                        openOwner.ConstraintNodes, openOwner, bindings.Slots, scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
+                    true);
+            }
 
-        var own = CallOwnSlots(function);
-        var lengths = bindings.Lengths;
-        for (var i = 0; i < own.Count && i < bindings.Slots.Length; i++)
-        {
-            var slot = own[i] is LengthParameterKoto ? (i < lengths.Length && lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown)
-                : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
-                : bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown;
-            proof = CombineProof(proof, slot, true);
-        }
+            var own = CallOwnSlots(function);
+            var lengths = bindings.Lengths;
+            for (var i = 0; i < own.Count && i < bindings.Slots.Length; i++)
+            {
+                var slot = own[i] is LengthParameterKoto ? (i < lengths.Length && lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown)
+                    : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
+                    : bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown;
+                proof = CombineProof(proof, slot, true);
+            }
 
-        return CombineProof(proof, this.ProveMemberConditions(bindings.Target, bindings.DeclaringType, scope), true);
+            return CombineProof(proof, this.ProveMemberConditions(bindings.Target, bindings.DeclaringType, scope), true);
+        }
+        finally
+        {
+            this.activeRequirementContract = enclosing;
+        }
     }
 
     private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
@@ -142,8 +164,10 @@ public sealed partial class Binding
     // - Inputs: the trial's solution (SlotSolution.Prove) or the selected call's plan (CheckCallTypeConstraints, CallPlan's columns).
     // - Invariants: Slots holds the call's slots, the callee's own first (CallOwnSlots), a constructor's owner slots after them; a null Type
     //   slot is unsolved, and Unbound lists those 10.8 leaves unbound (none in a plan); Lengths is per slot; DeclaringType is the Type the
-    //   member is found in, Owner its closed formation (a constructor's ConstructionType), null while its slots are open; InfersOwner holds
-    //   while a constructor's trial infers its owner's slots (10.8.1), never in a plan.
+    //   member is found in, Owner its closed formation (a constructor's ConstructionType), null while its slots are open; Reference is the
+    //   bound Contract reference a requirement candidate is called through (SPEC 8.6.4), null for any other candidate: in a trial the
+    //   activeRequirementContract CallSelection tries it under, in a plan CallPlan.RequirementContract; InfersOwner holds while a
+    //   constructor's trial infers its owner's slots (10.8.1), never in a plan.
     // - Prohibitions: no judgment but step 5's conjunction reads it; it holds no verdict.
     private readonly ref struct CandidateBindings
     {
@@ -155,9 +179,11 @@ public sealed partial class Binding
             BoundType? self,
             BoundType? declaringType,
             BoundType? owner,
+            BindingSymbol? reference,
             SlotSet unbound,
             bool infersOwner)
         {
+            this.Reference = reference;
             this.Function = function;
             this.Target = target;
             this.Slots = slots;
@@ -182,6 +208,8 @@ public sealed partial class Binding
         internal BoundType? DeclaringType { get; }
 
         internal BoundType? Owner { get; }
+
+        internal BindingSymbol? Reference { get; }
 
         internal SlotSet Unbound { get; }
 

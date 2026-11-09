@@ -222,6 +222,23 @@ public class CallableEffectBoundTest
         }
     }
 
+    // SPEC 8.11.4, 8.6.4 (PLAN G671): a selected requirement call's Callable clause reads the Contract's parameters at its reference, so under
+    // `C is Mapper<i32>` map's `F is Callable<(T) -> i32>` is `(i32) -> i32`, which G's premise meets; only its bound decides the call. Under
+    // `D is Mapper<bool>` it is `(bool) -> i32`, which G's premise does not meet.
+    [Theory]
+    [InlineData("<C, G>(c: uniq/C, g: ref/G) -> i32\n        C is Mapper<i32>\n        G is Callable<(i32) -> i32>\n            effect confined\n        return c.map(g)\n", "clean")]
+    [InlineData("<C, G>(c: uniq/C, g: ref/G) -> i32\n        C is Mapper<i32>\n        G is Callable<(i32) -> i32>\n        return c.map(g)\n", "UnsatisfiedEffectBound_Kd@g")]
+    [InlineData(
+        "<C, D, G>(c: uniq/C, d: uniq/D, g: ref/G) -> i32\n        C is Mapper<i32>\n        D is Mapper<bool>\n        G is Callable<(i32) -> i32>\n            effect confined\n        return d.map(g)\n",
+        "NoApplicableOverload_Kd@d.map(g)")]
+    public void ARequirementsCallableClauseReadsItsContractReference(string run, string records)
+    {
+        var source = "contract Mapper<T>\n    func map<F>(self: uniq/Self, transform: ref/F) -> i32\n        F is Callable<(T) -> i32>\n            effect confined\n" +
+            "group M\n    public func run" + run;
+        var actual = DiagnosticCorpus.Check(source, "Library").Diagnostics.Select(x => $"{x.Code}@{source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}");
+        Assert.Equal(records, string.Join(" | ", actual.DefaultIfEmpty("clean")));
+    }
+
     [Theory]
     [InlineData("contract C<F>\n    F is Callable<() -> i32>\n        effect confined\n")]
     [InlineData("contract C\n    associate F is Callable<() -> i32>\n        effect confined\n")]
