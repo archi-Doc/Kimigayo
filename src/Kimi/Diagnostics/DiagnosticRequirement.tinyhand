@@ -643,6 +643,9 @@
   + Name="Ownership.OwnStepDeparture"
     Description="no pointer formed through an own step is used after its owning value may leave its holder"
 
+  + Name="Ownership.UnretainedRawStore"
+    Description="raw storage reached from an input holds only values the contract retains there"
+
   + Name="Ownership.DepthLimit"
     Description="ownership analysis stays within its Type nesting bound"
 

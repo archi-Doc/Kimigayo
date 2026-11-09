@@ -71,7 +71,7 @@ public sealed class DeferredBlockKoto : BlockStatementKoto
     public override KotoKind Akind => KotoKind.DeferredBlock;
 
     /// <inheritdoc/>
-    public override string Keyword => "defer";
+    public override string Keyword => TokenKind.Defer.ToText();
 
     /// <summary>Initializes a new instance of the <see cref="DeferredBlockKoto"/> class.</summary>
     /// <param name="reader">The owning reader.</param>

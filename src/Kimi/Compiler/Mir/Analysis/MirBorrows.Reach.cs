@@ -255,20 +255,25 @@ internal sealed partial class MirBorrows
     private bool Holding(int local)
     {
         MirDataflow.Grow(ref this.writable, this.body.Locals.Length);
+        return this.Holds(cases.Type(this.body.Locals[local].Type), out this.writable[local]);
+    }
+
+    // Holding's answer for a case Type, memoized: the storing rule's landing fact asks it of a Place's Type (MirBorrows.Storing).
+    private bool Holds(BoundType type, out MirWrites writes)
+    {
         if (this.holdingVersion != this.program.Version)
         {
             this.holdingVersion = this.program.Version;
             this.holding.Clear();
         }
 
-        var type = cases.Type(this.body.Locals[local].Type);
         ref var known = ref CollectionsMarshal.GetValueRefOrAddDefault(this.holding, type, out var exists);
         if (!exists)
         {
             known.Holds = MirTypes.HoldsLoans(type, types, this.walked, this.members, this.holds, out known.Writes);
         }
 
-        this.writable[local] = known.Writes;
+        writes = known.Writes;
         return known.Holds;
     }
 
