@@ -1258,17 +1258,15 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Fn f"));
     }
 
-    // K 4.5 rows 2, 6, 12 (DECISIONS R5-M74): an Item of a function without a MIR body runs what its call does, the requirement its
-    // published row runs (Text.toString's format witness) or what its intrinsic's row names (Text.writer's destination's reserve witness).
+    // K 4.5 rows 6, 12 (DECISIONS R5-M74): an Item of a function without a MIR body runs what its call does, what its intrinsic's row names
+    // (Text.writer's destination's reserve witness).
     [Fact]
     public void ABodylessFunctionsItemIsWhatItsCallRuns()
     {
         var source = FormatSource
-            .Replace("let one = show(Box.init(1))", "let print = Text.toString<Box>\nlet box = Box.init(1)\nlet one = print(box@ref)", StringComparison.Ordinal)
             .Replace("var writer = Text.writer(sink@uniq)", "let make = Text.writer<Sink>\n    var writer = make(sink@uniq)", StringComparison.Ordinal);
         var (program, set) = Collect(source);
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["Fn format", "Fn format"], Calls(program, set, "Fn top").Where(static x => x == "Fn format"));
         Assert.Equal(["Fn reserve", "Fn reserve"], Calls(program, set, "Fn toSink").Where(static x => x == "Fn reserve"));
     }
 
@@ -1466,10 +1464,10 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // K 4.5 row 2, DECISIONS R5-M30, R5-M70, R8-M18: a call of a function without a body whose published row formats a value (Text.toString,
-    // Text.tryFormat) is the item of its Type's Utf8Format witness in the instance: a user Type's format body, a built-in Type's
-    // BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness. Utf8Writer.write is a body (R8-W1b-4):
-    // one instance per value Type, shared by its callers, whose requirement call is that witness.
+    // K 4.5 row 2, DECISIONS R5-M30, R5-M70, R8-M18: Utf8Writer.write is a body (R8-W1b-4): one instance per value Type, shared by its
+    // callers, whose requirement call is its Type's Utf8Format witness in the instance: a user Type's format body, a built-in Type's
+    // BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness. Text.toString and Text.tryFormat are
+    // bodies (R8-W1c-2): one instance per value Type, whose interpolation or write calls that write instance.
     [Fact]
     public void AFormattingCallIsItsValuesFormatWitness()
     {
@@ -1478,11 +1476,17 @@ public sealed partial class InstanceCollectorTest
         const string WriteI32 = "library Fn write in struct Utf8Writer [Utf8Writer, i32]";
         const string WriteBox = "library Fn write in struct Utf8Writer [Utf8Writer, Box]";
         const string Failure = "library Fn init in struct BufferFull"; // The body's two failure results.
-        Assert.Equal(["Fn format"], Calls(program, set, "Fn show [Box]"));
-        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn show [i32]"));
+        const string ShowI32 = "library Fn toString in group Text [Text, i32]";
+        const string ShowBox = "library Fn toString in group Text [Text, Box]";
+        const string FillBox = "library Fn tryFormat in group Text [Text, Box, ]";
+        Assert.Equal([ShowBox], Calls(program, set, "Fn show [Box]"));
+        Assert.Equal([ShowI32], Calls(program, set, "Fn show [i32]"));
+        Assert.Equal([WriteBox], Calls(program, set, ShowBox));
+        Assert.Equal([WriteI32], Calls(program, set, ShowI32));
         Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
         Assert.Equal(["Builtin i32 BuiltinFormat", Failure, Failure], Calls(program, set, WriteI32));
-        Assert.Equal(["Fn format"], Calls(program, set, "Fn fill [Box]"));
+        Assert.Equal([FillBox], Calls(program, set, "Fn fill [Box]"));
+        Assert.Equal(["library Fn fixed in group Text [Text, ]", WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
         Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
         Assert.Equal(["Fn format", Failure, Failure], Calls(program, set, WriteBox));
         Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));

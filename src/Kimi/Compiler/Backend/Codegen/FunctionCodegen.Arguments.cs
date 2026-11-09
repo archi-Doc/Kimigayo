@@ -56,10 +56,9 @@ internal sealed partial class FunctionCodegen
     };
 
     // Whether a parameter takes no operand but the next of the values its call writer is given (Pass, Forward): a runtime routine's
-    // slot-less value (a stride, a reason, a Value without a logical index), a Closure's environment or a context that names no parameter (a
-    // context naming one, a formatting row's capacity, is measured from it; FunctionCodegen.Formatting's Measure).
+    // slot-less value (a stride, a reason, a Value without a logical index), a Closure's environment or a context.
     private static bool Given(in AbiParameter parameter)
-        => parameter is { Kind: AbiParameterKind.Value or AbiParameterKind.Context, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment };
+        => parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Context or AbiParameterKind.Environment };
 
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory that a runtime-reached Call passes to a parameter by pointer,
     // which the callee owns from the call on, is copied into a copy slot of its own, so the callee never sees its source change; a string

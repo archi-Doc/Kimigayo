@@ -173,12 +173,11 @@ internal sealed partial class FunctionCodegen
 
     // A call's arguments in its signature's parameter order, into `arguments` (IMPL 21.3.1, SPEC 22.6), a Call terminator's or a creating
     // adaptation's in that form (FunctionCodegen.Objects' Creation, without a callee or a target), of which it reads the Place, the
-    // operands' Start and the Source only: each parameter's argument (Argument),
-    // the destination's address as the result slot, the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS
-    // R5-M92, R5-M93), a capacity Context the length of the fixed array its operand refers to (Measure; DECISIONS R5-M128), a parameter
-    // without an operand (Given: a runtime routine's stride or reason, a formatting row's kind, a Closure's environment and context) the
-    // next of the given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
-    // temp or local, never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
+    // operands' Start and the Source only: each parameter's argument (Argument), the destination's address as the result slot, the call's
+    // location for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92, R5-M93), a parameter without an operand (Given: a
+    // runtime routine's stride or reason, a formatting row's kind, a Closure's environment and context) the next of the given values. The
+    // operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a
+    // pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
     private bool Pass(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given)
     {
         var parameters = signature.Parameters;
@@ -205,17 +204,6 @@ internal sealed partial class FunctionCodegen
             }
 
             var index = call.Start + ArgumentPosition(callee, parameter.LogicalIndex);
-            if (parameter.Kind == AbiParameterKind.Context)
-            {
-                if (this.Measure(this.InstanceType(this.body.Operands[index])) is not { } length)
-                {
-                    return false; // Recorded.
-                }
-
-                this.arguments[i] = length;
-                continue;
-            }
-
             var found = parameter.Kind == AbiParameterKind.ResultSlot ? this.Address(call.Place, out this.arguments[i])
                 : this.Argument(this.body.Operands[index], this.copyOf[index], parameter.Kind, out this.arguments[i]);
             if (!found)

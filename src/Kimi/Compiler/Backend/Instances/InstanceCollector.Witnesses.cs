@@ -108,9 +108,9 @@ internal sealed partial class InstanceCollector
         return -1;
     }
 
-    // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
-    // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (Below; an intrinsic's argument In
-    // or Edge's Compose).
+    // K 4.5 row 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
+    // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (an intrinsic's argument In or
+    // Edge's Compose).
     private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType self)
     {
         var contract = TyCtxt.Contract(requirement);

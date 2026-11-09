@@ -1,25 +1,22 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the legacy runtime helpers of the generated LLVM text until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b;
-// DECISIONS R5-M16): the formatting runtime with its routines' ABIs and the wrappers over user formatting witnesses
-// (LegacyRuntimeHelpers.Formatting.cs). MIR code generation writes the helpers through this static component (promoted, never copied).
-// Input: the formatting wrappers' ABIs and the compiled functions they call; a built-in formattable Type, whose
+// DECISIONS R5-M16): the formatting runtime with its routines' ABIs (LegacyRuntimeHelpers.Formatting.cs). MIR code generation writes the
+// helpers through this static component (promoted, never copied).
+// Input: a built-in formattable Type, whose
 // formatting kind and bound it gives (FormatKind, FormatBound), and a Text.writer destination, whose writer kind it gives (WriterKind);
 // an owning interpolation's literal bytes and values' bounds, summed by its estimate (FormatEstimate); the runtime templates
 // (.ll.in); a writer, LLVM SSA names and sizes.
 // Output: LLVM text written to the writer; per helper kind one row, readable
 // by kind before any representation exists, which declares the kind's runtime needs for the instance collector (X4). Each formatting
 // compiler function's row
-// (FormattingRow; P1d) holds its routine's ABI, whose capacity Context names by its logical index the parameter receiving the fixed array
-// it measures, and HelperNeeds (the formatting runtime) and declares no library callee, since the formatting runtime calls none; the
-// formatting witness TextToString and TextTryFormat run is the need their published library rows state (Formats, SPEC
-// 4.9.6), which the collector reads there; the kind Context of a built-in formattable Type is the runtime's own numbering (FormatKind),
+// (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
+// formatting runtime calls none; the kind Context of a built-in formattable Type is the runtime's own numbering (FormatKind),
 // and so is Text.writer's of its destination (WriterKind); a bounded Type's maximum is the runtime's bound at its kind (FormatBound),
 // which an owning interpolation's estimate sums for its buffer, hints and stack placement (FormatEstimate, FormatStackLimit; R3-10).
 // The one map from a compiler
 // function of the Body disposition to how MIR code generation writes its call (Row, S2-S4 X39; DECISIONS R5-M116) names each kind's
-// writer: writeLine's runtime routine, the whole-value updates and
-// the Text, buffer, window and writer kinds and WriteLineUtf8 as their formatting routines (Formatting; DECISIONS R5-M128).
+// writer: writeLine's runtime routine, the whole-value updates and WriteLineUtf8's formatting routine (Formatting; DECISIONS R5-M128).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; a helper's
 // runtime needs come from its row; warm writes allocate nothing; the expanded runtime texts (Texts) are built only when a code
 // generation writer first reads one, never on the check path (G350).

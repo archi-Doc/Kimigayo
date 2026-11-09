@@ -71,8 +71,6 @@ public enum CompilerFunctionKind : byte
     Clone,
     TestTempDirectory,
     TextWriter,
-    TextToString,
-    TextTryFormat,
     WriteLineUtf8,
     BuiltinFormat,
     BuiltinEquals,
@@ -168,8 +166,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or
-            CompilerFunctionKind.Swap or
-            CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => default,
+            CompilerFunctionKind.Swap => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
