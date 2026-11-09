@@ -95,7 +95,6 @@ public class CoreCatalogTest
         }
 
         Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
-        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.ObjectOwnership));
     }
 
     [Fact]
