@@ -122,7 +122,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(189, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(190, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
