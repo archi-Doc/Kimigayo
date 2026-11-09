@@ -79,6 +79,11 @@ internal sealed partial class MirBorrows
         }
 
         var untied = this.Plan(call);
+        if (checks && this.contract is not null)
+        {
+            this.CallStoring(call); // The storing rule at a call (MirBorrows.Storing), on the arguments' values before the call.
+        }
+
         if (this.planned is { Result.Pairs.IsEmpty: false } contract)
         {
             var proven = this.Solved(state, call, contract.Result, checks);

@@ -17,29 +17,36 @@ namespace Kimi.Compiler.Mir;
 // of a by-value input's pointer part gives Own(i, part).
 // The landing fact (Redirects, Landing; O-72 (a)'s second must-fact): a Place rooted at an unexposed, non-receiver input i with d layer
 // Derefs lands in the storage at depth d of i's region (depth 1: what i's layer at `part` refers to; deeper: past i's referent) only while
-// no pointer layer it reads was redirected: Redirects, one flow-insensitive pass per body view, takes the least depth at which the body
-// may write a pointer layer of i's region (a store into a Place of i's region whose Type may hold a pointer; a borrow or Reborrow of a
-// Place of it, not shared, or a Move of a pointer read from it, which may write at that depth later), and depth 1 for every input where a
-// call or a drop takes a value that may hold a pointer, a store or borrow goes through a raw Place, or an Opaque site rests on an error;
+// no pointer layer it reads was redirected: Redirects, one pass per body view, records the sites that may write a pointer layer of i's
+// region, each at the least depth it may write (a store into a Place of i's region whose Type may hold a pointer; a borrow or Reborrow
+// of a Place of it, not shared, or a Move of a pointer read from it, which may write at that depth later), and depth 1 for every input
+// where a call or a drop takes a value that may hold a pointer, a store or borrow goes through a raw Place, or an Opaque site rests on an
+// error; at a location of the replay's chain the least depth counts every other chain's site and the chain's own sites before it (on a
+// chain's first run no later site of it has run, and a store that breaks the contract then breaks it: PLAN G581-2);
 // a landing at depth d holds while that least depth is d or more. A local root lands only through its own one element and one Deref.
 // The rule (Storing, at Flow.Store in the checks replay): a store in safe code whose destination lands past input i (depth 2 or more),
 // or at depth 1 in the storage of another layer of i than the value's own part, whose value's M holds Own(i, ·), where i's record for
-// that storage (past: the Reached entry of its erased case Type, else All; depth 1: Own) is untied (Binding: a raw layer stepping
+// that storage (past: the Reached entry of its erased case Type, else All; depth 1: Own; a depth-1 part reached past the layer through
+// an own step, an object payload, is other storage, SPEC 5.2.1) is untied (Binding: a raw layer stepping
 // Unstated or Static is written there, joined over the storage) and gives i neither Value nor a pair: UnretainedRawStore_Kd at the
 // store, with no fact (MirBorrows.Locations; DECISIONS Q13: an Anchor reads as a Loan's, and an own part formed by `@raw` has none).
+// At a Call (CallStoring, PLAN G581-2), the same rule over the storage the callee's contract may write through an argument whose
+// referent certainly lands in i's region (its Own record there, the Reached entries past it), for each argument it lets by Value.
 // Never where the value's own part is the destination's layer (a self-link, O-56 (a)).
 // Not read (silence, named limits): a store in an `unsafe` scope (the author's obligation, SPEC 5), Closure, accessor, default-template
-// and static-initializer bodies, a call's store (G581-2), a value or pointer whose fact a join, loop head, part, call result, read-back or
-// exposure lost, a landing any redirect may have moved, a record Binding joins over a storage where another position lets i by Value,
-// and storage a layer reaches through an own step (an object payload, `during self` storage), which Landing reads as the layer's own
-// referent, so an address of the layer's storage stored there passes as a self-link (an open issue; SPEC 5.2.1's self-link excludes it).
+// and static-initializer bodies, a Closure's call receiver, a value or pointer whose fact a join, loop head, part, call result, read-back or
+// exposure lost (a must-store of a call, `exchange`'s, is no fact), a landing a redirect before it may have moved, and a record Binding
+// joins over a storage where another position lets i by Value.
 // Must not decide retention (TyCtxt.Retains), read a raw layer's Origin, or decide by the syntax of a Type.
 internal sealed partial class MirBorrows
 {
     private readonly List<(int Input, int Part)> ownKeys = []; // Own(i, part)'s keys: key k is element 2 (locals + k).
     private readonly Dictionary<(int Input, int Part), int> ownIndex = [];
+    private readonly List<(int Block, int Index, int Input, int Depth)> sites = []; // Redirects' sites in block order; Input 0: every input.
     private int[] must = []; // By slot: M(h), in the checks replay (chain-local).
-    private int[] redirected = []; // By local: the least depth at which the body may write a pointer layer of the input's region.
+    private int[] redirected = []; // By local: the least depth at which a pointer layer of the input's region may have been written (replay).
+    private int[] firstSite = []; // By block: its first site.
+    private (int Least, int Head, int Other)[] outside = []; // By local: the least site depth, that site's chain head, the least of other chains'.
     private MirStep[] mustSteps = []; // Landing's and Redirects' step walk.
     private CallRetention? contract; // The body's own retention where the rule reads the body, else null.
     private int mustValue; // M of the value the location's Assign stores (Plan), read by the rule.
@@ -49,6 +56,10 @@ internal sealed partial class MirBorrows
     private bool owning; // Whether the body forms an input's own part without a Loan (a raw address, a by-value pointer part): Run's producer.
 
     private static int Past(int input) => (2 * input) + 1;
+
+    // A depth-1 part reached past the layer through an own step (an object payload; SPEC 5.2.1: other storage, never a self-link): a key
+    // below -1, kept once marked.
+    private static int OwnStep(int part, bool owned) => owned && part >= 0 ? -2 - part : part;
 
     // A layer Deref: through a borrow or a raw pointer, not an own step.
     private static bool Layer(in MirStep step)
@@ -143,32 +154,40 @@ internal sealed partial class MirBorrows
     private bool StoringInput(int local)
         => local >= 1 && this.body.Locals[local] is { Kind: MirLocalKind.Arg, Role: not MirLocalRole.Receiver } && !this.Exposed(local);
 
-    // The landing fact: per input, the least depth at which the body may write a pointer layer of its region (int.MaxValue: none).
+    // The landing fact's sites: per location, the least depth at which it may write a pointer layer of an input's region (depth 1 for
+    // every input where it may write any). The replay counts, at a location of a chain, every site of the other chains (any of them may
+    // have run before) and the chain's own sites before it: on the chain's first run nothing later in it has run, and a fact lost on a later
+    // run is no fact the rule needs, since a store that breaks the contract on the first run breaks it (PLAN G581-2).
     private void Redirects()
     {
-        MirDataflow.Grow(ref this.redirected, this.body.Locals.Length);
-        Array.Fill(this.redirected, int.MaxValue, 0, this.body.Locals.Length);
-        var all = !this.body.OpaqueRoots.IsEmpty;
+        this.sites.Clear();
+        MirDataflow.Grow(ref this.firstSite, this.body.Blocks.Length);
+        if (!this.body.OpaqueRoots.IsEmpty)
+        {
+            this.sites.Add((-1, 0, 0, 1)); // An Opaque site: before every location.
+        }
+
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
             ref readonly var data = ref this.body.Blocks[block];
-            for (var s = data.Start; s < data.Start + data.Count; s++)
+            this.firstSite[block] = this.sites.Count;
+            for (var s = 0; s < data.Count; s++)
             {
-                ref readonly var statement = ref this.body.Statements[s];
+                ref readonly var statement = ref this.body.Statements[data.Start + s];
                 if (statement.Kind != MirStatementKind.Assign)
                 {
                     continue;
                 }
 
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
-                all |= this.PointerType(this.body.TypeOf(statement.Place)) ? this.Redirect(statement.Place, 0) : this.ThroughRaw(statement.Place);
+                var all = this.PointerType(this.body.TypeOf(statement.Place)) ? this.Redirect(block, s, statement.Place, 0) : this.ThroughRaw(statement.Place);
                 if (this.Reborrowing(statement) is var mode and not MirRefKind.Raw)
                 {
-                    all |= mode != MirRefKind.Shared && this.Redirect(this.body.Operands[rvalue.Start].Place, 1);
+                    all |= mode != MirRefKind.Shared && this.Redirect(block, s, this.body.Operands[rvalue.Start].Place, 1);
                 }
                 else if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op is not (MirRefKind.Shared or MirRefKind.Raw))
                 {
-                    all |= this.Redirect(rvalue.Place, 0);
+                    all |= this.Redirect(block, s, rvalue.Place, 0);
                 }
                 else if (rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage)
                 {
@@ -181,36 +200,57 @@ internal sealed partial class MirBorrows
                         this.PointerType(this.body.TypeOf(read)))
                     {
                         this.owning |= read.Projection != 0 && this.StoringInput(read.Root) && this.Depth(read) == 0; // A by-value input's pointer part.
-                        all |= this.body.Operands[o].Kind == MirOperandKind.Move && this.Redirect(read, 1); // It may write where it points.
+                        all |= this.body.Operands[o].Kind == MirOperandKind.Move && this.Redirect(block, s, read, 1); // It may write where it points.
                     }
                 }
+
+                this.Every(block, s, all);
             }
 
             var terminator = data.Terminator;
             if (terminator.Kind == MirTerminatorKind.Call)
             {
-                all |= this.PointerType(this.body.TypeOf(terminator.Place)) ? this.Redirect(terminator.Place, 0) : this.ThroughRaw(terminator.Place);
+                var all = this.PointerType(this.body.TypeOf(terminator.Place)) ? this.Redirect(block, data.Count, terminator.Place, 0) : this.ThroughRaw(terminator.Place);
                 all |= terminator.Callee.Kind == MirCalleeKind.Value && terminator.Operand.Kind != MirOperandKind.Const;
                 for (var o = terminator.Start; !all && o < terminator.Start + terminator.Count; o++)
                 {
                     all = this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: var argument } && this.PointerType(this.body.TypeOf(argument));
                 }
+
+                this.Every(block, data.Count, all);
             }
             else if (terminator.Kind == MirTerminatorKind.Drop)
             {
-                all |= this.PointerType(this.body.TypeOf(terminator.Place));
+                this.Every(block, data.Count, this.PointerType(this.body.TypeOf(terminator.Place)));
             }
         }
 
-        for (var i = 1; all && i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
+        // Per input, the least depth over every chain's sites and over the other chains' (Outside).
+        MirDataflow.Grow(ref this.outside, this.body.Locals.Length);
+        Array.Fill(this.outside, (int.MaxValue, -2, int.MaxValue), 0, this.body.Locals.Length);
+        foreach (var (block, _, input, depth) in this.sites)
         {
-            this.redirected[i] = Math.Min(this.redirected[i], 1);
+            var head = block < 0 ? -1 : flow.Head(block);
+            for (var i = input == 0 ? 1 : input; i <= (input == 0 ? this.body.Locals.Length - 1 : input) && this.IsInput(i); i++)
+            {
+                ref var row = ref this.outside[i];
+                row = depth < row.Least ? (depth, head, row.Head == head ? row.Other : row.Least) : row with { Other = head != row.Head ? Math.Min(row.Other, depth) : row.Other };
+            }
         }
     }
 
-    // A write that may redirect a pointer layer of an input's region, at a Place `extra` Derefs short of the depth it writes: the input's
-    // least depth; true where it goes through a raw Place (ThroughRaw).
-    private bool Redirect(MirPlace place, int extra)
+    // A site at every input (depth 1) where a location may write any pointer layer.
+    private void Every(int block, int index, bool all)
+    {
+        if (all)
+        {
+            this.sites.Add((block, index, 0, 1));
+        }
+    }
+
+    // A write that may redirect a pointer layer of an input's region, at a Place `extra` Derefs short of the depth it writes: a site at the
+    // input; true where it goes through a raw Place (ThroughRaw).
+    private bool Redirect(int block, int index, MirPlace place, int extra)
     {
         if (this.ThroughRaw(place))
         {
@@ -219,10 +259,23 @@ internal sealed partial class MirBorrows
 
         if (this.IsInput(place.Root))
         {
-            this.redirected[place.Root] = Math.Min(this.redirected[place.Root], this.Depth(place) + extra);
+            this.sites.Add((block, index, place.Root, this.Depth(place) + extra));
         }
 
         return false;
+    }
+
+    // After a location of the checks replay: its sites (Redirects).
+    private void Redirected(int block, int index)
+    {
+        for (var s = this.firstSite[block]; s < this.sites.Count && this.sites[s].Block == block; s++)
+        {
+            var (_, at, input, depth) = this.sites[s];
+            for (var i = input == 0 ? 1 : input; at == index && i <= (input == 0 ? this.body.Locals.Length - 1 : input) && this.IsInput(i); i++)
+            {
+                this.redirected[i] = Math.Min(this.redirected[i], depth);
+            }
+        }
     }
 
     // Whether a Place goes through a raw Place, where a pun may write any pointer's bytes (SPEC 5.2), so no input's region is told apart.
@@ -243,13 +296,15 @@ internal sealed partial class MirBorrows
     // Whether a value of a case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included).
     private bool PointerType(BoundType? type) => type is not null && this.Holds(cases.Type(type), out _);
 
-    // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0).
-    private void EnterStoring()
+    // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0); each input's landing takes the other chains' sites.
+    private void EnterStoring(int head)
     {
         MirDataflow.Grow(ref this.must, this.holderCount);
+        MirDataflow.Grow(ref this.redirected, this.body.Locals.Length);
         Array.Clear(this.must, 0, this.holderCount);
         for (var i = 1; i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
+            this.redirected[i] = this.outside[i].Head == head ? this.outside[i].Other : this.outside[i].Least;
             if (this.slots[i] >= 0 && this.StoringInput(i))
             {
                 this.must[this.slots[i]] = this.sets.Add(0, this.Own(i, 0));
@@ -330,16 +385,17 @@ internal sealed partial class MirBorrows
         }
 
         var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.mustSteps);
-        var (first, layers) = (-1, 0);
+        var (first, layers, owned) = (-1, 0, false);
         for (var i = 0; i < count; i++)
         {
             first = first < 0 && Layer(this.mustSteps[i]) ? i : first;
             layers += Layer(this.mustSteps[i]) ? 1 : 0;
+            owned |= first >= 0 && this.mustSteps[i] is { Kind: MirProjectionKind.Deref, Class: MirStepClass.Own };
         }
 
         if (this.StoringInput(place.Root))
         {
-            return layers > 0 && this.redirected[place.Root] >= layers ? (place.Root, layers == 1 ? this.mustSteps[first].Prefix : -1, layers) : default;
+            return layers > 0 && this.redirected[place.Root] >= layers ? (place.Root, layers == 1 ? OwnStep(this.mustSteps[first].Prefix, owned) : -1, layers) : default;
         }
 
         if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [var element])
@@ -353,7 +409,7 @@ internal sealed partial class MirBorrows
         }
 
         var (input, part) = this.ownKeys[(element >> 1) - this.body.Locals.Length];
-        return (input, part, 1);
+        return (input, OwnStep(part, owned), 1);
     }
 
     // The rule at a store into a Place (Flow.Store), in the checks replay: Own(i, ·) stored past input i, or at depth 1 in another layer's
@@ -369,7 +425,7 @@ internal sealed partial class MirBorrows
         foreach (var element in this.sets.Elements(this.mustValue))
         {
             var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0);
-            own |= key.Input == input && (depth > 1 || key.Part != part);
+            own |= key.Input == input && (depth > 1 || key.Part != part || part < -1);
         }
 
         if (!own || this.Unsafe())
@@ -390,6 +446,80 @@ internal sealed partial class MirBorrows
         foreach (var written in this.contract.Writes)
         {
             if (written.Output == slot && Refuses(depth > 1 ? this.ReachedEntry(written, type) ?? written.All : written.Own, slot))
+            {
+                this.overstored = input;
+            }
+        }
+    }
+
+    // The rule at a Call (PLAN G581-2), in the checks replay: through each argument whose referent certainly lands in input i's region, the
+    // storage the callee's contract may write (its Own record there; past it the Reached entries, while the layers there are intact and
+    // the store is no referent store), where the record lets an argument by Value that certainly holds Own(i, ·) and i's own record for
+    // that storage refuses it, as at a direct store (Storing). A Closure's call receiver is not read.
+    private void CallStoring(in MirTerminator call)
+    {
+        if (this.planned is not { } callee || this.Unsafe())
+        {
+            return;
+        }
+
+        foreach (var written in callee.Writes)
+        {
+            var position = this.slotPositions[written.Output];
+            var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
+            // TRACE-TEMP (G581-2 prototype).
+            if (Environment.GetEnvironmentVariable("KIMI_G581_TRACE") is { Length: > 0 } trace)
+            {
+                static string Row(StorageRetention r) => string.Join(",", r.Kinds.ToArray()) + (r.Untied ? " U" : string.Empty) + (r.Pairs.IsEmpty ? string.Empty : " P");
+                var text = new System.Text.StringBuilder($"CALL {this.body.Key.Decl} out {written.Output} pos {position} stored {stored} red [{string.Join(",", this.redirected.AsSpan(1, Math.Min(4, this.body.Locals.Length - 1)).ToArray())}]");
+                text.Append($" M(a) [{(position < call.Count ? string.Join(",", this.sets.Elements(this.MustOperand(call.Start + position)).ToArray()) : "-")}] own {Row(written.Own)} all {Row(written.All)}");
+                foreach (var (type, record) in written.Reached)
+                {
+                    text.Append($" | {type} {Row(record)}");
+                }
+
+                for (var s = 0; s < this.planned!.Result.Kinds.Length; s++)
+                {
+                    text.Append($" ; arg{s}@{this.slotPositions[s]} [{(this.slotPositions[s] < call.Count ? string.Join(",", this.sets.Elements(this.MustOperand(call.Start + this.slotPositions[s])).ToArray()) : "-")}]");
+                }
+
+                File.AppendAllText(trace, text.Append('\n').ToString());
+            }
+
+            foreach (var element in position < call.Count ? this.sets.Elements(this.MustOperand(call.Start + position)) : [])
+            {
+                var (input, part) = (element & 1) != 0 ? (element >> 1, -1) : this.ownKeys[(element >> 1) - this.body.Locals.Length];
+                var to = this.TypeOf(call.Start + position) is { Kind: BoundTypeKind.Semantics, Components: [var pointee, ..] } ? types.Erase(cases.Type(pointee)) : null;
+                this.CallStored(call, written.Own, input, part, to);
+                var intact = part == -1 ? this.redirected[input] == int.MaxValue : this.redirected[input] >= 2;
+                foreach (var (type, record) in stored || !intact ? [] : written.Reached)
+                {
+                    this.CallStored(call, record, input, -1, type is null ? null : types.Erase(cases.Type(type)));
+                }
+            }
+        }
+    }
+
+    // One storage a callee may write in input i's region (part: the layer whose referent it is at depth 1, -1 past it, Type: its erased case
+    // Type past it, null where none is known): an argument the record lets by Value that certainly holds Own(i, ·) and is no self-link there,
+    // where i's record (Own at depth 1; past it the Reached entry of its Type, else All) refuses it.
+    private void CallStored(in MirTerminator call, StorageRetention record, int input, int part, BoundType? type)
+    {
+        var own = false;
+        for (var slot = 0; slot < record.Kinds.Length; slot++)
+        {
+            var position = this.slotPositions[slot];
+            foreach (var element in (record.Kinds[slot] & RetentionKind.Value) != 0 && position < call.Count ? this.sets.Elements(this.MustOperand(call.Start + position)) : [])
+            {
+                var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0);
+                own |= key.Input == input && (part == -1 || key.Part != part || part < -1);
+            }
+        }
+
+        var self = MirCallee.Slot(this.body.Key.Decl!, input - 1);
+        foreach (var written in own ? this.contract!.Writes : [])
+        {
+            if (written.Output == self && Refuses(part != -1 ? written.Own : (type is null ? null : this.ReachedEntry(written, type)) ?? written.All, self))
             {
                 this.overstored = input;
             }

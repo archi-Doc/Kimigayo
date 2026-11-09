@@ -78,6 +78,12 @@ internal sealed partial class MirBorrows
         {
             // The storing rule (MirBorrows.Storing): at the store, with no fact (an Anchor reads as a Loan's; DECISIONS Q13).
             this.Record(DiagnosticCode.UnretainedRawStore_Kd, OwnershipRequirement.UnretainedRawStore, this.Subject(at), []);
+            // TRACE-TEMP (G581-2 prototype).
+            if (Environment.GetEnvironmentVariable("KIMI_G581_TRACE") is { Length: > 0 } trace)
+            {
+                File.AppendAllText(trace, $"STORE {this.body.Key.Decl} {(terminator ? "call" : "direct")} input {this.overstored}\n");
+            }
+
             this.overstored = 0;
         }
 

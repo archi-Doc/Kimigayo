@@ -96,7 +96,7 @@ internal sealed partial class MirBorrows
             this.Enter(this.chainHead);
             if (this.contract is not null)
             {
-                this.EnterStoring();
+                this.EnterStoring(this.chainHead);
             }
         }
 
@@ -123,6 +123,11 @@ internal sealed partial class MirBorrows
             }
 
             this.Commit(state);
+            if (checks && this.contract is not null)
+            {
+                this.Redirected(block, i); // The landing fact past the location (MirBorrows.Storing).
+            }
+
             this.End(state, this.ended[location]);
         }
     }
