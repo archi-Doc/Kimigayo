@@ -91,6 +91,10 @@ internal readonly record struct MirRvalue(
 
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
+    // SPEC 4.8.1, 8.15.3 (O-92 (a)): the address of the first element of a fixed array, an Array or a Slice Place, of the raw pointer Type to
+    // its element; its access is a raw borrow of the Place, as `&raw P[i]`'s is.
+    internal static MirRvalue Storage(MirPlace place, BoundType type) => new(MirRvalueKind.Storage, (byte)MirRefKind.Raw, place, Type: type);
+
     internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
 
     // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer
