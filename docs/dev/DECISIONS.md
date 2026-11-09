@@ -16854,6 +16854,44 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **RP8** (T-84): every O2 kernel compiles to the same code, the `Iterators` kernel's new `exchange` row (`Slots<T>`, Milestone 29's
     shape) included; `replace` has equal O2 counts on every fixture, and O0 records a call per update and a copy slot for an in-memory
     by-value `T`. Measurements are in the commit.
+- **R8-M19 An import is a call target item (`MonoKind.Import`); `BodylessWitness` ends** (Back, 2026-11-09; R8-G2; plan §5.2 G2;
+  Major; design review ACCEPT; implementation review 1 REVISE (B1, B2), then ACCEPT; on R5-M146, R5-M150 and R8-M16) SPEC 22.6,
+  8.6.3-8.6.4, 7.7.4.
+  - Cause: a call's target is a checked-set item, and no item stood for an import, so code generation called an import only where a
+    call had no target, by the callee's own symbol. A requirement call's callee is the requirement, so the import its instance
+    selects was lost, and the collector refused the form (`BodylessWitness`, R5-M146).
+  - Adopted: the collector admits one `Import` item per called `#LibraryImport` function (`InstanceCollector.Imported`), keyed by
+    the function alone (an import is never generic), with no target and nothing generated. It is the target of every call that runs
+    the import: its direct call and its own Item's call and adapter (`Bodyless`), and a requirement call or requirement Item whose
+    witness it is (`Called`). Code generation's one rule of a target, `FunctionCodegen.Calls.Witness`, runs it by its C signature
+    (`ModuleCodegen.Import`, now with that one caller). `Imported`'s other cases: a function Binding rejected is a dependent without
+    a record; any other bodyless function, a compiler function taken as a witness included, is `InternalInvariant_Kd` (none exists
+    after R8-M16: no library compiler function is a requirement's witness, and SPEC 8.8.1 allows no external conformance).
+    `Imported` is the collector's third `Set.Add` beside `Admit` and `AdmitType`; it has no Type, body or X19 limit to check.
+  - Ended: `CapabilityGap.BodylessWitness` (its row, its `Code` arm, its `[Transitional("R8")]`), `Called`'s gap switch, and the
+    target-less import fallbacks of `FunctionCodegen.Calls.Function` and `FunctionCodegen.Closures.Runs`. R5-M146's import removal
+    condition ("when the collector publishes the import as the call's target") is met; with R8-M16 the row is gone.
+  - R5-M150 is superseded in part: its rejection of a collector **root** kind for imports stands (SPEC 8.15.3 checks every declared
+    import, called or not, which `LayOutImports` keeps doing without an item); its cost argument ("a vocabulary entry and an item
+    code generation skips, for no body and no target") is superseded, since the call-target item removes a capability row and two
+    fallbacks.
+  - Vocabulary and counts: `MonoKind` 8 → 9 (R8-M11 removed `LegacyRow`; R5's K package approved its members); `MonoKind` is not an
+    ARCH-closed vocabulary, so the entry is the planning session's decision (AGENTS "Record decisions"). `CapabilityGap` 7 → 6;
+    `[Transitional("R8")]` 10 → 9; `CompilerFunctionKind`, `IntrinsicId` and `KimiDeclarationId` unchanged.
+  - Moves: two valid forms that were `Unsupported_Kd` at check are accepted, a requirement call whose witness is an import and a
+    requirement Item with such a witness (formed and called); `ForeignImportWitness` runs both beside the import's direct call. G2
+    treats the requirement Item as valid under SPEC 8 and the owner's PD27 approval (R5-M146, R5-M148). No record move in the
+    snapshot. `.ll` against W1a's head: 6,103 identical, 38 renaming only (every one calls an import; the generated names
+    `__kimi_f<n>`, `__kimi_drop<n>` and `__kimi_builtin<n>` are item indices, and the Import item takes one), 1 new
+    (`ForeignImportWitness`), 0 other.
+  - Not changed, against SPEC 22.6: the import's own Item and its erasure to a common Function value stay accepted as on dev (PLAN
+    G677, an unsound acceptance, the Front's); no test pins the erasure.
+  - Order: G2 runs after W1a, its one semantic dependency, and before G1 (the Back's reorder; plan §5.2 puts G2 after G1,
+    prerequisite W1).
+  - Rejected: the item only for witnesses (two forms of one concept); code generation resolving the witness (a second copy of
+    witness resolution and `Compose`); the import as a Body item without a body (breaks the Body invariant `Replay` reads); deleting
+    `Called` (a compiler function taken as a witness would silently run its direct call's rows); naming generated functions by a
+    definition counter to avoid the renaming (a separate naming change; every fixture moves once).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
