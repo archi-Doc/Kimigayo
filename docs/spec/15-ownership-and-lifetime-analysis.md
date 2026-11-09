@@ -931,7 +931,7 @@ inspect(item)
 
 ## 15.7. Whole-value updates
 
-These `Kimi.Intrinsics` declarations ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)) are compiler-intrinsic and impose no `Sealed`, `Copy` or `Owned` Constraint.
+These `Kimi.Intrinsics` declarations ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)) impose no `Sealed`, `Copy` or `Owned` Constraint. They are safe functions with bodies: a body Takes a target's value and places a value in it through a raw Place of the target ([§5.2.3](05-raw-pointers-and-unsafe-memory.md#523-taking-from-raw-places), `Raw.initialize` of [§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)), and the unsafe obligations of those accesses ([§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places), [§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)) are the body's, met by the rules below: each target is the complete, Initialized referent of a live exclusive borrow, and `swap`'s targets are disjoint ([§15.7.2](#1572-static-non-overlap)). A call is checked against this section's rules, which belong to the declarations' identities ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), never against a body.
 
 ```kimi
 group Intrinsics    // Kimi.Intrinsics
