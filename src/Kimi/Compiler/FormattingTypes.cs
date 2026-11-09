@@ -33,7 +33,7 @@ internal static class FormattingTypes
         // An integer's widest decimal by its width: the unsigned maximum's digits, or the signed minimum's with its '-'.
         if (ScalarTypes.Width(type) is var width and not 0)
         {
-            var signed = ScalarTypes.Signed(type);
+            var signed = type.IsSigned;
             return width switch
             {
                 8 => signed ? 4 : 3,
