@@ -264,6 +264,9 @@ is restricted to Parsing/Binding. IntrinsicId returns to 28 at R8.
     `PublishInheritedOptOuts`;
   - G600's, removed at R7-D2 d3 with R7-N2d's (DECISIONS BU-137): `earlyObjectForms` and `VerifyEarlyObjectForms`, object forms formed
     before the opt-outs are published, judged again after them;
+  - G621's, removed at R7-D2 d3 when conformance declarations are read by demand (DECISIONS BU-140): `conformancesRegistered`,
+    `earlyProjections` and `VerifyEarlyProjections` (`Binding.Contracts.Registration`; `BindAssociatedProjection` notes a read), an
+    unqualified projection over a declared Type read before the conformance declarations register, read again after they do;
   - R8's: `Binding.LibraryWitnessGroup.EffectsLimit`, `Witnesses`' `false` for a generic group function, which A4 reads as its Limit, with `Binding.LeafTarget` its second reader until R7-P5 (R7-P5,
     when `Witnesses` answers a witness's instance with its Types; DECISIONS R8-M4);
   - BU's: the identity-premise plan-row fact `HirTables.IdentityPremise`, its writer `Binding.PublishIdentityPremise` and its reset
