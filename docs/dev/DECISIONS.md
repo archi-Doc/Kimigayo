@@ -10568,6 +10568,15 @@ resumed by R4-M86 (2026-10-20).
   - Supersedes in part BU-127's "Only A5 reads it" (reason above); the deferral's comments "an Unknown premise that can affect the selection defers it" (8.3.3) go. Narrows R4-M184's limit: `s1`, `s4` leave the class.
   - Removes `SlotProof`. The selection's old deferral stays as a second path that only rejects, a staged removal (PLAN G654, U2a-2): `PremisesCannotAffect`, `PremisesOnly`, `FailPendingConstraint` go there.
   - Rejected: the region test in `Prove` (one reason of a general rule, and it changes `Prove`'s other readers); the trial's line alone (records lose their facts, an obligation is lost in `ArrayMembersTest`, synthesized calls go unchecked); the Final check as its own copy of the conjunction (other parts, another order, the trial's Unknown not judged again); the conjunction's 14 parameters (an argument bag, CR-R2; `CandidateBindings` names the substitution once); the Final clause list without a constructor's declaring Type (valid repeating constructions rejected); reading the signature at Final (it faults on library declarations); one fix per consumer of a selection, or a re-check in HIR (the cause is one fact the owner publishes); a new obligation kind (the Final loop already is the check).
+  - Amended by G671 (2026-11-09; the Front's design, the Back's implementation under Q18, the Front's consent on C-191):
+    `CandidateBindings` holds the bound Contract reference of a requirement candidate (SPEC 8.6.4), the binding of the Contract's
+    parameters: the trial supplies the reference `CallSelection` tries it under, the plan `CallPlan.RequirementContract`, and
+    `StepFiveConjunction` judges under it, restoring the enclosing reference. The selected call's Callable effect uses (SPEC 8.11.4)
+    read the same published reference through `ContractConstraint`'s `reference:` parameter, as `AvailableEffectBounds` does.
+    Rejected: the plan setting the field itself (the reference stays outside BU-136's value, so the trial and the plan agree only
+    through ambient state, and each further reader needs its own setting); an explicit reference parameter of `CheckConstraints`
+    (over the parameter limit; a second mechanism beside the trial's field); setting the field around the effect uses (it brings the
+    caller-context read of a written Type argument under the requirement's reference).
 - **BU-128 A binding-only inline cycle is judged at the binding** (2026-11-08; R7-V5b-1, PLAN G588; the owner's O-70 (a), verbatim
   「すべてa」) SPEC 6.2, 8.2.3, 8.5.1, 8.5.5, 23.1.2. Supersedes in part BU-65 ("Only declarations are reported; a cycle of binding nodes alone is its
   conformance's error (SPEC 8.3.3)") and the prohibition "no record for a binding node" in `Binding.InlineLayouts.cs`: O-54 (a) makes a
