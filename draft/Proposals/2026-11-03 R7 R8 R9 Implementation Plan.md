@@ -210,7 +210,9 @@ WORKFLOW "Sessions" owns this table where the two differ.
 ### 3.3 Caps and rules
 
 - Per session: implementers at most two, one per lane, their files disjoint, at most one unit changing a shared representation at a
-  time; designers and reviewers at most two (R4-M119, R5-M113). The Coordinator: one implementer and one reviewer (R7-M4).
+  time; designers and reviewers at most three together (R4-M119, R5-M113; three since revision 45, the owner 2026-11-09). The
+  Coordinator: one implementer and one reviewer (R7-M4). Watchers wake only on rows that need the session's answer, never on the
+  session's own posts (revision 45).
 - Heavy runs at most three across the sessions (`artifacts/heavy-runs/*.run` stays the lock; the board lists the plan). A window holds
   one. Timing needs an empty registry and a booked quiet slot.
 - Every unit's design and implementation phases stay within one hour of agent working time (Q12); sizing before start; a stop writes
@@ -965,3 +967,4 @@ frozen.
 | 42 | 2026-11-09 | R7-V2a's landing (the Front's D-152; design review 2's R2-5 and R2-6) | V2's row: `VTableDef` reads member facts (SPEC 8.8.1), V2 is done with V2a, V2a2 and V2b–V2f, and the per-pass table rows move to D2 d3; D2 b covers `ImplTable`; C2 takes composite comparison and the primitive refutation. |
 | 43 | 2026-11-09 | R7-C8 U-D2's landing (the owner's O-80 (b), verbatim 「b 落とします」, and O-82, verbatim 「O-82 b」; the Front's D-148) | C8's row: U-D1 dropped, U-D2 landed (H = 8,192, S = 128 MB), U-D3 next. |
 | 44 | 2026-11-09 | The owner's answer to the Coordinator's proposal, verbatim 「すべて推奨の内容でお願いします」 (given with O-91 and O-92) | §3.2 and §9: consecutive quiet slots leave a build gap; a slot starts no earlier than 15 minutes after the previous slot's CLOSED line, and the sessions build and test in that gap (a window may run in it). Reason: five slots booked back to back on 2026-11-09 (T-65 to T-69) held every session's builds and tests for about two hours. |
+| 45 | 2026-11-09 | The owner's answer to the Coordinator's review of the caps, verbatim 「設計とレビューの上限 aでお願いします」 | §3.3: designers and reviewers at most three together per session (was two; R4-M119, R5-M113); implementers stay at two and heavy runs at three (the machine's 24 cores, G650's load-sensitive rows, file holds). Each session's board watcher wakes only on rows that need its answer, never on its own posts. Reason: review and design slots were the Front's recurring wait on 2026-11-09, while the week's total work is bounded by the weekly usage, so the watchers' empty wakes are cut to pay for the third slot. |

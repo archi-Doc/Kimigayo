@@ -62,8 +62,8 @@ public sealed partial class KimiLibrary
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
         var entries = KimiLibraryCatalog.Entries;
         this.symbols = new BindingSymbol?[entries.Length];
-        // The four containers, the catalog's symbols in catalog order, then the symbols the DictionaryStorage view creates.
-        this.registeredSymbols = new(4 + entries.Length + DictionaryCalleeNames.Length)
+        // The four containers, then the catalog's symbols in catalog order.
+        this.registeredSymbols = new(4 + entries.Length)
         {
             this.ConsoleSymbol, this.IntrinsicsSymbol, this.TestSymbol, this.TextSymbol,
         };
@@ -120,7 +120,6 @@ public sealed partial class KimiLibrary
             this.registeredSymbols.Add(symbol);
         }
 
-        this.dictionaryCallees = this.CreateDictionaryCallees(sourceScopes["DictionaryStorage"]);
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
         this.Callable = this.GetSymbol(KimiDeclarationId.Callable)!;

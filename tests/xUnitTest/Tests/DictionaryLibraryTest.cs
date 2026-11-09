@@ -15,29 +15,25 @@ public class DictionaryLibraryTest
         const string Source = "var entries = [1: \"first\", 2: \"second\"]\nentries.clear()\n_ = entries.tryInsert(3, \"last\")\nConsole.writeLine(entries[3])";
         var c = MinimalEmissionTest.Analyze(Source);
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
-        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
-        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageFindEntry)!.Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageClearEntries)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryTypedCleanup", ir, "last\n");
     }
 
-    // SPEC 4.5, 16.3.2: a Dictionary Field's drop helper requested only by its owner's drop glue brings the runtimes its row
-    // declares, so the module defines every Dictionary helper it calls (PLAN G133).
+    // SPEC 4.5, 16.3.2 (PLAN G133; DECISIONS R8-K1c): a Dictionary Field's glue requested only by its owner's drop glue reaches its
+    // destruction body, an instance the module defines: releaseDictionary for cleanup-free entries, else destroyDictionary.
     [Theory]
-    [InlineData("Scalar", "i32")]
-    [InlineData("String", "string")]
-    public void FieldDropHelperRequestedByDropGlueIsDefined(string name, string valueType)
+    [InlineData("Scalar", "i32", "releaseDictionary")]
+    [InlineData("String", "string", "destroyDictionary")]
+    public void FieldDropGlueReachesItsDestructionBody(string name, string valueType, string body)
     {
         var c = MinimalEmissionTest.Analyze("struct Box\n    public let entries: Dictionary<i32, " + valueType + ">\nlet value: Option<Box> = .None");
         var ir = CompilationTestHelper.WriteIr(c);
-        var calls = System.Text.RegularExpressions.Regex.Matches(ir, @"call void @(__kimi_dictionary_\w+)\(");
-        Assert.NotEmpty(calls);
-        foreach (System.Text.RegularExpressions.Match call in calls)
-        {
-            Assert.Contains("define internal void @" + call.Groups[1].Value + "(", ir, StringComparison.Ordinal);
-        }
+        Assert.Contains(c.Instances!.Items.ToArray(), x => x.Key.Body.Def.Decl?.Name == body);
+        Assert.DoesNotContain("@__kimi_dictionary_", ir, StringComparison.Ordinal);
 
-        // X4 (PLAN G134): the Drop helper grows no buffer, so the module holds no growth routine.
+        // X4 (PLAN G134): a Dictionary's destruction grows no buffer, so the module holds no growth routine.
         Assert.DoesNotContain(c.Instances!.Items.ToArray(), static x => x.Key.Body.Def.Decl?.Name == "growArray");
         ScalarEmissionTest.WriteFixture("DictionaryLibraryFieldDrop" + name, ir, string.Empty);
     }
@@ -289,19 +285,24 @@ public class DictionaryLibraryTest
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
         Assert.Contains(sel.Library.DictionaryUnlink, generated);
 
-        // The library reach of the hidden DictionaryStorage instances in the checked set (DECISIONS R4-M13a, R5-M27, R5-M124), where the old
-        // analysis collected the Dictionary runtime's callees for every Dictionary Type: the placeEntry body calls append, which
-        // reaches appendSlot; the Dictionary from none targets initialize, which reaches clearLinks; tryInsert and remove reach findEntry.
-        // The glue targets clearEntries only when an entry may need a drop (CallsEntries): never for i32 entries, and for a string value.
-        // Shrinking is reached only through shrinkToFit calls; no bridge compiles it eagerly.
+        // The library reach of the hidden DictionaryStorage instances in the checked set (DECISIONS R4-M13a, R5-M27, R8-M5), where the old
+        // analysis collected the Dictionary runtime's callees for every Dictionary Type: placeEntry reaches append, which reaches
+        // appendSlot; the Dictionary from none targets initialize, which reaches clearLinks; tryInsert and remove reach findEntry. The
+        // glue targets destroyDictionary only when an entry may need a drop (a string value), else releaseDictionary, which visits no
+        // entry (i32 entries); neither reaches clearEntries. Shrinking is reached only through shrinkToFit calls; no bridge compiles it
+        // eagerly.
         Assert.Contains(sel.Library.DictionaryAppendSlot, generated);
-        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.Initialize).Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageInitialize)!.Declaration, generated);
         Assert.Contains(sel.Library.DictionaryClearLinks, generated);
-        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
-        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.Append).Declaration, generated);
-        Assert.DoesNotContain(sel.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageFindEntry)!.Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageAppend)!.Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.StorageReleaseDictionary)!.Declaration, generated);
+        Assert.DoesNotContain(sel.Library.GetSymbol(KimiDeclarationId.StorageDestroyDictionary)!.Declaration, generated);
+        Assert.DoesNotContain(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageClearEntries)!.Declaration, generated);
         var (texts, dropped) = FunctionCodegenTest.GeneratedDefinitions("var entries: Dictionary<i32, string> = [:]\n_ = entries.tryInsert(1, \"a\")");
-        Assert.Contains(texts.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration, dropped);
+        Assert.Contains(texts.Library.GetSymbol(KimiDeclarationId.StorageDestroyDictionary)!.Declaration, dropped);
+        Assert.DoesNotContain(texts.Library.GetSymbol(KimiDeclarationId.StorageReleaseDictionary)!.Declaration, dropped);
+        Assert.DoesNotContain(texts.Library.GetSymbol(KimiDeclarationId.DictionaryStorageClearEntries)!.Declaration, dropped);
         Assert.DoesNotContain(sel.Library.DictionaryCompact, generated);
         Assert.DoesNotContain(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageShrinkToFit)!.Declaration, generated);
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.SymbolOf()!.CompilerFunction);

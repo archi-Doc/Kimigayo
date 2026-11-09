@@ -1812,8 +1812,9 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // K 4.5 "DropGlue" (X4; DECISIONS R5-M124, the owner's R5-M125): an Array's glue targets the glues of its element Types that need a drop;
-    // a Dictionary's the clearEntries instance its Drop row declares, whose body reaches the entries' glues (their destroyDictionaryEntries).
+    // K 4.5 "DropGlue" (DECISIONS R8-M5, R8-K1c): an Array's glue targets the destroyArray instance, whose body reaches the glues of its
+    // element Types that need a drop; a Dictionary's the destroyDictionary instance, whose body reaches the entries' glues (their
+    // destroyDictionaryEntries).
     [Fact]
     public void ACollectionsGlueDestroysItsElements()
     {
@@ -1822,27 +1823,24 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["library Fn destroyArray in group Storage [string]"], Targets(program, set, "DropGlue Array<string>"));
         Assert.Contains("DropGlue string", Targets(program, set, "library Fn destroyArray in group Storage [string]"));
         Assert.DoesNotContain(Targets(program, set, "library Fn destroyArray in group Storage [i32]"), static x => x.StartsWith("DropGlue", StringComparison.Ordinal));
-        const string Clear = "library Fn clearEntries in group DictionaryStorage [string, Array<i32>]";
-        Assert.Equal([Clear], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
-        Assert.Contains(Calls(program, set, Clear), static x => x.StartsWith("library Fn destroyDictionaryEntries", StringComparison.Ordinal));
+        const string Destroy = "library Fn destroyDictionary in group Storage [string, Array<i32>]";
+        Assert.Equal([Destroy], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
+        Assert.Contains(Calls(program, set, Destroy), static x => x.StartsWith("library Fn destroyDictionaryEntries", StringComparison.Ordinal));
     }
 
-    // G157 (6), SPEC 4.9.7, X4 (DECISIONS R5-M27, R5-M124, the owner's R5-M125): a Dictionary's glue targets exactly the instance of the Entries
-    // callee its Drop row declares, clearEntries over its entry Types, when an entry may need a drop (CallsEntries), else nothing; a value or a
-    // key that needs one is enough.
+    // G157 (6), SPEC 4.9.7, 16.3.2 (DECISIONS R8-K1c): a Dictionary's glue targets exactly one body: destroyDictionary over its entry Types
+    // when an entry may need a drop, else releaseDictionary, which visits no entry; a value or a key that needs one is enough.
     [Theory]
     [InlineData("i32, Res", true)]
     [InlineData("string, i32", true)]
     [InlineData("i32, i64", false)]
-    public void ADictionarysGlueTargetsTheClearEntriesItsDropRowDeclares(string entry, bool clears)
+    public void ADictionarysGlueTargetsItsDestructionBody(string entry, bool destroys)
     {
         var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
             $"func d(values: Dictionary<{entry}>) => ()\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         var glue = Targets(program, set, $"DropGlue Dictionary<{entry}>");
-        Assert.Equal(clears ? new[] { $"library Fn clearEntries in group DictionaryStorage [{entry}]" } : Array.Empty<string>(), glue);
-        var row = LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Drop);
-        Assert.Equal((DictionaryCallee.ClearEntries, HelperNeeds.ElementGlue), (row.Entries, row.Needs));
+        Assert.Equal([destroys ? $"library Fn destroyDictionary in group Storage [{entry}]" : "library Fn releaseDictionary in group Storage"], glue);
     }
 
     // K 4.3, 4.5 rows 2 and 11, X4, F2c (DECISIONS R5-M124, R8-K1b-2): placeEntry is a DictionaryStorage body, one instance per K and V,
@@ -2412,8 +2410,8 @@ public sealed partial class InstanceCollectorTest
     }
 
     // A warm rebind collects a program's Dictionary paths again (DECISIONS R5-M124, R8-K1b-2): the placeEntry body's instances (tryInsert's,
-    // in its group, and the literal's) and the append they call, a Dictionary from none's initialize and the clearEntries a glue's Drop row
-    // declares, with no allocation.
+    // in its group, and the literal's) and the append they call, a Dictionary from none's initialize and the destroyDictionary a glue
+    // targets, with no allocation.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunOfDictionariesAllocatesNothing()
@@ -2431,7 +2429,7 @@ public sealed partial class InstanceCollectorTest
             collector.Run(c.BuildMir(), 1);
         }));
         Assert.Equal(
-            ["library Fn append in group DictionaryStorage", "library Fn clearEntries in group DictionaryStorage [Key, Res]",
+            ["library Fn append in group DictionaryStorage", "library Fn destroyDictionary in group Storage [Key, Res]",
                 "library Fn initialize in group DictionaryStorage", "library Fn placeEntry in group DictionaryStorage [DictionaryStorage, Key, Res]",
                 "library Fn placeEntry in group DictionaryStorage [Key, i64]"],
             reached);
@@ -2444,7 +2442,7 @@ public sealed partial class InstanceCollectorTest
         // The items of the Dictionary paths, each once (G157 (30)'s duplicates are of the same function reached two ways, none here).
         string[] Reached() => set.Items.ToArray().Select(x => Label(program, x))
             .Where(static x => x.StartsWith("library Fn placeEntry ", StringComparison.Ordinal) || x.StartsWith("library Fn append ", StringComparison.Ordinal) ||
-                x.StartsWith("library Fn initialize ", StringComparison.Ordinal) || x.StartsWith("library Fn clearEntries ", StringComparison.Ordinal))
+                x.StartsWith("library Fn initialize ", StringComparison.Ordinal) || x.StartsWith("library Fn destroyDictionary ", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal).ToArray();
     }
 

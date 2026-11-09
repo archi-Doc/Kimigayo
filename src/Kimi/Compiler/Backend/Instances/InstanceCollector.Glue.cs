@@ -5,8 +5,8 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
-// Destruction and static edges (K package 4.5 rows 7, 9 and 10, "DropGlue"; S2-S4 X3, X4, X6, X23, X33 (a), X34; DECISIONS R5-M60, R5-M116,
-// R5-M121, R5-M124), the glue of what a call destroys in place and a DropGlue item's targets.
+// Destruction and static edges (K package 4.5 rows 7, 9 and 10, "DropGlue"; S2-S4 X3, X6, X23, X33 (a), X34; DECISIONS R5-M60, R5-M116,
+// R8-M5), the glue of what a call destroys in place and a DropGlue item's targets.
 internal sealed partial class InstanceCollector
 {
     // SPEC 8.15.3, 14.10.3, 16.2.1 (DECISIONS R4-M6a): whether a Drop of a body destroys nothing in a view: A2 judged its group Elide (on
@@ -72,20 +72,13 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.5 "DropGlue": a DropGlue's targets, at its default site, its direct parts in destruction order (DropGlue.Parts): a destructor's
-    // Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue; an Array's, the destroyArray instance over
-    // its element, whose body reaches the element's glue by its own edge; a Dictionary's, what its legacy Drop row declares (Entries).
+    // Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue; a collection's, its one destruction body
+    // (Collection), whose body reaches the elements' glue by its own edges.
     private void DestructionTargets(MirProgram program, int item, SourceRef site, BoundType type)
     {
-        if (DropGlue.Row(type) == DropGlueRow.Array)
+        if (DropGlue.Row(type) == DropGlueRow.Collection)
         {
-            var destruction = this.types.Declaration(KimiDeclarationId.StorageDestroyArray)!;
-            this.Target(item, this.Declared(program, item, site, destruction, this.types.Synthesized(destruction, null, [type.Components[0]])));
-            return;
-        }
-
-        if (DropGlue.Row(type) == DropGlueRow.Dictionary)
-        {
-            this.Target(item, this.Entries(program, item, site, type));
+            this.Target(item, this.Collection(program, item, site, type));
             return;
         }
 
@@ -119,21 +112,26 @@ internal sealed partial class InstanceCollector
         return laidOut;
     }
 
-    // SPEC 4.9.7, 16.3.2, X4 (DECISIONS R5-M27, R5-M124; the owner's R5-M125): a Dictionary glue's target, what its legacy Drop row declares:
-    // the instance of its Entries callee, clearEntries over the entry Types (TyCtxt.Synthesized), when an entry may need a drop (CallsEntries),
-    // whose body destroys the entries in reverse insertion order, reaching their glue by its own edges; else none.
-    private int Entries(MirProgram program, int item, SourceRef site, BoundType dictionary)
+    // SPEC 4.9.7, 16.3.2 (DECISIONS R8-M5, R8-K1c): a collection glue's one target, the library body its destruction runs, called with the
+    // glue's own parameters: an Array's, destroyArray over its element; a Dictionary's, destroyDictionary over its entry Types when an entry
+    // may need a drop (the rule the collector targets parts by), else releaseDictionary, which visits no entry, so a cleanup-free
+    // Dictionary's destruction is its release alone.
+    private int Collection(MirProgram program, int item, SourceRef site, BoundType collection)
     {
-        var row = LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Drop);
-        var key = dictionary.Components[0];
-        var value = dictionary.Components[1];
-        if (!row.CallsEntries(MirTypes.MayNeedDrop(key, this.seen) || MirTypes.MayNeedDrop(value, this.seen)))
+        var components = collection.Components;
+        if (collection.Kind == BoundTypeKind.Array)
         {
-            return -1;
+            var array = this.types.Declaration(KimiDeclarationId.StorageDestroyArray)!;
+            return this.Declared(program, item, site, array, this.types.Synthesized(array, null, [components[0]]));
         }
 
-        var entries = this.types.DictionaryStorage(row.Entries);
-        return this.Declared(program, item, site, entries, this.types.Synthesized(entries, null, [key, value]));
+        if (!MirTypes.MayNeedDrop(components[0], this.seen) && !MirTypes.MayNeedDrop(components[1], this.seen))
+        {
+            return this.Declared(program, item, site, this.types.Declaration(KimiDeclarationId.StorageReleaseDictionary)!, null);
+        }
+
+        var dictionary = this.types.Declaration(KimiDeclarationId.StorageDestroyDictionary)!;
+        return this.Declared(program, item, site, dictionary, this.types.Synthesized(dictionary, null, [components[0], components[1]]));
     }
 
     // R4-M6b, SPEC 16.3.2: the Body of a struct's declared destructor in the struct's instance (TyCtxt.Synthesized), which destroys the

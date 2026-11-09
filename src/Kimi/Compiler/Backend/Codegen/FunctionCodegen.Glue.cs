@@ -22,9 +22,9 @@ namespace Kimi.Compiler.Backend;
 // row in one counted loop (Loop, Fill's loop), so the text does not grow with the length. Each level reads its own glue item's targets.
 // A common Function value's calls its table's drop entry, when present, on a copy of its word in an entry slot (FunctionCodegen.Erasures),
 // and an owning handle's releases its object (FunctionCodegen.Objects' Release), each only in its glue function, since no move path opens
-// either. A collection's rows (also only in its glue function): an Array's calls its one target, the destroyArray instance, with the
-// glue's parameters (FunctionCodegen.Arrays), a Dictionary's its glue item's Drop helper (FunctionCodegen.Dictionaries; DECISIONS R5-M124);
-// a Type of a kind no glue has, or a target missing or left over, is a broken contract, InternalInvariant_Kd there.
+// either. A collection's row (also only in its glue function), an Array's or a Dictionary's, calls its one target, the library body its
+// destruction runs, with the glue's parameters (CollectionGlue; DECISIONS R8-M5); a Type of a kind no glue has, or a target missing
+// or left over, is a broken contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
     private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters location and length.
@@ -67,18 +67,29 @@ internal sealed partial class FunctionCodegen
             case DropGlueRow.Function or DropGlueRow.Handle:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A Function value or a handle has no part a move path opens.
                 return;
-            case DropGlueRow.Array when row < 0:
-                this.ArrayGlue(glue, address, site);
+            case DropGlueRow.Collection when row < 0:
+                this.CollectionGlue(glue, address, site);
                 return;
-            case DropGlueRow.Dictionary when row < 0:
-                this.DictionaryGlue(glue, address, site);
-                return;
-            case DropGlueRow.Array or DropGlueRow.Dictionary:
+            case DropGlueRow.Collection:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A collection has no part a move path opens.
                 return;
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A glue item's Type is of a kind MirTypes.MayNeedDrop admits.
                 return;
+        }
+    }
+
+    // SPEC 4.9.7, 16.3.2: a collection's glue level at its address, its one target, the library body its destruction runs (destroyArray,
+    // destroyDictionary or releaseDictionary), with the glue's own parameters.
+    private void CollectionGlue(int glue, Value address, Site site)
+    {
+        if (this.collector.Set.Targets(glue) is not [var target])
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets the body a collection's destruction runs.
+        }
+        else if (this.module.Signature(target.Item) is { } destroy)
+        {
+            this.Destroy(destroy, address, site);
         }
     }
 

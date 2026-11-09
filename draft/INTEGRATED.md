@@ -1325,6 +1325,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 43 (2026-11-09, plan §14; the owner's O-80 (b), O-82 and O-89 (a); the Front's D-148): row C8. Nothing frozen.
 - Revision 44 (2026-11-09, plan §14; the owner's answer to the Coordinator's slot-gap proposal): §3.2 and §9, a 15-minute build gap
   between quiet slots. Nothing frozen.
+- Revision 45 (2026-11-09, plan §14; the owner's answer to the Coordinator's review of the caps): §3.3, designers and reviewers at
+  most three together per session; watchers wake only on rows that need an answer. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

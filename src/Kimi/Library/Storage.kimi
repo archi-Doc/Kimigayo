@@ -127,13 +127,10 @@ internal group Storage
 
         internal init(handle: DictionaryStorage.Handle) => self.handle = handle@move
 
-        // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.9.7).
+        // Unreturned entries are destroyed in reverse insertion order, each value before its key, then the storage is
+        // released (SPEC 4.9.7).
         drop
-            let storage: raw/u8 = self.handle.buffer
-            let stride = DictionaryStorage.slotStride<K, V>()
-            unsafe
-                destroyDictionaryEntries<K, V>(storage, stride, self.handle.tail, self.handle.length)
-                Raw.release(storage)
+            unsafe => destroyDictionary<K, V>(self.handle@raw)
 
     /// Transfers a Dictionary's slot storage, entries and their destruction responsibility.
     internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>
@@ -141,6 +138,33 @@ internal group Storage
         // Held so that the compiler does not destroy the Dictionary whose component is taken (SPEC 5.2.3).
         var held = InlineStorage<Dictionary<K, V>>.init(value@move)
         unsafe => return DictionaryOwnedRemainder<K, V>.init((*(held@raw@raw/DictionaryStorage.Handle))@move)
+
+    /// Destroys the live entries a Handle holds in reverse insertion order, each value before its key, then releases
+    /// its slot storage (SPEC 4.9.7, 16.3.2): the body of a Dictionary's drop glue when an entry may need cleanup,
+    /// and of the owning remainder's drop.
+    ///
+    /// - safety: `handle` addresses a `DictionaryStorage.Handle` of `K` and `V` whose last `length` live entries,
+    ///   from `tail` back, are complete; every other Non-Copy value its slot storage holds, the slots' Links, meets
+    ///   SPEC 5.6's condition for `Raw.release` without destruction, since it declares no `drop` and its Fields are
+    ///   Copy (SPEC 5.6, 16.3.2); and nothing reads, destroys or releases that storage or those entries again
+    ///   (SPEC 4.9.7, 16.3).
+    internal unsafe func destroyDictionary<K, V>(handle: raw/DictionaryStorage.Handle)
+        unsafe
+            let storage = (*handle).buffer
+            let stride = DictionaryStorage.slotStride<K, V>()
+            destroyDictionaryEntries<K, V>(storage, stride, (*handle).tail, (*handle).length)
+            Raw.release(storage)
+
+    /// Releases the slot storage of a Dictionary, the body of its drop glue when neither `K` nor `V` needs a drop;
+    /// it is no general release. Destroying such an entry does nothing, so the entries' destruction (SPEC 4.9.7,
+    /// 16.3) is elided as if it ran before the release, and no entry is visited: the destruction costs the release
+    /// alone.
+    ///
+    /// - safety: `handle` addresses a live Dictionary that nothing reads, destroys or releases again, and
+    ///   destroying each of its entries would do nothing, so every Non-Copy value its slot storage holds meets
+    ///   SPEC 5.6's condition for `Raw.release` as if destroyed (SPEC 4.9.7, 5.6, 16.3).
+    internal unsafe func releaseDictionary(handle: raw/DictionaryStorage.Handle)
+        unsafe => Raw.release((*handle).buffer)
 
     /// Destroys a live suffix in reverse insertion order without releasing its storage.
     internal unsafe func destroyDictionaryEntries<K, V>(storage: raw/u8, stride: isize, tail: isize, count: isize)
