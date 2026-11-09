@@ -6,7 +6,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Block items (SPEC 14.2, 6.5, 3.6): a statement for its effect, its temporaries ending with it, a block's scope and its result, and a
-// local's declaration, each as its Op and Adjust decide.
+// local's declaration, each as its Op and Adjust decide; an explicit discard Binding marks (HirTables.DestroysInPlace) destroys its raw
+// Place in place, transferring nothing (SPEC 14.2.4, 5.2.3).
 internal sealed partial class MirBuilder
 {
     // A block item for its effect, its temporaries ending with it (SPEC 3.6): a local's declaration (also one Binding rejected, Let), a
@@ -55,12 +56,42 @@ internal sealed partial class MirBuilder
         this.Made(value);
     }
 
-    // SPEC 14.2.4: bare acquisition of a discarded operand into a temp destroyed with the statement's temporaries.
+    // SPEC 14.2.4: bare acquisition or transfer of a discarded operand into a temp destroyed with the statement's temporaries. A discard
+    // that destroys in place (HirTables.DestroysInPlace: a raw Place's Take, SPEC 5.2.3) transfers nothing: the node it takes, the operand
+    // or a group's operand (Into's descent), designates its Place, at the address a raw borrow forms, position checks included (SPEC 5.2,
+    // 4.7.4), and the value is destroyed in that Place at statement temporary cleanup, before the statement's temporaries, which is here, as
+    // nothing of the statement follows its operand: by a Drop where its Type may need drop, as every Drop is built (Created).
     private void Discard(DiscardKoto discard)
     {
-        var value = this.Hold(Held(discard.Operand), discard.Operand);
-        this.Assign(value, discard.Operand);
-        this.Made(value);
+        if (!HirTables.DestroysInPlace(discard))
+        {
+            var value = this.Hold(Held(discard.Operand), discard.Operand);
+            this.Assign(value, discard.Operand);
+            this.Made(value);
+            return;
+        }
+
+        var taken = discard.Operand;
+        while (HirTables.Op(taken) == HirOp.Group && InPlace(HirTables.AdjustOf(taken)))
+        {
+            taken = Child(taken);
+        }
+
+        var place = this.Place(taken);
+        if (this.body.TypeOf(place) is not { } type)
+        {
+            this.Record(taken, DiagnosticCode.InternalInvariant_Kd); // A Take Binding allowed designates a Place of its Type.
+            return;
+        }
+
+        // The designation's carrier is this dead address temp, as MIR has no statement that only evaluates a Place; this site moves to
+        // such a statement if one is added (its removal condition).
+        var pointer = compilation.Types.Pointer(type);
+        this.Set(this.Temp(pointer, taken), this.Ref(place, pointer, input: false), taken);
+        if (MirTypes.MayNeedDrop(type, this.walked))
+        {
+            this.DropAt(place, this.Info(taken));
+        }
     }
 
     // The value a body or a block's last item leaves in the destination: the item as its consumer takes it, a block's own result, or the

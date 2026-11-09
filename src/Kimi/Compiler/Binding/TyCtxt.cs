@@ -230,6 +230,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
+    // SPEC 22.10.5 and rule L (FormattingTypes.StackLimit): the interpolation-bound term of a direct interpolation with these value Types
+    // (a Tuple) and literal bytes, its stack region's size: the constant FormattingTypes.StackBound decides, else the term over the erased
+    // value Types (so Erase keeps it, keyed by them), which a substitution folds again (Binding.SubstituteLength). R8-W2 a2's builder forms it.
+    internal BoundLength InterpolationBound(BoundType values, long literal)
+        => FormattingTypes.StackBound(values, literal) is var bound and >= 0 ? binding.InternLength(LengthOperation.Constant, bound)
+            : binding.InternLength(LengthOperation.InterpolationBound, literal, values: this.Erase(values));
+
     // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets, Copy facts),
     // discarded together at an edit (Binding.Invalidate; DECISIONS R5-M61, BU-88).
     internal void ResetViews()
