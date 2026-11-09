@@ -278,6 +278,11 @@ internal sealed partial class MirValidator
                 this.Report(MirViolation.CheckTarget);
             }
 
+            if (terminator.Places && terminator.Kind != MirTerminatorKind.Call)
+            {
+                this.Report(MirViolation.Operation); // PLAN G442: only a Call is a construction's insertion.
+            }
+
             // SPEC 14.7: a branch tests a bool, an integer or a discriminant; a Return gives _0, of the body's result.
             if (terminator.Kind == MirTerminatorKind.SwitchInt && this.TypeOf(terminator.Operand) is { } tested && !tested.IsInteger &&
                 !ReferenceEquals(tested, BoundType.Boolean))
