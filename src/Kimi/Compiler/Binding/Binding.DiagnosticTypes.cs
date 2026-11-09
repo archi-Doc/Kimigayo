@@ -352,15 +352,15 @@ public sealed partial class Binding
         else
         {
             text.Append('(');
-            if (length.Operation is KotoKind.PrefixMinus or KotoKind.PrefixPlus)
+            if (length.Operation == LengthOperation.Neg)
             {
-                text.Append(length.Operation == KotoKind.PrefixMinus ? '-' : '+');
+                text.Append('-');
                 AppendDiagnosticLength(text, length.Left!, budget);
             }
             else
             {
                 AppendDiagnosticLength(text, length.Left!, budget);
-                text.Append(length.Operation switch { KotoKind.Plus => " + ", KotoKind.Minus => " - ", KotoKind.Asterisk => " * ", KotoKind.Slash => " / ", _ => " % " });
+                text.Append(length.Operation switch { LengthOperation.Add => " + ", LengthOperation.Sub => " - ", LengthOperation.Mul => " * ", LengthOperation.Div => " / ", _ => " % " });
                 AppendDiagnosticLength(text, length.Right!, budget);
             }
 

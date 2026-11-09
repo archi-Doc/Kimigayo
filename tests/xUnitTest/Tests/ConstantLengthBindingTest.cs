@@ -94,7 +94,7 @@ public class ConstantLengthBindingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         var expression = array.TypeOf()!.LengthExpression!;
-        Assert.Equal(KotoKind.Plus, expression.Operation);
+        Assert.Equal(LengthOperation.Add, expression.Operation);
         var constant = expression.Left!.IsConstant ? expression.Left : expression.Right!;
         Assert.Equal(4, constant.Value);
         Assert.Null(constant.Parameter);
