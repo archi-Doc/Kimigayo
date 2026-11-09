@@ -41,8 +41,8 @@ public sealed class PropertyKoto : VariableKoto
     /// <inheritdoc/>
     public override string VariableText => this.DeclarationKind switch
     {
-        PropertyDeclarationKind.Computed => Constants.ComputedKeyword,
-        PropertyDeclarationKind.Requirement => Constants.PropertyKeyword,
+        PropertyDeclarationKind.Computed => TokenKind.Computed.ToText(),
+        PropertyDeclarationKind.Requirement => TokenKind.Property.ToText(),
         _ => base.VariableText,
     };
 
@@ -146,7 +146,7 @@ public sealed class PropertyKoto : VariableKoto
         if (this.HasInlineAccessors)
         {
             builder.AppendSpace();
-            builder.Append(Constants.HasKeyword);
+            builder.Append(TokenKind.Has.ToText());
             builder.AppendSpace();
             for (var i = 0; i < accessors.Count; i++)
             {

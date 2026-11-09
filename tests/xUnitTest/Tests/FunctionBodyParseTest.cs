@@ -178,7 +178,7 @@ public class FunctionBodyParseTest
     public void RecognizesWhileAsAKeyword()
     {
         Assert.True(TokenKind.While.IsKeyword());
-        Assert.Equal(Constants.WhileKeyword, TokenKind.While.ToText());
+        Assert.Equal("while", TokenKind.While.ToText());
     }
 
     [Fact]
