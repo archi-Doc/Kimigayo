@@ -75,8 +75,8 @@ internal sealed partial class MirOrigins
             (this.lawTails[e], this.lawHeads[e]) = (this.classEdges[e].Tail, this.classEdges[e].Head);
         }
 
-        this.IndexEdges(this.lawTails.AsSpan(0, count), nodes, ref this.lawOutStart, ref this.lawOut);
-        this.IndexEdges(this.lawHeads.AsSpan(0, count), nodes, ref this.lawInStart, ref this.lawIn);
+        TyCtxt.OriginChains.Index(this.lawTails.AsSpan(0, count), nodes, ref this.lawOutStart, ref this.lawOut, ref this.cursors);
+        TyCtxt.OriginChains.Index(this.lawHeads.AsSpan(0, count), nodes, ref this.lawInStart, ref this.lawIn, ref this.cursors);
         this.ResetLaw(nodes);
         var (head, queued) = (0, 0);
         for (var m = 0; m < nodes; m++)
@@ -169,7 +169,7 @@ internal sealed partial class MirOrigins
         for (var b = this.boundFirst[m]; b >= 0; b = this.boundNext[b])
         {
             this.reachStamps[this.boundNodes[b]] = kept;
-            this.Work++;
+            this.work++;
         }
 
         this.digits.AsSpan(0, operands).Clear();
@@ -181,7 +181,7 @@ internal sealed partial class MirOrigins
                 choice = types.MeetAtom(this.key, choice, this.choices[this.choiceStart[i] + this.digits[i]], site);
             }
 
-            this.Work += operands; // The fold (operands - 1 MeetAtom calls) and the stamp.
+            this.work += operands; // The fold (operands - 1 MeetAtom calls) and the stamp.
             gained |= this.Keep(m, choice, kept);
             for (k = 0; k < operands && ++this.digits[k] == this.choiceStart[k + 1] - this.choiceStart[k]; k++)
             {
@@ -212,7 +212,7 @@ internal sealed partial class MirOrigins
             for (var i = v < this.lawNodes ? this.lawOutStart[v] : 0; v < this.lawNodes && i < this.lawOutStart[v + 1]; i++)
             {
                 var edge = this.classEdges[this.lawOut[i]];
-                this.Work++;
+                this.work++;
                 if (this.OperandEdge(edge))
                 {
                     continue;
