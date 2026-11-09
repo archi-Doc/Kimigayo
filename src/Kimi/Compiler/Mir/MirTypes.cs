@@ -5,7 +5,7 @@
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
 // Loan-holding with what a call may write past a value (its guard), raw, exclusivity, shared-layer, selection, agreement, borrow-kind,
-// pointer-cast and integer facts.
+// pointer-cast, integer and operator-domain facts (the operator table's domain, which the Backend's operator columns read too).
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // The walks share one depth bound (Bound): past it the guard and the Destruction walk answer Deep, the fact that the part is unknown
 // (DECISIONS R4-M153), and HoldsRaw yes (its reading is PLAN 2b-5's). Their answers at a verdict are one value, MirOutcome, combined only by
@@ -19,7 +19,7 @@
 // outcomes itself.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, view, shared-layer, selection, borrow-kind, pointer-cast, integer and agreement facts.
+// here the reference, view, shared-layer, selection, borrow-kind, pointer-cast, integer, operator-domain and agreement facts.
 
 using Kimi.Compiler.Parsing;
 
@@ -127,8 +127,28 @@ internal static partial class MirTypes
     /// Type (MirValidator.Casts).</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether it has the integer operators, concrete or generic.</returns>
-    internal static bool IsArithmeticInteger(BoundType type) => type.HasIntegerArithmetic || type.IsAbstract ||
-        (type is { Kind: BoundTypeKind.Constructed, Components: [{ IsAbstract: true }] } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping);
+    internal static bool IsArithmeticInteger(BoundType type) => type.HasIntegerArithmetic || InstanceDecides(type);
+
+    /// <summary>Gets whether a MIR operator's built-in operation takes an operand's terminal Type (SPEC 13.3.4, 13.4): the operator table's
+    /// domain, the one statement MirValidator's operator rvalues and the Backend's operator columns (FunctionCodegen.Column) read. + - * /
+    /// take a numeric Type, + and - a raw pointer too (its displacement, SPEC 5.3); %, &amp; | ^ and a shift's left operand an integer or
+    /// wrapping integer Type (SPEC 13.3.1); unary - a numeric Type but an unsigned integer (SPEC 13.2); not bool; a comparison a Type the
+    /// operator table compares (ComparisonTypes.OperatorCompares); each an abstract Type or Wrapping over one, whose instance Binding proves
+    /// (MIR reads the shape, InstanceDecides), which no instance has.</summary>
+    /// <param name="kind">The rvalue's kind, BinaryOp or UnaryOp.</param>
+    /// <param name="op">Its operator.</param>
+    /// <param name="type">The operand's terminal Type.</param>
+    /// <returns>Whether the operator's built-in operation takes it.</returns>
+    internal static bool Operates(MirRvalueKind kind, byte op, BoundType type) => InstanceDecides(type) || (kind == MirRvalueKind.UnaryOp
+        ? (MirUnaryOp)op == MirUnaryOp.Neg ? type.IsNumeric && !type.IsUnsignedInteger : ReferenceEquals(type, BoundType.Boolean)
+        : (MirBinaryOp)op switch
+        {
+            MirBinaryOp.Eq or MirBinaryOp.Ne => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Equatable),
+            >= MirBinaryOp.Lt => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Comparable),
+            MirBinaryOp.Add or MirBinaryOp.Sub => type.IsNumeric || ReferenceTypes.IsPointer(type),
+            MirBinaryOp.Mul or MirBinaryOp.Div => type.IsNumeric,
+            _ => type.HasIntegerArithmetic,
+        });
 
     /// <summary>Gets whether an Integer constant (MirConstKind.Integer) has a Type: one with the integer operators, concrete or generic
     /// (IsArithmeticInteger), char or a raw pointer, whose one constant is null (SPEC 3.1, 5.1). The one family MirValidator checks a
@@ -187,6 +207,11 @@ internal static partial class MirTypes
 
         return true;
     }
+
+    // An abstract Type or Wrapping over one, which stays constructed until substitution (SPEC 3.1.1; TyCtxt.Intern): its instance decides
+    // which operators it has.
+    private static bool InstanceDecides(BoundType type) => type.IsAbstract ||
+        (type is { Kind: BoundTypeKind.Constructed, Components: [{ IsAbstract: true }] } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping);
 }
 
 /// <summary>The walks' one answer at a verdict (MirTypes' contract; DECISIONS R4-M153): decided, Limit (an unsupported or abstract part,

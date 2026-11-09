@@ -1073,14 +1073,17 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Contains((MirViolation.Operation, body.Source), Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
-    // SPEC 13.4, 13.4.1, 5.1, 3.1.3, 8.7.4 (PLAN G662; R8-M15's family): a comparison BinaryOp stands only in the operator table's domain
-    // (ComparisonTypes.OperatorCompares, the whitelist the Backend's Column reads) at its operands' terminals: every comparison at an integer,
-    // a wrapping integer, a floating-point Type, char and a Never terminal (below ref or uniq: it has no value), equality alone at bool, Unit
-    // and a raw pointer (SPEC 5.1: its address; to a string too, directly or below a pair layer, since the walk stops at a raw layer), and
-    // any at an abstract operand, a Type parameter here, whose instance Binding proves (MIR reads the shape). A string's comparison is its
-    // library witness's call (R8-S1e-b), a struct's, an enum's and a Tuple's a Contract call, so a BinaryOp at one, as it is, below ref, uniq
-    // or pair layers (s/string) or as the right operand after a Never left, is a broken contract, as is an ordering at bool, Unit or a raw
-    // pointer; one at i32 is not, after a Never left either.
+    // SPEC 13.2-13.4, 13.4.1, 5.1, 5.3, 3.1.3, 8.7.4 (PLAN G662; R8-M15's family): an operator rvalue stands only in the operator table's
+    // domain (MirTypes.Operates, the whitelist the Backend's Column reads) at its operands' terminals: every comparison at an integer, a
+    // wrapping integer, a floating-point Type, char and a Never terminal (below ref or uniq: it has no value), equality alone at bool, Unit
+    // and a raw pointer (SPEC 5.1: its address; to a string too, directly or below a pair layer, since the walk stops at a raw layer); + - * /
+    // at a numeric Type, % & | ^ and a shift's left operand at an integer or wrapping integer, unary - at a numeric Type but an unsigned
+    // integer, not at bool; and any at an abstract operand, a Type parameter here, whose instance Binding proves (MIR reads the shape). A
+    // string's comparison is its library witness's call (R8-S1e-b), a struct's, an enum's and a Tuple's a Contract call, so a BinaryOp at
+    // one, as it is, below ref, uniq or pair layers (s/string) or as the right operand after a Never left, is a broken contract, as is an
+    // ordering at bool, Unit or a raw pointer, arithmetic at bool, char, Unit, a struct, a Tuple, a string or a raw pointer's product, a
+    // remainder, bitwise operator, shift or not at f64, a bitwise operator or shift at bool or char, and unary - at usize, bool or char;
+    // one at i32 is not, after a Never left either.
     [Theory]
     [InlineData("string", "==", true)]
     [InlineData("ref", "==", true)]
@@ -1107,7 +1110,38 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("refNever", "==", false)]
     [InlineData("refNever", "<", false)]
     [InlineData("uniqNever", "!=", false)]
-    public void AComparisonBinaryOpIsInTheOperatorTablesDomain(string operand, string op, bool reported)
+    [InlineData("bool", "+", true)]
+    [InlineData("char", "*", true)]
+    [InlineData("unit", "-", true)]
+    [InlineData("struct", "+", true)]
+    [InlineData("never struct", "/", true)]
+    [InlineData("tuple", "+", true)]
+    [InlineData("string", "+", true)]
+    [InlineData("raw", "*", true)]
+    [InlineData("f64", "%", true)]
+    [InlineData("bool", "&", true)]
+    [InlineData("f64", "|", true)]
+    [InlineData("char", "^", true)]
+    [InlineData("bool", "<<", true)]
+    [InlineData("f64", ">>", true)]
+    [InlineData("usize", "neg", true)]
+    [InlineData("bool", "neg", true)]
+    [InlineData("char", "neg", true)]
+    [InlineData("i32", "not", true)]
+    [InlineData("f64", "not", true)]
+    [InlineData("i32", "+", false)]
+    [InlineData("never i32", "*", false)]
+    [InlineData("f64", "/", false)]
+    [InlineData("wrapping", "%", false)]
+    [InlineData("usize", "&", false)]
+    [InlineData("wrapping", "<<", false)]
+    [InlineData("i32", "neg", false)]
+    [InlineData("f64", "neg", false)]
+    [InlineData("wrapping", "neg", false)]
+    [InlineData("bool", "not", false)]
+    [InlineData("parameter", "+", false)]
+    [InlineData("parameter", "neg", false)]
+    public void AnOperatorRvalueIsInTheOperatorTablesDomain(string operand, string op, bool reported)
     {
         var body = new MirBody();
         body.Reset(new(null, MirBodyKind.Fn), default);
@@ -1129,6 +1163,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "bool" => BoundType.Boolean,
             "char" => BoundType.Char,
             "f64" => BoundType.F64,
+            "usize" => BoundType.USize,
             "wrapping" => BoundType.WrappingOf(BoundType.I32),
             "parameter" => parameter!,
             "refNever" => c.Types.Reference(SemanticsKind.Ref, BoundType.Never),
@@ -1136,9 +1171,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             _ => BoundType.I32,
         };
         var left = MirModelTest.Local(body, operand.StartsWith("never", StringComparison.Ordinal) ? BoundType.Never : type);
-        var (right, result, block) = (MirModelTest.Local(body, type), MirModelTest.Local(body, BoundType.Boolean), body.AddBlock());
-        var operands = AddOperands(body, [Read(left), Read(right)]);
-        body.Push(block, MirStatement.Assign(result, MirRvalue.Binary(Op(op), operands, proven: true), At));
+        var (unary, code) = Op(op);
+        var right = MirModelTest.Local(body, code is MirBinaryOp.Shl or MirBinaryOp.Shr ? BoundType.I32 : type); // A shift's count.
+        var (result, block) = (MirModelTest.Local(body, code >= MirBinaryOp.Eq ? BoundType.Boolean : type), body.AddBlock());
+        var rvalue = unary is { } negation ? MirRvalue.Unary(negation, AddOperands(body, [Read(left)]), proven: true)
+            : MirRvalue.Binary(code, AddOperands(body, [Read(left), Read(right)]), proven: true);
+        body.Push(block, MirStatement.Assign(result, rvalue, At));
         body.Terminate(block, MirTerminator.Return(At));
         Assert.Equal(reported, Validate(body).Any(static x => x.Rule == MirViolation.Operation));
 
@@ -1148,14 +1186,27 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             => operand is "string" or "uniq" or "pair" or "pair raw" or "struct" or "never struct" or "enum" or "parameter" or "uniqNever"
             ? MirOperand.Move(place) : MirOperand.Copy(place);
 
-        static MirBinaryOp Op(string op) => op switch
+        // A unary operator, or a binary one (Add for a unary row: neither a comparison nor a shift).
+        static (MirUnaryOp? Unary, MirBinaryOp Binary) Op(string op) => op switch
         {
-            "==" => MirBinaryOp.Eq,
-            "!=" => MirBinaryOp.Ne,
-            "<" => MirBinaryOp.Lt,
-            "<=" => MirBinaryOp.Le,
-            ">" => MirBinaryOp.Gt,
-            _ => MirBinaryOp.Ge,
+            "neg" => (MirUnaryOp.Neg, MirBinaryOp.Add),
+            "not" => (MirUnaryOp.Not, MirBinaryOp.Add),
+            "+" => (null, MirBinaryOp.Add),
+            "-" => (null, MirBinaryOp.Sub),
+            "*" => (null, MirBinaryOp.Mul),
+            "/" => (null, MirBinaryOp.Div),
+            "%" => (null, MirBinaryOp.Rem),
+            "&" => (null, MirBinaryOp.BitAnd),
+            "|" => (null, MirBinaryOp.BitOr),
+            "^" => (null, MirBinaryOp.BitXor),
+            "<<" => (null, MirBinaryOp.Shl),
+            ">>" => (null, MirBinaryOp.Shr),
+            "==" => (null, MirBinaryOp.Eq),
+            "!=" => (null, MirBinaryOp.Ne),
+            "<" => (null, MirBinaryOp.Lt),
+            "<=" => (null, MirBinaryOp.Le),
+            ">" => (null, MirBinaryOp.Gt),
+            _ => (null, MirBinaryOp.Ge),
         };
     }
 

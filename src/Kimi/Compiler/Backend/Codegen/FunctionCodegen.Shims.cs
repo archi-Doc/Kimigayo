@@ -170,7 +170,7 @@ internal sealed partial class FunctionCodegen
     // (the row's Reflexive). Null after a record.
     private Value? Leaf(BoundType type, KimiDeclarationId? contract, ComparisonMode mode, Value left, Value right)
     {
-        var column = Column(type);
+        var column = Column(MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Eq, type); // The Types with built-in equality, every Builtin leaf's.
         var equality = contract == KimiDeclarationId.Equatable;
         if (this.Laid(type) is not { } lowering)
         {
@@ -246,7 +246,7 @@ internal sealed partial class FunctionCodegen
         var (kind, op) = BuiltinArithmetic.Operation(contract.LibraryDeclaration);
         var left = this.Loaded(self, lowering, new('p', 0));
         var right = kind == MirRvalueKind.BinaryOp ? this.Loaded(self, lowering, new('p', 1)) : left;
-        return this.Apply(RowOf(kind, op), Column(self), left, right, proven: false, default);
+        return this.Apply(RowOf(kind, op), Column(kind, op, self), left, right, proven: false, default);
     }
 
     // SPEC 11.9.2 (DECISIONS R5-M141): a standard property witness, one rule over its operation's three rows. The Field's address A is the
