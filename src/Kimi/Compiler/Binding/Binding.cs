@@ -189,6 +189,7 @@ public sealed partial class Binding
         this.BindConstraints();
         this.clausesBindable = true;
         this.PublishInheritedOptOuts();
+        this.VerifyEarlyObjectForms();
         this.RegisterInheritedConformances(complete: true);
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();

@@ -169,7 +169,7 @@ public class StorageBoundaryTest
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(map@ref)")]
     [InlineData("unsafe => _ = Kimi.DictionaryStorage.keyAt<i32, i32>(null@raw/u8)")]
-    [InlineData("unsafe => _ = Kimi.Storage.dictionaryStorage(map@uniq)")]
+    [InlineData("unsafe => Kimi.DictionaryStorage.placeEntry(map@uniq, \"b\", 2)")]
     [InlineData("Kimi.Storage.missingDictionaryKey()")]
     [InlineData("func f(r: Kimi.Storage.DictionaryRefRemainder<string, i32>) => ()")]
     public void UserSourceCannotReachTheDictionaryBoundary(string use)

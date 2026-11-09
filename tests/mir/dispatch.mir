@@ -150,7 +150,7 @@ fn make @50
       StorageDead(_10) @86 s1
       StorageDead(_5) @74 s1
       StorageDead(_3) @68 s1
-      drop _1 -> bb15 @53 s1
+      drop _1 -> bb15 [elide] @53 s1
   bb15:
       StorageDead(_1) @53 s1
       unreachable @52

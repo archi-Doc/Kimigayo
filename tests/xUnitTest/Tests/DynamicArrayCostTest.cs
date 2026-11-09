@@ -223,13 +223,15 @@ public class DynamicArrayCostTest
         }));
     }
 
+    // A reloaded program's checked set holds only what the current program uses: the Dictionary program's destruction body
+    // (destroyDictionary, DECISIONS R8-K1c) is gone after the Array program replaces it.
     [Fact]
-    public void ReloadEmitsOnlyTheCurrentlyUsedCachedHelpers()
+    public void ReloadCollectsOnlyTheCurrentProgramsInstances()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, string> = [1: \"before\"]\nConsole.writeLine(entries[1])");
         using var initial = new StringWriter();
         Assert.True(c.Generate(initial), MinimalEmissionTest.Describe(c));
-        Assert.Contains("@__kimi_dictionary_drop_", initial.ToString()); // A generator names its helper (DECISIONS R5-M121).
+        Assert.Contains(c.Instances!.Items.ToArray(), static x => x.Key.Body.Def.Decl?.Name == "destroyDictionary");
         var replacement = MinimalEmissionTest.Analyze("var values: Array<i32> = [20, 22]\nrequire values[0] + values[1] == 42 else => $abort(\"values\")\nvalues@uniq.clear()");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
         var tree = c.Kotonoha;
@@ -242,8 +244,7 @@ public class DynamicArrayCostTest
         using var output = new StringWriter();
         Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
         var ir = output.ToString();
-        Assert.DoesNotContain("@__kimi_dictionary_drop_", ir);
-
+        Assert.DoesNotContain(c.Instances!.Items.ToArray(), static x => x.Key.Body.Def.Decl?.Name == "destroyDictionary");
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }
 

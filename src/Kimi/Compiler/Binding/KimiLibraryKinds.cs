@@ -101,10 +101,8 @@ public enum CompilerFunctionKind : byte
     BuiltinEquals,
     BuiltinCompare,
     BuiltinArithmetic,
-    StorageDictionaryLayout,
     StorageMissingDictionaryKey,
     StorageArgumentOutOfRange,
-    StoragePlaceDictionaryEntry,
     StorageCountOverflow,
     StorageAllocationSizeExceeded,
     StorageTryAllocateBytes,
@@ -198,8 +196,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
             CompilerFunctionKind.FixedBufferValidate or CompilerFunctionKind.FixedBufferClear or CompilerFunctionKind.FixedBufferReserve or CompilerFunctionKind.FixedBufferIntoText or
             CompilerFunctionKind.HeapBufferBytes or CompilerFunctionKind.HeapBufferText or CompilerFunctionKind.HeapBufferValidate or CompilerFunctionKind.HeapBufferClear or
             CompilerFunctionKind.HeapBufferReserve or CompilerFunctionKind.HeapBufferIntoString or CompilerFunctionKind.WindowPush or CompilerFunctionKind.WindowAppend or
-            CompilerFunctionKind.WindowLimit or CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.WriterStatus or
-            CompilerFunctionKind.StorageDictionaryLayout or CompilerFunctionKind.StoragePlaceDictionaryEntry => default,
+            CompilerFunctionKind.WindowLimit or CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.WriterStatus => default,
         CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
@@ -241,11 +238,11 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether a body-less operation's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
-    // (the source as a Take), an in-place destruction and a Dictionary entry's placement (until R8-K1b gives placeEntry a body). Raw.release
-    // and Raw.slice write nothing.
+    // (the source as a Take) and an in-place destruction; a Dictionary entry's placement is the DictionaryStorage.placeEntry body.
+    // Raw.release and Raw.slice write nothing.
     internal static bool WritesThrough(CompilerFunctionKind kind, int parameter) => kind switch
     {
-        CompilerFunctionKind.RawInitialize or CompilerFunctionKind.StorageDestroyValues or CompilerFunctionKind.StoragePlaceDictionaryEntry => parameter == 0,
+        CompilerFunctionKind.RawInitialize or CompilerFunctionKind.StorageDestroyValues => parameter == 0,
         CompilerFunctionKind.StorageTransferBytes => parameter is 0 or 1,
         _ => false,
     };

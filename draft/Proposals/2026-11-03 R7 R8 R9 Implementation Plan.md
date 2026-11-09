@@ -204,12 +204,15 @@ WORKFLOW "Sessions" owns this table where the two differ.
 - Each loaded unit's owner session reviews the window's merge of its hunks when a conflict was resolved by hand; a conflict-free merge
   needs no second look.
 - Between windows the sessions build and test on their branches (unit verification on their own bases); timing runs book quiet time
-  on the board (§9) and pause the others' builds.
+  on the board (§9) and pause the others' builds. Consecutive quiet slots leave a build gap: a slot starts no earlier than 15
+  minutes after the previous slot's CLOSED line, and the sessions build and test in that gap (a window may run in it; revision 44).
 
 ### 3.3 Caps and rules
 
 - Per session: implementers at most two, one per lane, their files disjoint, at most one unit changing a shared representation at a
-  time; designers and reviewers at most two (R4-M119, R5-M113). The Coordinator: one implementer and one reviewer (R7-M4).
+  time; designers and reviewers at most three together (R4-M119, R5-M113; three since revision 45, the owner 2026-11-09). The
+  Coordinator: one implementer and one reviewer (R7-M4). Watchers wake only on rows that need the session's answer, never on the
+  session's own posts (revision 45).
 - Heavy runs at most three across the sessions (`artifacts/heavy-runs/*.run` stays the lock; the board lists the plan). A window holds
   one. Timing needs an empty registry and a booked quiet slot.
 - Every unit's design and implementation phases stay within one hour of agent working time (Q12); sizing before start; a stop writes
@@ -438,7 +441,7 @@ other units have not started. Plan units that need an owner are named in the tab
 | C5 | Proof scopes | Each reader combining proof scopes (a call's re-check, a function Item reference's proof, conformance verification) is a scope; a limit settles where no longer combined (G207); `Binding.Calls.cs` and `Binding.FunctionTypes.cs` split first where over a limit (after P2) | C2, P2 | C1's G207 rows | +80/−60 | Major, R | C |
 | C6 | Capabilities and summaries through the memo | a: the growth guard compares `Height` and ends in a Resource record (G200; BU-71); b: projections and owner Types (G201, G202, G208, G365, G327); c: summaries' inherited arm published as a source path (G328) and the exact re-entry test (G369, c″'s settle exception removed) | C2 | C1's rows; `ComponentSummaryTest`, `IntrinsicCapabilityTest` | +200/−250 | Major each, R | C |
 | C7 | `AvailableBounds` as a pure query | `AvailableBounds(identity, type, env)` reads premises only (G234); `EffectDeclarations` keep; `EffectObligations` reads conformance validity (R4-M23, landed by H5) | V2 | Comp: `EffectBoundDeclarationTest`, `EffectBoundImplementationTest`, `CallableEffectBoundTest`; snapshot | +60/−150 | Major, R | C |
-| C8 | Walk sharing and depth | One rule: a walk over an Origin-carrying DAG enters each distinct (part, mode) once, with a per-query arena so a nested query evicts nothing (G309-R, BU-64's limit, R4's bu90 N1); `TypeMemo` adopted where a reproducer reaches a shared part (G140 U3); recursion on Type height bounded (G348, with D3); done when n = 40 rows for the three forms are linear | C0 | `TypeDagScalingTest` n = 40 rows; cost rows | +150/−100 | Major, R | A/B |
+| C8 | Walk sharing and depth | One rule: a walk over an Origin-carrying DAG enters each distinct (part, mode) once, with a per-query arena so a nested query evicts nothing (G309-R, BU-64's limit, R4's bu90 N1); `TypeMemo` adopted where a reproducer reaches a shared part (G140 U3); recursion on Type height bounded (G348, with D3); done when n = 40 rows for the three forms are linear. U-D1 dropped by the owner's O-82 (b) (`origin/claude/f-r7-c8ud1`@85ef99bda and local `held/f-r7-c8ud1-b1` stay as records); U-D2 landed the limit H = 8,192 and S = 128 MB (revision 40; DECISIONS BU-134, BU-135); U-D3 next: the eight silent depth cuts fold, each with a fail-first probe | C0 | `TypeDagScalingTest` n = 40 rows; cost rows | +150/−100 | Major, R | A/B |
 | C9 | Deletions after C2–C4 (a family: §5.0) | The 15 entries become `Prove`, the 8 cycle guards one, the 4 fixed points the memo; `BoundContracts`, `ContractAgreement`, `ConditionalConformances`, `InheritedConformances` fold into `ImplTable` rows (V2) and the solver; `Constraints`/`ConstraintValidation` restructured by responsibility | C2–C4, V2 | Comp: Session; bp | −1,500 | Major, R | C |
 
 **Stream P: CallPlan pipeline**
@@ -770,7 +773,7 @@ than 24 hours without a state change is stale and the coordinator flags it; a me
 ## 4. Heavy runs (the queue: FIFO by planned start, a window first; the registry is the lock; `running n/3` in the heading)
 | id | session | run | kind | planned start | est. duration | state |
 
-## 5. Quiet time (timing; one at a time, at most two hours, booked 30 minutes ahead; others hold builds and heavy runs)
+## 5. Quiet time (timing; one at a time, at most two hours, booked 30 minutes ahead; others hold builds and heavy runs; 15 minutes between two slots for builds)
 | id | session | from | to | purpose | state |
 
 ## 6. Consents and questions between sessions
@@ -786,7 +789,8 @@ than 24 hours without a state change is stale and the coordinator flags it; a me
 Entry rules per table: a window row is announced at least 30 minutes before it opens, names its base and heavy set, and ends CLOSED
 with the dev sha and the shared base, or FAILED with the dropped unit; a queue row is added when the unit's review is ACCEPT and its
 state becomes `loaded W-nn` when a window takes it (`dropped W-nn` when the window drops it); a hold row is taken before the first edit of a shared file and released in the window that lands the unit; a
-heavy-run row precedes the registry file; a quiet-time row is booked at least 30 minutes ahead, one at a time, at most two hours; a consent
+heavy-run row precedes the registry file; a quiet-time row is booked at least 30 minutes ahead, one at a time, at most two hours, and starts no earlier than 15 minutes after
+the previous slot's CLOSED line (a build gap; revision 44); a consent
 row names the hunk and the rule it needs consent under, and its answer is quoted into the unit's commit; an owner-outbox row is added when
 a session asks the owner and closed with the verbatim answer and where it is recorded.
 
@@ -961,3 +965,6 @@ frozen.
 | 39 | 2026-11-08 | R7-N3b's landing (the Front's D-144) | N3b's row: landed with R7-M15, the measured size replacing the prototype's. N3c stays, with E2/E3. |
 | 41 | 2026-11-08 | R9-F3's landing (the owner's O-85 (a), verbatim 「(a) D1で進める」; the Middle's D-150) | F3's size column gives the landed −101 (D1: an attribute attaches only to what takes it). |
 | 42 | 2026-11-09 | R7-V2a's landing (the Front's D-152; design review 2's R2-5 and R2-6) | V2's row: `VTableDef` reads member facts (SPEC 8.8.1), V2 is done with V2a, V2a2 and V2b–V2f, and the per-pass table rows move to D2 d3; D2 b covers `ImplTable`; C2 takes composite comparison and the primitive refutation. |
+| 43 | 2026-11-09 | R7-C8 U-D2's landing (the owner's O-80 (b), verbatim 「b 落とします」, and O-82, verbatim 「O-82 b」; the Front's D-148) | C8's row: U-D1 dropped, U-D2 landed (H = 8,192, S = 128 MB), U-D3 next. |
+| 44 | 2026-11-09 | The owner's answer to the Coordinator's proposal, verbatim 「すべて推奨の内容でお願いします」 (given with O-91 and O-92) | §3.2 and §9: consecutive quiet slots leave a build gap; a slot starts no earlier than 15 minutes after the previous slot's CLOSED line, and the sessions build and test in that gap (a window may run in it). Reason: five slots booked back to back on 2026-11-09 (T-65 to T-69) held every session's builds and tests for about two hours. |
+| 45 | 2026-11-09 | The owner's answer to the Coordinator's review of the caps, verbatim 「設計とレビューの上限 aでお願いします」 | §3.3: designers and reviewers at most three together per session (was two; R4-M119, R5-M113); implementers stay at two and heavy runs at three (the machine's 24 cores, G650's load-sensitive rows, file holds). Each session's board watcher wakes only on rows that need its answer, never on its own posts. Reason: review and design slots were the Front's recurring wait on 2026-11-09, while the week's total work is bounded by the weekly usage, so the watchers' empty wakes are cut to pay for the third slot. |

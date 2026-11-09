@@ -80,7 +80,6 @@ public sealed partial class Binding
         ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, key, null);
         this.ResetSynthetic(call);
         this.ResetSynthetic(generic);
-        this.nodes.Add(call);
-        return this.BindCall(call, scope, null) is null ? null : call;
+        return this.BindSynthesizedCall(source, call, scope) is null ? null : call;
     }
 }
