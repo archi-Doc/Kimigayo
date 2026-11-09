@@ -167,6 +167,7 @@ public enum DiagnosticCode
     CallActivationConflict_Kd,
     PlacementActivationConflict_Kd,
     OwnStepDeparture_Kd,
+    UnretainedRawStore_Kd,
 
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,

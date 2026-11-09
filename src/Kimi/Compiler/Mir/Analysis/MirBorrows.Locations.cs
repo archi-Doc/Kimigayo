@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Diagnostics;
+
 namespace Kimi.Compiler.Mir;
 
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
@@ -72,6 +74,14 @@ internal sealed partial class MirBorrows
         }
 
         (this.limit, this.deep) = (false, false);
+        if (this.overstored > 0)
+        {
+            // The storing rule (MirBorrows.Storing): at the store, the stored own value's formation as the Anchor fact (DECISIONS Q13).
+            var anchor = this.formed >= 0 ? this.Source(this.formed) : this.body.Locals[this.overstored].Source;
+            this.facts[0] = new(ProblemFactKind.Anchor, this.body.Subject(anchor));
+            this.Record(DiagnosticCode.UnretainedRawStore_Kd, OwnershipRequirement.UnretainedRawStore, this.Subject(at), this.facts.AsSpan(0, 1));
+            this.overstored = 0;
+        }
 
         if (terminator && this.Broken(this.body.Blocks[block].Terminator))
         {

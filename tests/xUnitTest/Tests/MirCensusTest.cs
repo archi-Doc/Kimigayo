@@ -48,6 +48,7 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         (Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenOriginRelation_Kd, "A5"),
         (Ownership(OwnershipRequirement.StorageLimit), DiagnosticCode.OwnershipStorageLimit_Kd, "A5"),
         (Ownership(OwnershipRequirement.OwnStepDeparture), DiagnosticCode.OwnStepDeparture_Kd, "A5"),
+        (Ownership(OwnershipRequirement.UnretainedRawStore), DiagnosticCode.UnretainedRawStore_Kd, "A5"),
         (Ownership(OwnershipRequirement.Unsupported), DiagnosticCode.Unsupported_Kd, "U"),
         (Ownership(OwnershipRequirement.DepthLimit), DiagnosticCode.OwnershipDepthLimit_Kd, "U"),
     ];
