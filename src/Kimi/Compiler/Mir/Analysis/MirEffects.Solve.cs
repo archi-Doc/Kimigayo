@@ -338,7 +338,7 @@ internal sealed partial class MirEffects
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
-            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, []), destructor);
+            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, [], []), destructor);
         }
     }
 

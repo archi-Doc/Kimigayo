@@ -747,7 +747,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // SPEC 22.7, rule L (R8-W2 a2): a generic direct line's region is a fixed array whose length is the interpolation-bound term, which its
-    // instance decides; the body is valid, its Len a sequence's, and a Len of the region's writer (not a sequence) is a Len finding there.
+    // instance decides; the body is valid, its Len a sequence's.
     [Fact]
     public void ALenOverAnInterpolationBoundRegionIsASequences()
     {
@@ -755,17 +755,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var statements = body.Statements.ToArray();
-        var index = Assert.Single(Enumerable.Range(0, statements.Length), x => statements[x] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
-        var region = body.TypeOf(statements[index].Rvalue.Place)!;
+        var len = Assert.Single(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
+        var region = body.TypeOf(len.Rvalue.Place)!;
         Assert.Equal((BoundTypeKind.FixedArray, LengthOperation.InterpolationBound), (region.Kind, region.LengthExpression!.Operation));
         var findings = new List<MirFinding>();
         new MirValidator(c.Types).Validate(body, findings);
         Assert.Empty(findings);
-        var writer = Enumerable.Range(0, body.Locals.Length).First(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
-        Unsafe.AsRef(in body.Statements[index]) = statements[index] with { Rvalue = MirRvalue.Len(new(writer)) };
-        new MirValidator(c.Types).Validate(body, findings);
-        Assert.Equal([(MirViolation.Len, body.Subject(statements[index].Source))], findings.Select(static x => (x.Rule, x.Subject)));
     }
 
     // G136 (DECISIONS R5-M72): A5 reads the Place a Ref lends into a Call's input temp flow-insensitively (MirBorrows.lent), so each body

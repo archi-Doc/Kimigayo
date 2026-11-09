@@ -1332,7 +1332,7 @@ public sealed partial class RetentionTest
         var at = Function(c, "at").SymbolOf()!;
         var layer = TyCtxt.Signature(at, null, 0, out _)!.Components[0];
         Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null)), Declared(c, "flush")));
-        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, []), at)), Calls(c, "flush").Single()));
+        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, [], []), at)), Calls(c, "flush").Single()));
     }
 
     // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47): the library's drops retain over their destruction receivers as their contracts say: the owning
@@ -1567,7 +1567,7 @@ public sealed partial class RetentionTest
                     : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
             }
 
-            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, []), null);
+            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, [], []), null);
             _ = c.Types.RetainsErasedDestruction(part, gen);
         }));
     }

@@ -5,3 +5,12 @@ func owning(s: ref/string) => Console.writeLine("s=\(s)")
 func line<T>(value: ref/T)
     T is Utf8Format
     Console.writeLine("v=\(value)")
+
+func fetch(ok: bool) -> Result<i32, ()>
+    if ok => return .Ok(5)
+    return .Err(())
+
+func attempt<T>(value: ref/T, ok: bool, stop: bool) -> Result<(), ()>
+    T is Utf8Format
+    Console.writeLine("v=\(value) r=\(try fetch(ok)) s=\(if stop => return .Ok(()) else => 1)")
+    return .Ok(())

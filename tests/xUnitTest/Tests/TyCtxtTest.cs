@@ -342,7 +342,7 @@ public sealed partial class TyCtxtTest
         var subst = c.Types.SubstOf(call)!;
         Assert.Equal(1, subst.Lengths.Length);
         Assert.Same(subst, c.Types.SubstOfItem(item));
-        Assert.Same(subst, c.Types.Synthesized(call.Target, null, call.TypeArguments));
+        Assert.Same(subst, c.Types.Synthesized(call.Target, null, call.TypeArguments, []));
     }
 
     // SPEC 3.4.3, 13.5.5: selection follows a reference or object handle as a Deref and a pair layer, the original s/T or an application

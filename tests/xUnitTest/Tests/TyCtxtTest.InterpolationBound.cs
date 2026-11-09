@@ -52,12 +52,13 @@ public sealed partial class TyCtxtTest
         BoundType[] values = [BoundType.I32, BoundType.String];
         Assert.Equal(
             [(17L, (BoundLength?)null), (0L, null)],
-            values.Select(x => types.Apply(region, types.Synthesized(g, null, [x, BoundType.Boolean]))!).Select(static x => (x.Length, x.LengthExpression)));
+            values.Select(x => types.Apply(region, types.Synthesized(g, null, [x, BoundType.Boolean], []))!)
+                .Select(static x => (x.Length, x.LengthExpression)));
         var keep = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
         var item = types.Intern(keep.Kind, keep.Symbol, keep.Semantics, keep.Components.ToArray(), lengthArguments: [term]);
         var inner = types.SubstOfItem(item)!;
         Assert.Same(term, inner.Lengths[0]);
-        var composed = types.Compose(inner, types.Synthesized(g, null, [BoundType.I32, BoundType.Boolean])).Subst!;
+        var composed = types.Compose(inner, types.Synthesized(g, null, [BoundType.I32, BoundType.Boolean], [])).Subst!;
         Assert.Equal((true, 17L), (composed.Lengths[0]!.IsConstant, composed.Lengths[0]!.Value));
     }
 
@@ -86,8 +87,8 @@ public sealed partial class TyCtxtTest
         [
             .. parameters[1..].SelectMany(x => new[]
             {
-                types.Apply(region, types.Synthesized(target, null, [x]))!.Length,
-                types.Compose(inner, types.Synthesized(target, null, [x])).Subst!.Lengths[0]!.Value,
+                types.Apply(region, types.Synthesized(target, null, [x], []))!.Length,
+                types.Compose(inner, types.Synthesized(target, null, [x], [])).Subst!.Lengths[0]!.Value,
             }),
         ];
         Assert.Equal([17, 17, 0, 0], folded);

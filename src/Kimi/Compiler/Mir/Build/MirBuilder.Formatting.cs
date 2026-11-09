@@ -41,7 +41,8 @@ internal sealed partial class MirBuilder
             var bytes = this.Values(node);
             var buffer = this.Temp(CallPlan.Of(node)!.ReturnType, node);
             this.Estimate(buffer, IntrinsicId.FormatBuffer, bytes, start, this.arguments.Count, node);
-            var (writer, unit) = (this.Hold(CallPlan.Of(node, 1)!.ReturnType, node), this.Hold(BoundType.Unit, node));
+            var writer = this.Hold(CallPlan.Of(node, 1)!.ReturnType, node);
+            var unit = this.Hold(BoundType.Unit, node);
             this.Adapt(node, buffer, writer);
             this.Made(writer);
             this.Writes(node, writer, unit, bytes, start, ref done);
@@ -96,11 +97,13 @@ internal sealed partial class MirBuilder
         var done = -1;
         var bytes = this.Values(text);
         var length = compilation.Types.InterpolationBound(compilation.Types.Tuple(CollectionsMarshal.AsSpan(this.formatTypes)[start..]), bytes);
-        var (fixedArm, owningArm) = (!length.IsConstant || length.Value > 0, !length.IsConstant || length.Value == 0);
+        var fixedArm = !length.IsConstant || length.Value > 0;
+        var owningArm = !length.IsConstant || length.Value == 0;
         var region = fixedArm ? this.Region(length, text) : default;
         var fixedBuffer = fixedArm ? this.Hold(this.FixedCall(length).Result, text) : default;
         var buffer = owningArm ? this.Hold(CallPlan.Of(text)!.ReturnType, text) : default;
-        var (writer, unit) = (this.Hold(CallPlan.Of(text, 1)!.ReturnType, text), this.Hold(BoundType.Unit, text));
+        var writer = this.Hold(CallPlan.Of(text, 1)!.ReturnType, text);
+        var unit = this.Hold(BoundType.Unit, text);
         var test = fixedArm && owningArm ? this.Positive(region, text) : default(MirPlace?);
         var (owning, join) = this.Fork(test, text);
         if (fixedArm)
@@ -212,7 +215,7 @@ internal sealed partial class MirBuilder
     {
         var scope = this.OpenScope(block: false);
         var view = compilation.Library.GetSymbol(KimiDeclarationId.FixedBufferText)!;
-        var subst = compilation.Types.Synthesized(view, this.body.TypeOf(fixedBuffer), []);
+        var subst = compilation.Types.Synthesized(view, this.body.TypeOf(fixedBuffer), [], []);
         var result = this.Temp(TyCtxt.Signature(view, subst, -1, out _)!, node);
         var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Ref, fixedBuffer, node));
@@ -234,7 +237,9 @@ internal sealed partial class MirBuilder
             return (-1, -1);
         }
 
-        var (owning, join, arm) = (this.body.AddBlock(), this.body.AddBlock(), this.body.AddBlock());
+        var owning = this.body.AddBlock();
+        var join = this.body.AddBlock();
+        var arm = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.SwitchInt(MirOperand.Copy(tested), this.body.AddCase(0, owning), 1, arm, this.Info(node)));
         this.current = arm;
         return (owning, join);

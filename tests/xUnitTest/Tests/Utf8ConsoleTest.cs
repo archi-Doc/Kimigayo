@@ -76,11 +76,13 @@ public class Utf8ConsoleTest
     {
         var source = "let v = " + value + "\nConsole.writeLine(\"\\(v)\")";
         NativeAllocationAudit.WriteFixture("Utf8ConsoleWidest" + kind, source, 0, 0, 0, text + "\n");
-        var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)));
+        var c = MinimalEmissionTest.Analyze(source);
+        var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c));
         var instructions = ir.Functions.SelectMany(static x => x.Instructions).ToArray();
         var region = Assert.Single(instructions, static x => x.Opcode == "alloca" && x.Shape.StartsWith("alloca { [0 x i8], [", StringComparison.Ordinal));
         var borrow = Assert.Single(instructions, x => x.Opcode == "store" && x.Operands[0] == region).Operands[1]; // Text.fixed's argument.
-        Assert.Single(instructions, x => x.Opcode == "call" && x.Operands.Any(y => y.Opcode == "load" && y.Operands[0] == borrow));
+        var call = Assert.Single(instructions, x => x.Opcode == "call" && x.Operands.Any(y => y.Opcode == "load" && y.Operands[0] == borrow));
+        Assert.Contains(call.Callee, FunctionCodegenTest.FunctionsOf(ir, c, "fixed"));
         Assert.Equal($"alloca {{ [0 x i8], [{Encoding.UTF8.GetByteCount(text)} x i8] }}, align 1", region.Shape);
     }
 

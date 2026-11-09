@@ -28,14 +28,14 @@ public sealed partial class Binding
         switch (witness.Kind)
         {
             case RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance:
-                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, [])));
+                into.Add((witness.Target!, this.types.Synthesized(witness.Target!, witness.Declaring, [], [])));
                 return true;
             case RequirementWitnessKind.LibraryWitness when this.types.LibraryInstance(witness, self, [], []) is { } instance:
                 into.Add((witness.Target!, instance));
                 return true;
             case RequirementWitnessKind.Property when witness.Property.Kind == PropertyWitnessKind.AccessorCall:
                 var accessor = this.AccessorFunction(witness.Property.Implementation).BoundSymbol!;
-                into.Add((accessor, this.types.Synthesized(accessor, witness.Declaring, [])));
+                into.Add((accessor, this.types.Synthesized(accessor, witness.Declaring, [], [])));
                 return true;
             default:
                 return false;
@@ -84,7 +84,7 @@ public sealed partial class Binding
     {
         if (plan.Implementation is { } call)
         {
-            into.Add((call.Target, this.types.Synthesized(call.Target, call.DeclaringType, [])));
+            into.Add((call.Target, this.types.Synthesized(call.Target, call.DeclaringType, [], [])));
         }
 
         foreach (var part in plan.Parts)

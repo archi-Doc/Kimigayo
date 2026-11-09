@@ -86,8 +86,9 @@ internal static partial class LegacyRuntimeHelpers
         ]);
 
     /// <summary>The runtime's FixedBuffer over bytes (<c>__kimi_text_fixed</c>): the conversions' fixed buffer (a direct line's region is
-    /// Text.fixed's body since R8-W2 a2). Text.fixed is a body; this is a second statement of its construction, temporary until W1c-2 (the
-    /// conversions).</summary>
+    /// Text.fixed's body since R8-W2 a2). Text.fixed is a body; this is a second statement of its construction, temporary: whichever of
+    /// R8-W1c-2 (the conversions) and R8-W2 a2 lands second deletes it, its routine and its two entries in ReadFormattingRuntime with its
+    /// last caller.</summary>
     internal static readonly FunctionAbi FormatFixed = Slotted(
         "__kimi_text_fixed",
         [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("i64", "capacity", AbiParameterKind.Context, 0)]);

@@ -1793,6 +1793,10 @@ public sealed partial class FunctionCodegenTest
         })];
     }
 
+    // The functions of a definition's body items, one per instance (ItemTexts).
+    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
+        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
+
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
     // after acceptance as `Compilation.Check` discovers it.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
