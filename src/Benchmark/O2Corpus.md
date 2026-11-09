@@ -19,7 +19,7 @@ invertible, so a wrong value in any round changes the line. Each runs a few tent
 | `ArrayViews` | An exclusive `for`, `sliceUniq` and `tryGetPairUniq` over 1,024 `i32`, and a fixed array's exclusive `for`, shared `for` and `sliceUniq` over 256, each part a function of its own: 131,072 to 524,288 rounds per part |
 | `Dictionary` | `Dictionary<i64, i64>` of 64 entries (insertion, lookup, removal, shared iteration) and one of 32 entries keyed by a user `Equatable` struct, 16,384 rounds; lookup is a linear search |
 | `Interpolation` | An interpolated owning string with a user `Utf8Format` value, and `$tryWrite` into a cleared fixed buffer, 1,048,576 times |
-| `Iterators` | A user Iterator through a generic consumer, Slice iteration and `Iteration.owning`, 8,388,608 rounds |
+| `Iterators` | Two user Iterators through a generic consumer (the second hands out four `Option` slots, each taken by `Kimi.Intrinsics.exchange` with `.None`, Milestone 29's shape), Slice iteration and `Iteration.owning`, 8,388,608 rounds |
 | `ErasedCalls` | Calls through erased `(i64) -> i64` values of two function items and two closures (environments of 8 and 24 bytes) held in an Array, 2^27 calls |
 | `VirtualDispatch` | `virtual`/`override` calls through `objref` base views of four Dynamic Types, with direct base calls, 2^26 calls |
 | `SharedHandles` | rc creation, clone into an Array, owning iteration and release, and arc clone and release, 1,048,576 rounds |
