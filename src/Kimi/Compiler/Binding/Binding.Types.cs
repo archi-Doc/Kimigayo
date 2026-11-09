@@ -95,7 +95,7 @@ public sealed partial class Binding
         {
             var owner = OriginOwner(syntax);
             var originDeclaration = owner is not null and not (FunctionKoto or PropertyAccessorKoto) ? this.BeginOriginDeclaration(owner, scope) : null;
-            var type = this.BindTypeStructure(syntax, scope, context);
+            var type = this.HeightChecked(syntax, this.BindTypeStructure(syntax, scope, context));
             if (IsRecovery(syntax, out _))
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
@@ -121,6 +121,12 @@ public sealed partial class Binding
 
             var annotated = syntax as TypeSemanticsKoto;
             type = this.CompleteOrigins(type, annotated, syntax, scope, context);
+            if (OverHeight(type))
+            {
+                RestPendingOn(originDeclaration, syntax);
+                return this.HeightChecked(syntax, type);
+            }
+
             Complete(syntax, type);
             this.CompleteOriginDeclaration(originDeclaration);
             return syntax.BoundType;
@@ -244,9 +250,14 @@ public sealed partial class Binding
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }
-                        else if (inner.Symbol?.ObjectPayloadOptOut is { } renounced)
+                        else if (this.RenouncedObjectTarget(syntax, inner))
                         {
-                            return this.FailObjectPayload(syntax, renounced);
+                            return null;
+                        }
+                        else if (!this.clausesBindable)
+                        {
+                            // A Constraint's Type is formed before the opt-outs are published: judged again once they are (VerifyEarlyObjectForms).
+                            (this.earlyObjectForms ??= []).Add((syntax, inner));
                         }
                     }
 

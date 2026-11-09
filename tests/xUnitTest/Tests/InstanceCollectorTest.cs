@@ -252,14 +252,14 @@ public sealed partial class InstanceCollectorTest
     };
 
     // DECISIONS BU-38 (PLAN G242; designs A and B, the review's combination C): programs whose instance (a local, a Type argument, a
-    // requirement Item or a LegacyRow's collection), composed substitution (Self or a Type argument) or bodyless callee's parameter rests on
-    // storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the storage-nesting gap,
-    // beside a failed part in either order too, and C8d's LegacyRow over a Type nested past the bound (before: InternalInvariant_Kd). DECISIONS
-    // R5-M151 (PLAN G285): a virtual slot whose applicability rests on a constraint Binding rejected, in the clause and the Block form, which
-    // the VTable leaves undecided (before: InternalInvariant_Kd at the creation). DECISIONS R5-M155 (PLAN G293): a local, a parameter (with a
-    // generic subject), an Array's element (its glue's) and a captured value typed by a qualified projection that names no Type after
-    // Binding's constraint error, an abstract Type Layout gives Rejected (before: Layout.Row threw, CheckFaulted_Kd); the capture rests on
-    // that error (PLAN G293's BU part; before: Binding's direct Unsupported_Kd at the entry).
+    // requirement Item or an Array operation's collection), composed substitution (Self or a Type argument) or bodyless callee's parameter
+    // rests on storage Binding rejected, with Binding's records and the collector's; and their genuine-limit twins, which keep the
+    // storage-nesting gap, beside a failed part in either order too, and an Array operation over a Type nested past the bound (before C8d:
+    // InternalInvariant_Kd). DECISIONS R5-M151 (PLAN G285): a virtual slot whose applicability rests on a constraint Binding rejected, in
+    // the clause and the Block form, which the VTable leaves undecided (before: InternalInvariant_Kd at the creation). DECISIONS R5-M155
+    // (PLAN G293): a local, a parameter (with a generic subject), an Array's element (its glue's) and a captured value typed by a qualified
+    // projection that names no Type after Binding's constraint error, an abstract Type Layout gives Rejected (before: Layout.Row threw,
+    // CheckFaulted_Kd); the capture rests on that error (PLAN G293's BU part; before: Binding's direct Unsupported_Kd at the entry).
     public static TheoryData<string, string, string, string> RejectedCases
     {
         get
@@ -821,11 +821,11 @@ public sealed partial class InstanceCollectorTest
     // PLAN G128); a drop glue cycle through 130 structs growing once per lap; a written nest of 130 behind a handle, past the height cap
     // of 128; a branching non-regular Type, at the 1,025th glue item of its declaration; and the Known limit, growth written into a chain
     // of distinct functions (each adding Option), at its 17th generation, though nothing recurs. A refused key is refused once: a
-    // destructor creating a growing object requests its glue key from the creation, the descriptor and the local's handle glue, one record
-    // at the first request. The cap is the requested Type's: a handle past it is refused though an earlier handle admitted the release key
-    // its glue shares (U11).
+    // destructor creating a growing object requests its glue key from the descriptor and the local's handle glue (the creation's temp is
+    // moved into the object, so its Drop destroys nothing and asks none, PLAN G641), one record at the first request. The cap is the
+    // requested Type's: a handle past it is refused though an earlier handle admitted the release key its glue shares (U11).
     [Theory]
-    [InlineData("requested", "GenerationResourceLimit_Kd Expanding<Marker<T>>.init()")]
+    [InlineData("requested", "GenerationResourceLimit_Kd Kimi.Intrinsics.makeObj(Expanding<Marker<T>>.init())")]
     [InlineData("mutual", "GenerationResourceLimit_Kd f(value@move, n)")]
     [InlineData("handle", "Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()")]
     [InlineData("cycle", "GenerationResourceLimit_Kd let v: Option<obj/C1<i32>> = .None")]
@@ -1163,8 +1163,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["DropGlue Res"], set.Targets(adapter).ToArray().Select(x => Label(program, set.Items[x.Item])));
     }
 
-    // K 4.3 (R8-A1d): a call of an Array storage function targets the body of its function's instance, as any call, and no Array operation
-    // has a LegacyRow item left; an Array<isize> is another instance.
+    // K 4.3 (R8-A1d): a call of an Array storage function targets the body of its function's instance, as any call; an Array<isize> is
+    // another instance.
     [Fact]
     public void AnArrayStorageFunctionIsItsFunctionInstancesBody()
     {
@@ -1172,7 +1172,6 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(program.Records(MirRecordClass.Collection));
         var labels = set.Items.ToArray().Select(x => Label(program, x)).ToArray();
         Assert.Equal(2, labels.Count(static x => x.StartsWith("library Fn borrowStorage", StringComparison.Ordinal)));
-        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
     // SPEC 4.9.7, 16.3.2 (PLAN G126): an Array's destruction reaches its element's glue through the bodies: `clear` and destroyArray each hold
@@ -1203,27 +1202,26 @@ public sealed partial class InstanceCollectorTest
     public void AnArrayOperationsBodyLaysOutItsElement(string element, string records)
     {
         var c = MirBuildTest.Compile(CLayoutP + $"func c(values: uniq/Array<{element}>) => values.clear()\n");
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        _ = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Equal(records, string.Join("|", c.BuildMir().Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
-        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.LegacyRow);
     }
 
-    // K 4.8, X34 (DECISIONS R5-M124): placeEntry's LegacyRow item lays out each component of the Dictionary its handle designates, the value
-    // too: a literal's oversized or rejected value refuses the item at the literal and at its entry's key, where the entry's insertion is
-    // (SPEC 22.5.1; DECISIONS R5-M144) (the records of its other uses are at the same sites); an i64 value admits it (the counterpart).
+    // K 4.8, X34 (DECISIONS R5-M124, R8-K1b-2): a literal's entry placement, the placeEntry body instance over the Dictionary's K and V,
+    // lays out the value: an oversized or rejected value refuses it at its entry's key, where the entry's insertion is (SPEC 22.5.1;
+    // DECISIONS R5-M144), after the literal's own records, the collector's admission order (the records of its other uses are at the same
+    // sites; the literal's temp is moved into `d`, so its Drop destroys nothing and records none, PLAN G641); an i64 value admits it (the
+    // counterpart).
     [Theory]
     [InlineData(Huge, "OversizedLayout_Kd")]
     [InlineData("P<()>", "InvalidCLayout_Kd")]
     [InlineData("i64", null)]
-    public void ALegacyRowLaysOutADictionarysValue(string value, string? code)
+    public void APlacementLaysOutADictionarysValue(string value, string? code)
     {
         var c = MirBuildTest.Compile(CLayoutP + DictionaryKey + $"func put(v: {value})\n    let d: Dictionary<Key, {value}> = [Key.init(1): v@move]\n");
-        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        _ = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = code is null ? Array.Empty<string>()
-            : [$"{code} {value}", $"{code} v@move", $"{code} Key.init(1)", $"{code} [Key.init(1): v@move]",
-                $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]"];
+            : [$"{code} {value}", $"{code} v@move", $"{code} let d: Dictionary<Key, {value}> = [Key.init(1): v@move]", $"{code} Key.init(1)"];
         Assert.Equal(records, c.BuildMir().Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}"));
-        Assert.Equal(code is null ? 1 : 0, set.Items.ToArray().Count(static x => x.Key.Kind == MonoKind.LegacyRow));
     }
 
     // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
@@ -1437,9 +1435,11 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["()", "uniq/Bag", "Array<i32>"], Signature(Item(program, set, "PropertyWitness Bag StorageSet")));
         Assert.Equal(["ref/Array<i32>", "ref/Bag"], Signature(Item(program, set, "PropertyWitness Bag StorageBorrow")));
         Assert.Empty(program.Records(MirRecordClass.Collection));
+        // `[1, 2]` is one Array aggregate, which targets growArray's body (R8-A1d); it is moved into the set, so its Drop destroys nothing
+        // and asks no glue (PLAN G641).
         Assert.Equal(
-            ["library Fn growArray in group Storage", "PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"],
-            Targets(program, set, "Fn refill [Bag]")); // `[1, 2]` is one Array aggregate, which targets growArray's body (R8-A1d).
+            ["library Fn growArray in group Storage", "PropertyWitness Bag StorageSet", "PropertyWitness Bag StorageBorrow"],
+            Targets(program, set, "Fn refill [Bag]"));
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
@@ -1812,8 +1812,9 @@ public sealed partial class InstanceCollectorTest
         }
     }
 
-    // K 4.5 "DropGlue" (X4; DECISIONS R5-M124, the owner's R5-M125): an Array's glue targets the glues of its element Types that need a drop;
-    // a Dictionary's the clearEntries instance its Drop row declares, whose body reaches the entries' glues (their destroyDictionaryEntries).
+    // K 4.5 "DropGlue" (DECISIONS R8-M5, R8-K1c): an Array's glue targets the destroyArray instance, whose body reaches the glues of its
+    // element Types that need a drop; a Dictionary's the destroyDictionary instance, whose body reaches the entries' glues (their
+    // destroyDictionaryEntries).
     [Fact]
     public void ACollectionsGlueDestroysItsElements()
     {
@@ -1822,32 +1823,29 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["library Fn destroyArray in group Storage [string]"], Targets(program, set, "DropGlue Array<string>"));
         Assert.Contains("DropGlue string", Targets(program, set, "library Fn destroyArray in group Storage [string]"));
         Assert.DoesNotContain(Targets(program, set, "library Fn destroyArray in group Storage [i32]"), static x => x.StartsWith("DropGlue", StringComparison.Ordinal));
-        const string Clear = "library Fn clearEntries in group DictionaryStorage [string, Array<i32>]";
-        Assert.Equal([Clear], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
-        Assert.Contains(Calls(program, set, Clear), static x => x.StartsWith("library Fn destroyDictionaryEntries", StringComparison.Ordinal));
+        const string Destroy = "library Fn destroyDictionary in group Storage [string, Array<i32>]";
+        Assert.Equal([Destroy], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
+        Assert.Contains(Calls(program, set, Destroy), static x => x.StartsWith("library Fn destroyDictionaryEntries", StringComparison.Ordinal));
     }
 
-    // G157 (6), SPEC 4.9.7, X4 (DECISIONS R5-M27, R5-M124, the owner's R5-M125): a Dictionary's glue targets exactly the instance of the Entries
-    // callee its Drop row declares, clearEntries over its entry Types, when an entry may need a drop (CallsEntries), else nothing; a value or a
-    // key that needs one is enough.
+    // G157 (6), SPEC 4.9.7, 16.3.2 (DECISIONS R8-K1c): a Dictionary's glue targets exactly one body: destroyDictionary over its entry Types
+    // when an entry may need a drop, else releaseDictionary, which visits no entry; a value or a key that needs one is enough.
     [Theory]
     [InlineData("i32, Res", true)]
     [InlineData("string, i32", true)]
     [InlineData("i32, i64", false)]
-    public void ADictionarysGlueTargetsTheClearEntriesItsDropRowDeclares(string entry, bool clears)
+    public void ADictionarysGlueTargetsItsDestructionBody(string entry, bool destroys)
     {
         var (program, set) = Collect("struct Res\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
             $"func d(values: Dictionary<{entry}>) => ()\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         var glue = Targets(program, set, $"DropGlue Dictionary<{entry}>");
-        Assert.Equal(clears ? new[] { $"library Fn clearEntries in group DictionaryStorage [{entry}]" } : Array.Empty<string>(), glue);
-        var row = LegacyRuntimeHelpers.DictionaryRow(DictionaryHelperKind.Drop);
-        Assert.Equal((DictionaryCallee.ClearEntries, HelperNeeds.ElementGlue), (row.Entries, row.Needs));
+        Assert.Equal([destroys ? $"library Fn destroyDictionary in group Storage [{entry}]" : "library Fn releaseDictionary in group Storage"], glue);
     }
 
-    // K 4.3, 4.5 rows 2 and 11, X4, F2c (DECISIONS R5-M124): placeEntry's call targets the LegacyRow item of its function's instance,
-    // represented by the Dictionary its raw handle designates, whose target is the body its row declares, append; a Dictionary from none
-    // targets the body of the function the Dictionary runtime declares for construction, initialize; neither instantiates, so each has one
+    // K 4.3, 4.5 rows 2 and 11, X4, F2c (DECISIONS R5-M124, R8-K1b-2): placeEntry is a DictionaryStorage body, one instance per K and V,
+    // each calling append's one item; a Dictionary from none targets the body of the
+    // function the Dictionary runtime declares for construction, initialize; neither append nor initialize instantiates, so each has one
     // item.
     [Fact]
     public void PlaceEntryAndADictionaryFromNoneTargetTheirDeclaredBodies()
@@ -1857,11 +1855,10 @@ public sealed partial class InstanceCollectorTest
             "func make() -> Dictionary<Key, i64> => [:]\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
         const string Append = "library Fn append in group DictionaryStorage";
-        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry")));
-        Assert.Equal(new[] { Append }, Assert.Single(RowTargets(program, set, "LegacyRow Dictionary<Key, string> StoragePlaceDictionaryEntry")));
+        Assert.Contains(Append, Calls(program, set, "library Fn placeEntry in group DictionaryStorage [DictionaryStorage, Key, i64]"));
+        Assert.Contains(Append, Calls(program, set, "library Fn placeEntry in group DictionaryStorage [DictionaryStorage, Key, string]"));
         Assert.Equal(["library Fn initialize in group DictionaryStorage"], Calls(program, set, "Fn make"));
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == Append);
-        Assert.Equal(DictionaryCallee.Append, LegacyRuntimeHelpers.Row(CompilerFunctionKind.StoragePlaceDictionaryEntry)!.Value.Callee);
     }
 
     // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
@@ -2412,8 +2409,9 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(tables, set.Items.ToArray().Count(static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable));
     }
 
-    // A warm rebind collects a program's Dictionary paths again (DECISIONS R5-M124): placeEntry's LegacyRow items and the append their rows
-    // declare, a Dictionary from none's initialize and the clearEntries a glue's Drop row declares, with no allocation.
+    // A warm rebind collects a program's Dictionary paths again (DECISIONS R5-M124, R8-K1b-2): the placeEntry body's instances (tryInsert's,
+    // in its group, and the literal's) and the append they call, a Dictionary from none's initialize and the destroyDictionary a glue
+    // targets, with no allocation.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunOfDictionariesAllocatesNothing()
@@ -2431,9 +2429,9 @@ public sealed partial class InstanceCollectorTest
             collector.Run(c.BuildMir(), 1);
         }));
         Assert.Equal(
-            ["LegacyRow Dictionary<Key, Res> StoragePlaceDictionaryEntry", "LegacyRow Dictionary<Key, i64> StoragePlaceDictionaryEntry",
-                "library Fn append in group DictionaryStorage", "library Fn clearEntries in group DictionaryStorage [Key, Res]",
-                "library Fn initialize in group DictionaryStorage"],
+            ["library Fn append in group DictionaryStorage", "library Fn destroyDictionary in group Storage [Key, Res]",
+                "library Fn initialize in group DictionaryStorage", "library Fn placeEntry in group DictionaryStorage [DictionaryStorage, Key, Res]",
+                "library Fn placeEntry in group DictionaryStorage [Key, i64]"],
             reached);
         c.Binding.Bind(BindingMode.Final);
         program = c.BuildMir();
@@ -2443,8 +2441,8 @@ public sealed partial class InstanceCollectorTest
 
         // The items of the Dictionary paths, each once (G157 (30)'s duplicates are of the same function reached two ways, none here).
         string[] Reached() => set.Items.ToArray().Select(x => Label(program, x))
-            .Where(static x => x.StartsWith("LegacyRow ", StringComparison.Ordinal) || x.StartsWith("library Fn append ", StringComparison.Ordinal) ||
-                x.StartsWith("library Fn initialize ", StringComparison.Ordinal) || x.StartsWith("library Fn clearEntries ", StringComparison.Ordinal))
+            .Where(static x => x.StartsWith("library Fn placeEntry ", StringComparison.Ordinal) || x.StartsWith("library Fn append ", StringComparison.Ordinal) ||
+                x.StartsWith("library Fn initialize ", StringComparison.Ordinal) || x.StartsWith("library Fn destroyDictionary ", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal).ToArray();
     }
 
@@ -2564,18 +2562,12 @@ public sealed partial class InstanceCollectorTest
         return [.. sites];
     }
 
-    // The targets of each item of a label: a function instance its call and its Item reach with erased substitutions of different input-Origin
-    // counts has two LegacyRow items (DECISIONS R5-M121).
-    private static string[][] RowTargets(MirProgram program, CheckedSet set, string label)
-        => [.. Enumerable.Range(0, set.Items.Length).Where(x => Label(program, set.Items[x]) == label)
-            .Select(x => set.Targets(x).ToArray().Select(y => Label(program, set.Items[y.Item])).ToArray())];
-
     // An item's targets but the glue of the values its body drops.
     private static string[] Calls(MirProgram program, CheckedSet set, string label)
         => Targets(program, set, label).Where(static x => !x.StartsWith("DropGlue ", StringComparison.Ordinal)).ToArray();
 
-    // Whether an item's representative closes its body (Closes), a body item's being the one that has a body (BodyOrdinal; a LegacyRow item's
-    // representative has none, DECISIONS R5-M121).
+    // Whether an item's representative closes its body (Closes), a body item's being the one that has a body (BodyOrdinal; a type-driven
+    // item has none).
     private static bool Closed(Compilation c, MirProgram program, in MonoItem item)
         => item.Representative is not { } representative || item.BodyOrdinal < 0 || Closes(c.Types, program.Bodies[item.BodyOrdinal], representative);
 
@@ -2590,7 +2582,6 @@ public sealed partial class InstanceCollectorTest
                 MonoKind.Builtin when item.Key.Variant != 0 => $" {item.Key.Symbol!.CompilerFunction} {(ComparisonMode)item.Key.Variant}",
                 MonoKind.Builtin => " " + item.Key.Symbol!.CompilerFunction,
                 MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
-                MonoKind.LegacyRow => " " + item.Key.Body.Def.Decl!.CompilerFunction,
                 _ => string.Empty,
             };
             return $"{item.Key.Kind} {TyCtxt.Name(item.RepresentativeType!)}{variant}";

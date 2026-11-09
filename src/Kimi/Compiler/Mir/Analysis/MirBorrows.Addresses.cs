@@ -120,7 +120,7 @@ internal sealed partial class MirBorrows
     // none, the value being the borrow's parents.
     private int Formation(MirPlace place, int location)
     {
-        var (count, deref, own) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1, -1);
+        var (count, deref, own) = (this.AddressWalk(place, location), -1, -1);
         for (var i = 0; i < count; i++)
         {
             deref = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : deref;
@@ -133,6 +133,15 @@ internal sealed partial class MirBorrows
         }
 
         return deref < 0 ? this.Address(place.Root, -1, direct: true, location, []) : -1;
+    }
+
+    // A raw address's step walk at a location: its Place's steps, and where the location's rvalue is a Storage, the element step that
+    // `&raw P[i]` takes after them (MirSteps.Element), so that a Storage is exactly a raw Ref of an element of its Place (O-92 (a)).
+    private int AddressWalk(MirPlace place, int location)
+    {
+        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
+        return location < this.body.Statements.Length && this.body.Statements[location] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Storage }
+            ? this.placeSteps.Element(this.body, place, count, ref this.walk) : count;
     }
 
     // The own-step entry of a raw Place that is a `during self` layer (B §5.2 item 2), decided once per view; -1 for another Place.
@@ -206,7 +215,7 @@ internal sealed partial class MirBorrows
         this.loanStepCount += steps.Length;
         if (direct && root >= 0)
         {
-            this.named[root] = true;
+            this.named[root] |= NamedHolder | ExposedHolder;
         }
 
         if (owner >= 0)

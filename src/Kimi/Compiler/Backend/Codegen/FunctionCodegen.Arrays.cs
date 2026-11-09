@@ -7,9 +7,8 @@ namespace Kimi.Compiler.Backend;
 
 // The Array rows of FunctionCodegen written in place (SPEC 4.3, 4.9.7, 16.3.2; R5 plan C8d; DECISIONS R5-M129): an Array aggregate's storage
 // (ArrayBuffer: the empty handle at its Place, for n elements one growth to n, the aggregate's target, and the length n), whose buffer
-// the aggregate writer puts the elements in; destroyValues' counted loop over T's glue (PLAN G126); and an Array's glue level, the
-// destroyArray instance its glue item targets, called with the glue's own parameters (the string row's form). A Dictionary's glue and a
-// Dictionary from none are FunctionCodegen.Dictionaries' (DECISIONS R5-M124).
+// the aggregate writer puts the elements in; and destroyValues' counted loop over T's glue (PLAN G126). An Array's glue level is a
+// collection's (FunctionCodegen.Glue's CollectionGlue; DECISIONS R8-M5).
 internal sealed partial class FunctionCodegen
 {
     // SPEC 4.3.1, 4.9.5, 12.4.1 (DECISIONS R5-M129): an Array aggregate's storage at its handle: the handle's words zero, then for its n
@@ -93,18 +92,5 @@ internal sealed partial class FunctionCodegen
         }
 
         this.Finish(call, null);
-    }
-
-    // SPEC 4.9.7, 16.3.2: an Array's glue level at its address, its one target, the destroyArray instance, with the glue's own parameters.
-    private void ArrayGlue(int glue, Value address, Site site)
-    {
-        if (this.collector.Set.Targets(glue) is not [var target])
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets the body an Array's destruction runs.
-        }
-        else if (this.module.Signature(target.Item) is { } destroy)
-        {
-            this.Destroy(destroy, address, site);
-        }
     }
 }

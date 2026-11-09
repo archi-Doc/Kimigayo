@@ -63,6 +63,7 @@ fn widen @43
   _2: s/Base temp @54 s1
   _3: s/Derived temp @55 s1
   _4: s/Base temp (Result) @43
+  _5: s/Base temp @54 s1
   s1: lexical in s0 @52
   b0: T Object
   bb0:
@@ -92,13 +93,14 @@ fn widen @43
       _4 = move _2 @53 s1
       goto bb5 @53 s1
   bb9:
-      drop _2 -> bb10 @54 s1
+      _5 = move _2 @53 s1
+      drop _2 -> bb10 [elide] @54 s1
   bb10:
-      drop _3 -> bb11 @55 s1
+      drop _3 -> bb11 [elide] @55 s1
   bb11:
       StorageDead(_3) @55 s1
       StorageDead(_2) @54 s1
-      drop _1 -> bb12 @48
+      drop _1 -> bb12 [elide] @48
   bb12:
       unreachable @52
 fn inspect @60
@@ -202,6 +204,7 @@ fn take @123
   _1: s/i32 arg value @130
   _2: s/i32 temp @139 s1
   _3: s/i32 temp (Result) @123
+  _4: s/i32 temp @139 s1
   s1: lexical in s0 @137
   b0: T Owning
   bb0:
@@ -226,10 +229,11 @@ fn take @123
       _3 = move _2 @138 s1
       goto bb5 @138 s1
   bb8:
-      drop _2 -> bb9 @139 s1
+      _4 = move _2 @138 s1
+      drop _2 -> bb9 [elide] @139 s1
   bb9:
       StorageDead(_2) @139 s1
-      drop _1 -> bb10 @130
+      drop _1 -> bb10 [elide] @130
   bb10:
       unreachable @137
 fn give @142
@@ -238,6 +242,7 @@ fn give @142
   _2: t/i32 temp value (PendingSlot) @153 s1
   _3: i32 temp @133 s2
   _4: t/i32 temp (Result) @142
+  _5: t/i32 temp @153 s1
   s1: lexical in s0 @151
   s2: inlined in s1 @153
   b0: U Owning
@@ -270,9 +275,10 @@ fn give @142
       _4 = move _1 @152 s1
       goto bb5 @152 s1
   bb9:
-      drop _1 -> bb10 @153 s1
+      _5 = move _1 @152 s1
+      drop _1 -> bb10 [elide] @153 s1
   bb10:
-      drop _2 -> bb11 @153 s1
+      drop _2 -> bb11 [elide] @153 s1
   bb11:
       StorageDead(_2) @153 s1
       StorageDead(_1) @153 s1

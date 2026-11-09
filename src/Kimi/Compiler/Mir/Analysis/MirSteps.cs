@@ -98,6 +98,16 @@ internal sealed class MirSteps(MirCases cases)
         return count;
     }
 
+    // A sequence Place's element step after its count steps, as an Index of it walks above: a view's Deref, else an Index step; a Storage's
+    // walk (O-92 (a)). Returns the new count.
+    internal int Element(MirBody body, MirPlace place, int count, ref MirStep[] into)
+    {
+        MirDataflow.Grow(ref into, count + 1);
+        var @class = MirTypes.View(cases.Type(body.TypeOf(place)!)) is { } view ? Deref(view) : MirStepClass.Index;
+        into[count] = new(MirProjectionKind.Index, @class, -1, place.Projection);
+        return count + 1;
+    }
+
     // A Deref's class by the Semantics of the Type it applies to: a shared or exclusive borrow, an owning handle's payload, or a raw
     // pointer's referent.
     private static MirStepClass Deref(SemanticsKind semantics) => semantics switch

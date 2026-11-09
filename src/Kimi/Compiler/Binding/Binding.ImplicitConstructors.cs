@@ -113,6 +113,9 @@ public sealed partial class Binding
             // A winner whose own slots stay unsolved is selected as by a written base call, whose binding then reports them.
             return selection switch
             {
+                // SPEC 6.3.6: an omitted base selection's Unknown premise means no implicit constructor, not 10.1's obligation.
+                CallSelection.Selected when evaluated[winner].PremiseUnknown =>
+                    new(OmittedBaseOutcome.Unproven, Cause: evaluated[winner].ConstraintFailure?.Clause),
                 CallSelection.Selected => new(OmittedBaseOutcome.Selected, (FunctionKoto)evaluated[winner].Symbol!.Declaration),
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),

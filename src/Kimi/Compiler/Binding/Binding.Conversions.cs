@@ -93,7 +93,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (IsBarePlace(conversion.Left) && this.ProveCopy(type, conversion) != ConstraintProof.Proven)
+        if (IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(type, scope))
         {
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
@@ -108,7 +108,7 @@ public sealed partial class Binding
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!OffersTake(conversion.Left) ||
-            (ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
+            (ReceiverOfPart(conversion.Left) is not null && !this.CopiesInEveryCase(type, this.ConstraintScope(conversion))))
         {
             return this.FailTake(conversion, conversion.Left);
         }
@@ -346,7 +346,7 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (this.ProveCopy(copied, conversion) != ConstraintProof.Proven)
+            if (!this.CopiesInEveryCase(copied, this.ConstraintScope(conversion)))
             {
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }
