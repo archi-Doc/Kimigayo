@@ -186,8 +186,7 @@ public sealed partial class Binding
         {
             // Safe or unsafe; borrow annotations introduce the import's own signature Origins (SPEC 22.6).
             if (function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
-                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 ||
-                function.IsSpecialization || function.IsConstructor || function.IsDestructor || function.IsAnonymous || function.IsRequirement)
+                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 || function.IsAnonymous)
             {
                 return false;
             }

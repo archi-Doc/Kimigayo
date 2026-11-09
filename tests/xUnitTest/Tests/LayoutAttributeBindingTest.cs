@@ -233,6 +233,52 @@ public partial class LayoutAttributeBindingTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLayoutAttribute_Kd);
     }
 
+    // SPEC 6.7, 6.4.1, 8.13.2, 16.3 and F.6.2: no Contract item, constructor, specialization, override or drop takes an attribute. The
+    // parser reports each one written before such a declaration and keeps it in no node (DECISIONS R9-M3), so its record is the only
+    // one, its Name is never looked up, and the declaration stays valid for its conformance, dispatch and uses (G557: `#Test` before a
+    // requirement or an override crashed Binding).
+    [Theory]
+    [InlineData("#Test", "contract C\n    {A}\n    func g(self: ref/Self) -> i32\nstruct W\n    Self is C\n    public func g(self: ref/Self) -> i32 => 1")]
+    [InlineData("#Foo", "contract C\n    {A}\n    func g(self: ref/Self) -> i32\nstruct W\n    Self is C\n    public func g(self: ref/Self) -> i32 => 1")]
+    [InlineData("#LibraryImport(\"codec\", \"symbol\")", "contract C\n    {A}\n    unsafe func required() -> i32")]
+    [InlineData("#Layout(\"C\")", "contract C\n    {A}\n    func g(self: ref/Self) -> i32")]
+    [InlineData("#Test", "contract Counted\n    {A}\n    property count: i32 has get\nstruct W\n    Self is Counted\n    public let count: i32 = 1\nfunc use<T>(t: ref/T) -> i32\n    T is Counted\n    return t.count")]
+    [InlineData("#Layout(\"C\")", "contract Counted\n    {A}\n    property count: i32 has get\nstruct W\n    Self is Counted\n    public let count: i32 = 1")]
+    [InlineData("#Test", "struct S\n    {A}\n    drop => ()")]
+    [InlineData("#LibraryImport(\"codec\", \"d\")", "struct S\n    {A}\n    drop => ()")]
+    [InlineData("#Test", "struct S\n    var v: i32\n    {A}\n    public init()\n        self.v = 1")]
+    [InlineData("#Test", "func classify<T>(value: T) -> i32 => 0\n{A}\nspecialize func classify<i32>(value: i32) -> i32 => 1\nfunc use() -> i32 => classify(5)")]
+    [InlineData("#Test", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n        return base.score(bonus) + 10\nfunc use() -> i32\n    let d = Derived.init()@obj\n    return d.score()")]
+    [InlineData("#Layout(\"C\")", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    {A}\n    override func score(self: objref/Self, bonus: i32) -> i32\n        return base.score(bonus) + 10")]
+    public void AnAttributeBeforeADeclarationThatTakesNoneIsInNoNode(string attribute, string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source.Replace("{A}", attribute, StringComparison.Ordinal));
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), error.Code);
+        Assert.Equal(attribute, error.Text);
+        Assert.Empty(c.Binding.Issues);
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Empty(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<AttributeKoto>());
+    }
+
+    // SPEC 19.4 checks Attribute placement in excluded syntax too, and 6.4.1 gives an override no attribute: G557 newly rejects these
+    // invalid programs, which dev accepted (x1, x23, x37: in `#if false`; x25, x32: an override outside a derived struct, read as a test
+    // and never judged). The attribute's record rejects each; the misplaced override keeps its own, independent record.
+    [Theory]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived : Base\n    #if false\n        #Test\n        override func score(self: objref/Self, bonus: i32) -> i32\n            return base.score(bonus) + 10", false)]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        return 1\nstruct Derived : Base\n    #Test\n    #if false\n    override func score(self: objref/Self) -> i32\n        return 2", false)]
+    [InlineData("group G\n    public open struct Base\n        public virtual func score(self: objref/Self) -> i32\n            return 1\n    #if false\n    struct Derived : Base\n        #Test\n        override func score(self: objref/Self) -> i32\n            return 2", false)]
+    [InlineData("#Test\noverride func f() => ()", true)]
+    [InlineData("group G\n    #Test\n    override func t() => ()", true)]
+    public void AnAttributeBeforeAnOverrideRejectsTheProgram(string source, bool misplacedOverride)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), error.Code);
+        Assert.Equal("#Test", error.Text);
+        Assert.Equal(misplacedOverride, c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd));
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

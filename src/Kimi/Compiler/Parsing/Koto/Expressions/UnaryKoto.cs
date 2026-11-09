@@ -33,7 +33,7 @@ public class UnaryKoto : ExpressionKoto
         PrefixTexts[(int)KotoKind.PrefixPlusPlus] = "++";
         PrefixTexts[(int)KotoKind.PrefixMinus] = "-";
         PrefixTexts[(int)KotoKind.PrefixMinusMinus] = "--";
-        PrefixTexts[(int)KotoKind.Not] = Constants.NotKeyword + " ";
+        PrefixTexts[(int)KotoKind.Not] = TokenKind.Not.ToText() + " ";
         PrefixTexts[(int)KotoKind.Parenthesized] = "(";
         PostfixTexts[(int)KotoKind.Parenthesized] = ")";
         PostfixTexts[(int)KotoKind.PostfixIncrement] = "++";

@@ -192,8 +192,8 @@ public class ControlTransferParseTest
     public void RecognizesLoopAndYieldAsKeywords()
     {
         Assert.True(TokenKind.Loop.IsKeyword());
-        Assert.Equal(Constants.LoopKeyword, TokenKind.Loop.ToText());
+        Assert.Equal("loop", TokenKind.Loop.ToText());
         Assert.True(TokenKind.Yield.IsKeyword());
-        Assert.Equal(Constants.YieldKeyword, TokenKind.Yield.ToText());
+        Assert.Equal("yield", TokenKind.Yield.ToText());
     }
 }
