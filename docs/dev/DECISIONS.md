@@ -10589,6 +10589,31 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+- **BU-142 `Witnesses` answers each target at its instance; A4 enters what that instance selects; `EffectsLimit` goes (PLAN G589)**
+  (Front, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE and 2 ACCEPT at revision 1; the Middle's consent
+  C-172; supersedes R8-M4's `EffectsLimit` bullet; amends R5-M68, R5-M22) SPEC 7.2.3, 8.11.2, 8.11.3, 8.13.3, 22.1; IMPL
+  21.3.1.
+  - **Owner.** `Binding.Witnesses` gives A4 each target with the `Subst` it runs at: its declaring instance (binding nothing for a
+    compiler function), or a library witness at the Self's arguments (`TyCtxt.LibraryInstance`, also the view's Body's producer). A4's
+    `MirEffects.Require` enters each implementation that instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the
+    instance and a specialization at none, as A4's call, item and comparison-leaf entries do: every producer of a function with its
+    `Subst` answers the original, and the consumer that enters or generates it selects once (PLAN G663's `Require` half).
+  - **Moves.** A default's copy of a fixed array's enumeration (`iterate` on `[2 of i32]`, `[3 of i64]`, `[2 of Loud]`) or an integer's
+    position read (`tryResolve` on i32, u8, isize) under `confined` is accepted (was `Unsupported_Kd`). Records (Q13, on programs the base
+    rejects): `IncompatibleContractImplementation_Kd` added beside G664's `OwnershipDepthLimit_Kd` where a default's copy calls a
+    requirement whose witness has its own Type parameter and a specialization with an effect: correct when the call's key selects it
+    (`f<i32>` at i32, `MirEffectsTest.ADefaultsCopyEntersTheWitnessesSpecialization`), wrong when it does not (at i64, a valid program:
+    the open key enters every candidate, G663's remaining part).
+  - **The comparison view's Witness leaf** is the Body's instance without its Origins (R5-M68's `Synthesized(witness, declaring, [])`
+    dropped a library witness's Types); the same `Subst` for every current row.
+  - R5-M22's sentence as R8-M4 amended it, "Property, a library witness of a row with `EffectsLimit`, Refused and None give false", reads:
+    "Property, Refused and None give false".
+  - **Kept:** `Binding.LeafTarget` (the legacy composition's leaf) answers a library witness with no Types, right only for a row of no
+    parameter (String, the one Equatable or Comparable row): no comparison row with a parameter lands before A-12's read of the view, else
+    R7-P5, which removes it.
+  - **Rejected:** selecting inside `Witnesses` (the one producer answering a specialization; the agreement check would compare a selected
+    target with an unselected one); A4 reading `TyCtxt.Witness` (A-12's moves: the library root's premises, None for an abstract part); a
+    Self or row beside a declaring Type with A4 forming the instance; parameterless rows per Type (about +100 lines).
 
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
@@ -11995,6 +12020,8 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by BU-90 (2026-11-04, H5's B-del): `DictionaryComparison`, and `RequirementImplementation`'s CallPlan
     overload with `TryResolveFormattingCallback`, went at B-del instead of H11, since their readers went with the old walk.
     `ComparisonPlan(CallPlan)` keeps H11 for `ComparisonCompositionTest`.
+  - Amended by BU-142 (G589): the comparison view's Witness leaf is the Body's instance without its Origins, not `Synthesized(witness,
+    declaring, [])`.
 - **R5-M67 Requirement edges of the checked set** (2026-10-19; plan K6; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1;
   `MonoKind.Builtin`, `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11,
   `ExclusiveInheritedWitness` being KD10's and §4.7's OCC-X row; its Builtin key superseded by R5-M70) A Requirement call of an
@@ -16328,6 +16355,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     read of the view, else R7, `ComparisonPlan`'s condition). Those valid programs are then accepted, a behavior change with its own tests.
   - R5-M22's sentence "Property, FixedArrayEntry, IntegerPosition, Refused and None give false" reads: "Property, a library witness of a row with
     `EffectsLimit`, Refused and None give false".
+  - Its `EffectsLimit` bullet and its R5-M22 sentence are superseded by BU-142 (G589): `EffectsLimit` is gone, and R5-M22's sentence reads
+    "Property, Refused and None give false".
 - **R8-M5 `clear`, `shrinkToFit`, the Array glue and `capacity` are Kimigayo bodies; `destroyValues<T>`** (2026-11-07; R8-A1c; plan RP18, RP20, RQ9; G126; on R8-M3)
   SPEC 4.9.1, 4.9.5, 4.9.6, 4.9.7, 4.9.8, 16.3.2.
   - Adopted: `Storage.destroyValues<T>` is `IntrinsicId.DestroyValues`' first producer: the values from the last, each by `T`'s glue, in the one
