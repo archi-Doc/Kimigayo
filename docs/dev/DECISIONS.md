@@ -10590,20 +10590,23 @@ resumed by R4-M86 (2026-10-20).
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
 - **BU-142 `Witnesses` answers each target at its instance; A4 enters what that instance selects; `EffectsLimit` goes (PLAN G589)**
-  (Front, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE and 2 ACCEPT at revision 1; the Middle's consent
-  C-172; supersedes R8-M4's `EffectsLimit` bullet; amends R5-M68, R5-M22) SPEC 7.2.3, 8.11.2, 8.11.3, 8.13.3, 22.1; IMPL
-  21.3.1.
+  (Front, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE and 2 ACCEPT at revision 1, implementation review
+  ACCEPT; the Middle's consent C-172; supersedes R8-M4's `EffectsLimit` bullet; amends R5-M68, R5-M22) SPEC 7.2.3, 8.11.2, 8.11.3,
+  8.13.3, 15.6.4, 22.1; IMPL 21.3.1.
   - **Owner.** `Binding.Witnesses` gives A4 each target with the `Subst` it runs at: its declaring instance (binding nothing for a
     compiler function), or a library witness at the Self's arguments (`TyCtxt.LibraryInstance`, also the view's Body's producer). A4's
     `MirEffects.Require` enters each implementation that instance selects (`TyCtxt.Implementation`, SPEC 8.13.3), the original at the
     instance and a specialization at none, as A4's call, item and comparison-leaf entries do: every producer of a function with its
-    `Subst` answers the original, and the consumer that enters or generates it selects once (PLAN G663's `Require` half).
+    `Subst` answers the original, and the consumer that enters or generates it selects once. That selection is A4's per-key rule
+    (R4-M22) carried into `Require`; under the owner's O-109 (a) (SPEC 15.6.4: a callable's summary covers its whole closed
+    explicit-specialization set) PLAN G663, the Middle's A4 unit, supersedes it at every A4 entry, `Require`'s loop among them.
   - **Moves.** A default's copy of a fixed array's enumeration (`iterate` on `[2 of i32]`, `[3 of i64]`, `[2 of Loud]`) or an integer's
     position read (`tryResolve` on i32, u8, isize) under `confined` is accepted (was `Unsupported_Kd`). Records (Q13, on programs the base
     rejects): `IncompatibleContractImplementation_Kd` added beside G664's `OwnershipDepthLimit_Kd` where a default's copy calls a
-    requirement whose witness has its own Type parameter and a specialization with an effect: correct when the call's key selects it
-    (`f<i32>` at i32, `MirEffectsTest.ADefaultsCopyEntersTheWitnessesSpecialization`), wrong when it does not (at i64, a valid program:
-    the open key enters every candidate, G663's remaining part).
+    requirement whose witness has its own Type parameter and a specialization with an effect. Each such program is invalid by SPEC
+    15.6.4 (an implementation in the closed set has the effect), so the record is right whether or not the call's key selects that
+    specialization: at i32 (`f<i32>`, `MirEffectsTest.ADefaultsCopyEntersTheWitnessesSpecialization`) and at i64 (q1-default-i64) alike,
+    as for RV11, RV14, RV15, RV17 and SEL2 (the Middle's C-172 review, R1-F1; the owner's O-109 (a)).
   - **The comparison view's Witness leaf** is the Body's instance without its Origins (R5-M68's `Synthesized(witness, declaring, [])`
     dropped a library witness's Types); the same `Subst` for every current row.
   - R5-M22's sentence as R8-M4 amended it, "Property, a library witness of a row with `EffectsLimit`, Refused and None give false", reads:
