@@ -103,6 +103,21 @@ public class AssociatedOriginBindingTest
     public void InvalidBindersAndSpecificationsDoNotBind(string source)
         => Assert.False(MinimalEmissionTest.Analyze(source).Binding.Result.IsComplete);
 
+    // SPEC 2.3, F.8, 8.5.4: `_`, `static` and `b.c` are no Names, so a binder written with one as an Origin parameter is a syntax error, its
+    // one record, also with an attached clause or a use of the family; the named twin is valid (PLAN G614).
+    [Theory]
+    [InlineData("contract L<E>\n    associate View(a, _) is ref/E during a\n        origin a == static\n", "ExpectedSyntax_Kd")]
+    [InlineData("contract L<E>\n    associate View(a, static) is ref/E during a\n        origin a == static\n", "ExpectedSyntax_Kd")]
+    [InlineData("contract L<E>\n    associate View(a, b.c) is ref/E during a\n        origin a == static\n", "ExpectedSyntax_Kd")]
+    [InlineData("contract L<E>\n    associate View(a, b, _) is ref/E during a\n        origin b outlives a\n", "ExpectedSyntax_Kd")]
+    [InlineData("contract L<E>\n    associate View(a, _) is ref/E during a\n        origin a == static\nfunc use<T>(v: T.(L<i32>).View(static, static)) -> i32\n    T is L<i32>\n    return 0\n", "ExpectedSyntax_Kd")]
+    [InlineData("contract L<E>\n    associate View(a, b) is ref/E during a\n        origin a == static\nfunc use<T>(v: T.(L<i32>).View(static, static)) -> i32\n    T is L<i32>\n    return 0\n", "")]
+    public void RejectedOriginParameterIsTheBindersOneRecord(string source, string codes)
+    {
+        var records = ContextualCaptureTest.PublishedRecords(source + "public func main() => ()\n");
+        Assert.True(codes == string.Join(' ', records.Select(static x => x.Code)), string.Join(' ', records.Select(static x => $"{x.Code}@{x.Span.Start}")));
+    }
+
     [Fact]
     public void EmitsConstantFamily()
     {
