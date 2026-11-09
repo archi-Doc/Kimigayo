@@ -1332,6 +1332,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 49 (2026-11-09, plan §14; the owner's 「Adopt now」): quiet slots by one guard (`quiet_guard.py`) and a begin handshake. Nothing frozen.
 - Revision 50 (2026-11-09, plan §14; the owner's 「Adopt all three」): R7 spread over the three sessions (DECISIONS Q18). Nothing frozen.
 - Revision 47 (2026-11-09, plan §14; the Front's D-186): P5's row after G589's `EffectsLimit` removal. Nothing frozen.
+- Revision 51 (2026-11-09, plan §14; the Middle's D-209): F4's row after R9-F4's landing (DECISIONS R9-M5). Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
