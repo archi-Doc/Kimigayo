@@ -637,11 +637,15 @@ public sealed record BoundType
     // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
     internal bool ContainsClosure => this.containsClosure;
 
+    /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
+    /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>
+    internal bool IsSigned => this.numeric == NumericCategory.Signed;
+
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3.1).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
 
-    /// <summary>Gets the integer Type whose representation, signedness and width a wrapping integer Type shares, or this
-    /// Type itself. Every Scalar query about width, signedness, layout or formatting goes through it.</summary>
+    /// <summary>Gets the integer Type whose representation and width a wrapping integer Type shares, or this Type itself. Every
+    /// Scalar query about width, layout or formatting goes through it; its signedness is <see cref="IsSigned"/>.</summary>
     internal BoundType Underlying => this.underlying;
 
     internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;

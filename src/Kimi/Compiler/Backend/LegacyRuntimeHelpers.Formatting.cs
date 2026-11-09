@@ -115,7 +115,7 @@ internal static partial class LegacyRuntimeHelpers
         var width = ScalarTypes.Width(type);
         if (width != 0)
         {
-            return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (ScalarTypes.Signed(type) ? 1 : 2);
+            return width switch { 8 => 0, 16 => 2, 32 => 4, 64 => 6, _ => 8 } + (type.IsSigned ? 1 : 2);
         }
 
         return type switch

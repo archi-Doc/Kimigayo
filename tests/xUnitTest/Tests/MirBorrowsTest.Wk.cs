@@ -93,6 +93,11 @@ public sealed partial class MirBorrowsTest
     // The part-Loan rows' two parts of one Type (R4's B1).
     private const string WkTwoParts = "(Option<ref/i32>.Some(z@ref), Option<ref/i32>.Some(z@ref))";
 
+    // The part-address row's body (PLAN G667a): x holds the addresses of h's parts h.0 and h.2, of two Types, and putPast stores spare,
+    // which carries r's Loan, into h.0 past x's first element.
+    private const string WkTwoTypesPast = "var kk: u8 = 1\nlet r = kk@uniq\nvar spare: raw/u8 = r@follow@raw\nvar o: raw/u8 = null\n" +
+        "var h: (raw/u8, usize, raw/(raw/u8)) = (null, 0, o@raw)\nvar x: (raw/(raw/u8), raw/(raw/(raw/u8))) = (h.0@raw, h.2@raw)\nputPast(x@raw, spare)";
+
     private const string WkWrap = "struct Wrap {a}\n    public var r: uniq/i32 during a\n    public init(r: uniq/i32 during a) => self.r = r\n";
 
     // The bodies and head the rows share: a store of the child into the local `slot`, the moves and reborrow of `*v` a builder row passes,
@@ -179,6 +184,9 @@ public sealed partial class MirBorrowsTest
             WkForm("pa3WholeBad", "<T>() -> ()\n    T is Copy\n", WkPartLoan("Option<ref/i32>.Some(z@ref)", "(inner@uniq, Option<T>.None)", "sneak4") + "\nleaf.value = 5\nlook(inner@ref)") +
             WkForm("pa5FirstBad", "<T>() -> ()\n    T is Copy\n", WkPartLoan(WkTwoParts, "(inner.0@uniq, inner.1@uniq, Option<T>.None)", "sneak5") + "\nleaf.value = 5\nlook(inner.0@ref)") +
             WkForm("pa5Second", "<T>() -> ()\n    T is Copy\n", WkPartLoan(WkTwoParts, "(inner.0@uniq, inner.1@uniq, Option<T>.None)", "sneak5") + "\nleaf.value = 5\nlook(inner.1@ref)"),
+        ["partAddress"] = "func usep(p: raw/u8) => ()\n" +
+            WkForm("putPast", "(pp: raw/((raw/(raw/u8), raw/(raw/(raw/u8)))), v: raw/u8) -> ()\n", "unsafe => *((*pp).0) = v") +
+            WkTwins("twoTypesPastOk", "twoTypesPastBad", "() -> ()\n", WkTwoTypesPast, "usep(h.0)", "kk = 2"),
 
         // R5 (the borrows formed through the argument).
         ["E2"] = WkTwins("recurLeafOk", "recurLeafBad", LeafHead, "var v = value@move\n" + WkPut, "_ = slot.value", "v.value = 5"),
@@ -379,6 +387,10 @@ public sealed partial class MirBorrowsTest
     // none names: the Abstract one). pa5Second: both parts have one erased Type, whose entry joins the storages of both (Revision 2's
     // pairs separate only a Subst's Origins).
     [InlineData("partLoan", "pa3Bad: inner@ref 1|pa3Bad: leaf.value = 5 1|pa3ConcreteBad: inner@ref 1|pa3ConcreteBad: leaf.value = 5 1|pa3ConcreteOk: inner@ref 1|pa3Ok: inner@ref 1|pa3WholeBad: inner@ref 1|pa3WholeBad: leaf.value = 5 1|pa5FirstBad: inner.0@ref 1|pa5FirstBad: leaf.value = 5 1|pa5Second: inner.1@ref 1|pa5Second: leaf.value = 5 1")]
+    // An address names its Place as a Loan does (SPEC 5.2.1 condition 1, 15.6 Addresses; PLAN G667a): x holds the addresses of h.0 and
+    // h.2, of two Types, and putPast writes v (r's Loan) into h.0 past x's first element, so h's holder takes the Reached entry of h.0's
+    // Type and keeps r's Loan. A control row: dev's address, which named h by its whole Type, kept it too.
+    [InlineData("partAddress", "twoTypesPastBad: kk = 2 1")]
     public void ACallKeepsTheArgumentByTheStoragesTypeWhateverItsPosition(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 

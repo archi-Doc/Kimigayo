@@ -125,7 +125,8 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6 Addresses and reach (G184, G160 (b), D2): `w@raw` addresses w's holder, so a read through it carries what w holds and a
     // write through it adds to w, also through a raw chain; a pointer keeps the holders it addresses used (D2) though nothing reads
     // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); an Adapt the view resolves to a raw Ref
-    // (`w@s` under `s is raw`, SPEC 8.14) addresses w's holder as `w@raw` does; the dead twins are valid.
+    // (`w@s` under `s is raw`, SPEC 8.14) addresses w's holder as `w@raw` does; the dead twins are valid, and so is partAddresses
+    // (PartAddressesInOneHolderCostAsTheirEntries' form at N = 4: kk's Loan stored through part addresses of h, and kk not written after).
     [Fact]
     public void ARawPointerCarriesTheHoldersItAddresses()
         => Assert.Equal(
@@ -184,7 +185,7 @@ public sealed partial class MirBorrowsTest
                     var w: ref/i32 = y@ref
                     let p = w@s
                     y = 5
-                """));
+                """ + "\n" + PartAddresses(4)));
 
     // SPEC 15.6 Addresses (DECISIONS R4-M146): A5 empties the addresses and layer entries of a view that formed many whole and a small
     // view's entry by entry (MirTable), so the views after one with 400 of each report what they report alone (the test above).
@@ -1222,6 +1223,25 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
     }
 
+    // V16 (PLAN G667a): an address names its Place (SPEC 5.2.1 condition 1), so the N part addresses of one root h that one holder t
+    // holds are N entries, which each of the N stores through t's elements reads: Work and bytes grow as N², within the class's quadratic
+    // bound (5; DECISIONS R4-M159). Work and bytes at N 16, 32, 64 with their growth factors: dev (4562e91f0, one root address) 124,823,
+    // 128,842, 136,877 (2.00) and 4,444 flat; G667a 126,068, 133,647, 155,714 (2.91) and 5,044, 6,676, 13,012 (3.88). Its verdict twin
+    // is ARawPointerCarriesTheHoldersItAddresses's partAddresses.
+    [Fact]
+    public void PartAddressesInOneHolderCostAsTheirEntries()
+    {
+        var (sizes, work, bytes) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            (work[i], bytes[i]) = Measured(Prelude + PartAddresses(sizes[i]));
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+        Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
+    }
+
     // SPEC 15.6.4's chain clause (DECISIONS R4-M131 Q4 (a), BU-40, R4-M138): a Chain row carries what any chain of reads through its
     // argument carries, so a pointee the call may retain two or more reads deep keeps its Loan even when a holder on the way is replaced
     // after the call: a result two raw layers below the argument (also through a reference), a raw slot written from them, the written
@@ -1729,4 +1749,13 @@ public sealed partial class MirBorrowsTest
             .Append(System.Globalization.CultureInfo.InvariantCulture, $"func rd(d: ref/D1<{leaf}>) -> {leaf}\n")
             .Append(System.Globalization.CultureInfo.InvariantCulture, $"    let v = d{path}.x\n    return v{first}\n").ToString();
     }
+
+    // The addresses of N parts of one fixed array h (constant indices: N Places), stored into one holder t, then a store through each of
+    // a pointer carrying kk's Loan (which makes the view a Loan-stratum producer, D5).
+    private static string PartAddresses(int n)
+        => Expand(
+            $"func partAddresses()\n    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var h: [{n} of raw/u8] = [null«K:, null»]\n" +
+                $"    var t: [{n} of raw/(raw/u8)] = [null«K:, null»]\n«N:    t[{{0}}] = h[{{0}}]@raw\n»«N:    unsafe => *(t[{{0}}]) = spare\n»",
+            n,
+            n - 1);
 }

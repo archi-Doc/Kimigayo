@@ -172,7 +172,7 @@ public sealed partial class Binding
     private static bool TryLengthArithmetic(LengthOperation operation, BoundType type, int width, UInt128 left, UInt128 right, out UInt128 value)
     {
         value = 0;
-        var signed = ScalarTypes.Signed(type);
+        var signed = type.IsSigned;
         var minimum = unchecked(-(Int128)((UInt128)1 << (width - 1)));
         if (operation is LengthOperation.Div or LengthOperation.Rem && right == 0)
         {
@@ -552,7 +552,7 @@ public sealed partial class Binding
         value = 0;
         symbolic = null;
         var width = ScalarTypes.Width(type);
-        var signed = ScalarTypes.Signed(type);
+        var signed = type.IsSigned;
         if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
         {
             if (!this.EvaluateLength(inner, scope, type, out value, out symbolic))
