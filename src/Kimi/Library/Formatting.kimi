@@ -1,6 +1,6 @@
-// UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, is a compiler implementation; the
-// buffers, windows and the other Text operations are bodies here, each raw Field's storage where its Origin states
-// (SPEC 5.7).
+// UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer (the erased adapter), Text.toString and Text.tryFormat
+// are compiler implementations (Text.kimi); the buffers, windows and the other Text operations are bodies here, each
+// raw Field's storage where its Origin states (SPEC 5.7).
 public struct BufferFull
     Self is Copy
     public init() => ()
@@ -187,9 +187,9 @@ public group Text
         var validated: isize
         let loan: Loan<uniq/u8 during source>
 
-        /// An empty buffer of capacity `capacity` over the bytes at `data`. The caller's obligations, which the signature
-        /// cannot state: `data` addresses `capacity` initialized bytes in what `source` covers, with write authority
-        /// (SPEC 5.2.1, 22.9.2).
+        /// An empty buffer of capacity `capacity` over the bytes at `data`. The caller's obligations, which the
+        /// signature cannot state: `data` addresses `capacity` initialized bytes in what `source` covers, with write
+        /// authority (SPEC 5.2.1, 22.9.2).
         internal init(data: raw/u8 during source, capacity: isize)
             self.data = data
             self.capacity = capacity
@@ -242,8 +242,6 @@ public group Text
         public var length: isize
             private set
         var validated: isize
-        drop
-            unsafe => Raw.release(self.data)
 
         /// An empty buffer without an allocation (SPEC 22.9.2).
         internal init()
@@ -251,6 +249,9 @@ public group Text
             self.capacity = 0
             self.length = 0
             self.validated = 0
+
+        drop
+            unsafe => Raw.release(self.data)
 
         /// The committed bytes.
         public func bytes(self: ref/Self) -> Slice<u8>
@@ -348,8 +349,9 @@ public group Text
 
     /// Validates `bytes` once and views them (SPEC 22.9.2, 22.9.3).
     public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>
+        let repr = bytes@raw@raw/Storage.SliceRepr<u8>
         unsafe
-            if not Text.validUtf8((*(bytes@raw@raw/Storage.SliceRepr<u8>)).data, bytes.length) => return .Err(Text.InvalidUtf8.init())
+            if not Text.validUtf8((*repr).data, bytes.length) => return .Err(Text.InvalidUtf8.init())
         return .Ok(Text.Utf8Slice.init(bytes))
 
     /// Whether the `length` bytes at `data` are exactly UTF-8 encodings of Unicode scalar values (SPEC 22.9.3): a

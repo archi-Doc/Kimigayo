@@ -1489,8 +1489,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
     }
 
-    // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; a fixed
-    // buffer's reserve, a compiler function without a body, has none (its legacy row's, C8*).
+    // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; one over a
+    // fixed buffer has none, though its reserve is a body: the runtime's standard-buffer arm reserves for it (R8-W1a, until W2).
     [Fact]
     public void AnErasedWriterIsItsDestinationsReserveWitness()
     {

@@ -8,17 +8,17 @@ using Xunit;
 
 namespace XunitTest;
 
-// The formatting rows of MIR code generation (R5 C9a, C9b; SPEC 22.7, 22.9, 22.10.1, 22.10.2, 22.10.5; DECISIONS R5-M128, R5-M130): a Text,
-// buffer, window or writer call, and writeLine of a view, calls its row's routine in the formatting runtime with its operands by parameter
-// kind, its result slot and location, a capacity Context the length of the fixed array its operand refers to and a kind Context its witness
-// target's Self's, the runtime written once on request, at a direct call, an Item's Value call and an adapter's entry; a user formatter's
-// write, toString or tryFormat runs through its wrappers; a BuiltinFormat item is the built-in witness; Text.writer gives its destination's
-// writer kind and dispatch word; natively. The kinds are the formatting runtime's own numbering, the one table both
-// generators read.
+// The formatting rows of MIR code generation (R5 C9a, C9b; SPEC 22.7, 22.9, 22.10.1, 22.10.2, 22.10.5; DECISIONS R5-M128, R5-M130): writeLine
+// of a view, Text.writer, toString and tryFormat call their row's routine in the formatting runtime with their operands by parameter kind,
+// their result slot and location, a capacity Context the length of the fixed array their operand refers to and a kind Context their witness
+// target's Self's, the runtime written once on request, at a direct call, an Item's Value call and an adapter's entry; the buffer, window
+// and writer operations and the other Text operations are library bodies (R8-W1a, W1b, W1c); a user formatter's toString or tryFormat runs
+// through its wrappers; a BuiltinFormat item is the built-in witness; Text.writer gives its destination's writer kind and dispatch word;
+// natively. The kinds are the formatting runtime's own numbering, the one table both generators read.
 public sealed partial class FunctionCodegenTest
 {
-    // A Library calling every formatting row without a witness target: the fixed and heap buffers' operations, the windows', utf8,
-    // validateUtf8, writeLine of a view, a writer's status, Text.fixed's Item called and erased.
+    // A Library without a witness target: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
+    // validateUtf8), writeLine of a view (its one formatting row), a writer's status, Text.fixed's Item called and erased.
     private const string Buffers =
         "func fxRun(storage: uniq/[8 of u8]) -> Result<isize, BufferFull>\n    var buffer = Text.fixed(storage)\n" +
         "    var window = try (buffer@uniq).reserve(2)\n    try (window@uniq).push(65)\n    let pair: [2 of u8] = [66, 67]\n" +
@@ -141,9 +141,9 @@ public sealed partial class FunctionCodegenTest
     public void FormattingProgramsRun(string name, string source, string stdout, int exit, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
 
-    // SPEC 22.9 (DECISIONS R5-M128): each row calls its formatting routine, the symbol P1d's row names, with its operands by parameter kind (a
-    // reference's pointer, an owned operand's Place or its copy slot, its result slot) and the call's location where it takes one; rows that
-    // share a symbol call it under their own row ABI (FixedBuffer.text and intoText).
+    // SPEC 22.7, 22.9 (DECISIONS R5-M128, R5-M89, R5-M116): writeLine of a view, the program's one formatting row, calls its routine, the
+    // symbol P1d's row names, with its owned operand's own copy slot and the call's location; the buffer, window and Text operations are
+    // bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through a copy slot too.
     [Fact]
     public void FormattingRowsCallTheirRoutine()
     {
@@ -153,6 +153,7 @@ public sealed partial class FunctionCodegenTest
         Assert.Empty(FormattingCalls(ir, c, "hpRun"));
         var show = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwShow"))), x => x.Callee == ir.Function(Routines(CompilerFunctionKind.WriteLineUtf8)[0]));
         Assert.Equal($"call void @(ptr %, ptr @, i64 {Located(Buffers, "Console.writeLine(text)")})", show.Shape);
+        Assert.Equal("alloca", show.Operands[0].Opcode); // The view's own copy slot, which the routine owns from the call on (R5-M116).
 
         // SPEC 22.5.1, 22.9.2 (R8-W1c): the Text operations are bodies; heap has a CallerLocation row, so the user's call passes its own
         // location, and the other three take none. A fixed buffer's capacity N is its instance's: [8 of u8] and [4 of u8] call two.
@@ -173,6 +174,8 @@ public sealed partial class FunctionCodegenTest
         }
 
         Assert.NotSame(called["fxRun"], called["itFixed"]);
+        var check = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "vwCheck"))), x => x.Callee == called["vwCheck"]);
+        Assert.Equal("alloca", check.Operands[1].Opcode); // The Copy Slice's own slot, which the body owns from the call on (R5-M89).
 
         // SPEC 22.5.1, 22.9.2 (R8-W1c): heap's body Aborts at the location it received, its last two parameters: its precondition's
         // KIMI_E_ARG_RANGE and its reserve, whose allocation Aborts there.
@@ -199,10 +202,10 @@ public sealed partial class FunctionCodegenTest
         Assert.Single(FunctionsOf(ir, c, "status"));
     }
 
-    // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128, R8-W1c): an erased Text.fixed Item's adapter measures its capacity from its entry's own input
-    // Type, the target Function Type's: it calls that Type's body instance, [4 of u8]'s as itFixed's direct call, with its own parameters.
+    // SPEC 22.9.2, 7.7.4 (DECISIONS R5-M128, R8-W1c): an erased Text.fixed Item's adapter calls the body instance of its entry's own input
+    // Type, the target Function Type's, [4 of u8]'s as itFixed's direct call, with its own parameters: N is the instance's.
     [Fact]
-    public void AnErasedFixedItemMeasuresItsInput()
+    public void AnErasedFixedItemCallsItsInputTypesInstance()
     {
         var c = Analyze(Buffers, OutputKind.Library);
         var text = Generate(c);
