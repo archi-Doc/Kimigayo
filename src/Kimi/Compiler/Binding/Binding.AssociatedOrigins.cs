@@ -11,7 +11,7 @@ public sealed partial class Binding
 
     private static bool IsAssociatedRequirement(Koto node)
         => node.Parent is ContractKoto && AssociatedHead(node) is OriginApplicationKoto application &&
-            UnwrapAssociatedHead(application.Type) is IdentifierNameKoto or TypeSemanticsKoto { Type: null };
+            UnwrapTransparentType(application.Type) is IdentifierNameKoto or TypeSemanticsKoto { Type: null };
 
     private static Koto? AssociatedHead(Koto declaration)
     {
@@ -21,17 +21,7 @@ public sealed partial class Binding
             SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: > 0 } syntax => syntax.Operands[0],
             _ => null,
         };
-        return UnwrapAssociatedHead(head);
-    }
-
-    private static Koto? UnwrapAssociatedHead(Koto? head)
-    {
-        while (head is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
-        {
-            head = inner;
-        }
-
-        return head;
+        return UnwrapTransparentType(head);
     }
 
     private static bool HasUnsupportedAssociatedIdentity(BoundConstraint constraint)
@@ -151,7 +141,7 @@ public sealed partial class Binding
     {
         var owner = scope.Owner.BoundSymbol!;
         var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
-        if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
+        if (qualifier?.Declaration is ContractKoto && UnwrapTransparentType(member.Left) is GenericsKoto)
         {
             qualifier = this.BindContractReference(member.Left, qualifier, scope);
         }
@@ -230,7 +220,7 @@ public sealed partial class Binding
 
     private BoundType? BindAssociatedApplication(OriginApplicationKoto application, BindingScope scope)
     {
-        var target = UnwrapAssociatedHead(application.Type)!;
+        var target = UnwrapTransparentType(application.Type)!;
         var projection = target is MemberAccessKoto member ? this.BindAssociatedProjection(member, scope, applyingOrigins: true) : this.BindTypeStructure(target, scope, this.TypeContext(application, scope), applyingOrigins: true);
         if (projection?.Kind != BoundTypeKind.AssociatedProjection || projection.Symbol is not { } associated ||
             this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count || application.ArgumentNodes.Count == 0)
@@ -291,7 +281,10 @@ public sealed partial class Binding
             {
                 formation = this.SubstituteStoredOrigins(formation, declaration, (BoundOrigin[])projection.OriginArguments);
                 formation = this.StoredType(formation, projection.Components[1]) ?? formation;
-                formation = this.StoredType(formation, projection.Components[0]) ?? formation;
+
+                // A reference taken from the subject declaration's conformance names that declaration's slots; a subject without a
+                // declaration (a fixed array, Tuple, primitive or Callable Core, SPEC 8.5.2) has no slots to map (PLAN G578).
+                formation = (projection.Components[0].Symbol is null ? null : this.StoredType(formation, projection.Components[0])) ?? formation;
                 formation = this.ContractType(formation, this.ConstraintScope(use), projection.Components[0]);
             }
 

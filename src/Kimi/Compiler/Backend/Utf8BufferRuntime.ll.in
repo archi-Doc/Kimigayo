@@ -69,7 +69,8 @@ entry:
   ret void
 }
 
-{{__kimi_buffer_bytes}}
+; The committed bytes as a Slice, for the formatting adapter and the conversions until W1c and W2.
+define internal void @__kimi_buffer_bytes(ptr %ret, ptr %self) #0 {
 entry:
   %data = load ptr, ptr %self, align 8
   %len = getelementptr i8, ptr %self, i64 16
@@ -83,15 +84,6 @@ entry:
 {{__kimi_text_utf8}}
 entry:
   call void @llvm.memcpy.p0.p0.i64(ptr %ret, ptr %self, i64 16, i1 false)
-  ret void
-}
-
-{{__kimi_buffer_clear}}
-entry:
-  %len = getelementptr i8, ptr %self, i64 16
-  %valid = getelementptr i8, ptr %self, i64 24
-  store i64 0, ptr %len, align 8
-  store i64 0, ptr %valid, align 8
   ret void
 }
 
@@ -164,24 +156,6 @@ no:
   ret i1 false
 }
 
-define internal i1 @__kimi_buffer_valid(ptr %self) #0 {
-entry:
-  %len = getelementptr i8, ptr %self, i64 16
-  %valid = getelementptr i8, ptr %self, i64 24
-  %length = load i64, ptr %len, align 8
-  %validated = load i64, ptr %valid, align 8
-  %known = icmp eq i64 %length, %validated
-  br i1 %known, label %yes, label %scan
-scan:
-  %data = load ptr, ptr %self, align 8
-  %suffix = getelementptr i8, ptr %data, i64 %validated
-  %remaining = sub i64 %length, %validated
-  %ok = call i1 @__kimi_utf8_valid(ptr %suffix, i64 %remaining)
-  ret i1 %ok
-yes:
-  ret i1 true
-}
-
 {{__kimi_text_validate_utf8}}
 entry:
   %data = load ptr, ptr %self, align 8
@@ -195,57 +169,6 @@ success:
   call void @llvm.memcpy.p0.p0.i64(ptr %payload, ptr %self, i64 16, i1 false)
   ret void
 failure:
-  store i32 1, ptr %ret, align 4
-  ret void
-}
-
-{{__kimi_buffer_text}}
-entry:
-  %ok = call i1 @__kimi_buffer_valid(ptr %self)
-  br i1 %ok, label %success, label %failure
-success:
-  store i32 0, ptr %ret, align 4
-  %payload = getelementptr i8, ptr %ret, i64 8
-  call void @__kimi_buffer_bytes(ptr %payload, ptr %self)
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
-  ret void
-}
-
-{{__kimi_buffer_validate}}
-entry:
-  %ok = call i1 @__kimi_buffer_valid(ptr %self)
-  br i1 %ok, label %success, label %failure
-success:
-  %len = getelementptr i8, ptr %self, i64 16
-  %valid = getelementptr i8, ptr %self, i64 24
-  %length = load i64, ptr %len, align 8
-  store i64 %length, ptr %valid, align 8
-  store i32 0, ptr %ret, align 4
-  ret void
-failure:
-  store i32 1, ptr %ret, align 4
-  ret void
-}
-
-; Consumes on success or failure; an allocated empty buffer retains its pointer and Heap release kind.
-{{__kimi_buffer_into_string}}
-entry:
-  %ok = call i1 @__kimi_buffer_valid(ptr %self)
-  %data = load ptr, ptr %self, align 8
-  br i1 %ok, label %success, label %failure
-success:
-  store i32 0, ptr %ret, align 4
-  %payload = getelementptr i8, ptr %ret, i64 8
-  call void @__kimi_buffer_bytes(ptr %payload, ptr %self)
-  %kindptr = getelementptr i8, ptr %payload, i64 16
-  %heap = icmp ne ptr %data, null
-  %kind = zext i1 %heap to i8
-  store i8 %kind, ptr %kindptr, align 1
-  ret void
-failure:
-  call void @__kimi_free(ptr %data, ptr %location, i64 %location_length)
   store i32 1, ptr %ret, align 4
   ret void
 }
@@ -314,18 +237,6 @@ invalid:
 size_failure:
   call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
   unreachable
-}
-
-{{__kimi_fixed_reserve}}
-entry:
-  call void @__kimi_buffer_reserve(ptr %ret, ptr %self, i64 %amount, i1 false, i64 0, ptr %location, i64 %location_length)
-  ret void
-}
-
-{{__kimi_heap_reserve}}
-entry:
-  call void @__kimi_buffer_reserve(ptr %ret, ptr %self, i64 %amount, i1 true, i64 0, ptr %location, i64 %location_length)
-  ret void
 }
 
 define internal ptr @__kimi_window_address(ptr %self) #0 {

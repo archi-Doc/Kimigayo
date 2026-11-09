@@ -28,7 +28,7 @@ public sealed class DoKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append("do");
+        builder.Append(TokenKind.Do.ToText());
         this.Body.WriteBranchTo(ref builder);
     }
 

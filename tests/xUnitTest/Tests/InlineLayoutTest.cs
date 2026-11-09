@@ -15,6 +15,15 @@ public class InlineLayoutTest
     private const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value\n";
     private const string BindingCycle = "contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct S\n    Self is C\n";
     private const string BorrowSlot = "contract C\n    associate Item\nstruct Box<T> {s}\n    T is C\n";
+    private const string M2Records = "InvalidTypeFormation_Kd struct | UnsatisfiedConstraint_Kd B<Box<D>> | InvalidConstraint_Kd B<Box<D>> | " +
+        "InvalidConstraint_Kd Box<D> | InvalidConstraint_Kd Box<D>";
+
+    private const string T08Records = "InvalidTypeFormation_Kd struct | UnprovenConstraint_Kd B<Box<D>> | InvalidConstraint_Kd Box<D> | " +
+        "InvalidConstraint_Kd Box<D>";
+
+    private const string Heir = "contract C\n    associate Item\nopen struct B<X>\n    Self is C\n    associate C.Item is X\n" +
+        "struct Box<T>\n    T is C\n    public var next: T.(C).Item\n";
+
     private const string TwoReferences = "contract C<U>\n    associate Item\nstruct Box<T>\n    T is C<i32>\n    public var next: Option<T.(C<i32>).Item>\nstruct S\n    Self is C<i32>\n    Self is C<i64>\n";
 
     [Theory]
@@ -122,6 +131,38 @@ public class InlineLayoutTest
         var layouts = check.Diagnostics.Where(static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd)).Select(x => x.Span is { } at ? source.Substring(at.Start, at.Length) : string.Empty);
         Assert.Equal(sites, string.Join(" | ", layouts));
         Assert.DoesNotContain(check.Diagnostics, static x => x.Code is nameof(DiagnosticCode.GenerationResourceLimit_Kd) or nameof(DiagnosticCode.InternalInvariant_Kd));
+    }
+
+    // SPEC 6.2, 8.6.2 (PLAN G631): an inherited binding whose storage reaches it again only under the heir's base arguments is invalid at
+    // the heir's conformance, its base clause, once, used or not, through any number of bases, nested or transformed arguments, mutual or
+    // generic heirs, a fixed array or a refinement; an heir whose binding closes no cycle is valid where it is stored. A base clause that
+    // fails by its own checks keeps their records whether or not the cycle is there (m2: B's premise refuted; t08: SPEC 8.3.3; their twins
+    // store the projection in an Array): the record is written after them. A later writer at an inherited path's Use
+    // (ValidateBoundConformanceAgreement, SPEC 8.9.2: G<Z> and G<i32> disagree at Z = i32) still reports there.
+    [Theory]
+    [InlineData(Heir + "struct D : B<i32>\nstruct U\n    public var b: Box<D>\n", "")]
+    [InlineData(Heir + "struct D : B<Box<D>>\n", "InvalidInlineLayout_Kd B<Box<D>>")]
+    [InlineData("contract C\n    associate Item\nopen struct B<X>\n    Self is C\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: Option<T.(C).Item>\nstruct D : B<Box<D>>\nfunc use(x: ref/D.(C).Item, y: ref/Box<D>) -> i32 => 1\n", "InvalidInlineLayout_Kd B<Box<D>>")]
+    [InlineData(Heir + "struct D : B<Option<(i32, Box<D>)>>\n", "InvalidInlineLayout_Kd B<Option<(i32, Box<D>)>>")]
+    [InlineData(Heir + "open struct M<Y> : B<Y>\nstruct D : M<Box<D>>\n", "InvalidInlineLayout_Kd M<Box<D>>")]
+    [InlineData(Heir + "struct E<Z> : B<Box<E<Z>>>\n", "InvalidInlineLayout_Kd B<Box<E<Z>>>")]
+    [InlineData(Heir + "open struct M<Y> : B<Y>\nopen struct N<W> : M<W>\nstruct D : N<Box<D>>\n", "InvalidInlineLayout_Kd N<Box<D>>")]
+    [InlineData(Heir + "open struct M<Y> : B<Option<Y>>\nstruct D : M<Box<D>>\n", "InvalidInlineLayout_Kd M<Box<D>>")]
+    [InlineData(Heir + "open struct M<Y> : B<(i32, Y)>\nopen struct N<W> : M<Option<W>>\nstruct D : N<Box<D>>\n", "InvalidInlineLayout_Kd N<Box<D>>")]
+    [InlineData(Heir + "struct D1 : B<Box<D2>>\nstruct D2 : B<Box<D1>>\n", "InvalidInlineLayout_Kd B<Box<D2>> | InvalidInlineLayout_Kd B<Box<D1>>")]
+    [InlineData(Heir + "struct E<Z> : B<Box<E<Option<Z>>>>\n", "InvalidInlineLayout_Kd B<Box<E<Option<Z>>>>")]
+    [InlineData("contract C\n    associate Item\nopen struct B<X>\n    Self is C\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: [1 of T.(C).Item]\nstruct D : B<Box<D>>\n", "InvalidInlineLayout_Kd B<Box<D>>")]
+    [InlineData("contract C\n    associate Item\ncontract C3: C\nopen struct B<X>\n    Self is C3\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct D : B<Box<D>>\n", "InvalidInlineLayout_Kd B<Box<D>>")]
+    [InlineData("contract C\n    associate Item\ncontract K2\nopen struct B<X>\n    X is K2\n    Self is C\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct D : B<Box<D>>\n", M2Records)]
+    [InlineData("contract C\n    associate Item\ncontract K2\nopen struct B<X>\n    X is K2\n    Self is C\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: Array<T.(C).Item>\nstruct D : B<Box<D>>\n", M2Records)]
+    [InlineData("contract C\n    associate Item\ncontract K\nopen struct B<X>\n    Self is C when X is K\n        associate C.Item is X\nstruct Box<T>\n    T is C\n    Self is K\n    public var next: T.(C).Item\nstruct D : B<Box<D>>\n", T08Records)]
+    [InlineData("contract C\n    associate Item\ncontract K\nopen struct B<X>\n    Self is C when X is K\n        associate C.Item is X\nstruct Box<T>\n    T is C\n    Self is K\n    public var next: Array<T.(C).Item>\nstruct D : B<Box<D>>\n", T08Records)]
+    [InlineData("contract G<T>\n    associate Item\nopen struct B<X>\n    Self is G<X>\n    associate G<X>.Item is i32\nstruct E<Z> : B<Z>\n    Self is G<i32>\n    associate G<i32>.Item is bool\n", "IncompatibleContractImplementation_Kd B<Z> | InvalidConstraint_Kd Self is G<i32>")]
+    public void AnInheritedBindingOnItsInlineCycleIsReportedAtTheHeirsBaseClause(string source, string records)
+    {
+        var check = DiagnosticCorpus.Check(source, "Library");
+        var actual = check.Diagnostics.Select(x => x.Code + " " + (x.Span is { } at ? source.Substring(at.Start, at.Length) : string.Empty));
+        Assert.Equal(records, string.Join(" | ", actual));
     }
 
     [Fact]

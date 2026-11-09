@@ -24,7 +24,8 @@ public sealed class DiscardKoto : Koto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append("_ = ");
+        builder.Append(TokenKind.Underscore.ToText());
+        builder.Append(" = ");
         this.Operand.WriteTo(ref builder);
     }
 

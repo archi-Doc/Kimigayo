@@ -42,10 +42,51 @@ public enum SemanticsMask : ushort
 }
 
 /// <summary>
-/// Provides conversion and constraint matching helpers for <see cref="SemanticsMask"/>.
+/// Provides the semantics names of <see cref="SemanticsKind"/> and <see cref="SemanticsMask"/>, conversion and constraint matching.
 /// </summary>
 public static class SemanticsMaskHelper
 {
+    /// <summary>Parses a built-in semantics name without allocating.</summary>
+    /// <param name="text">The semantics name.</param>
+    /// <param name="kind">The parsed kind, or <see cref="SemanticsKind.Parameter"/> when the name is not built in.</param>
+    /// <returns><see langword="true"/> when <paramref name="text"/> is built in; otherwise, <see langword="false"/>.</returns>
+    public static bool TryParse(ReadOnlySpan<char> text, out SemanticsKind kind)
+    {
+        kind = text.Length switch
+        {
+            2 when text.SequenceEqual(Constants.RcKeyword) => SemanticsKind.Rc,
+            3 when text.SequenceEqual(Constants.RefKeyword) => SemanticsKind.Ref,
+            3 when text.SequenceEqual(Constants.ObjKeyword) => SemanticsKind.Obj,
+            3 when text.SequenceEqual(Constants.ArcKeyword) => SemanticsKind.Arc,
+            3 when text.SequenceEqual(Constants.RawKeyword) => SemanticsKind.Raw,
+            4 when text.SequenceEqual(Constants.UniqKeyword) => SemanticsKind.Uniq,
+            5 when text.SequenceEqual(Constants.OwnerKeyword) => SemanticsKind.Owner,
+            6 when text.SequenceEqual(Constants.ObjRefKeyword) => SemanticsKind.ObjRef,
+            7 when text.SequenceEqual(Constants.ObjUniqKeyword) => SemanticsKind.ObjUniq,
+            _ => SemanticsKind.Parameter,
+        };
+
+        return kind != SemanticsKind.Parameter;
+    }
+
+    /// <summary>Returns the canonical name of a built-in semantics kind.</summary>
+    /// <param name="kind">The semantics kind.</param>
+    /// <returns>The canonical name, or an empty string for <see cref="SemanticsKind.Parameter"/>.</returns>
+    public static string ToText(this SemanticsKind kind)
+        => kind switch
+        {
+            SemanticsKind.Owner => Constants.OwnerKeyword,
+            SemanticsKind.Ref => Constants.RefKeyword,
+            SemanticsKind.Uniq => Constants.UniqKeyword,
+            SemanticsKind.Obj => Constants.ObjKeyword,
+            SemanticsKind.Rc => Constants.RcKeyword,
+            SemanticsKind.Arc => Constants.ArcKeyword,
+            SemanticsKind.ObjRef => Constants.ObjRefKeyword,
+            SemanticsKind.ObjUniq => Constants.ObjUniqKeyword,
+            SemanticsKind.Raw => Constants.RawKeyword,
+            _ => string.Empty,
+        };
+
     /// <summary>
     /// Parses a name that can be used in a semantics constraint.
     /// </summary>
@@ -54,7 +95,7 @@ public static class SemanticsMaskHelper
     /// <returns><see langword="true"/> when <paramref name="text"/> is a supported name.</returns>
     public static bool TryParse(ReadOnlySpan<char> text, out SemanticsMask mask)
     {
-        if (CompilerHelper.TryParse(text, out var kind))
+        if (TryParse(text, out SemanticsKind kind))
         {
             mask = kind.ToMask();
             return true;

@@ -24,6 +24,7 @@ public sealed partial class Binding
         this.verifiedClause = null;
         this.earlyReads?.Clear();
         this.earlyObjectForms?.Clear();
+        this.earlyProjections.Clear();
         this.storageMarks.Clear();
         this.storageStack.Clear();
         this.issues.Clear();

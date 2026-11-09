@@ -142,9 +142,7 @@ public sealed partial class Binding
             }
 
             var self = this.SelfType(path.Type);
-            var scope = path.Scope;
-            scope.Reset();
-            this.AddInheritedPremises(path, self, scope);
+            var scope = path.Scope; // D and the source's P, built once per pass (PrepareInheritedScopes).
             var shape = path.Contract.Contract!;
             foreach (var ancestor in shape.AncestorStorage)
             {
@@ -262,6 +260,20 @@ public sealed partial class Binding
             path.Checking = false;
             path.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
+        }
+    }
+
+    // SPEC 8.8.2: each inherited path's conformance scope, the heir D and its source's premises P, built once per pass
+    // after the table's reset (ImplTable.Reset empties it) and before its readers, the inline layouts' heir nodes and
+    // VerifyInheritedConformance, which read it and never build it.
+    private void PrepareInheritedScopes()
+    {
+        foreach (var path in this.impls.Paths)
+        {
+            if (path.InheritedFrom is not null)
+            {
+                this.AddInheritedPremises(path, this.SelfType(path.Type), path.Scope);
+            }
         }
     }
 

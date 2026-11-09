@@ -28,6 +28,6 @@ public sealed class BoolLiteralKoto : ExpressionKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append(this.Value ? Constants.TrueKeyword : Constants.FalseKeyword);
+        builder.Append(this.Value ? TokenKind.True.ToText() : TokenKind.False.ToText());
     }
 }

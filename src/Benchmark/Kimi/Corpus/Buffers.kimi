@@ -1,0 +1,59 @@
+// O2 timing corpus (O2Corpus.md): the byte buffers' operations. Validation: `text()` over a 65,532-byte HeapBuffer of mixed
+// ASCII and two-, three- and four-byte sequences, which it validates every time and records nothing. Growth: HeapBuffers grown
+// from capacity 0 to 4,096 bytes one byte at a time through `reserve`, `push` and `commit`, then released. Each part is a
+// function of its own: `main` calls each from two sites, so LLVM's inliner keeps it apart and opt -O2 output reads per part.
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible, so a wrong
+// value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+// Appends `bytes` through one window.
+func put(buffer: uniq/Text.HeapBuffer, bytes: Slice<u8>) -> Result<(), BufferFull>
+    var window = try buffer.reserve(bytes.length)
+    try (window@uniq).append(bytes)
+    _ = (window@move).commit()
+    return .Ok(())
+
+// Appends one byte through a one-byte window.
+func push(buffer: uniq/Text.HeapBuffer, byte: u8) -> Result<(), BufferFull>
+    var window = try buffer.reserve(1)
+    try (window@uniq).push(byte)
+    _ = (window@move).commit()
+    return .Ok(())
+
+// `rounds` validations of the whole committed text.
+func validation(text: ref/Text.HeapBuffer, rounds: i64) -> i64
+    var sum: i64 = 0
+    for round in 0..rounds
+        match text.text()
+            .Ok(let view) => sum += view.length@i64 + round
+            .Err(_) => $abort("invalid")
+    return sum
+
+// `rounds` buffers grown one byte at a time to `length` bytes.
+func growth(length: i64, rounds: i64) -> i64
+    var sum: i64 = 0
+    for round in 0..rounds
+        var buffer = Text.heap(0)
+        for i in 0..length
+            match push(buffer@uniq, ((i + round) & 127)@u8)
+                .Ok(_) => ()
+                .Err(_) => $abort("full")
+        sum += buffer.capacity@i64 + buffer.length@i64 + round
+    return sum
+
+public func main()
+    let pattern: [12 of u8] = [0x41, 0x62, 0xC3, 0xA9, 0xE3, 0x81, 0x82, 0xF0, 0x9F, 0x98, 0x80, 0x20]
+    var text = Text.heap(0)
+    for i in 0..5461
+        match put(text@uniq, pattern[..])
+            .Ok(_) => ()
+            .Err(_) => $abort("full")
+    var checksum: i64 = 0
+    checksum = fold(checksum, validation(text@ref, 1024))
+    checksum = fold(checksum, growth(4096, 1024))
+    checksum = fold(checksum, validation(text@ref, 1024))
+    checksum = fold(checksum, growth(4096, 1024))
+    Console.writeLine("checksum \(checksum)")

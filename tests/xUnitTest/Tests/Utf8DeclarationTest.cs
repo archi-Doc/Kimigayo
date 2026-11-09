@@ -45,6 +45,21 @@ public class Utf8DeclarationTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
     }
 
+    // SPEC 22.9.3 (R8-W1a): `length` and `capacity` are getters for user code; the buffers' bodies write `length` and HeapBuffer's
+    // `capacity` through a private standard setter, so a user write is an access error at the member, for both buffers
+    // (FixedBuffer's `capacity` is a `let`, the same answer by another rule).
+    [Theory]
+    [InlineData("var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)\nbuffer.length = 9", "buffer.length")]
+    [InlineData("var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)\nbuffer.capacity = 9", "buffer.capacity")]
+    [InlineData("var buffer = Text.heap(4)\nbuffer.length = 9", "buffer.length")]
+    [InlineData("var buffer = Text.heap(4)\nbuffer.capacity = 9", "buffer.capacity")]
+    [InlineData("var buffer = Text.heap(4)\nbuffer.length += 1", "buffer.length")]
+    public void BufferLengthsAreNotWritable(string source, string site)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal([(DiagnosticCode.InaccessibleBinding_Kd, site)], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
             "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString()));

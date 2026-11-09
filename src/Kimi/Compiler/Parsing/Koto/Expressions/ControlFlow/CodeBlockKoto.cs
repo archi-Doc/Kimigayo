@@ -83,7 +83,7 @@ public sealed class CodeBlockKoto : ExpressionKoto
         if (this.items.Count == 0 && this.DeclarationContext == TokenKind.Invalid)
         {
             // Preserve a body emptied by directive selection without emitting invalid source.
-            builder.Append("#if false");
+            builder.Append(Parser.IfFalseDirectiveText);
             builder.AppendLine();
             builder.IncrementIndent();
             builder.Append("()");

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Lexing;
 
@@ -16,14 +17,21 @@ public static partial class TokenHelper
     /// </summary>
     public const int MaxTokens = 256;
 
-    private const int MinKeywordLength = 2;
     // Compound access specifications are two keyword tokens (SPEC 2.5), so no keyword is longer than nine characters.
     private const int MaxKeywordLength = 9;
 
+    // A keyword begins with an ASCII letter or '_', all within 'A' through 'z'.
+    private const int FirstCharCount = 'z' - 'A' + 1;
+
+    // The one spelling table of SPEC F.3's keywords and the punctuation, indexed by token kind.
     private static readonly string[] TokenTexts;
 
-    // For each keyword length, the set of lowercase first characters (bit 0 = 'a') that begin a keyword.
-    private static readonly uint[] KeywordFirstCharMasks = new uint[MaxKeywordLength + 1];
+    // The keyword index, derived from TokenTexts: the keywords grouped by spelling length and first character, group g, with
+    // g = (length * FirstCharCount) + (first - 'A'), being KeywordEntries[KeywordStarts[g]..KeywordStarts[g + 1]], each spelling held as
+    // the integers Pack reads, so a lookup compares integers and calls nothing. About 2.3 KB per process (69 entries of 24 bytes and
+    // 581 group starts).
+    private static readonly KeywordEntry[] KeywordEntries;
+    private static readonly byte[] KeywordStarts = new byte[((MaxKeywordLength + 1) * FirstCharCount) + 1];
 
     // The characters that are always a complete token by themselves, indexed by ASCII code. The tokenizer's lead-character
     // table (Tokenizer.LeadClass) sends exactly these characters here; every other punctuation has a longer spelling.
@@ -52,57 +60,57 @@ public static partial class TokenHelper
         Array.Fill(TokenTexts, string.Empty);
 
         // Keywords (Primitive types)
-        Set(TokenKind.Bool, Constants.BoolKeyword);
-        Set(TokenKind.Isize, Constants.IsizeKeyword);
-        Set(TokenKind.Usize, Constants.UsizeKeyword);
-        Set(TokenKind.I8, Constants.I8Keyword);
-        Set(TokenKind.I16, Constants.I16Keyword);
-        Set(TokenKind.I32, Constants.I32Keyword);
-        Set(TokenKind.I64, Constants.I64Keyword);
-        Set(TokenKind.I128, Constants.I128Keyword);
-        Set(TokenKind.U8, Constants.U8Keyword);
-        Set(TokenKind.U16, Constants.U16Keyword);
-        Set(TokenKind.U32, Constants.U32Keyword);
-        Set(TokenKind.U64, Constants.U64Keyword);
-        Set(TokenKind.U128, Constants.U128Keyword);
-        Set(TokenKind.F32, Constants.F32Keyword);
-        Set(TokenKind.F64, Constants.F64Keyword);
-        Set(TokenKind.Char, Constants.CharKeyword);
-        Set(TokenKind.String, Constants.StringKeyword);
+        Set(TokenKind.Bool, "bool");
+        Set(TokenKind.Isize, "isize");
+        Set(TokenKind.Usize, "usize");
+        Set(TokenKind.I8, "i8");
+        Set(TokenKind.I16, "i16");
+        Set(TokenKind.I32, "i32");
+        Set(TokenKind.I64, "i64");
+        Set(TokenKind.I128, "i128");
+        Set(TokenKind.U8, "u8");
+        Set(TokenKind.U16, "u16");
+        Set(TokenKind.U32, "u32");
+        Set(TokenKind.U64, "u64");
+        Set(TokenKind.U128, "u128");
+        Set(TokenKind.F32, "f32");
+        Set(TokenKind.F64, "f64");
+        Set(TokenKind.Char, "char");
+        Set(TokenKind.String, "string");
 
         // Reserved words
-        Set(TokenKind.True, Constants.TrueKeyword);
-        Set(TokenKind.False, Constants.FalseKeyword);
-        Set(TokenKind.Let, Constants.LetKeyword);
-        Set(TokenKind.Var, Constants.VarKeyword);
-        Set(TokenKind.Func, Constants.FuncKeyword);
+        Set(TokenKind.True, "true");
+        Set(TokenKind.False, "false");
+        Set(TokenKind.Let, "let");
+        Set(TokenKind.Var, "var");
+        Set(TokenKind.Func, "func");
         Set(TokenKind.Try, "try");
         Set(TokenKind.Underscore, "_");
-        Set(TokenKind.Public, Constants.PublicKeyword);
-        Set(TokenKind.Protected, Constants.ProtectedKeyword);
-        Set(TokenKind.Private, Constants.PrivateKeyword);
-        Set(TokenKind.Internal, Constants.InternalKeyword);
-        Set(TokenKind.Open, Constants.OpenKeyword);
+        Set(TokenKind.Public, "public");
+        Set(TokenKind.Protected, "protected");
+        Set(TokenKind.Private, "private");
+        Set(TokenKind.Internal, "internal");
+        Set(TokenKind.Open, "open");
 
         // Reserved words of expressions and statements
-        Set(TokenKind.If, Constants.IfKeyword);
-        Set(TokenKind.Else, Constants.ElseKeyword);
-        Set(TokenKind.Case, Constants.CaseKeyword);
-        Set(TokenKind.As, Constants.AsKeyword);
-        Set(TokenKind.Is, Constants.IsKeyword);
-        Set(TokenKind.Not, Constants.NotKeyword);
-        Set(TokenKind.And, Constants.AndKeyword);
-        Set(TokenKind.Or, Constants.OrKeyword);
-        Set(TokenKind.For, Constants.ForKeyword);
-        Set(TokenKind.In, Constants.InKeyword);
-        Set(TokenKind.While, Constants.WhileKeyword);
-        Set(TokenKind.Loop, Constants.LoopKeyword);
-        Set(TokenKind.Match, Constants.MatchKeyword);
-        Set(TokenKind.Switch, Constants.SwitchKeyword);
-        Set(TokenKind.Return, Constants.ReturnKeyword);
-        Set(TokenKind.Exit, Constants.ExitKeyword);
-        Set(TokenKind.Continue, Constants.ContinueKeyword);
-        Set(TokenKind.Yield, Constants.YieldKeyword);
+        Set(TokenKind.If, "if");
+        Set(TokenKind.Else, "else");
+        Set(TokenKind.Case, "case");
+        Set(TokenKind.As, "as");
+        Set(TokenKind.Is, "is");
+        Set(TokenKind.Not, "not");
+        Set(TokenKind.And, "and");
+        Set(TokenKind.Or, "or");
+        Set(TokenKind.For, "for");
+        Set(TokenKind.In, "in");
+        Set(TokenKind.While, "while");
+        Set(TokenKind.Loop, "loop");
+        Set(TokenKind.Match, "match");
+        Set(TokenKind.Switch, "switch");
+        Set(TokenKind.Return, "return");
+        Set(TokenKind.Exit, "exit");
+        Set(TokenKind.Continue, "continue");
+        Set(TokenKind.Yield, "yield");
         Set(TokenKind.Do, "do");
         Set(TokenKind.Null, "null");
         Set(TokenKind.Require, "require");
@@ -114,20 +122,20 @@ public static partial class TokenHelper
         Set(TokenKind.ColonColon, "::");
 
         // Contextual keywords
-        Set(TokenKind.Alias, Constants.AliasKeyword);
-        Set(TokenKind.RootGroup, Constants.RootgroupKeyword);
-        Set(TokenKind.Group, Constants.GroupKeyword);
-        Set(TokenKind.Struct, Constants.StructKeyword);
-        Set(TokenKind.Enum, Constants.EnumKeyword);
-        Set(TokenKind.Extension, Constants.ExtensionKeyword);
-        Set(TokenKind.Contract, Constants.ContractKeyword);
-        Set(TokenKind.Static, Constants.StaticKeyword);
-        Set(TokenKind.Associate, Constants.AssociateKeyword);
-        Set(TokenKind.Get, Constants.GetKeyword);
-        Set(TokenKind.Set, Constants.SetKeyword);
-        Set(TokenKind.Has, Constants.HasKeyword);
-        Set(TokenKind.Computed, Constants.ComputedKeyword);
-        Set(TokenKind.Property, Constants.PropertyKeyword);
+        Set(TokenKind.Alias, "alias");
+        Set(TokenKind.RootGroup, "rootgroup");
+        Set(TokenKind.Group, "group");
+        Set(TokenKind.Struct, "struct");
+        Set(TokenKind.Enum, "enum");
+        Set(TokenKind.Extension, "extension");
+        Set(TokenKind.Contract, "contract");
+        Set(TokenKind.Static, "static");
+        Set(TokenKind.Associate, "associate");
+        Set(TokenKind.Get, "get");
+        Set(TokenKind.Set, "set");
+        Set(TokenKind.Has, "has");
+        Set(TokenKind.Computed, "computed");
+        Set(TokenKind.Property, "property");
 
         // Single token
         Set(TokenKind.Sharp, "#");
@@ -193,14 +201,7 @@ public static partial class TokenHelper
         SetSingleChar(Constants.CloseBraceChar, TokenKind.CloseBrace, -1);
         SetSingleChar(Constants.QuestionChar, TokenKind.Question, 0);
 
-        for (var i = (int)TokenKind.Bool; i < (int)TokenKind.Identifier; i++)
-        {
-            var text = TokenTexts[i];
-            if (text.Length is > 0 and <= MaxKeywordLength && text[0] is >= 'a' and <= 'z')
-            {
-                KeywordFirstCharMasks[text.Length] |= 1u << (text[0] - 'a');
-            }
-        }
+        KeywordEntries = IndexKeywords();
 
         static void Set(TokenKind kind, string text)
             => TokenTexts[(int)kind] = text;
@@ -209,6 +210,49 @@ public static partial class TokenHelper
         {
             SingleCharTokenKinds[c] = kind;
             SingleCharGroupingDepths[c] = (sbyte)groupingDepth;
+        }
+    }
+
+    // The keyword index over TokenTexts' rows below Identifier (SPEC F.3), a counting sort by group: each group's count, the running
+    // ends, then each entry placed below its group's end, which leaves KeywordStarts[g] at group g's start. A keyword the index cannot
+    // hold (longer than MaxKeywordLength, or not starting with 'A' through 'z') fails the type's initialization.
+    private static KeywordEntry[] IndexKeywords()
+    {
+        for (var kind = TokenKind.Bool; kind < TokenKind.Identifier; kind++)
+        {
+            if (KeywordGroup(kind) is var group and >= 0)
+            {
+                KeywordStarts[group]++;
+            }
+        }
+
+        for (var group = 1; group < KeywordStarts.Length; group++)
+        {
+            KeywordStarts[group] += KeywordStarts[group - 1];
+        }
+
+        var entries = new KeywordEntry[KeywordStarts[^1]];
+        for (var kind = TokenKind.Bool; kind < TokenKind.Identifier; kind++)
+        {
+            if (KeywordGroup(kind) is var group and >= 0)
+            {
+                entries[--KeywordStarts[group]] = KeywordEntry.Pack(TokenTexts[(int)kind], kind);
+            }
+        }
+
+        return entries;
+
+        // An empty row (a gap in TokenKind) has no group.
+        static int KeywordGroup(TokenKind kind)
+        {
+            var text = TokenTexts[(int)kind];
+            if (text.Length == 0)
+            {
+                return -1;
+            }
+
+            return text.Length <= MaxKeywordLength && (uint)(text[0] - 'A') < FirstCharCount ? (text.Length * FirstCharCount) + (text[0] - 'A') :
+                throw new InvalidOperationException($"The keyword index cannot hold {kind}'s spelling '{text}'.");
         }
     }
 
@@ -237,12 +281,12 @@ public static partial class TokenHelper
     }
 
     /// <summary>
-    /// Finds the first tokenizer separator in the specified text.
+    /// Gets the length of the word that starts the text: the characters before the first tokenizer separator.
     /// </summary>
     /// <remarks>Identifiers are short, so a scalar scan beats the setup cost of a vectorized search.</remarks>
     /// <param name="text">The text to search.</param>
-    /// <returns>The zero-based index of the first separator, or -1 if no separator is found.</returns>
-    public static int IndexOfSeparator(ReadOnlySpan<char> text)
+    /// <returns>The zero-based index of the first separator, or the text's length if no separator is found.</returns>
+    public static int WordLength(ReadOnlySpan<char> text)
     {
         for (var i = 0; i < text.Length; i++)
         {
@@ -252,7 +296,7 @@ public static partial class TokenHelper
             }
         }
 
-        return -1;
+        return text.Length;
     }
 
     /// <summary>
@@ -283,140 +327,45 @@ public static partial class TokenHelper
         => tokenKind is >= TokenKind.Alias and <= TokenKind.Identifier;
 
     /// <summary>
-    /// Classifies identifier-like text as a keyword.
+    /// Classifies identifier-like text as a keyword by the spelling table.
     /// </summary>
     /// <remarks>
-    /// Keywords are lowercase ASCII, so the text is dispatched on its length and first
-    /// character before a full comparison. This avoids hashing every identifier.
+    /// The text's length and first character select the few keywords it can equal, and each is compared as two or three integers.
+    /// This avoids hashing every identifier.
     /// </remarks>
     /// <param name="text">The identifier-like text.</param>
     /// <returns>The keyword token kind, or <see cref="TokenKind.Identifier"/>.</returns>
     public static TokenKind GetKeywordOrIdentifierKind(ReadOnlySpan<char> text)
     {
-        if (text.SequenceEqual("_"))
-        {
-            return TokenKind.Underscore;
-        }
-
-        var length = text.Length;
-        if (length < MinKeywordLength || length > MaxKeywordLength)
+        var first = text.IsEmpty ? -1 : text[0] - 'A';
+        if (text.Length > MaxKeywordLength || (uint)first >= FirstCharCount)
         {
             return TokenKind.Identifier;
         }
 
-        var c0 = text[0];
-        if (c0 < 'a' || c0 > 'z')
+        // The group is below KeywordStarts.Length - 1 by the two checks above.
+        ref var starts = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(KeywordStarts), (text.Length * FirstCharCount) + first);
+        int i = starts, end = Unsafe.Add(ref starts, 1);
+        if (i == end)
         {
-            return text.SequenceEqual("Self") ? TokenKind.Self : TokenKind.Identifier;
-        }
-
-        if ((KeywordFirstCharMasks[length] & (1u << (c0 - 'a'))) == 0)
-        {// No keyword of this length starts with this character.
             return TokenKind.Identifier;
         }
 
-        var kind = length switch
+        // KeywordStarts holds indexes into KeywordEntries only.
+        var probe = KeywordEntry.Pack(text, TokenKind.Identifier);
+        ref var entries = ref MemoryMarshal.GetArrayDataReference(KeywordEntries);
+        do
         {
-            2 => c0 switch
+            ref var entry = ref Unsafe.Add(ref entries, i);
+            if (entry.Head == probe.Head && entry.Tail == probe.Tail && entry.Middle == probe.Middle)
             {
-                'i' => text[1] switch
-                {
-                    '8' => TokenKind.I8,
-                    'f' => TokenKind.If,
-                    's' => TokenKind.Is,
-                    'n' => TokenKind.In,
-                    _ => TokenKind.Identifier,
-                },
-                'u' => text[1] == '8' ? TokenKind.U8 : TokenKind.Identifier,
-                'd' => text[1] == 'o' ? TokenKind.Do : TokenKind.Identifier,
-                'a' => text[1] == 's' ? TokenKind.As : TokenKind.Identifier,
-                'o' => text[1] == 'r' ? TokenKind.Or : TokenKind.Identifier,
-                _ => TokenKind.Identifier,
-            },
-            3 => c0 switch
-            {
-                'i' => Match(text, Constants.I16Keyword, TokenKind.I16, Constants.I32Keyword, TokenKind.I32, Constants.I64Keyword, TokenKind.I64),
-                'u' => Match(text, Constants.U16Keyword, TokenKind.U16, Constants.U32Keyword, TokenKind.U32, Constants.U64Keyword, TokenKind.U64),
-                'f' => Match(text, Constants.F32Keyword, TokenKind.F32, Constants.F64Keyword, TokenKind.F64, Constants.ForKeyword, TokenKind.For),
-                'l' => Match(text, Constants.LetKeyword, TokenKind.Let),
-                'v' => Match(text, Constants.VarKeyword, TokenKind.Var),
-                'n' => Match(text, Constants.NotKeyword, TokenKind.Not),
-                'a' => Match(text, Constants.AndKeyword, TokenKind.And),
-                'g' => Match(text, Constants.GetKeyword, TokenKind.Get),
-                's' => Match(text, Constants.SetKeyword, TokenKind.Set),
-                'h' => Match(text, Constants.HasKeyword, TokenKind.Has),
-                't' => Match(text, "try", TokenKind.Try),
-                _ => TokenKind.Identifier,
-            },
-            4 => c0 switch
-            {
-                'd' => Match(text, "drop", TokenKind.Drop),
-                'n' => Match(text, "null", TokenKind.Null),
-                'b' => Match(text, Constants.BoolKeyword, TokenKind.Bool, "base", TokenKind.Base),
-                'c' => Match(text, Constants.CaseKeyword, TokenKind.Case, Constants.CharKeyword, TokenKind.Char),
-                'i' => Match(text, Constants.I128Keyword, TokenKind.I128, "init", TokenKind.Init),
-                'u' => Match(text, Constants.U128Keyword, TokenKind.U128),
-                't' => Match(text, Constants.TrueKeyword, TokenKind.True),
-                'f' => Match(text, Constants.FuncKeyword, TokenKind.Func),
-                'e' => Match(text, Constants.ElseKeyword, TokenKind.Else, Constants.EnumKeyword, TokenKind.Enum, Constants.ExitKeyword, TokenKind.Exit),
-                'l' => Match(text, Constants.LoopKeyword, TokenKind.Loop),
-                'o' => Match(text, Constants.OpenKeyword, TokenKind.Open),
-                _ => TokenKind.Identifier,
-            },
-            5 => c0 switch
-            {
-                'd' => Match(text, "defer", TokenKind.Defer),
-                'i' => Match(text, Constants.IsizeKeyword, TokenKind.Isize),
-                'u' => Match(text, Constants.UsizeKeyword, TokenKind.Usize),
-                'f' => Match(text, Constants.FalseKeyword, TokenKind.False),
-                'w' => Match(text, Constants.WhileKeyword, TokenKind.While),
-                'm' => Match(text, Constants.MatchKeyword, TokenKind.Match),
-                'y' => Match(text, Constants.YieldKeyword, TokenKind.Yield),
-                'a' => Match(text, Constants.AliasKeyword, TokenKind.Alias),
-                'g' => Match(text, Constants.GroupKeyword, TokenKind.Group),
-                _ => TokenKind.Identifier,
-            },
-            6 => c0 switch
-            {
-                's' => text[1] == 'w' ? Match(text, Constants.SwitchKeyword, TokenKind.Switch) :
-                    Match(text, Constants.StringKeyword, TokenKind.String, Constants.StructKeyword, TokenKind.Struct, Constants.StaticKeyword, TokenKind.Static),
-                'r' => Match(text, Constants.ReturnKeyword, TokenKind.Return),
-                'p' => Match(text, Constants.PublicKeyword, TokenKind.Public),
-                _ => TokenKind.Identifier,
-            },
-            7 => Match(text, Constants.PrivateKeyword, TokenKind.Private, "require", TokenKind.Require),
-            8 => c0 switch
-            {
-                'c' => Match(text, Constants.ContinueKeyword, TokenKind.Continue, Constants.ContractKeyword, TokenKind.Contract, Constants.ComputedKeyword, TokenKind.Computed),
-                'p' => Match(text, Constants.PropertyKeyword, TokenKind.Property),
-                'i' => Match(text, Constants.InternalKeyword, TokenKind.Internal),
-                _ => TokenKind.Identifier,
-            },
-            9 => c0 switch
-            {
-                'r' => Match(text, Constants.RootgroupKeyword, TokenKind.RootGroup),
-                'e' => Match(text, Constants.ExtensionKeyword, TokenKind.Extension),
-                'a' => Match(text, Constants.AssociateKeyword, TokenKind.Associate),
-                'p' => Match(text, Constants.ProtectedKeyword, TokenKind.Protected),
-                _ => TokenKind.Identifier,
-            },
-            _ => TokenKind.Identifier,
-        };
+                return entry.Kind;
+            }
+        }
+        while (++i < end);
 
-        return kind;
+        return TokenKind.Identifier;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static TokenKind Match(ReadOnlySpan<char> text, string keyword, TokenKind kind)
-        => text.SequenceEqual(keyword) ? kind : TokenKind.Identifier;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static TokenKind Match(ReadOnlySpan<char> text, string keyword1, TokenKind kind1, string keyword2, TokenKind kind2)
-        => text.SequenceEqual(keyword1) ? kind1 : text.SequenceEqual(keyword2) ? kind2 : TokenKind.Identifier;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static TokenKind Match(ReadOnlySpan<char> text, string keyword1, TokenKind kind1, string keyword2, TokenKind kind2, string keyword3, TokenKind kind3)
-        => text.SequenceEqual(keyword1) ? kind1 : text.SequenceEqual(keyword2) ? kind2 : text.SequenceEqual(keyword3) ? kind3 : TokenKind.Identifier;
 
     /// <summary>
     /// Tries to classify a character that is always a complete token by itself, and reports its grouping-depth effect.
@@ -438,5 +387,47 @@ public static partial class TokenHelper
         tokenKind = TokenKind.Invalid;
         groupingDepth = 0;
         return false;
+    }
+
+    // A spelling of one to nine characters as the integers that hold all of them for its length: characters 0-3 and the last four
+    // (overlapping) for four or more; characters 0-1 and the last two for two or three; character 0 for one; and the middle character
+    // (length / 2), which only a nine-character spelling needs (its character 4).
+    private readonly struct KeywordEntry(ulong head, ulong tail, char middle, TokenKind kind)
+    {
+        public ulong Head { get; } = head;
+
+        public ulong Tail { get; } = tail;
+
+        public char Middle { get; } = middle;
+
+        public TokenKind Kind { get; } = kind;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static KeywordEntry Pack(ReadOnlySpan<char> text, TokenKind kind)
+        {
+            var length = text.Length;
+            ref var chars = ref MemoryMarshal.GetReference(text);
+            ref var bytes = ref Unsafe.As<char, byte>(ref chars);
+            var middle = Unsafe.Add(ref chars, length >> 1);
+            if (length >= 4)
+            {
+                return new(
+                    Unsafe.ReadUnaligned<ulong>(ref bytes),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, (length - 4) * sizeof(char))),
+                    middle,
+                    kind);
+            }
+
+            if (length >= 2)
+            {
+                return new(
+                    Unsafe.ReadUnaligned<uint>(ref bytes),
+                    Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes, (length - 2) * sizeof(char))),
+                    middle,
+                    kind);
+            }
+
+            return new(middle, 0, middle, kind);
+        }
     }
 }

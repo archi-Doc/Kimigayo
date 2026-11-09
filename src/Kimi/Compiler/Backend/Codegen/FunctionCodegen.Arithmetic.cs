@@ -6,22 +6,21 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The operator rows (R5 plan C1a, C1b, C8a, C8c, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80, R5-M92, R5-M118): a BinaryOp or UnaryOp
-// into its Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's terminal Type class, each operand
-// read at its terminal Place through its safe value-reference layers (SPEC 13.4); a string comparison through its row's routine
-// (FunctionCodegen.Strings). A Proven operation (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check Aborts
-// at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation requests its overflow intrinsics' declarations, which
-// the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operator with no entry is a broken contract (DECISIONS R5-M143).
+// The operator rows (R5 plan C1a, C1b, C8a, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80, R5-M92): a BinaryOp or UnaryOp into its
+// Place through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's terminal Type class, each operand read at
+// its terminal Place through its ref and uniq layers (SPEC 13.4; TerminalAddress). No string reaches it: a string comparison is its library
+// witness's call (MirBuilder's Compared, at Binding.OperandTerminal's terminal; R8-S1e-b), and MirValidator rejects a comparison BinaryOp
+// at a string (OperandsCompare). A Proven operation (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check
+// Aborts at the statement's location text (SPEC 22.5.1-22.5.2). A checked 128-bit operation requests its overflow intrinsics'
+// declarations, which the frame's fixed set omits (ModuleCodegen.Needs.WideOverflow); an operator with no entry is a broken contract
+// (DECISIONS R5-M143).
 internal sealed partial class FunctionCodegen
 {
-    // The string column of the table (Column).
-    private const byte StringColumn = 6;
-
     // The first UnaryOp's row.
     private static readonly int UnaryRows = Enum.GetValues<MirBinaryOp>().Length;
 
     // SPEC 13.2-13.4, 3.1.1, 5.1, 5.3: a row per MIR operator, MirBinaryOp's members then MirUnaryOp's, with its entry for a signed
-    // integer, an unsigned integer, a signed wrapping, an unsigned wrapping integer, a floating-point, a raw pointer and a string Type: the LLVM
+    // integer, an unsigned integer, a signed wrapping, an unsigned wrapping integer, a floating-point and a raw pointer Type: the LLVM
     // operator (an instruction, an icmp or fcmp predicate or a checked operation's overflow intrinsic stem), the check SPEC 13.3.1 makes
     // and a unary operator's fixed operand, the other side's spelling (0 - x; x xor -1, logical on bool and bitwise on an integer; fneg has
     // none, so -0.0 keeps its sign). A wrapping entry is the operation without its check, which a Proven one writes; bool and char take the
@@ -29,65 +28,57 @@ internal sealed partial class FunctionCodegen
     // checks nothing (SPEC 13.3.1); its comparisons are ordered but for !=, so a NaN operand makes != true and the others false, and +0.0
     // == -0.0 (SPEC 13.4); it has no remainder, bitwise or shift operator. A raw pointer has == and != on its address and p + n and p - n,
     // a displacement by n * stride(T) (LayoutNeeds' Element row, the one statement of which operator displaces, DECISIONS R5-M149; Displace),
-    // unchecked; Binding admits no other pointer operator (DECISIONS R5-M92). A
-    // string has the comparisons only (SPEC 13.3.2, 13.4): the predicate on its row's Routine's i32 against 0 (SPEC 13.4.1), the equality
-    // routine for == and != and the ordering routine for the others, which compare UTF-8 bytes lexicographically (DECISIONS R5-M118).
+    // unchecked; Binding admits no other pointer operator (DECISIONS R5-M92).
     // Reflexive: the result on equal operands, a comparison of Unit's one value.
     private static readonly Row[] Rows = Complete(
     [
         new(
             [new("sadd", Check.Overflow), new("uadd", Check.Overflow), new("add", Check.None), new("add", Check.None), new("fadd", Check.None),
-                new("gep", Check.None), default]), // Add
+                new("gep", Check.None)]), // Add
         new(
             [new("ssub", Check.Overflow), new("usub", Check.Overflow), new("sub", Check.None), new("sub", Check.None), new("fsub", Check.None),
-                new("gep", Check.None), default]), // Sub
+                new("gep", Check.None)]), // Sub
         new(
             [new("smul", Check.Overflow), new("umul", Check.Overflow), new("mul", Check.None), new("mul", Check.None), new("fmul", Check.None),
-                default, default]), // Mul
+                default]), // Mul
         new(
             [new("sdiv", Check.SignedQuotient), new("udiv", Check.Zero), new("sdiv", Check.WrappingQuotient), new("udiv", Check.Zero),
-                new("fdiv", Check.None), default, default]), // Div
-        new([new("srem", Check.Zero), new("urem", Check.Zero), new("srem", Check.Zero), new("urem", Check.Zero), default, default, default]), // Rem
-        new([new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), default, default, default]), // Shl
+                new("fdiv", Check.None), default]), // Div
+        new([new("srem", Check.Zero), new("urem", Check.Zero), new("srem", Check.Zero), new("urem", Check.Zero), default, default]), // Rem
+        new([new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), default, default]), // Shl
         new(
-            [new("ashr", Check.Shift), new("lshr", Check.Shift), new("ashr", Check.Shift), new("lshr", Check.Shift), default, default,
+            [new("ashr", Check.Shift), new("lshr", Check.Shift), new("ashr", Check.Shift), new("lshr", Check.Shift), default,
                 default]), // Shr
-        new([new("and", Check.None), new("and", Check.None), new("and", Check.None), new("and", Check.None), default, default, default]), // BitAnd
-        new([new("or", Check.None), new("or", Check.None), new("or", Check.None), new("or", Check.None), default, default, default]), // BitOr
-        new([new("xor", Check.None), new("xor", Check.None), new("xor", Check.None), new("xor", Check.None), default, default, default]), // BitXor
+        new([new("and", Check.None), new("and", Check.None), new("and", Check.None), new("and", Check.None), default, default]), // BitAnd
+        new([new("or", Check.None), new("or", Check.None), new("or", Check.None), new("or", Check.None), default, default]), // BitOr
+        new([new("xor", Check.None), new("xor", Check.None), new("xor", Check.None), new("xor", Check.None), default, default]), // BitXor
         new(
             [new("eq", Check.None), new("eq", Check.None), new("eq", Check.None), new("eq", Check.None), new("oeq", Check.None),
-                new("eq", Check.None), new("eq", Check.None)],
-            Reflexive: true,
-            Routine: LegacyRuntimeHelpers.StringEqual), // Eq
+                new("eq", Check.None)],
+            Reflexive: true), // Eq
         new(
             [new("ne", Check.None), new("ne", Check.None), new("ne", Check.None), new("ne", Check.None), new("une", Check.None),
-                new("ne", Check.None), new("ne", Check.None)],
-            Routine: LegacyRuntimeHelpers.StringEqual), // Ne
+                new("ne", Check.None)]), // Ne
         new(
             [new("slt", Check.None), new("ult", Check.None), new("slt", Check.None), new("ult", Check.None), new("olt", Check.None),
-                default, new("slt", Check.None)],
-            Routine: LegacyRuntimeHelpers.StringCompare), // Lt
+                default]), // Lt
         new(
             [new("sle", Check.None), new("ule", Check.None), new("sle", Check.None), new("ule", Check.None), new("ole", Check.None),
-                default, new("sle", Check.None)],
-            Reflexive: true,
-            Routine: LegacyRuntimeHelpers.StringCompare), // Le
+                default],
+            Reflexive: true), // Le
         new(
             [new("sgt", Check.None), new("ugt", Check.None), new("sgt", Check.None), new("ugt", Check.None), new("ogt", Check.None),
-                default, new("sgt", Check.None)],
-            Routine: LegacyRuntimeHelpers.StringCompare), // Gt
+                default]), // Gt
         new(
             [new("sge", Check.None), new("uge", Check.None), new("sge", Check.None), new("uge", Check.None), new("oge", Check.None),
-                default, new("sge", Check.None)],
-            Reflexive: true,
-            Routine: LegacyRuntimeHelpers.StringCompare), // Ge
+                default],
+            Reflexive: true), // Ge
         new(
             [new("ssub", Check.Overflow, Left: "0"), new("usub", Check.Overflow, Left: "0"), new("sub", Check.None, Left: "0"),
-                new("sub", Check.None, Left: "0"), new("fneg", Check.None), default, default]), // Neg
+                new("sub", Check.None, Left: "0"), new("fneg", Check.None), default]), // Neg
         new(
             [new("xor", Check.None, Right: "-1"), new("xor", Check.None, Right: "-1"), new("xor", Check.None, Right: "-1"),
-                new("xor", Check.None, Right: "-1"), default, default, default]), // Not
+                new("xor", Check.None, Right: "-1"), default, default]), // Not
     ]);
 
     // SPEC 13.3.1's checks, each one LlvmScalarText writer.
@@ -103,23 +94,19 @@ internal sealed partial class FunctionCodegen
 
     // The column whose entry is a column's operation without its check, which a Proven operation writes: an integer's wrapping column, a
     // wrapping integer's and a floating-point Type's own.
-    private static ReadOnlySpan<byte> Unchecked => [2, 3, 2, 3, 4, 5, StringColumn];
+    private static ReadOnlySpan<byte> Unchecked => [2, 3, 2, 3, 4, 5];
 
-    // The entry an operand Type takes, by its terminal below its safe value-reference layers (Terminal; SPEC 13.4: a comparison operand
-    // denotes its terminal Place, and MIR leaves the layers on an operand whose terminal it inspects in place, a string's or a raw pointer's;
-    // DECISIONS R5-M75, R5-M143) (SPEC 3.1, 3.1.1, 13.4, 5.1): an integer's or a wrapping integer's by its signedness, a floating-point
-    // Type's, bool's and char's the unsigned integer's, a raw pointer's, a string's; -1 for a Type with no operator.
+    // The entry an operand Type takes, by its terminal below its ref and uniq layers (Terminal; SPEC 13.4: a comparison operand denotes its
+    // terminal Place, and an operand's Type keeps its layers where MIR inspects the terminal in place, a raw pointer's, and where an
+    // identity premise gives them, which the item's instance substitutes, `a: T` under `T is ref/i32`; DECISIONS R5-M75, R5-M143) (SPEC
+    // 3.1, 3.1.1, 13.4, 5.1, 8.2.3): an integer's or a wrapping integer's by its signedness, a floating-point Type's, bool's and char's the
+    // unsigned integer's, a raw pointer's; -1 for a Type with no operator.
     private static int Column(BoundType type)
     {
         type = Terminal.Of(type).Type!;
         if (type.Semantics == SemanticsKind.Raw)
         {
             return 5;
-        }
-
-        if (ReferenceEquals(type, BoundType.String))
-        {
-            return StringColumn;
         }
 
         if (type.HasIntegerArithmetic)
@@ -159,12 +146,6 @@ internal sealed partial class FunctionCodegen
         var row = RowOf(rvalue.Kind, rvalue.Op);
         var operands = this.body.Operands.Slice(rvalue.Start, rvalue.Count);
         var column = this.InstanceType(operands[0]) is { } type ? Column(type) : -1; // None: a broken contract, recorded below.
-        if (column == StringColumn)
-        {
-            this.CompareStrings(statement, Rows[row], operands); // Its operands are inspected, not computed (FunctionCodegen.Strings).
-            return;
-        }
-
         var right = default(Computed);
         if (!this.Compute(operands[0], out var left) || (operands.Length == 2 && !this.Compute(operands[1], out right)))
         {
@@ -301,14 +282,19 @@ internal sealed partial class FunctionCodegen
     }
 
     // A covered operand's value in its computation representation (I4: a local loaded, bool narrowed; a constant its literal), read at its
-    // terminal Place through its safe value-reference layers (TerminalAddress; SPEC 13.4: only a comparison's operand has any, MIR's contract), its
-    // terminal Type and that Type's representation in the item's instance; false after a broken contract's record (Operand's,
-    // TerminalAddress's or the representation's).
+    // terminal Place through its ref and uniq layers (TerminalAddress; SPEC 13.4: only a comparison's operand has any, MIR's contract), its
+    // terminal Type and that Type's representation in the item's instance; false after a broken contract's record (Operand's or the
+    // representation's).
     private bool Compute(in MirOperand operand, out Computed computed)
     {
         computed = default;
-        if (!this.Operand(operand, out var value) || this.TerminalAddress(operand, value, default, out var terminal) is not { } place ||
-            (terminal.References == 0 ? this.LoweringOf(operand) : this.Laid(terminal.Type)) is not { } lowering)
+        if (!this.Operand(operand, out var value))
+        {
+            return false;
+        }
+
+        var place = this.TerminalAddress(operand, value, out var terminal);
+        if ((terminal.References == 0 ? this.LoweringOf(operand) : this.Laid(terminal.Type)) is not { } lowering)
         {
             return false;
         }
@@ -319,13 +305,47 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
+    // SPEC 3.4.3, 13.4: where an operand of ref and uniq layers denotes its terminal Place, given the operand's value: the referent of its
+    // outer layer through the pointer each further one stores (the place writer's Deref rule); its Terminal. Without layers (References 0)
+    // the operand's own value, which is no address for a scalar: Compute reads it as the value.
+    private Value TerminalAddress(in MirOperand operand, Value value, out Terminal terminal)
+    {
+        terminal = Terminal.Of(this.InstanceType(operand));
+        for (var layer = 1; layer < terminal.References; layer++)
+        {
+            value = this.LoadAt(value, PointerLayout);
+        }
+
+        return value;
+    }
+
     // An operand of an operator: its value, closed terminal Type and that Type's representation.
     private readonly record struct Computed(Value Value, BoundType Type, ValueLowering Lowering);
+
+    // SPEC 3.4.3, 13.4: the terminal of a comparison operand's Type below its ref and uniq layers (Binding.ComparisonReferent's: the MIR
+    // builder follows the pair layers Binding follows where the comparison is a witness's, and an instance substitutes the others' Semantics),
+    // and the number of those layers.
+    private readonly record struct Terminal(BoundType? Type, int References)
+    {
+        // The one walk of those layers: TyCtxt.Layer's Deref steps of a ref or uniq layer (an object handle is not followed).
+        internal static Terminal Of(BoundType? type)
+        {
+            var references = 0;
+            while (TyCtxt.Layer(type, out var below, out _) == HirPlaceKind.Deref
+                && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+            {
+                references++;
+                type = below;
+            }
+
+            return new(type, references);
+        }
+    }
 
     // An entry of the table: the LLVM operator (null: none, an operator Binding admits on no operand of the column's Types), the check and a
     // unary operator's fixed operand.
     private readonly record struct Entry(string? Operator, Check Check, string? Left = null, string? Right = null);
 
-    // A row of the table: the entries by column, the result on equal operands and a comparison's string routine (the string column's).
-    private readonly record struct Row(Entry[] Entries, bool Reflexive = false, FunctionAbi? Routine = null);
+    // A row of the table: the entries by column and the result on equal operands.
+    private readonly record struct Row(Entry[] Entries, bool Reflexive = false);
 }
