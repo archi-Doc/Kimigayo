@@ -104,7 +104,7 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.True(c.Bind().IsComplete);
-        foreach (var symbol in new[] { c.Library.Replace, c.Library.Exchange, c.Library.Swap })
+        foreach (var symbol in new[] { c.Library.MakeObj, c.Library.GetSymbol(KimiDeclarationId.Clone)! })
         {
             var declaration = Assert.IsType<FunctionKoto>(symbol.Declaration);
             Assert.Null(declaration.Body);

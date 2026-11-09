@@ -144,6 +144,19 @@ func third(value: i128) -> i128 => value / 3    // Unsupported on windows-x64.
 
 Floating-point operations use IEEE semantics without fast-math, reassociation or fusion. Stack exhaustion is detected with stack probes ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)).
 
+### 21.3.4. Kimi implementation Attributes
+
+The Kimi Kotonoha this compiler provides ([§22.1](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)) uses four implementation Attributes, recognized only in that Kotonoha's own sources. Their arguments are non-interpolated string literals:
+
+| Attribute | Identifies |
+| --- | --- |
+| `#Lang("Name")` | the one declaration the compiler knows as `Name`: a required row of §22.1, an operation with a published row ([§4.9.6](../spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)), or an internal declaration the compiler calls, lays out or links; each Name is declared once |
+| `#Intrinsic("Name")`, `#Intrinsic("Fail", "Code")` | a function whose definition the compiler generates; a `Fail` intrinsic Aborts with the fixed code of [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes) |
+| `#CallerLocation` | a function whose failures report the invoking user expression ([§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location)), which its private ABI carries |
+| `#Unsupported` | a declaration whose every use this implementation reports as Unsupported at the use ([§23.1.1](../spec/23-compiler-services.md#2311-categories)) |
+
+A Kimi function or constructor without a definition (§22.1: its Body omitted or holding only its leading region) carries `#Intrinsic` or `#Unsupported`, or is a constructor whose `#Lang` Name the compiler links to an internal function with the same parameters and premises, whose body defines it. Imports (`#LibraryImport`, §22.6) and Containers with empty bodies ([§6.1.1](../spec/06-declarations-and-containers.md#611-source-root-and-nested-containers)) are bodiless by their own rules.
+
 ## 21.4. Windows x64 runtime
 
 ### 21.4.1. Target
