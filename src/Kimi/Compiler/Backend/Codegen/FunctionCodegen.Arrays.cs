@@ -17,15 +17,12 @@ internal sealed partial class FunctionCodegen
     // all are put: the puts run no user code and cannot fail.
     private Value? ArrayBuffer(in SourceInfo source, Value handle, BoundType array, ValueLowering record, int count)
     {
-        // The empty handle: null, 0, 0 (IMPL 21.1.3). The data word is stored as the pointer it is: stored as an integer, SROA promotes it as one
-        // and O2 keeps one address in a `phi i64` beside the body's `phi ptr`, which it cannot merge (R8-A1d, the O2 corpus' Array).
-        var words = record.Layout.FieldOffsets.Span;
-        this.StoreAt(this.Offset(handle, words[0]), RuntimeAbi.StringReference.Layout, new('n', 0));
-        var word = Layout.Row(BoundType.ISize).Layout;
-        foreach (var offset in words[1..])
-        {
-            this.StoreAt(this.Offset(handle, offset), word, new('\0', 0));
-        }
+        // The empty handle (IMPL 21.1.3: `data` null while `capacity` is 0): each word at its Field's row, so `data` is stored as the pointer it
+        // is: stored as an integer, SROA promotes it as one and O2 keeps one address in a `phi i64` beside the body's `phi ptr`, which it cannot
+        // merge (R8-A1d, the O2 corpus' Array).
+        this.StoreWord(array, record, handle, "data", new('n', 0));
+        this.StoreWord(array, record, handle, "length", new('\0', 0));
+        this.StoreWord(array, record, handle, "capacity", new('\0', 0));
 
         if (count == 0)
         {
@@ -40,8 +37,8 @@ internal sealed partial class FunctionCodegen
         }
 
         _ = this.WriteCall(grow, [handle, new('\0', element.Layout.Stride), new('\0', count), site.Text, site.Length]);
-        this.StoreAt(this.Offset(handle, record.Layout.FieldOffsets.Span[Layout.LengthWord(array)]), Layout.Row(BoundType.ISize).Layout, new('\0', count));
-        return this.LoadAt(handle, RuntimeAbi.StringReference.Layout); // The buffer word, a pointer (IMPL 21.1.3).
+        this.StoreWord(array, record, handle, "length", new('\0', count));
+        return this.LoadWord(array, record, handle, "data");
     }
 
     // SPEC 4.9.7, 16.3.2, 4.9.8 (PLAN G126): destroyValues over its operands, the storage and the count: the values from the last, each by T's

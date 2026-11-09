@@ -6,17 +6,19 @@
 // window (SPEC 6.7.1, the one judge of its four conditions: open, derived or empty from Binding's published AdtDef.CLayoutUnavailable,
 // a zero-sized Field from the placed parts; S2-S4 X18), a layout over 2^63 - 1 bytes (Oversized, IMPL 21.1.1), or a failure derived
 // from Binding's rejected storage or from an abstract Type (Inputs). Rows (Layout.Rows.cs; static, Row): IMPL 21.1.3's scalars, Unit,
-// string, Never, borrows and raw pointers, object and function handles, and the sequence handles (Slice, Array, Dictionary words, each
-// with its length word, LengthWord).
+// string, Never, borrows and raw pointers, object and function handles; and IMPL 21.1.3's Handles (Component): a Slice, Array or
+// Dictionary is a row whose record is its one component's placement, the library struct that states its words (DECISIONS R8-M1).
 // Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums, Closures and Function Items, memoized
 // per program version, each placement's entry and its one decision in Layout.Decision.cs; Weak<S> comes with its operations (P41).
 // Inputs: a closed, interned Type of the owning compilation, or an abstract Type (BoundType.IsAbstract: a parameter, a projection or a
 // dependent Semantics term), which no closed Type holds: Of gives it Rejected naming itself without asking Row (DECISIONS R5-M155;
 // after a failed Binding a qualified projection that names no Type, PLAN G293; in a complete compilation an open Type, a broken
 // contract the collector records at its use, PLAN G187: never a fault); AdtDef (stored Types, IsCLayout, CLayoutUnavailable,
-// InlineCycle); IMPL 21.1.3's rows. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type
-// (X34; Indirect states it, the boundary of a root's storage, DECISIONS R5-M149).
-// Outputs: a Result (Outcome, Value, Instance, Oversized); Indirect(type); Row(type), a static row, which code generation reads
+// InlineCycle); IMPL 21.1.3's rows; TyCtxt, the representation structs' own Types (SelfType), the one open Type Layout places itself:
+// their Fields are rows, so the parameter is never placed. A borrow, raw pointer, handle or sequence is laid out without reading its
+// referent or element Type (X34; Indirect states it, the boundary of a root's storage, DECISIONS R5-M149).
+// Outputs: a Result (Outcome, Value, Instance, Oversized); Indirect(type); Component(type), a sequence handle's component, whose Fields
+// code generation reads a handle's words by; Row(type), a static row, which code generation reads
 // (DECISIONS R5-M148), never asked for an abstract Type (Inputs); it throws
 // for a Type without a row, a kind outside Layout's input contract in every compilation. The
 // collector (InstanceCollector) alone maps the outcomes: a
