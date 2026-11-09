@@ -26,6 +26,7 @@ internal enum MonoKind : byte
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
     ObjectDescriptor, // The runtime descriptor of an object payload (IMPL 21.1.3, SPEC 13.6): its erased payload Type.
     VTable, // The virtual table of a struct with a slot (SPEC 6.4, F package 4.2): its erased struct Type.
+    Import, // A #LibraryImport function a call runs (SPEC 22.6): the function, never generic; no body, no target, nothing generated.
 }
 
 /// <summary>The key of a mono item; the checked set holds one item per key.</summary>
@@ -35,7 +36,7 @@ internal enum MonoKind : byte
 /// <param name="Type">A type-driven item's erased Type (<see cref="TyCtxt.Erase(BoundType)"/>): a comparison Builtin item's is its node's,
 /// at the template when it has a parameter (DECISIONS R5-M166); () -> () for a DropGlue item of a Function value, and the handle over
 /// Unit for one of an owning handle's release that destroys no payload glue (DECISIONS R5-M60, amended by U11 and G372).</param>
-/// <param name="Symbol">A Builtin's compiler function or a property witness's Field.</param>
+/// <param name="Symbol">A Builtin's compiler function, a property witness's Field or an Import's function.</param>
 /// <param name="Variant">A property witness's operation; a comparison Builtin item's <see cref="ComparisonMode"/>; 1 for such a DropGlue
 /// item whose release runs the descriptor's finalizer.</param>
 /// <param name="Function">A ClosureErasure's or ItemAdapter's erased target Function Type, the one whose erased calls reach its entry
