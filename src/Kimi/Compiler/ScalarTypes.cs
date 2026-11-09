@@ -33,8 +33,10 @@ internal static class ScalarTypes
         _ => 0,
     };
 
-    // Canonical signed extension of the N-bit payload, also for unsigned language Types.
-    internal static Int128 Normalize(Int128 bits, int width) => width <= 64
+    // Canonical signed extension of the N-bit payload, also for unsigned language Types (DECISIONS BU-133). Width 0 is for an integer or
+    // wrapping integer Type whose instance decides its width (a proven-PrimitiveInteger parameter or projection, Wrapping<T> over one; SPEC
+    // 8.7.4), and for no other widthless Type: it keeps the 128-bit payload, the widest instance's, whose low N bits are each instance's.
+    internal static Int128 Normalize(Int128 bits, int width) => width is > 0 and <= 64
         ? (unchecked((long)bits) << (64 - width)) >> (64 - width) : bits;
 
     internal static bool TryLiteral(BoundType? type, UInt128 magnitude, bool negative, out Int128 bits)

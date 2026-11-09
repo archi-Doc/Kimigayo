@@ -156,7 +156,15 @@ internal sealed partial class MirBuilder
     {
         ref readonly var row = ref HirTables.PlanOf(conversion);
         var binding = row.Conversion;
-        if (row.Folded is { } folded)
+        if (row.Folded is { } wrapped && binding == ConversionBinding.Wrap && ScalarTypes.Width(type) == 0)
+        {
+            // DECISIONS R7-M14 (G658): a folded wrap to a Type whose instance decides its width holds the exact value modulo 2^128
+            // (Binding, ScalarTypes.Normalize); MIR states the wrap as a Wrap Cast of that i128 constant, which takes each instance's low
+            // bits, so a widthless Integer constant stays a generic literal, 0 through 127.
+            var wide = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.Primitives["i128"], wrapped))));
+            this.Set(destination, MirRvalue.Cast(MirCastKind.Wrap, wide, type) with { Proven = true }, conversion);
+        }
+        else if (row.Folded is { } folded)
         {
             this.Use(
                 destination,
