@@ -29,13 +29,15 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>What destroying a Drop's Place, or a part of it, runs under a view class (DECISIONS R4-M6).</summary>
+/// <summary>What destroying a Drop's Place, or a part of it, runs under a view class (DECISIONS R4-M6). A layer whose Type declares a drop
+/// and that may be incomplete is never Open in an exact body: at a runtime Drop it is MovedPlace_Kd (the row stays Open, the body
+/// inexact), in a check-only group Keep. A check-only group has no Flag row: Flag's state reads as Keep there.</summary>
 internal enum MirDropVerdict : byte
 {
-    Keep, // Its drop glue: it is initialized on every path or has no Move Path; in a check-only group also Flag's state or an incomplete own-drop layer.
+    Keep, // Its drop glue: it is initialized on every path or has no Move Path (in a check-only group, see the summary).
     Elide, // Nothing: its Type needs no drop in the view, or no path initializes it.
     Flag, // Its drop glue where its flag is set: it is complete or wholly absent on every path; runtime groups only.
-    Open, // No own drop (never a layer declaring one): a part may be missing; the child rows follow, a component without one destroyed where the own bit is set.
+    Open, // No own drop: a part may be missing; the child rows follow, a component without one destroyed where the own bit is set.
 }
 
 /// <summary>A row of a Drop's verdict group under a view class (DECISIONS R4-M6a): the group's first row is the dropped Place (Depth 0),
@@ -169,7 +171,7 @@ internal sealed class MirDropTable
 }
 
 /// <summary>Drop elaboration (A2, SPEC 16.2, 16.3.2; DECISIONS R4-M6a): <see cref="Begin"/> starts a body, MirInit's checks replay records
-/// each Drop's state tree, a check-only one's flagless (<see cref="Record"/>), and each runtime state event
+/// each Drop's state tree and reach (<see cref="Record"/>) and each runtime state event
 /// (<see cref="Event"/>), <see cref="Judge"/> applies a view's
 /// Types to the trees, and <see cref="End"/> numbers the flags and writes the points.</summary>
 /// <param name="moves">The move paths, built for the body.</param>
@@ -180,6 +182,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
     private readonly List<StateEvent> events = [];
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // MayNeedDrop's scratch.
     private int[] last = []; // Each block's last group in the table's rows, -1 without one.
+    private bool[] reached = []; // Each recorded Drop's block: whether the runtime edges reach it.
     private bool[] flagged = []; // Each path a judged row tests.
     private int[] before = []; // Each path's flag: the flagged paths before it.
     private BoundType?[] types = []; // The Type of each depth of the tree judged.
@@ -205,25 +208,28 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         this.events.Clear();
         MirDataflow.Grow(ref this.last, body.Blocks.Length);
         Array.Fill(this.last, -1, 0, body.Blocks.Length);
+        MirDataflow.Grow(ref this.reached, body.Blocks.Length);
         MirDataflow.Grow(ref this.flagged, moves.Paths.Length);
         Array.Clear(this.flagged, 0, moves.Paths.Length);
     }
 
     /// <summary>Records the state tree of a Drop from the state before it, on the assumed paths for a Drop only the checks reach (SPEC
-    /// 14.10.3), whose tree is flagless; a Drop without a Move Path has one Keep node where the runtime edges reach it, else none.</summary>
+    /// 14.10.3), and its reach, which <see cref="Judge"/> reads; a Drop without a Move Path has one Keep node where the runtime edges reach
+    /// it, else none.</summary>
     /// <param name="state">The state.</param>
     /// <param name="block">The block whose terminator is the Drop.</param>
     /// <param name="path">The dropped Place's path, or -1 when it has none: a static, or a Place through a reference or an index.</param>
     /// <param name="runtime">Whether the runtime edges reach the Drop.</param>
     internal void Record(ulong[] state, int block, int path, bool runtime)
     {
+        this.reached[block] = runtime;
         if (path >= 0)
         {
-            this.Subtree(state, block, path, 0, runtime);
+            this.Subtree(state, block, path, 0);
         }
         else if (runtime)
         {
-            this.trees.Add(new(block, -1, MirDropVerdict.Keep, -1, 0, true));
+            this.trees.Add(new(block, -1, MirDropVerdict.Keep, -1, 0));
         }
     }
 
@@ -318,29 +324,28 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
     }
 
     // A path's state verdict, and under Open each direct child's: Keep where the subtree is initialized on every path, Elide where nothing of
-    // it is on any path, Flag where no part was taken out of it, else Open, with the own bit's flag where that may be uninitialized. A
-    // check-only tree is flagless (R4-M6a): Flag's state reads as Keep, and no node has a flag.
-    private void Subtree(ulong[] state, int block, int path, int depth, bool runtime)
+    // it is on any path, Flag where no part was taken out of it, else Open, with the own bit's flag where that may be uninitialized.
+    private void Subtree(ulong[] state, int block, int path, int depth)
     {
         var end = moves.Paths[path].End;
         var verdict = Verdict(state, path, end);
-        var own = runtime && (verdict == MirDropVerdict.Flag || (verdict == MirDropVerdict.Open && Any(state, MirInit.Uninit, path, path + 1)));
-        verdict = verdict == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : verdict;
-        this.trees.Add(new(block, path, verdict, own ? path : -1, depth, runtime));
+        var own = verdict == MirDropVerdict.Flag || (verdict == MirDropVerdict.Open && Any(state, MirInit.Uninit, path, path + 1));
+        this.trees.Add(new(block, path, verdict, own ? path : -1, depth));
         for (var child = path + 1; verdict == MirDropVerdict.Open && child < end; child = moves.Paths[child].End)
         {
-            this.Subtree(state, block, child, depth + 1, runtime);
+            this.Subtree(state, block, child, depth + 1);
         }
     }
 
     // A Drop's tree under the view: the Types top-down from the Drop's case Type; a node whose Type needs no drop is Elide with its subtree,
     // and an Open layer whose Type declares a drop may be incomplete where that drop would run (SPEC 15.1.3, 16.3.2): MovedPlace_Kd at a
-    // runtime Drop; a check-only Drop is not judged (R4-M6a), and destroys such a layer whole (Keep, its drop included). Only an Open row
-    // has child rows. Returns the next tree.
+    // runtime Drop. A check-only Drop is read here alone: not judged and flagless (R4-M6a), so Flag's state reads as Keep, no row has a
+    // flag, and such a layer is destroyed whole (Keep, its drop included). Only an Open row has child rows. Returns the next tree.
     private int Tree(int first, ulong views)
     {
         var trees = CollectionsMarshal.AsSpan(this.trees);
-        var (block, runtime) = (trees[first].Block, trees[first].Runtime);
+        var block = trees[first].Block;
+        var runtime = this.reached[block];
         var start = this.table.Rows.Count;
         var skipped = int.MaxValue; // The depth of the node whose subtree has no rows.
         ref readonly var drop = ref this.body.Blocks[block];
@@ -357,7 +362,8 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             MirDataflow.Grow(ref this.types, node.Depth + 1);
             var type = this.types[node.Depth] = node.Depth == 0 ? cases.Type(this.body.TypeOf(drop.Terminator.Place)!)
                 : this.body.ProjectedType(this.types[node.Depth - 1], step.Kind, step.Arg);
-            var verdict = MirTypes.MayNeedDrop(type, this.walked) ? node.State : MirDropVerdict.Elide;
+            var state = node.State == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : node.State;
+            var verdict = MirTypes.MayNeedDrop(type, this.walked) ? state : MirDropVerdict.Elide;
             if (verdict == MirDropVerdict.Open && AdtDef.Destructor(type!) is not null)
             {
                 if (runtime)
@@ -377,7 +383,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             }
 
             skipped = verdict == MirDropVerdict.Open ? int.MaxValue : node.Depth;
-            var flag = verdict == MirDropVerdict.Elide ? -1 : node.Flag;
+            var flag = verdict == MirDropVerdict.Elide || !runtime ? -1 : node.Flag;
             if (flag >= 0)
             {
                 this.flagged[flag] = true;
@@ -446,9 +452,8 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
         order.AsSpan(0, items.Length).CopyTo(items);
     }
 
-    // A node of a Drop's state tree: its path (-1: no Move Path), its state verdict, its flag's path, its depth and whether the runtime
-    // edges reach the Drop.
-    private readonly record struct Node(int Block, int Path, MirDropVerdict State, int Flag, int Depth, bool Runtime);
+    // A node of a Drop's state tree: its path (-1: no Move Path), its state verdict, its flag's path and its depth.
+    private readonly record struct Node(int Block, int Path, MirDropVerdict State, int Flag, int Depth);
 
     // A state event: the subtree of the path set or cleared at a location, in the views of the solve.
     private readonly record struct StateEvent(MirLocation At, int Path, bool Set, ulong Views);
