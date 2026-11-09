@@ -73,10 +73,13 @@ public sealed partial class Binding
             this.adaptations[binary.Right] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
         }
 
+        var operand = right;
         left = this.OperandTerminal(binary.Left, left);
         right = this.OperandTerminal(binary.Right, right);
 
-        if (!FitsType(right, left, out var failure))
+        // SPEC 13.4, 3.8: the terminal Types are equal under the Type relation, which relates Never only to itself, or one operand is Never:
+        // the right one's own Type here, as applicability fitted a Never left one to the right; a Never terminal below a layer is ordinary.
+        if (!ReferenceEquals(operand, BoundType.Never) && !IsSubtype(right, left, out var failure))
         {
             if (this.CommonOriginType(left, right, out _) is not { } common)
             {

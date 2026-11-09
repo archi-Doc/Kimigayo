@@ -6008,6 +6008,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: rewording Anchor, Use and Store for both (weakens the five Loan codes, the default rows and the Origin records; one
     kind with two meanings); wording by code (a switch arm for one form); fact kinds of their own (`Formed`, `Carrier`: vocabulary
     entries needing the owner; one owner question for both codes if a later unit needs the formation).
+- **R4-M194 G670: an explicit discard of a raw Place destroys it in place** (2026-11-09; Middle; PLAN G670, Q17 class 1, wrong code;
+  design review 1 REJECT (F1, F2), revision 2 ACCEPT; the Back's C-181 and C-183, the Front's C-184 consent and ACCEPT on the
+  Binding hunks) SPEC 4.7.4, 5.2, 5.2.3, 5.4, 14.2.4.
+  - Binding publishes whether `_ = P@move` takes a raw Place: `Binding.DestroysInPlace` (beside `OffersTake`) holds when the
+    operand, unparenthesized, is a completed Transfer (`ConversionBinding.Transfer`, set only after `OffersTake` allowed the Take)
+    of a raw Place (`ElementAccess.IsRawPlace`, the predicate `OffersTake`'s raw branch uses); the HIR publisher writes it as each
+    `DiscardKoto`'s plan row Flag on every publish, read by `HirTables.DestroysInPlace`.
+  - The MIR builder lowers a marked discard to P's raw address-of into a temp, P's designation (its address, position checks
+    included), and, where P's Type may need drop, `Drop(P)` at the operand's end, the first cleanup of the statement's temporaries,
+    with no value temp. The Drop is built as every Drop (`MirTypes.MayNeedDrop`); Defaults.Copies, A2 and codegen keep removing or
+    eliding Drops by Type, and the designation never rides on one. The address temp is the designation's carrier only because MIR
+    has no statement that only evaluates a Place; it moves to one if the owner adds it.
+  - Reason: `drop` must act on that Place (C-181, D-197); a temp gave it another `self`.
+  - Rejected: the Drop as the only carrier (a consumer that removes a Drop by Type lost the bounds check: Elide, a refuted instance
+    Type, a default's copy; design review 1 F1); a FakeRead (generates nothing; shared with match guards); a MIR re-derivation of
+    the raw-Place rule (a further copy; Binding judges the Take; review 1 F2); a codegen rule forming an elided Drop's Place
+    (C-183's withdrawn hunk).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
